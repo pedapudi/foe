@@ -7,7 +7,7 @@
 //! workflow model node is reachable because firing it starts that node's
 //! resolved episode program.
 
-use crate::document::ResolvedProgram;
+use crate::document::{ProgramTreeSelection, ResolvedProgram};
 use crate::tools::{resolve_sources, resolve_specs, Source};
 use crate::workflow::WorkflowConfig;
 use crate::{Effect, ToolSpec};
@@ -36,7 +36,9 @@ type AuthorityKey = (String, &'static str, String, String);
 /// because firing it starts that node's episode.
 pub fn authority(root: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Authority>, String> {
     let mut found: BTreeMap<AuthorityKey, Authority> = BTreeMap::new();
-    collect_authority(root, "program", extra, &mut found)?;
+    for (path, program) in root.program_tree(ProgramTreeSelection::ExecutableReachable) {
+        collect_authority(program, &path, extra, &mut found)?;
+    }
     Ok(found.into_values().collect())
 }
 
@@ -68,18 +70,6 @@ fn collect_authority(
         let key = (name.clone(), source, definition.to_string(), format!("{:?}", spec.effect));
         let row = Authority { name: name.clone(), source, effect: spec.effect, definition, programs: BTreeSet::new() };
         found.entry(key).or_insert(row).programs.insert(path.to_string());
-    }
-    for name in &program.grants.spawn {
-        if let Some(child) = program.programs.get(name) {
-            collect_authority(child, &format!("{path}.programs.{name}"), extra, found)?;
-        }
-    }
-    if let Some(wf) = &program.workflow {
-        for (node, _) in crate::workflow::model_nodes(wf, "") {
-            let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
-            let child = &program.workflow_programs[&node];
-            collect_authority(child, &child_path, extra, found)?;
-        }
     }
     Ok(())
 }

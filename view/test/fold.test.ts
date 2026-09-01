@@ -66,10 +66,33 @@ test("summary carries lineage, budget, usage, and sandbox from the log", () => {
   assert.equal(s.usage.input, 410 + 520 + 610 + 680);
   assert.equal(s.usage.output, 28 + 31 + 14 + 9);
   assert.equal(s.usage.cacheRead, 400 + 520 + 600);
-  assert.deepEqual(s.sandbox, { mode: "best-effort", landlockAbi: 7 });
+  assert.deepEqual(s.sandbox, { mode: "best-effort", landlockAbi: 7, processBoundary: null });
   assert.equal(s.outcome?.kind, "completed");
   assert.deepEqual([...s.children.keys()], ["ep_child"]);
   assert.equal(s.roster.get("ep_child")?.phase, "active");
+});
+
+test("summary carries the recorded process cleanup guarantee", () => {
+  const f = new EpisodeFold("ep_boundary", { stream: false });
+  f.push({
+    seq: 0,
+    time: 1,
+    type: "episode/start",
+    data: {
+      id: "ep_boundary",
+      program: {},
+      sandbox: {
+        mode: "best-effort",
+        landlock_abi: 7,
+        process_boundary: { kind: "cgroup-v2", subtree_cleanup: "enforced" },
+      },
+    },
+  });
+  assert.deepEqual(f.summary.sandbox.processBoundary, {
+    kind: "cgroup-v2",
+    subtreeCleanup: "enforced",
+    reason: "",
+  });
 });
 
 test("static fold ignores chunks and renders the assembled message", () => {

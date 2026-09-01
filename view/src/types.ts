@@ -30,7 +30,11 @@ export interface EpisodeStart {
   identity?: string;
   task?: string;
   runtime?: { version?: string; build?: string };
-  sandbox?: { mode?: string; landlock_abi?: number };
+  sandbox?: {
+    mode?: string;
+    landlock_abi?: number;
+    process_boundary?: { kind?: string; subtree_cleanup?: string; reason?: string };
+  };
 }
 
 export interface Budget {

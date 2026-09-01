@@ -81,17 +81,20 @@ impl Executor for LocalExecutor {
             })
             .collect::<Result<Vec<_>, _>>()?;
         if let (Some(executable), Some(child_fd)) = (&req.executable, executable_fd) {
-            let parent_fd =
-                executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
-                    CapError::ProcessStart(format!("committed executable: cannot duplicate descriptor: {e}"))
-                })?;
+            let parent_fd = executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
+                CapError::ProcessStart(format!("committed executable: cannot duplicate descriptor: {e}"))
+            })?;
             mappings.push(FdMapping { parent_fd, child_fd });
         }
         cmd.fd_mappings(mappings).map_err(|e| CapError::ProcessStart(format!("fd mapping: {e:?}")))?;
-        let narrowed = req.policy.clone().unwrap_or_else(|| match &req.executable {
-            Some(executable) => self.policy.for_immutable_executable(executable.clone(), req.network),
-            None => self.policy.for_executable(&req.program, req.network),
-        });
+        let narrowed = match req.policy.clone() {
+            Some(policy) => policy,
+            None => match &req.executable {
+                Some(executable) => self.policy.for_immutable_executable(executable.clone(), req.network),
+                None => self.policy.for_executable(&req.program, req.network),
+            }
+            .map_err(CapError::ProcessStart)?,
+        };
         let mut child =
             self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
         let group = Pid::from_raw(child.id() as i32);

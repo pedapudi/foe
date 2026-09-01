@@ -14,7 +14,7 @@ fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecuto
     let dir = scratch("exec", name);
     let cancel = Arc::new(AtomicBool::new(false));
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
-    let policy = Policy { read, exec, ..Policy::default() };
+    let policy = Policy { read, delegated_exec: exec, ..Policy::default() };
     (LocalExecutor::new(sandbox, policy, dir.join("spill"), cancel.clone()), dir, cancel)
 }
 
@@ -54,7 +54,7 @@ fn configured_executor(
     .unwrap();
     let program = foe_program::document::resolve(&config).unwrap();
     let executables = crate::executable::ExecutableTree::materialize(&program, dir).unwrap();
-    let policy = Policy::for_episode(&program, &executables, dir);
+    let policy = Policy::for_episode(&program, &executables, dir).unwrap();
     let sandbox = Arc::new(Sandbox::new(mode).unwrap());
     let executor =
         LocalExecutor::new(sandbox, policy, dir.join(format!("spill-{name}")), Arc::new(AtomicBool::new(false)));
@@ -123,7 +123,7 @@ fn a_configured_multicall_executable_keeps_its_configured_name() {
     let executables = crate::executable::ExecutableTree::materialize(&program, &dir.join("episode")).unwrap();
     let executable = executables.tools["configured"].clone();
     assert_eq!(executable.basename(), "echo");
-    let policy = Policy::for_episode(&program, &executables, &dir);
+    let policy = Policy::for_episode(&program, &executables, &dir).unwrap();
     let executor = LocalExecutor::new(
         Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
         policy,
@@ -191,7 +191,7 @@ fn a_confined_episode_removes_private_executable_storage() {
         drop(executables);
         !stored_path.exists()
     });
-    assert!(removed.unwrap(), "the episode cleanup authority removes the private store");
+    assert!(removed.unwrap(), "the episode cleanup permission removes the private store");
 }
 
 #[test]
@@ -246,7 +246,7 @@ fn declared_tree_snapshots_share_one_stable_image() {
     .unwrap();
     let program = foe_program::document::resolve(&config).unwrap();
     let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
-    assert_eq!(executables.reachable_entries().len(), 1, "ungranted programs carry no execute authority");
+    assert_eq!(executables.reachable_entries().len(), 1, "ungranted programs carry no execute permission");
     assert_eq!(executables.identity_entries().len(), 3, "every declaration can be reconstructed");
     assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one image plus one manifest");
 }
@@ -282,7 +282,7 @@ fn exit_code_and_cwd_are_reported() {
 
 #[test]
 fn timeout_kills_the_whole_group() {
-    let (ex, dir, _) = executor("timeout", vec![], vec!["/bin/sh".into()]);
+    let (ex, dir, _) = executor("timeout", vec![], vec!["/bin/sleep".into()]);
     let mut req = request("/bin/sh", &["-c", "sleep 30 & echo $!; wait"], &dir);
     req.timeout = Duration::from_millis(300);
     let out = ex.run(req).unwrap();
@@ -312,7 +312,7 @@ fn cancellation_ends_a_running_process() {
 
 #[test]
 fn output_beyond_the_limit_spills_to_a_file() {
-    let (ex, dir, _) = executor("spill", vec![], vec!["/bin/sh".into()]);
+    let (ex, dir, _) = executor("spill", vec![], vec!["/usr/bin/head".into(), "/usr/bin/tr".into()]);
     let total = CAPTURE_LIMIT + 4096;
     let script = format!("head -c {total} /dev/zero | tr '\\0' a");
     let out = ex.run(request("/bin/sh", &["-c", &script], &dir)).unwrap();
@@ -408,7 +408,9 @@ fn a_request_policy_replaces_the_derived_narrowing() {
     let probe = format!("cat {}/secret", dir.display());
     let mut req = request("/bin/sh", &["-c", &probe], &dir);
     req.cwd = PathBuf::from("/");
-    req.policy = Some(Policy { read: vec!["/usr".into()], exec: vec!["/bin/sh".into()], ..Policy::default() });
+    let mut policy = Policy::for_runtime_executable(Path::new("/bin/sh"), vec!["/usr".into()], "test shell").unwrap();
+    policy.add_executable(Path::new("/usr/bin/cat"), "test subprocess".into()).unwrap();
+    req.policy = Some(policy);
     let out = ex.run(req).unwrap();
     assert_ne!(out.exit_code, Some(0), "a path outside the request's policy is denied");
 }

@@ -12,13 +12,15 @@
 //! child inherits the narrower domain before it executes anything.
 
 use crate::executable::{Executable, ExecutableTree};
+use crate::executable_support;
 use crate::RuntimeError;
-use foe_log::{SandboxInfo, SandboxMode};
-use foe_program::document::ResolvedProgram;
+use foe_log::{SandboxAccess, SandboxInfo, SandboxMode, SandboxPath};
+use foe_program::document::{ProgramTreeSelection, ResolvedProgram};
 use landlock::{
     Access, AccessFs, AccessNet, BitFlags, CompatLevel, Compatible, LandlockStatus, NetPort, PathBeneath, PathFd,
     Ruleset, RulesetAttr, RulesetCreated, RulesetCreatedAttr, RulesetStatus, Scope, ABI,
 };
+use std::collections::BTreeSet;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -28,20 +30,9 @@ use std::sync::Arc;
 /// used at this level and recorded as this level.
 pub const MAX_ABI: u32 = 7;
 
-/// Directories every process needs in order to start: the dynamic loader,
-/// shared libraries, and interpreters named by shebang lines. Granted read
-/// and execute. Paths absent on the machine are skipped.
-pub const LOADER_DIRS: &[&str] = &[
-    "/lib",
-    "/lib64",
-    "/usr/lib",
-    "/usr/lib64",
-    "/usr/libexec",
-    "/usr/local/lib",
-    "/bin",
-    "/usr/bin",
-    "/usr/local/bin",
-];
+/// Directories a dynamic loader searches for shared objects. They remain
+/// readable and carry no execute access.
+pub const LIBRARY_DIRS: &[&str] = &["/lib", "/lib64", "/usr/lib", "/usr/lib64", "/usr/libexec", "/usr/local/lib"];
 
 /// Read-only system paths that runtimes consult while starting: loader
 /// configuration, locale data, and process metadata.
@@ -66,15 +57,10 @@ pub struct Policy {
     /// Explicit program grants that remain available to subprocesses after
     /// the executable that starts them receives its narrower policy.
     pub delegated_exec: Vec<PathBuf>,
-    /// Single files readable in full. Two files reach this list. The
-    /// resolver configuration, which a process reads to turn a provider
-    /// host name into an address, is granted only to a process that may
-    /// open a connection: an episode that declares a `model` block, or an
-    /// executable whose tool definition asks for the network. It is
-    /// resolved through the symbolic link into `/run` that no system read
-    /// root covers, and an unresolvable path grants nothing. The model
-    /// credential file, which the binary appends after resolving the
-    /// transport, reaches episodes alone and never an executable.
+    /// Single files readable in full. Resolver configuration is present
+    /// only when the process may connect. Resolved model credential files
+    /// are present only in episode policies. Narrowed executables never
+    /// receive credentials.
     pub read_files: Vec<PathBuf>,
     /// The episode's own log directory, readable and writable. `None` for an
     /// executable, which has no log of its own.
@@ -84,73 +70,297 @@ pub struct Policy {
     /// Whether the process may open outbound TCP connections. Enforced from
     /// ABI 4.
     pub connect_tcp: bool,
+    /// Runtime-owned cgroup directories. The episode process manages them;
+    /// configured executables do not receive this access.
+    #[doc(hidden)]
+    pub runtime_control: Vec<PathBuf>,
+    /// Runtime control files. Executable policies drop this access unless
+    /// the runtime adds back the one file a trusted wrapper must write.
+    #[doc(hidden)]
+    pub runtime_control_files: Vec<PathBuf>,
+    #[doc(hidden)]
+    pub access: SandboxAccess,
 }
 
 impl Policy {
-    /// The policy of an episode process: its grants, the configured
-    /// executable of every program at or below it, the running binary when
-    /// it may start children, its log directory, the bind ports its grants
-    /// list, and outbound TCP only when the episode itself holds the model
-    /// transport. The credential file the transport reads is not known
-    /// here; the binary appends it to `read_files` after resolving the
-    /// `model` block.
-    pub fn for_episode(config: &ResolvedProgram, executables: &ExecutableTree, log_dir: &Path) -> Policy {
-        let mut exec = Vec::new();
-        if !config.grants.spawn.is_empty() || !config.workflow_programs.is_empty() {
-            exec.extend(std::env::current_exe().ok());
+    /// A standalone internal runtime with fixed read roots and one exact
+    /// executable. Used before an episode policy exists.
+    pub fn for_runtime_executable(executable: &Path, read: Vec<PathBuf>, reason: &str) -> Result<Policy, String> {
+        let mut policy = Policy { read, ..Policy::default() };
+        for path in policy.read.clone() {
+            policy.record_read(path, reason, None);
         }
-        exec.extend(config.grants.execute.iter().cloned());
-        let network = config.model.is_some();
-        Policy {
+        policy.record_implicit_reads();
+        policy.add_executable(executable, reason.into())?;
+        Ok(policy)
+    }
+
+    /// The complete descendant envelope an episode must reserve before
+    /// Landlock can narrow it. Planning and execution share this walk.
+    pub fn for_plan(config: &ResolvedProgram) -> Result<Policy, String> {
+        let mut policy = Policy {
             read: config.grants.read.clone(),
             write: config.grants.write.clone(),
-            exec,
-            exec_files: executables.reachable(),
-            runtime_storage: executables.cleanup_roots(),
             delegated_exec: config.grants.execute.clone(),
-            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
-            log_dir: Some(log_dir.to_path_buf()),
             bind_tcp: config.grants.bind.clone(),
-            connect_tcp: network,
+            ..Policy::default()
+        };
+        policy.record_declared(config);
+        policy.record_implicit_reads();
+        let programs = config.program_tree(ProgramTreeSelection::ExecutableReachable);
+        for (program_key, program) in &programs {
+            for path in &program.grants.execute {
+                policy.add_executable(path, format!("declared by {program_key}.grants.execute"))?;
+            }
+            for (name, image) in &program.executable_images {
+                policy.add_image(
+                    &image.path,
+                    &image.sha256,
+                    &image.bytes,
+                    format!("selected configured tool {program_key}.tool_defs.{name}"),
+                )?;
+                if program.tool_defs[name].network {
+                    policy.reserve_network(format!("{program_key}.tool_defs.{name}.network is true"));
+                }
+            }
+            if let Some(image) = &program.transport_executable {
+                policy.add_image(
+                    &image.path,
+                    &image.sha256,
+                    &image.bytes,
+                    format!("executable model transport {program_key}.model.exec"),
+                )?;
+            }
+            if program.model.is_some() {
+                policy.reserve_network(format!("model transport in {program_key}"));
+            }
+        }
+        if programs.len() > 1 {
+            let executable = std::env::current_exe().map_err(|e| format!("running foe executable: {e}"))?;
+            policy.add_executable(&executable, "child episode launcher".into())?;
+        }
+        Ok(policy)
+    }
+
+    /// The planned envelope plus committed inodes and paths that exist only
+    /// after the episode directory has been chosen.
+    pub fn for_episode(
+        config: &ResolvedProgram,
+        executables: &ExecutableTree,
+        log_dir: &Path,
+    ) -> Result<Policy, String> {
+        let mut policy = Self::for_plan(config)?;
+        policy.exec_files = executables.reachable();
+        for path in executables.cleanup_roots() {
+            policy.runtime_storage.push(path.clone());
+            policy.record_read_write(path, "private committed-executable storage cleanup", None);
+        }
+        policy.log_dir = Some(log_dir.to_path_buf());
+        policy.record_read_write(log_dir.to_path_buf(), "episode log and spill directory", None);
+        Ok(policy)
+    }
+
+    /// Narrows one pathname executable to itself and the current program's
+    /// explicit subprocess grants.
+    pub fn for_executable(&self, executable: &Path, network: bool) -> Result<Policy, String> {
+        let mut policy = self.narrowed();
+        for path in &self.delegated_exec {
+            policy.add_executable(path, "delegated by this program's grants.execute".into())?;
+        }
+        policy.add_executable(executable, "selected executable".into())?;
+        if network {
+            policy.reserve_network("selected executable declares network access".into());
+        }
+        Ok(policy)
+    }
+
+    /// Narrows one configured executable to its committed inode and the
+    /// current program's explicit subprocess grants.
+    pub fn for_immutable_executable(&self, executable: Arc<Executable>, network: bool) -> Result<Policy, String> {
+        let mut policy = self.narrowed();
+        for path in &self.delegated_exec {
+            policy.add_executable(path, "delegated by this program's grants.execute".into())?;
+        }
+        policy.add_image(
+            &executable.source,
+            &executable.sha256,
+            executable.image(),
+            "selected configured executable".into(),
+        )?;
+        policy.exec_files.push(executable);
+        if network {
+            policy.reserve_network("selected configured executable declares network access".into());
+        }
+        Ok(policy)
+    }
+
+    fn narrowed(&self) -> Policy {
+        let mut policy = Policy {
+            read: self.read.clone(),
+            write: self.write.clone(),
+            delegated_exec: self.delegated_exec.clone(),
+            bind_tcp: self.bind_tcp.clone(),
+            ..Policy::default()
+        };
+        for path in policy.read.clone() {
+            policy.record_read(path, "declared by this program's grants.read", None);
+        }
+        for path in policy.write.clone() {
+            policy.record_write(path, "declared by this program's grants.write", None);
+        }
+        policy.access.bind_tcp = policy.bind_tcp.clone();
+        policy.record_implicit_reads();
+        policy
+    }
+
+    fn record_declared(&mut self, config: &ResolvedProgram) {
+        for path in &config.grants.read {
+            self.record_read(path.clone(), "declared by program.grants.read", None);
+        }
+        for path in &config.grants.write {
+            self.record_write(path.clone(), "declared by program.grants.write", None);
+        }
+        self.access.bind_tcp = config.grants.bind.clone();
+    }
+
+    fn record_implicit_reads(&mut self) {
+        for path in LIBRARY_DIRS {
+            self.record_existing_read(PathBuf::from(path), "shared-library lookup");
+        }
+        for path in SYSTEM_READ_DIRS {
+            self.record_existing_read(PathBuf::from(path), "runtime system information");
+        }
+        for path in DEVICE_FILES {
+            let path = PathBuf::from(path);
+            if path.exists() {
+                self.record_read_write(path, "standard runtime device", None);
+            }
         }
     }
 
-    /// The policy of one executable started by this episode: the same read
-    /// and write roots, execute access on that file alone, no log
-    /// directory, the episode's bind ports, and outbound TCP only when the
-    /// tool definition asks for it.
-    pub fn for_executable(&self, exec: &Path, network: bool) -> Policy {
-        let mut allowed = vec![exec.to_path_buf()];
-        allowed.extend(self.delegated_exec.iter().cloned());
-        Policy {
-            read: self.read.clone(),
-            write: self.write.clone(),
-            exec: allowed,
-            exec_files: Vec::new(),
-            runtime_storage: Vec::new(),
-            delegated_exec: self.delegated_exec.clone(),
-            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
-            log_dir: None,
-            bind_tcp: self.bind_tcp.clone(),
-            connect_tcp: network,
+    fn record_existing_read(&mut self, path: PathBuf, reason: &str) {
+        if path.exists() {
+            self.record_read(path, reason, None);
         }
     }
 
-    /// Narrows a configured executable to its committed inode and the
-    /// execute paths explicitly delegated by the enclosing program.
-    pub fn for_immutable_executable(&self, executable: Arc<Executable>, network: bool) -> Policy {
-        Policy {
-            read: self.read.clone(),
-            write: self.write.clone(),
-            exec: self.delegated_exec.clone(),
-            exec_files: vec![executable],
-            runtime_storage: Vec::new(),
-            delegated_exec: self.delegated_exec.clone(),
-            read_files: std::fs::canonicalize("/etc/resolv.conf").ok().filter(|_| network).into_iter().collect(),
-            log_dir: None,
-            bind_tcp: self.bind_tcp.clone(),
-            connect_tcp: network,
+    fn add_image(&mut self, source: &Path, sha256: &str, image: &[u8], reason: String) -> Result<(), String> {
+        self.record_execute(source.to_path_buf(), &reason, Some(sha256.to_string()));
+        self.add_support(image, &reason, &mut BTreeSet::new())
+    }
+
+    /// Adds an exact runtime executable and every loader or interpreter the
+    /// kernel executes while starting it.
+    pub fn add_executable(&mut self, path: &Path, reason: String) -> Result<(), String> {
+        let path = std::fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        push_unique(&mut self.exec, path.clone());
+        self.record_execute(path.clone(), &reason, None);
+        if path.is_file() {
+            let image = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            self.add_support(&image, &reason, &mut BTreeSet::new())?;
         }
+        Ok(())
+    }
+
+    fn add_support(&mut self, image: &[u8], owner: &str, seen: &mut BTreeSet<PathBuf>) -> Result<(), String> {
+        let Some(path) = executable_support::interpreter(image).map_err(|e| format!("{owner}: {e}"))? else {
+            return Ok(());
+        };
+        let path = std::fs::canonicalize(&path).map_err(|e| format!("{owner}: {}: {e}", path.display()))?;
+        if !seen.insert(path.clone()) {
+            return Ok(());
+        }
+        let kind = if image.starts_with(b"#!") { "shebang interpreter" } else { "ELF dynamic loader" };
+        let reason = format!("{kind} for {owner}");
+        push_unique(&mut self.exec, path.clone());
+        self.record_execute(path.clone(), &reason, None);
+        let support = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.add_support(&support, &reason, seen)
+    }
+
+    pub fn add_read_file(&mut self, path: PathBuf, reason: impl Into<String>) {
+        push_unique(&mut self.read_files, path.clone());
+        self.record_read(path, reason, None);
+    }
+
+    pub fn add_write_root(&mut self, path: PathBuf, reason: impl Into<String>) {
+        push_unique(&mut self.write, path.clone());
+        self.record_write(path, reason, None);
+    }
+
+    pub fn add_bind_port(&mut self, port: u16) {
+        if !self.bind_tcp.contains(&port) {
+            self.bind_tcp.push(port);
+        }
+        self.access.bind_tcp = self.bind_tcp.clone();
+    }
+
+    fn reserve_network(&mut self, reason: String) {
+        self.connect_tcp = true;
+        self.access.connect_tcp.push(reason.clone());
+        if let Ok(path) = std::fs::canonicalize("/etc/resolv.conf") {
+            self.add_read_file(path, format!("DNS resolver configuration for {reason}"));
+        }
+    }
+
+    pub fn effective_access(&self) -> SandboxAccess {
+        let mut access = self.access.clone();
+        access.read.sort_by(path_order);
+        access.read.dedup();
+        access.write.sort_by(path_order);
+        access.write.dedup();
+        access.execute.sort_by(path_order);
+        access.execute.dedup();
+        access.bind_tcp.sort_unstable();
+        access.bind_tcp.dedup();
+        access.connect_tcp.sort();
+        access.connect_tcp.dedup();
+        access
+    }
+
+    /// Gives only the runtime control of a cgroup directory after the
+    /// episode enters Landlock.
+    pub fn add_runtime_control(&mut self, path: PathBuf) {
+        self.runtime_control.push(path.clone());
+        self.record_read_write(path, "cgroup process-boundary ownership and cleanup", None);
+    }
+
+    /// Gives the runtime or one trusted wrapper access to a cgroup file.
+    pub fn add_runtime_control_file(&mut self, path: PathBuf) {
+        self.runtime_control_files.push(path.clone());
+        self.record_write(path, "cgroup process-boundary placement", None);
+    }
+
+    fn record_read(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
+        self.access.read.push(access_path(path, reason, sha256));
+    }
+
+    fn record_write(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
+        self.access.write.push(access_path(path, reason, sha256));
+    }
+
+    fn record_read_write(&mut self, path: PathBuf, reason: impl Into<String>, sha256: Option<String>) {
+        let reason = reason.into();
+        self.record_read(path.clone(), reason.clone(), sha256.clone());
+        self.record_write(path, reason, sha256);
+    }
+
+    fn record_execute(&mut self, path: PathBuf, reason: &str, sha256: Option<String>) {
+        self.access.execute.push(access_path(path, reason, sha256));
+    }
+}
+
+fn access_path(path: PathBuf, reason: impl Into<String>, sha256: Option<String>) -> SandboxPath {
+    SandboxPath { path: path.to_string_lossy().into_owned(), reason: reason.into(), sha256 }
+}
+
+fn path_order(a: &SandboxPath, b: &SandboxPath) -> std::cmp::Ordering {
+    (&a.path, &a.reason, &a.sha256).cmp(&(&b.path, &b.reason, &b.sha256))
+}
+
+fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+        paths.push(path);
     }
 }
 
@@ -182,7 +392,18 @@ impl Sandbox {
 
     /// What `episode/start` records.
     pub fn info(&self) -> SandboxInfo {
-        SandboxInfo { mode: self.mode, landlock_abi: self.abi }
+        SandboxInfo { mode: self.mode, landlock_abi: self.abi, effective_access: None, process_boundary: None }
+    }
+
+    /// What `episode/start` records after process-subtree ownership has
+    /// been selected for this run.
+    pub fn info_with_process(&self, process_boundary: foe_log::ProcessBoundaryInfo, policy: &Policy) -> SandboxInfo {
+        SandboxInfo {
+            mode: self.mode,
+            landlock_abi: self.abi,
+            effective_access: Some(policy.effective_access()),
+            process_boundary: Some(process_boundary),
+        }
     }
 
     /// The ABI in use; 0 when nothing is enforced.
@@ -256,7 +477,8 @@ impl Sandbox {
             (policy.runtime_storage.clone(), read | write),
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
-            (paths(LOADER_DIRS), read | AccessFs::Execute),
+            (policy.runtime_control.clone(), read | write),
+            (paths(LIBRARY_DIRS), read),
             (paths(SYSTEM_READ_DIRS), read),
             (paths(DEVICE_FILES), AccessFs::ReadFile | AccessFs::WriteFile),
         ];
@@ -273,6 +495,12 @@ impl Sandbox {
             let path = PathBuf::from(format!("/proc/self/fd/{}", executable.fd().as_raw_fd()));
             let fd = PathFd::new(&path).map_err(|e| RuntimeError::Sandbox(format!("{}: {e}", path.display())))?;
             created = created.add_rule(PathBeneath::new(fd, AccessFs::Execute | AccessFs::ReadFile)).map_err(err)?;
+        }
+        for path in &policy.runtime_control_files {
+            if let Ok(fd) = PathFd::new(path) {
+                created =
+                    created.add_rule(PathBeneath::new(fd, AccessFs::WriteFile | AccessFs::Truncate)).map_err(err)?;
+            }
         }
         if self.abi >= 4 {
             for port in &policy.bind_tcp {

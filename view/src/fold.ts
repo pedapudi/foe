@@ -146,7 +146,11 @@ export interface Summary {
   retries: number;
   usage: { input: number; output: number; cacheRead: number };
   budget: { modelCalls: number | null; inputTokens: number | null; outputTokens: number | null };
-  sandbox: { mode: string; landlockAbi: number | null };
+  sandbox: {
+    mode: string;
+    landlockAbi: number | null;
+    processBoundary: { kind: string; subtreeCleanup: string; reason: string } | null;
+  };
   children: Map<string, { program: string; context: string }>;
   roster: Map<string, { name: string; phase: string }>;
   seedEnd: number | null;
@@ -197,7 +201,7 @@ export function emptySummary(id: string): Summary {
     retries: 0,
     usage: { input: 0, output: 0, cacheRead: 0 },
     budget: { modelCalls: null, inputTokens: null, outputTokens: null },
-    sandbox: { mode: "", landlockAbi: null },
+    sandbox: { mode: "", landlockAbi: null, processBoundary: null },
     children: new Map(),
     roster: new Map(),
     seedEnd: null,
@@ -511,6 +515,7 @@ export class EpisodeFold {
     const program = obj(data.program);
     const budget = obj(program.budget);
     const sandbox = obj(data.sandbox);
+    const processBoundary = obj(sandbox.process_boundary);
     const origin = obj(data.fork_origin) as ForkOrigin;
     if (typeof data.id === "string") s.id = data.id;
     s.program = program;
@@ -530,6 +535,14 @@ export class EpisodeFold {
     s.sandbox = {
       mode: str(sandbox.mode),
       landlockAbi: typeof sandbox.landlock_abi === "number" ? sandbox.landlock_abi : null,
+      processBoundary:
+        Object.keys(processBoundary).length === 0
+          ? null
+          : {
+              kind: str(processBoundary.kind),
+              subtreeCleanup: str(processBoundary.subtree_cleanup),
+              reason: str(processBoundary.reason),
+            },
     };
     const parts = [s.name, s.id];
     if (s.forkOrigin) parts.push(`fork of ${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`);

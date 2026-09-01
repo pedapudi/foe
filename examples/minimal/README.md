@@ -118,6 +118,6 @@ because the configuration declares no other completion rule.
 
 The episodes region lists one episode, because the run directory holds one
 log and no children. The details region below it counts six model calls
-against twenty and states the Landlock version the kernel provided, or 0
-when it provided none. The conversation tab shows the `edit` call with its
-unified diff, and both `bash` calls with their exit codes.
+against twenty. It states the Landlock version and the process cleanup
+mechanism the host provided. The conversation tab shows the `edit` call with
+its unified diff, and both `bash` calls with their exit codes.

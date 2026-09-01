@@ -437,6 +437,13 @@ append directly to files under the episode's `spill/` directory. The files
 remain writable when a task-lifetime session survives foe. Standard input
 remains a pipe and closes when the episode's Foe process exits.
 
+When delegated cgroup v2 is available, a task-lifetime session enters the
+invocation-owned task cgroup before its command runs. It does not enter the
+starting episode's cgroup. The episode can therefore settle and release its
+child reservation while the task environment continues to own the session.
+The process-group identity remains the interface for `poll`, `signal`, and
+`stop`.
+
 `poll` takes `session` and returns what both streams produced since the
 last poll, with the group's state. `alive` remains true while any member of
 the original process group exists, including after the leader exits. Once

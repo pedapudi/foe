@@ -6,10 +6,10 @@ budget accounting, and team state are all derived from it. This document
 specifies the log completely. Nothing that reaches a model request may exist
 outside it.
 
-Stability: the event envelope, the required fields of implemented event
-types, and the seeding rules are frozen at version 2. Adding an event type
-or an optional field with a reader default is compatible. Removing or
-changing a required field requires a new log version.
+Stability: the event envelope, the event types marked implemented, and the
+seeding rules are frozen at version 2. Adding an event type is compatible.
+Adding an optional field with a defined absence meaning is compatible.
+Changing or removing a required field requires a new log version.
 
 ## Directory layout
 
@@ -83,7 +83,27 @@ nothing emits it.
   "identity": "sha256:…",
   "task": "Fix the failing parser test.",
   "runtime": { "version": "0.1.0", "build": "sha256:…" },
-  "sandbox": { "mode": "best-effort", "landlock_abi": 7 },
+  "sandbox": {
+    "mode": "best-effort",
+    "landlock_abi": 7,
+    "effective_access": {
+      "read": [
+        { "path": "/lib", "reason": "shared-library lookup" }
+      ],
+      "execute": [
+        {
+          "path": "/opt/tools/check",
+          "reason": "selected configured tool program.tool_defs.check",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ],
+      "connect_tcp": ["model transport in program"]
+    },
+    "process_boundary": {
+      "kind": "cgroup-v2",
+      "subtree_cleanup": "enforced"
+    }
+  },
   "effective_budget": {
     "model_calls": 20,
     "input_tokens": 160000,
@@ -101,14 +121,32 @@ nothing emits it.
 `{ "episode_id": "…", "seq": N }` when the log was seeded from a prefix of
 another log. `team_id` names the lead episode when this episode is a team
 member. `program` is the resolved configuration with `task` removed.
-`landlock_abi` is 0 when Landlock was unavailable. `effective_budget` is the
-allowance the episode enforces. Its fields have the meanings and defaults in
+`landlock_abi` is 0 when Landlock was unavailable. `effective_access` records
+the filesystem and network surface compiled for the episode. Each filesystem
+entry names its reason. An exact executable may carry the SHA-256 digest of
+the bytes retained during program construction. The `connect_tcp` array names
+each reason outbound TCP was reserved; an empty array means it was denied on
+a kernel that enforces network rules. Logs written before this field was
+implemented omit it and remain readable.
+
+The path of a retained configured executable names its construction-time
+source. The digest identifies the retained image that the sandbox authorizes.
+The runtime does not reopen the source after construction.
+
+`effective_budget` is the allowance the episode enforces. Its fields have the meanings and defaults in
 [config.md](config.md#budget). A spawned episode can have an effective
 allowance below `program.budget`; this leaves `identity` unchanged. Logs
 written before this field was implemented omit it and remain readable. On
 resume, this recorded allowance takes precedence over the mutable launch
 metadata beside the log. A log that omits the field falls back to that
 metadata or to its declared program budget.
+
+`process_boundary.kind` is `cgroup-v2` or `process-group`.
+`subtree_cleanup` is `enforced` only when the runtime owns the recursive
+process subtree through cgroup v2. It is `observational` for process-group
+cleanup. The optional `reason` explains why cgroup ownership was unavailable.
+An absent `process_boundary` means the log predates this field and makes no
+claim about subtree cleanup.
 
 `episode/end` — implemented. Always the last event.
 
@@ -258,24 +296,6 @@ the notice. The cut is applied before the event is appended, so the
 rendering in the log is the rendering every request carries, and no earlier
 event is ever rewritten. A reader that wants the whole result reads
 `value`.
-
-An error result written by the runtime has `is_error: true` and a
-`failure` object:
-
-```json
-{
-  "code": "capability-denied",
-  "message": "read: /private: outside every granted root",
-  "retryable": false,
-  "details": { "path": "/private" }
-}
-```
-
-The code vocabulary and retry rule are specified in
-[tools.md](tools.md#failures). The message is explanatory text. Runtime
-decisions use the other fields. Successful results omit `failure`. The
-field is optional when reading so logs written before typed failures remain
-valid. An older error without the field retains its `is_error` value.
 
 When `done_when.returns` requires `learned`, `rendered` starts with
 `[seq N]`, where N is this event's `seq`. A `learned` observation cites that
@@ -486,6 +506,13 @@ matching `budget/release`.
 { "child_id": "ep_9c21", "outcome": { "kind": "completed", "value": {} } }
 ```
 
+For a process that started, the parent publishes `spawn/end` only after the
+direct child has exited and its stdout reader has finished. When the child
+uses an enforced cgroup v2 process boundary, the parent first kills the
+boundary and waits until its recursive `populated` state is zero. The
+matching `budget/release`, pool capacity return, and waiter notification
+follow.
+
 ### Teams
 
 These events appear only in a lead's log.
@@ -542,10 +569,7 @@ counts the node's firings from 1. `inputs` lists the `seq` of the events
 that produced the values the node receives: the `workflow/node-end` of
 each predecessor, the `workflow/recovery` that skipped one, or the
 `inbox/item` at seq 1 for the built-in `task` source. `child_id`
-names the child episode of a model node. It is absent when the model node's
-predecessor sections exceed the 50,000-character rendered-predecessor bound in
-[workflow.md](workflow.md#bounded-model-handoffs). That firing ends before a
-child is allocated.
+names the child episode of a model node and is absent otherwise.
 
 ```json
 { "node": "survey", "fire": 1, "inputs": [4], "child_id": "ep_9c21" }
@@ -553,17 +577,10 @@ child is allocated.
 
 `workflow/node-end` — implemented. The firing ended. `value` is the node's
 canonical output and `rendered` the text its successors receive. When the
-firing failed, `error` states why and `value` is null. A typed failure also
-appears in `failure`, using the structure specified for `tool/result`. An
-optional model node whose child ended blocked or exhausted is the one
-exception: `error` states the child outcome, and `value` and `rendered` carry
-the node's declared `empty` output.
-
-An oversized model handoff records a failed end for the receiving model node.
-The log retains complete predecessor values and renderings. A completed
-predecessor carries them in its node-end event. A skipped predecessor derives
-them from the program's declared `empty` value and its recovery event. The
-receiving end's error names the producing events and their rendered sizes.
+firing failed, `error` states why and `value` is null. An optional model
+node whose child ended blocked or exhausted is the one exception: `error`
+states the child outcome, and `value` and `rendered` carry the node's
+declared `empty` output.
 
 ```json
 { "node": "survey", "fire": 1, "value": {}, "rendered": "…", "duration_ms": 1200 }
@@ -579,11 +596,10 @@ receiving end's error names the producing events and their rendered sizes.
 `cause` names what failed, `action` is `retry`, `amend`, `skip`, or
 `abort`, `target` names the node a retry or amend re-fires, `note` carries
 the text an amend appends, and `intervention` counts decisions in this
-episode from 1. When a typed failure triggered recovery, `failure` retains
-its code, message, retryability, and structured details.
+episode from 1.
 
 ```json
-{ "node": "derive", "fire": 1, "cause": "operation-failed", "action": "retry", "target": "survey", "intervention": 1 }
+{ "node": "derive", "fire": 1, "cause": "tool-error", "action": "retry", "target": "survey", "intervention": 1 }
 ```
 
 ### Compaction
@@ -831,9 +847,7 @@ in version 2. A supervising episode routes on it.
 
 The model reports `goal-unreachable`, `ambiguous-task`, and
 `missing-capability` by calling the built-in `block` tool with the code and a
-message. A program that lists `spawn` and has a non-empty `grants.spawn` may
-also report `child-blocked`. The runtime detects the looping and verification
-codes. The workflow executor produces the recovery codes.
+message. The runtime detects the rest.
 
 ## Exhausted limits
 

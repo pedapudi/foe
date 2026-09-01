@@ -19,12 +19,15 @@ fn policy(config: &ProgramDocument, log_dir: &Path) -> Policy {
     let program = foe_program::document::resolve(config).unwrap();
     let executables =
         crate::executable::ExecutableTree::materialize(&program, Path::new("/tmp/foe-sandbox-episode")).unwrap();
-    Policy::for_episode(&program, &executables, log_dir)
+    Policy::for_episode(&program, &executables, log_dir).unwrap()
 }
 
 #[test]
 fn off_records_zero_and_required_needs_landlock() {
-    assert_eq!(Sandbox::new(SandboxMode::Off).unwrap().info(), SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 });
+    assert_eq!(
+        Sandbox::new(SandboxMode::Off).unwrap().info(),
+        SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None, process_boundary: None }
+    );
     let required = Sandbox::new(SandboxMode::Required);
     if probe_abi() == 0 {
         assert!(matches!(required, Err(RuntimeError::Sandbox(_))));
@@ -79,16 +82,51 @@ fn write_roots_allow_create_and_remove() {
     assert!(ok);
 }
 
+/// docs/sandbox.md "Executables": a dynamically linked executable receives
+/// its exact ELF interpreter while general executable directories remain
+/// outside the policy.
+#[test]
+fn a_dynamic_executable_starts_without_general_binary_directories() {
+    let Some(s) = sandbox() else { return };
+    let policy = Policy::for_runtime_executable(Path::new("/bin/true"), Vec::new(), "test binary").unwrap();
+    assert!(policy.exec.contains(&std::fs::canonicalize("/bin/true").unwrap()));
+    assert!(policy.exec.iter().any(|path| path.file_name().is_some_and(|name| name.to_string_lossy().contains("ld-"))));
+    assert!(!policy.exec.iter().any(|path| path == Path::new("/bin") || path == Path::new("/usr/bin")));
+    let status = s.spawn_narrowed(&policy, Command::new("/bin/true")).unwrap().wait().unwrap();
+    assert!(status.success());
+}
+
+/// docs/sandbox.md "Executables": the interpreter named by a direct
+/// shebang can start, while a different binary used by the script remains
+/// unavailable without an explicit execute grant.
+#[test]
+fn a_script_gets_its_interpreter_without_unrelated_binary_access() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("script-interpreter");
+    let script = dir.join("probe");
+    std::fs::write(&script, "#!/bin/sh\n/usr/bin/true\n").unwrap();
+    std::fs::set_permissions(&script, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let policy = Policy::for_runtime_executable(&script, vec![dir.to_path_buf()], "declared script").unwrap();
+    assert!(policy.exec.contains(&std::fs::canonicalize("/bin/sh").unwrap()));
+    assert!(!policy.exec.contains(&std::fs::canonicalize("/usr/bin/true").unwrap()));
+    let status = s.spawn_narrowed(&policy, Command::new(&script)).unwrap().wait().unwrap();
+    assert!(!status.success(), "the script started, but its unrelated subprocess must be denied");
+}
+
 #[test]
 fn executable_policy_keeps_only_its_own_file() {
     let Some(s) = sandbox() else { return };
     let dir = temp_dir("exec");
     let other = dir.join("true");
     std::fs::copy("/bin/true", &other).unwrap();
-    let episode =
-        Policy { read: vec![dir.to_path_buf()], exec: vec!["/bin/sh".into(), other.clone()], ..Policy::default() };
-    let tool = episode.for_executable(Path::new("/bin/sh"), false);
-    assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh")]);
+    let mut episode =
+        Policy { read: vec![dir.to_path_buf()], runtime_storage: vec![dir.join("runtime-only")], ..Policy::default() };
+    episode.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
+    episode.add_executable(&other, "other test executable".into()).unwrap();
+    let tool = episode.for_executable(Path::new("/bin/sh"), false).unwrap();
+    assert!(tool.exec.contains(&std::fs::canonicalize("/bin/sh").unwrap()));
+    assert!(!tool.exec.contains(&other));
+    assert!(tool.runtime_storage.is_empty());
     assert!(tool.log_dir.is_none());
     let run = |policy: &Policy| {
         let mut cmd = Command::new("/bin/sh");
@@ -112,8 +150,9 @@ fn executable_policy_keeps_explicit_subprocess_grants() {
         delegated_exec: vec![helper.clone()],
         ..Policy::default()
     };
-    let tool = episode.for_executable(Path::new("/bin/sh"), false);
-    assert_eq!(tool.exec, vec![PathBuf::from("/bin/sh"), helper.clone()]);
+    let tool = episode.for_executable(Path::new("/bin/sh"), false).unwrap();
+    assert!(tool.exec.contains(&std::fs::canonicalize("/bin/sh").unwrap()));
+    assert!(tool.exec.contains(&helper));
     let mut cmd = Command::new("/bin/sh");
     cmd.arg("-c").arg(helper.display().to_string()).env_clear();
     let status = s.spawn_narrowed(&tool, cmd).unwrap().wait().unwrap();
@@ -189,7 +228,7 @@ fn a_bind_grant_reaches_a_narrowed_executable() {
         "grants": {"read": ["/tmp"], "bind": [port]}, "budget": {"model_calls": 1}, "task": "t"
     }))
     .unwrap();
-    let tool = policy(&config, Path::new("/logs/ep")).for_executable(Path::new("/bin/sh"), false);
+    let tool = policy(&config, Path::new("/logs/ep")).for_executable(Path::new("/bin/sh"), false).unwrap();
     assert_eq!(tool.bind_tcp, vec![port]);
     let (granted, other) = s
         .run_narrowed(&tool, || {
@@ -224,7 +263,8 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(p.write, vec![out]);
     let shell = std::fs::canonicalize("/bin/sh").unwrap();
     assert_eq!(p.delegated_exec, vec![shell.clone()]);
-    assert_eq!(p.exec, vec![shell], "configured executables are authorized by their committed inode");
+    assert!(p.exec.contains(&shell));
+    assert!(!p.exec.contains(&tool), "configured executables are authorized by their committed inode");
     assert_eq!(p.exec_files.len(), 1);
     assert_eq!(p.runtime_storage.len(), 1, "the episode owns private executable cleanup");
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
@@ -250,10 +290,10 @@ fn episode_policy_follows_grants_and_tool_defs() {
     }
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
-    let offline = p.for_executable(Path::new("/bin/sh"), false);
+    let offline = p.for_executable(Path::new("/bin/sh"), false).unwrap();
     assert!(offline.runtime_storage.is_empty(), "a configured executable cannot reach runtime storage");
     assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
-    let online = p.for_executable(Path::new("/bin/sh"), true);
+    let online = p.for_executable(Path::new("/bin/sh"), true).unwrap();
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
     assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
     assert_eq!(online.bind_tcp, vec![8080], "the episode's bind ports survive executable narrowing");
@@ -302,7 +342,7 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
     .unwrap();
     let resolved = foe_program::document::resolve(&config).unwrap();
     let executables = crate::executable::ExecutableTree::materialize(&resolved, &dir).unwrap();
-    let p = Policy::for_episode(&resolved, &executables, Path::new("/logs/ep"));
+    let p = Policy::for_episode(&resolved, &executables, Path::new("/logs/ep")).unwrap();
     assert_eq!(p.exec_files.len(), paths.len(), "the ancestor reserves every reachable committed executable");
     let keys: Vec<_> = executables.reachable_entries().into_iter().map(|(key, _)| key).collect();
     assert_eq!(
@@ -316,6 +356,61 @@ fn an_episode_reserves_the_configured_executables_of_every_program_below_it() {
         ]
     );
     assert_eq!(executables.child("kid").unwrap().reachable().len(), 2);
+}
+
+/// docs/sandbox.md "Children": the ancestor envelope uses the same
+/// reachability rule as program identity and planning. It reserves explicit
+/// execute and outbound network access for reachable child and workflow
+/// programs, while an unspawned declaration contributes nothing.
+#[test]
+fn an_ancestor_reserves_only_reachable_descendant_execute_and_network_access() {
+    let dir = temp_dir("descendant-access");
+    let child_tool = dir.join("child-tool");
+    std::fs::copy("/bin/true", &child_tool).unwrap();
+    let child_exec = dir.join("child-exec");
+    let workflow_exec = dir.join("workflow-exec");
+    let unreachable_exec = dir.join("unreachable-exec");
+    for path in [&child_exec, &workflow_exec, &unreachable_exec] {
+        std::fs::copy("/bin/true", path).unwrap();
+    }
+    let config: ProgramDocument = serde_json::from_value(serde_json::json!({
+        "version": 3, "name": "root", "instructions": {"role": "host"}, "tools": ["block"],
+        "grants": {"read": [dir], "execute": [dir], "spawn": ["child"]},
+        "budget": {"model_calls": 4, "max_episodes": 4},
+        "programs": {
+            "child": {
+                "name": "child", "instructions": {"role": "call a network tool"}, "tools": ["remote"],
+                "tool_defs": {"remote": {"exec": child_tool, "description": "remote", "network": true}},
+                "grants": {"read": [dir], "execute": [child_exec]}, "budget": {"model_calls": 1}
+            },
+            "unreachable": {
+                "name": "unreachable", "instructions": {"role": "unused"}, "tools": ["block"],
+                "model": {"provider": "openai", "model": "unused"},
+                "grants": {"read": [dir], "execute": [unreachable_exec]}, "budget": {"model_calls": 1}
+            }
+        },
+        "workflow": {"nodes": {"review": {"terminal": true, "model": {
+            "name": "review", "instructions": {"role": "review"}, "tools": ["block"],
+            "model": {"provider": "openai", "model": "review"},
+            "grants": {"read": [dir], "execute": [workflow_exec]}, "budget": {"model_calls": 1}
+        }}}},
+        "task": "test"
+    }))
+    .unwrap();
+    let root = foe_program::document::resolve(&config).unwrap();
+    let access = Policy::for_plan(&root).unwrap().effective_access();
+    let executes = |path: &Path| access.execute.iter().any(|entry| Path::new(&entry.path) == path);
+    assert!(executes(&child_exec.canonicalize().unwrap()));
+    assert!(executes(&workflow_exec.canonicalize().unwrap()));
+    assert!(!access.execute.iter().any(|entry| entry.reason.contains("unreachable")));
+    assert!(access.connect_tcp.iter().any(|reason| reason.contains("program.programs.child.tool_defs.remote")));
+    assert!(access.connect_tcp.iter().any(|reason| reason.contains("program.workflow.nodes.review.model")));
+    assert!(!access.connect_tcp.iter().any(|reason| reason.contains("unreachable")));
+
+    let child = &root.programs["child"];
+    let child_access = Policy::for_plan(child).unwrap().effective_access();
+    assert!(child_access.connect_tcp.iter().any(|reason| reason.contains("tool_defs.remote")));
+    assert!(!child_access.execute.iter().any(|entry| Path::new(&entry.path) == workflow_exec));
 }
 
 /// docs/sandbox.md "Executables": the reservation is what lets a descendant
@@ -340,7 +435,7 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
     .unwrap();
     let program = foe_program::document::resolve(&config).unwrap();
     let executables = crate::executable::ExecutableTree::materialize(&program, &dir).unwrap();
-    let ancestor = Policy::for_episode(&program, &executables, &dir);
+    let ancestor = Policy::for_episode(&program, &executables, &dir).unwrap();
     let executable = executables.child("kid").unwrap().tools["t"].clone();
     let outer = ancestor.clone();
     let result = s

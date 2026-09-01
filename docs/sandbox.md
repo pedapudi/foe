@@ -4,41 +4,68 @@ An episode's grants name what it may reach: directories to read, directories
 to write, executables to run, child programs to start, and TCP ports to
 bind. On Linux, the
 runtime compiles those grants into a Landlock ruleset and applies it to the
-episode process and to every process the episode starts. Landlock is a kernel
-security module that lets an unprivileged process restrict itself; once
-applied, a restriction cannot be lifted, and every process created afterwards
-inherits it. This document specifies what the runtime compiles, what each
-kernel version enforces, and what is outside the sandbox.
+episode process and to every process the episode starts. The runtime also
+places each invocation in a delegated cgroup v2 hierarchy when the host
+provides one. Landlock restricts access. The cgroup owns process subtrees so
+that a new session or process group cannot escape cleanup. This document
+specifies both mechanisms and states which guarantees the host enforces.
 
-The implementation is `crates/core/src/sandbox.rs`. The executable runner in
+The implementations are `crates/core/src/sandbox.rs` and
+`crates/core/src/process_boundary.rs`. The executable runner in
 `crates/core/src/exec.rs` applies the narrowing described under
 [Executables](#executables).
 
 ## What is compiled
 
 A policy is the list of what one process may reach. The policy of an episode
-is derived from its configuration and its log directory; nothing else is
-declared.
+is derived from its configuration, log directory, and runtime-owned cgroup
+paths. The cgroup paths are launch metadata and are not program grants.
 
 | source | access granted |
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
-| each `grants.execute` file or directory | read and execute the file or every file below the directory, including from a tool subprocess |
-| each reachable `tool_defs` executable image committed during construction | execute and read that inode |
-| the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
-| the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
+| each `grants.execute` file or directory in the program and its reachable descendants | read and execute the file or every file below the directory, including from a tool subprocess |
+| each selected configured tool and executable model transport in the program and its reachable descendants | execute and read the retained executable image |
+| the running `foe` binary, when a child program is reachable | execute and read that file, so the episode can start children |
+| the shell or Python interpreter required by a selected built-in tool | execute and read that exact file |
+| an executable image's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
+| each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
-| the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
+| the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
+| the runtime-owned cgroup hierarchy | runtime-only read and write for process ownership and cleanup; configured executables receive no access |
+| the parent cgroup's `cgroup.procs`, for a root episode | runtime-only write so the runtime can leave its episode boundary before cleanup |
+| `/bin/sh`, when cgroup v2 is delegated | execute and read the exact shell used to place a child or task-lifetime session in its boundary |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
 | the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | each `grants.bind` port | bind TCP on that port, in the episode and in every process it starts |
 | TCP | bind: listed ports only; connect: all ports or none |
 
-The loader directories let a process start: the kernel executes the dynamic
-loader from `/lib64`, the loader maps shared libraries from `/usr/lib`, and a
-script names its interpreter in `/usr/bin`.
+The runtime reads each selected configured image and each exact executable
+file before confinement. An ELF image names its dynamic loader in a
+`PT_INTERP` program header. A script names its interpreter in the first line.
+The policy grants execute access to that exact loader or interpreter. Library
+directories remain readable because the loader searches them for shared
+objects. They carry no execute access.
+
+An execute grant on a directory permits executable files below that directory.
+The runtime does not enumerate a mutable directory to infer support files. A
+script below such a directory must also receive its interpreter through an
+exact execute grant, a selected configured image, or a selected built-in tool.
+
+A shebang must name an absolute interpreter directly. A shebang that names
+`/usr/bin/env` is rejected because `env` selects another executable through a
+path search. The error asks the program author to name that interpreter in the
+shebang. This rule keeps the executable surface derivable before the episode
+starts.
+
+Configured tools and executable model transports run from retained copies of
+the bytes used for program identity. The runtime stores each copy in a private
+directory outside every declared write root and keeps its file descriptor
+open. Replacing or deleting the configured source path cannot change the
+executable bytes. The sandbox rule names the retained inode. The account names
+the source path and content digest so a reader can identify those bytes.
 A file under a read root is readable and is never executable through that
 grant alone. A project script runs when a `tool_defs` entry names the file or
 when an explicit execute grant covers it.
@@ -92,13 +119,15 @@ ruleset and receives a further one, so an executable or child can reach
 less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
-Because a ruleset only narrows, an episode reserves what the programs below
-it need before it restricts itself. A child's read, write, and execute roots
-lie inside its parent's corresponding roots, and its bind ports among its
-parent's bind ports. Configuration resolution checks
-that containment. An episode also reserves the committed `tool_defs` images
-of every reachable program below it. Each descendant still narrows itself to
-its own configured executable images and explicit execute grants.
+Because a ruleset only narrows, an episode reserves what the reachable
+programs below it need before it restricts itself. A child's read, write, and
+execute roots lie inside its parent's corresponding roots. Its bind ports lie
+among its parent's bind ports. Configuration resolution checks that
+containment. The ancestor also reserves configured executable images,
+executable model transports, built-in interpreters, and outbound TCP required
+by reachable descendants. A declaration is reachable through a
+`grants.spawn` entry or a workflow model node. Each descendant applies a
+narrower policy for its own reachable subtree.
 
 ## The episode process
 
@@ -131,30 +160,66 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every explicit execute grant and every committed `tool_defs`
-  image of its own program and of every reachable program below it;
-- execute on its own binary when it may spawn children;
-- read on the key file named by its `model` block, which its children need;
+- execute on every explicit execute grant in its reachable program tree;
+- execute on every selected configured executable image and required exact
+  interpreter in that tree;
+- execute on its own binary when a child program is reachable;
+- read on the credential files resolved by its reachable model transports;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
-- the loader, system, and device paths;
-- outbound TCP when the configuration has a `model` block, because the
-  episode then calls the provider itself;
+- read on the library, system, and device paths;
+- outbound TCP when the episode calls a model transport or a reachable
+  configured tool declares `network: true`;
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
   a viewer, on the viewer's port, which the command line adds to the policy
   before applying it;
 - no outbound TCP when a host process holds the transport.
 
+## Process ownership
+
+On a host with a delegated cgroup v2 hierarchy, one foe invocation owns two
+boundaries. The episode boundary contains the root episode and every child
+episode. The task boundary contains only sessions that hold the
+`task_session` grant and request task lifetime.
+
+Each episode runs in a process leaf below its episode boundary. A parent
+creates a nested boundary for each child. The child enters its process leaf
+through a runtime-owned wrapper before the child runtime executes. A child
+can create further boundaries below its own boundary without placing a
+process in an internal cgroup.
+
+A task-lifetime session enters the invocation's task boundary before its
+command executes. It never enters the child episode boundary. Child
+settlement can therefore empty and remove the child boundary while the task
+session continues under the task environment's ownership.
+
+The parent reads a child's log stream while it waits for the direct child
+process. When that process exits, the parent writes `1` to the child's
+`cgroup.kill`. The kernel kills every descendant even when a descendant
+forked concurrently or created another process group or session. The parent
+waits for recursive `populated 0`, removes the boundary, and then publishes
+the child's settlement. `spawn/end`, `budget/release`, capacity return, and
+waiter notification therefore occur after subtree cleanup.
+
+The boundary path is runtime launch metadata in the child's `lineage.json`.
+It does not participate in program identity and never appears in a model
+request. The log records the selected mechanism without recording the host
+path.
+
+When no delegated cgroup is available, process groups remain the portable
+cleanup mechanism. The runtime reports this fallback as observational
+subtree cleanup because a descendant can create a new group or session.
+
 ## Executables
 
-A configured executable runs under the episode's ruleset narrowed once
-more. The narrowed policy keeps the read roots, write roots, explicit execute
-grants, loader paths, system paths, and device paths. It also keeps execute on
-the private inode committed for that tool. It drops the log directory, key
-file, and execute access to other configured tools. It keeps the episode's
-bind ports. A server started by a shell or held by a session can listen on a
-granted port. Outbound TCP remains available when the tool definition sets
-`network: true`.
+A configured executable runs under the episode's ruleset narrowed once more.
+The narrowed policy keeps the read roots, write roots, explicit execute
+grants, library paths, system paths, and device paths. It also keeps execute
+access to its retained image and required exact interpreter. The log
+directory, credential file, and other configured executables are omitted. It
+keeps the episode's bind ports, so a server started by a shell or held by a
+session listens on a granted port. It keeps outbound TCP when the tool
+definition sets `network: true`.
 
 Construction reads the source file once and retains those exact bytes. It
 writes a private image under a runtime directory outside every declared write
@@ -216,8 +281,9 @@ Each executable also runs in its own process group. When its timeout
 elapses, or the episode is cancelled, the whole group receives `SIGTERM`
 and, two seconds later, `SIGKILL`. When the executable exits on its own,
 whatever remains of its group receives `SIGKILL`. A process that moved
-itself into a new process group or session is outside this rule; the
-kernel ruleset still binds it.
+itself into a new process group or session is outside this process-group
+rule. An enforced episode cgroup still owns and kills that process at
+episode settlement. The Landlock ruleset also continues to restrict it.
 
 ## Children
 
@@ -238,20 +304,50 @@ Landlock domain passes to every thread and process created afterwards, so
 the child inherits the parent's domain before it executes. The child's own
 ruleset nests inside that one, and the child's reach is the intersection.
 
+## Effective access report
+
+`foe plan` reports one effective sandbox envelope for the root and each
+reachable descendant program. Each read, write, or execute path includes the
+reason it is present. A retained configured image includes its content digest.
+The report also names bind ports and every reason outbound TCP is reserved.
+For a configured executable, the path is its construction-time source. The
+digest identifies the retained image that the sandbox authorizes without
+reopening that source.
+For a sandbox mode other than `off`, the plan includes the exact cgroup entry
+shell with a conditional reason. The host decides whether cgroup delegation
+is available when an episode starts.
+
+`episode/start.sandbox.effective_access` records the policy compiled for that
+episode. This record includes runtime paths that a configuration-only plan
+cannot name, such as the episode log directory and delegated cgroup paths. The
+sandbox mode and ABI state which parts the host kernel enforced. Logs that
+predate the field omit it.
+
 ## Modes
 
 `sandbox.mode` in the configuration decides what happens at startup.
 
 | mode | behavior |
 |---|---|
-| `best-effort` | applies every feature the kernel offers up to version 7 and records the version in `episode/start.sandbox.landlock_abi`; records 0 and applies nothing when Landlock is absent |
-| `required` | refuses to start when the kernel offers no Landlock; otherwise as `best-effort` |
-| `off` | applies nothing and records 0 |
+| `best-effort` | applies every Landlock feature the kernel offers up to version 7 and attempts to create a delegated cgroup v2 boundary; records the available enforcement and the reason for a process-group fallback |
+| `required` | requires Landlock and attempts to create a delegated cgroup v2 boundary; records an observational process-group fallback when delegation is unavailable |
+| `off` | applies no Landlock restriction, uses process-group cleanup, and records observational subtree cleanup |
 
 `best-effort` records a number rather than a list of features, because the
 list is a function of the number, given in the table above. A reader of the
 log who sees `landlock_abi: 4` knows that the filesystem and TCP were
 enforced and that signals and audit logging were not.
+
+`required` retains its Landlock guarantee. Process ownership has a separate
+recorded guarantee because the program contract has no key that requires
+cgroup delegation. Treating `required` as a cgroup requirement would reject
+existing programs on hosts that enforce their declared filesystem and
+network permissions but do not delegate cgroups.
+
+`episode/start.sandbox.process_boundary` records `cgroup-v2` with enforced
+subtree cleanup or `process-group` with observational cleanup. The optional
+reason explains why cgroup ownership was unavailable. An absent field means
+the log predates process-boundary reporting and makes no cleanup claim.
 
 ## Denied accesses
 
@@ -279,5 +375,6 @@ denials to the restricting process without privilege and without a daemon.
   for that process and for nothing it starts without `network: true`.
 - Anything on a kernel below the tier that enforces it, as listed in the
   table. A log records the tier, so a reader knows what held.
-- Resources other than files, TCP, signals, and abstract sockets. Memory,
-  processor time, and process count are bounded by the budget alone.
+- Resource quantities. The cgroup hierarchy owns and cleans process
+  subtrees, but foe sets no memory, processor, process-count, or I/O
+  controller limits. The budget has no fields for those quantities.

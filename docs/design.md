@@ -80,10 +80,8 @@ are other episodes.
 
 **Token efficient.** What the model reads is a projection of what the log
 stores. Tool results have a canonical value, which the log keeps in full, and
-a rendered form, which the model sees. A failed result carries a typed code,
-retry rule, and structured details beside its explanatory message. Request
-prefixes are byte-stable across steps and across sibling episodes so that
-provider caches hit.
+a rendered form, which the model sees. Request prefixes are byte-stable across
+steps and across sibling episodes so that provider caches hit.
 
 **Auditable and replayable.** Every input to every model request is
 reconstructable from the log, and every response is recorded in it. The
@@ -288,12 +286,20 @@ tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.
 
+On a host with delegated cgroup v2, each child owns a nested process
+boundary. The parent waits for the direct child while it reads the child's
+log stream. After the direct child exits, the parent kills the boundary and
+waits until its subtree is empty. It then writes `spawn/end` and
+`budget/release`, returns capacity to the pool, and wakes waiters. A detached
+descendant therefore cannot outlive the lease that accounted for its child.
+
 A process session normally ends at episode settlement. A program with the
 `task_session` grant may request task lifetime when it starts a session.
-Settlement then records the process and process-group identities and
-transfers cleanup responsibility to the environment that owns the foe
-invocation. Every remaining group member retains its sandbox restrictions
-after foe exits.
+The session enters the invocation-owned task cgroup before its command runs.
+Settlement records the process and process-group identities and transfers
+cleanup responsibility to the environment that owns the foe invocation.
+Every remaining group member retains its sandbox restrictions after foe
+exits.
 
 Ending a child that a model meant to keep is a poor answer, so a parent
 that means to wait says so: the `wait` tool returns once every child it
@@ -385,9 +391,7 @@ The runtime recognizes two forms of lack of progress without model judgment.
 Both thresholds are configurable in `budget`. The model reports the
 conditions it can recognize and the runtime cannot, such as an ambiguous task
 or a missing capability, by calling the built-in `block` tool with a code
-from the closed vocabulary. A program that lists `spawn` and has a non-empty
-`grants.spawn` may also report `child-blocked` when its children prevent
-further progress. The tool schema omits that code from other programs.
+from the closed vocabulary.
 
 ## Programs and identity
 
@@ -403,7 +407,7 @@ each configured executable once to retain its content digest. Identity,
 planning, budget reservation, sandbox construction, and spawning all read
 this tree. Recursive consumers select either every declared program or only
 programs reachable through spawn grants and workflow nodes. Identity and child
-launches use every declaration. Planning and sandbox authority use the
+launches use every declaration. Planning and sandbox construction use the
 executable-reachable selection.
 
 `identity(program)` is a SHA-256 over a canonical serialization of:
@@ -548,7 +552,7 @@ Before launch, the parent passes the executable images from the selected
 child's full declared program tree. A sealed manifest maps every configuration
 key to a deduplicated descriptor, digest, and configured basename. The child
 constructs its program from those retained bytes and checks the expected
-identity before writing an event. Sandbox authority separately includes only
+identity before writing an event. Sandbox permissions separately include only
 executables reachable through the child's spawn grants and workflow nodes.
 Source-path replacement, in-place modification, and deletion therefore cannot
 change child identity or execution.
@@ -586,6 +590,9 @@ limit, and no child starts; the model reads that result like any other.
 A parent observes a child as settled only after it has appended `spawn/end`
 and `budget/release` and returned the child's reservation to the pool, so
 anything waiting on the child sees the account of it already closed.
+On a host that enforces a cgroup v2 boundary, the child's entire process
+subtree is empty before those events are appended. A process-group fallback
+is recorded as observational because a detached descendant can escape it.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
@@ -641,8 +648,9 @@ as further processes. Restrictions only narrow at each spawn.
 ```
    host            no restriction applied by foe, ever
      │
-     └─ episode    Landlock: read roots, write roots, execute roots, own log dir
-          │        network: open when foe holds the transport; closed when the host does
+     └─ episode    Landlock: declared roots, exact runtime executables, own log dir
+          │        cgroup v2: episode subtree and a sibling task-session boundary
+          │        network: open for the transport or a reachable network tool
           │
           ├─ tool  Landlock: subset of the episode's; network closed
           │
@@ -653,15 +661,25 @@ as further processes. Restrictions only narrow at each spawn.
 On Linux with Landlock available, the runtime compiles the grants into a
 ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
-becomes an execute rule on that exact file. The episode's log directory
-becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. Denied accesses are captured from the audit log and written to
+becomes an execute rule on the retained bytes used for identity. Dynamic ELF
+loaders and direct shebang interpreters receive rules on their exact files.
+Shared-library directories remain read-only. An ancestor reserves the
+explicit execute paths and configured-tool network access of each reachable
+descendant because an inherited Landlock domain cannot widen. The episode's
+log directory becomes a write rule. When the kernel supports it, TCP access is
+removed from executables. Denied accesses are captured from the audit log and written to
 the episode log as `sandbox/denied` events. A blocked attempt therefore
 becomes evidence in the record.
 
-`sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
-the default, applies what the kernel supports and records which version it
-got. `required` refuses to start. `off` applies nothing.
+On Linux with a delegated cgroup v2 hierarchy, the runtime also creates one
+process boundary for the episode tree and one for task-lifetime sessions.
+Child boundaries nest inside the episode tree. The runtime kills and empties
+a child boundary before it releases the child's budget reservation.
+
+`sandbox.mode` controls Landlock enforcement. `best-effort`, the default,
+applies the available Landlock features. `required` requires Landlock. Both
+modes attempt a cgroup boundary and record the cleanup guarantee obtained.
+`off` applies no Landlock rules and uses observational process-group cleanup.
 
 The process that launched foe is never restricted, because it holds the
 transport and the credentials, and restricting it would break the host.
@@ -686,7 +704,7 @@ calls.
                                       ◄──  assistant/chunk ×n
                                       ◄──  assistant/message
                                       ◄──  host/tool-call {mutation_usage}
-   tool/result {value, rendered, failure?} ──►
+   tool/result {value, rendered}      ──►
                                       ◄──  tool/result
                                       ◄──  model/request …
                                       ◄──  episode/end {outcome}
@@ -710,7 +728,7 @@ foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode see
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print the resolved program, identity, transport, tools, and effective tool and sandbox access; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
@@ -816,13 +834,6 @@ The implementation returns a typed handoff with its summary, changed paths,
 validation observations, and unresolved risks. The assessment receives that
 value and the original task in a fresh context. A repair receives both prior
 values and the original task. The shared directory carries the artifacts.
-
-Rendered predecessor sections entering one model node share the same
-50,000-character bound as one model turn's tool results. The runtime rejects an
-oversized handoff before starting the child and records `limit-exceeded` for
-workflow recovery. The producer's complete value and rendering remain in the
-workflow log. Tool nodes continue to bind complete canonical predecessor
-values because that binding does not enter model context.
 
 The task text and repository-defined checks govern all three stages. Their
 allowed mutation scope is current filesystem state unless the task authorizes
@@ -998,7 +1009,7 @@ supplies only the two directory-backed resolvers `foe plan` builds for its
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 6,200 lines,
+sandbox, and spawning — and its Rust source stays under 6,800 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a program is lives in `crates/program`, which is budgeted
@@ -1007,17 +1018,16 @@ document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a program
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 1,800 lines on
+The tool surface in `crates/code` is budgeted apart, under 1,850 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
-stays under 1,050 lines. It schedules the graph, bounds text entering model
-nodes, and routes failures through recovery. Inspection of a configured
-program tree remains in `foe_program::inspect`, beside the model it analyses.
-Both crates implement one shared rule: firing a model node starts that node's
-episode. The executor realizes the rule as an ordinary spawn. Inspection reads
-the same rule as reachability. The compaction policy in `crates/context` stays
-under 500.
+stays under 1,050 lines: it carries the executor and nothing else, now that
+the inspection of a configured program tree that `foe plan` reports has
+reached `foe_program::inspect`, beside the model it analyses. What the two
+crates still share is one rule: firing a model node starts the resolved node
+program as an ordinary child episode. The compaction policy in
+`crates/context` stays under 500.
 
 The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
@@ -1026,16 +1036,14 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
-The ceilings reserve 500 kernel lines, 75 program lines, and 75 command-line
-lines for construction-committed executable images and their headroom. The
-program contract reads one snapshot for each reachable configured executable.
-The kernel materializes, confines, invokes, checks, and transfers those
-snapshots across child process boundaries. The command line constructs the
-root image tree before confinement. This mechanism adds no program-document
-key or log event.
+The kernel budget includes construction-committed executable images and
+resolved sandbox enforcement. The program contract reads the configured
+images. The kernel materializes, confines, invokes, and transfers them across
+child process boundaries. It also records the effective access compiled for
+each episode. These mechanisms add no program-document key.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,400 lines. It is separate because it serves a person at a terminal
+under 1,500 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

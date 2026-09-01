@@ -386,6 +386,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
     let transport = program.model.as_ref().map(|_| run::describe_transport(&program));
     let context = run::context_policy(&program)?.map(|policy| policy.describe());
     let authority = plan::authority(&program)?;
+    let sandbox_access = plan::sandbox_access(&program)?;
     let checked = ancestry
         .map(|(states, evidence)| {
             lineage::verify(&identity.document, program.program_lineage.clone(), &states, &evidence)
@@ -406,6 +407,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
         let report = serde_json::json!({
             "identity": identity.hash, "identity_document": identity.document, "program": value,
             "transport": transport, "workflow": workflow, "context": context, "authority": authority,
+            "sandbox_access": sandbox_access,
             "lineage": checked.as_ref().map(lineage::value),
         });
         println!("{report}");
@@ -424,6 +426,7 @@ fn plan(config: Option<&Path>, json: bool, ancestry: Option<(PathBuf, PathBuf)>)
         }
         print!("tools\n{}", tool_rows(config, &program)?);
         print!("{}", plan::authority_report(&authority));
+        print!("{}", plan::sandbox_report(&sandbox_access));
         if let Some(report) = &checked {
             print!("{}", lineage::rendered(report));
         }

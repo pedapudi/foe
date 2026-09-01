@@ -34,7 +34,12 @@ fn log(name: &str) -> (Arc<Log>, ScratchDir) {
         identity: "sha256:x".into(),
         task: "t".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        sandbox: foe_log::SandboxInfo {
+            mode: foe_log::SandboxMode::Off,
+            landlock_abi: 0,
+            effective_access: None,
+            process_boundary: None,
+        },
         effective_budget: None,
     }))
     .unwrap();
@@ -58,7 +63,12 @@ async fn protocol_input_starts_after_the_episode_prefix() {
         identity: "sha256:x".into(),
         task: "do the work".into(),
         runtime: foe_log::RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+        sandbox: foe_log::SandboxInfo {
+            mode: foe_log::SandboxMode::Off,
+            landlock_abi: 0,
+            effective_access: None,
+            process_boundary: None,
+        },
         effective_budget: None,
     };
     initialize(&log, &start).unwrap();

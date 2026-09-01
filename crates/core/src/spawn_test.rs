@@ -141,7 +141,7 @@ pub(crate) fn nesting_child(dir: &Path) -> Vec<OsString> {
     script(dir, "nesting-foe.sh", NESTING_CHILD)
 }
 
-fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
+pub(crate) fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
     let script = dir.join(name);
     std::fs::write(&script, body).unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -330,7 +330,12 @@ async fn forked_child_launch_records_the_source_and_boundary() {
             identity: "sha256:parent".into(),
             task: "lead task".into(),
             runtime: crate::identity::runtime_info(),
-            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+            sandbox: foe_log::SandboxInfo {
+                mode: foe_log::SandboxMode::Off,
+                landlock_abi: 0,
+                effective_access: None,
+                process_boundary: None,
+            },
             effective_budget: Some(program.budget.clone()),
         }))
         .unwrap();

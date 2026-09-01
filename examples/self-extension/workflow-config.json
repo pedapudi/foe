@@ -14,7 +14,8 @@
   },
   "grants": {
     "read": ["/home/user/project"],
-    "write": ["/home/user/project"]
+    "write": ["/home/user/project"],
+    "execute": ["/usr/bin/grep", "/usr/bin/tr"]
   },
   "budget": {
     "model_calls": 12,
@@ -45,7 +46,8 @@
           },
           "grants": {
             "read": ["/home/user/project"],
-            "write": ["/home/user/project"]
+            "write": ["/home/user/project"],
+            "execute": ["/usr/bin/grep", "/usr/bin/tr"]
           },
           "budget": {
             "model_calls": 10,

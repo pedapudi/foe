@@ -72,7 +72,7 @@ have seen before.
 | [subagents](subagents/) | child programs under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
-| [sandbox](sandbox/) | a configured executable under a required Landlock policy |
+| [sandbox](sandbox/) | a configured executable under required Landlock with the available process ownership reported |
 | [embed-in-a-program](embed-in-a-program/) | the Python SDK: a program supplying the model, its own host tools, and acting on the outcome |
 | [self-extension](self-extension/) | a direct episode and an evaluator-to-terminal-node workflow improving a disposable copy of foe's source, test, and specification |
 | [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |

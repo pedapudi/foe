@@ -62,7 +62,12 @@ pub fn start(id: &str) -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo {
+            mode: SandboxMode::Off,
+            landlock_abi: 0,
+            effective_access: None,
+            process_boundary: None,
+        },
         effective_budget: None,
     }
 }
@@ -847,4 +852,29 @@ fn a_failure_marks_the_tool_result_as_an_error() {
         details: serde_json::json!({}),
     });
     assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 6, rule }) if rule.contains("is_error")));
+}
+
+/// docs/log-format.md `episode/start`: the process boundary is an optional
+/// compatible field whose absence carries no cleanup claim.
+#[test]
+fn sandbox_process_boundary_is_optional_and_round_trips() {
+    let old: SandboxInfo = serde_json::from_value(serde_json::json!({
+        "mode": "best-effort", "landlock_abi": 7
+    }))
+    .unwrap();
+    assert_eq!(old.process_boundary, None);
+
+    let info = SandboxInfo {
+        mode: SandboxMode::BestEffort,
+        landlock_abi: 7,
+        effective_access: None,
+        process_boundary: Some(ProcessBoundaryInfo {
+            kind: ProcessBoundaryKind::CgroupV2,
+            subtree_cleanup: SubtreeCleanup::Enforced,
+            reason: None,
+        }),
+    };
+    let json = serde_json::to_value(&info).unwrap();
+    assert_eq!(json["process_boundary"]["kind"], "cgroup-v2");
+    assert_eq!(serde_json::from_value::<SandboxInfo>(json).unwrap(), info);
 }

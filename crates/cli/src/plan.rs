@@ -6,9 +6,19 @@
 //! docs/design.md "Subagents and teams".
 
 use crate::run;
+use foe_core::process_boundary::PROCESS_BOUNDARY_LAUNCHER;
+use foe_core::sandbox::Policy;
+use foe_log::{SandboxAccess, SandboxMode};
 use foe_program::document::ResolvedProgram;
 use foe_program::workflow::{MAX_EDGE_REFERENCES, MAX_POSSIBLE_FIRINGS, TASK_SOURCE};
 use std::fmt::Write;
+use std::path::Path;
+
+#[derive(serde::Serialize)]
+pub struct SandboxEnvelope {
+    pub program: String,
+    pub access: SandboxAccess,
+}
 
 pub use foe_program::inspect::{cycles, tool_sources, Authority};
 
@@ -16,6 +26,48 @@ pub use foe_program::inspect::{cycles, tool_sources, Authority};
 /// extra built-in packs supplied. See `foe_program::inspect`.
 pub fn authority(root: &ResolvedProgram) -> Result<Vec<Authority>, String> {
     foe_program::inspect::authority(root, &run::extra_builtin_specs())
+}
+
+/// The effective Landlock envelope of every reachable program. Each row is
+/// built through the same policy constructor execution uses.
+pub fn sandbox_access(root: &ResolvedProgram) -> Result<Vec<SandboxEnvelope>, String> {
+    root.program_tree(foe_program::document::ProgramTreeSelection::ExecutableReachable)
+        .into_iter()
+        .map(|(program_key, program)| {
+            let mut policy = Policy::for_plan(program)?;
+            run::add_builtin_runtime_access(&mut policy, program)?;
+            run::add_transport_runtime_access(&mut policy, program)?;
+            if program.sandbox.mode != SandboxMode::Off {
+                policy.add_executable(
+                    Path::new(PROCESS_BOUNDARY_LAUNCHER),
+                    "cgroup process-boundary launcher when cgroup v2 is delegated".into(),
+                )?;
+            }
+            Ok(SandboxEnvelope { program: program_key, access: policy.effective_access() })
+        })
+        .collect()
+}
+
+pub fn sandbox_report(envelopes: &[SandboxEnvelope]) -> String {
+    let mut out = String::from("effective sandbox access\n");
+    for envelope in envelopes {
+        writeln!(out, "  {}", envelope.program).ok();
+        for (access, paths) in
+            [("read", &envelope.access.read), ("write", &envelope.access.write), ("execute", &envelope.access.execute)]
+        {
+            for path in paths {
+                let digest = path.sha256.as_ref().map_or(String::new(), |value| format!(" sha256 {value}"));
+                writeln!(out, "    {access:<7} {}  {}{digest}", path.path, path.reason).ok();
+            }
+        }
+        for port in &envelope.access.bind_tcp {
+            writeln!(out, "    bind    tcp/{port}").ok();
+        }
+        for reason in &envelope.access.connect_tcp {
+            writeln!(out, "    connect tcp  {reason}").ok();
+        }
+    }
+    out
 }
 
 pub fn write_overlaps(program: &ResolvedProgram) -> Result<Vec<(String, String, String, String)>, String> {

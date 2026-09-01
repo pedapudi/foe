@@ -22,6 +22,7 @@
 //! [`Spawner::spawn`] and a wait on [`ChildRun`].
 
 use crate::executable::ExecutableTree;
+use crate::process_boundary::{command_in, ProcessBoundary};
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
 use command_fds::{CommandFdExt, FdMapping};
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
@@ -203,6 +204,7 @@ pub struct ProcessSpawner {
     /// The child's argument vector prefix; the running `foe` binary.
     launcher: Vec<OsString>,
     connections: ProcessConnections,
+    boundary: Option<Arc<ProcessBoundary>>,
     next: AtomicU64,
 }
 
@@ -221,6 +223,8 @@ pub struct ChildLaunch {
     pub team_id: Option<String>,
     pub expected_program_identity: Option<String>,
     pub effective_budget: Option<Budget>,
+    #[serde(default)]
+    pub process_boundary: Option<crate::process_boundary::BoundaryPaths>,
     pub fork_source: Option<PathBuf>,
     pub fork_at: Option<u64>,
 }
@@ -257,8 +261,15 @@ impl ProcessSpawner {
             builtin_specs,
             launcher: vec![exe.into_os_string()],
             connections,
+            boundary: None,
             next: AtomicU64::new(0),
         })
+    }
+
+    /// Places each child and every descendant in one cgroup boundary.
+    pub fn with_boundary(mut self, boundary: Option<Arc<ProcessBoundary>>) -> Self {
+        self.boundary = boundary;
+        self
     }
 
     /// What to reserve for a request: the amount the caller named, and the
@@ -349,6 +360,12 @@ impl Spawner for ProcessSpawner {
         let limits = effective_budget(&self.limits, &program.budget, req.reserve);
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
+        let boundary = self
+            .boundary
+            .as_ref()
+            .map(|parent| parent.child(&child_id))
+            .transpose()
+            .map_err(|e| CapError::Invalid(e.to_string()))?;
         let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
         let config = child_document(program, req.task);
         let config_path = dir.join("config.json");
@@ -359,6 +376,7 @@ impl Spawner for ProcessSpawner {
             team_id: Some(self.episode_id.clone()),
             expected_program_identity: Some(expected.hash),
             effective_budget: Some(limits),
+            process_boundary: boundary.as_ref().map(|boundary| boundary.paths()),
             ..ChildLaunch::default()
         };
         if req.context == SpawnContext::Fork {
@@ -369,18 +387,23 @@ impl Spawner for ProcessSpawner {
             lineage.fork_at = Some(until);
         }
         std::fs::write(dir.join("lineage.json"), serde_json::to_vec_pretty(&lineage).map_err(invalid)?)?;
-        let mut cmd = Command::new(&self.launcher[0]);
-        cmd.args(&self.launcher[1..])
-            .arg("--config")
-            .arg(&config_path)
-            .arg("--host")
-            .arg("--log-dir")
-            .arg(&dir)
-            .env_clear()
-            .current_dir(&dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let mut argv = self.launcher.clone();
+        argv.extend([
+            OsString::from("--config"),
+            config_path.as_os_str().to_owned(),
+            OsString::from("--host"),
+            OsString::from("--log-dir"),
+            dir.as_os_str().to_owned(),
+        ]);
+        let mut cmd = match &boundary {
+            Some(boundary) => command_in(&boundary.process_procs(), &argv),
+            None => {
+                let mut command = Command::new(&argv[0]);
+                command.args(&argv[1..]);
+                command
+            }
+        };
+        cmd.env_clear().current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let executable_tree = self
             .executables
             .child(&req.program)
@@ -390,12 +413,9 @@ impl Spawner for ProcessSpawner {
             .map_err(CapError::Invalid)?
             .into_iter()
             .map(|(child_fd, fd)| {
-                fd.as_fd()
-                    .try_clone_to_owned()
-                    .map(|parent_fd| FdMapping { parent_fd, child_fd })
-                    .map_err(|e| {
-                        CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
-                    })
+                fd.as_fd().try_clone_to_owned().map(|parent_fd| FdMapping { parent_fd, child_fd }).map_err(|e| {
+                    CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
         cmd.fd_mappings(mappings)
@@ -414,9 +434,21 @@ impl Spawner for ProcessSpawner {
             observer: self.connections.observer.clone(),
         };
         std::thread::spawn(move || {
-            let settled = reader.run(stdout);
-            reader.router.remove(&reader.child_id);
+            let read = std::thread::spawn(move || {
+                let settled = reader.run(stdout);
+                reader.router.remove(&reader.child_id);
+                settled
+            });
             let _ = child.wait();
+            let cleanup_error = boundary.and_then(|boundary| boundary.terminate().err());
+            let mut settled = read.join().unwrap_or_else(|_| Settled {
+                outcome: Outcome::Failed { error: "the reader of the child's output panicked".into() },
+                usage: Usage::default(),
+                spent: BudgetAmount::default(),
+            });
+            if let Some(error) = cleanup_error {
+                settled.outcome = Outcome::Failed { error: format!("child process boundary cleanup: {error}") };
+            }
             let _ = tx.send(Some(settled));
         });
         Ok(SpawnHandle { child_id, dir, run })

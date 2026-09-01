@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 6,200 over the kernel, which is log and core together — the
+# Nine budgets: 6,800 over the kernel, which is log and core together — the
 # log format, the loop, budgets, sandbox, and spawn, whose smallness is the
 # product claim; 1,575 over program, the other contract, which is the
-# program document, its resolution, and identity; 1,800
+# program document, its resolution, and identity; 1,850
 # over tools, which is code — the tool surface, which grows a tool at a time
 # without touching the kernel; 1,050 over workflow; 500 over context; 600
-# over view; 1,425 over cli; 1,000
+# over view; 1,500 over cli; 1,000
 # over telemetry; 500 over lineage, which reads finished evidence about how
 # program states relate and is part of neither contract. The kernel is budgeted apart
 # from program because the kernel measures the machine and program measures the
@@ -29,11 +29,11 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 6200)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 6800)\n' kernel "$kernel"
 program=$(count program)
 printf '%-8s %6d  (budget 1575)\n' program "$program"
 tools=$(count code)
-printf '%-8s %6d  (budget 1800)\n' tools "$tools"
+printf '%-8s %6d  (budget 1850)\n' tools "$tools"
 workflow=$(count workflow)
 printf '%-8s %6d  (budget 1050)\n' workflow "$workflow"
 context=$(count context)
@@ -41,10 +41,10 @@ printf '%-8s %6d  (budget 500)\n' context "$context"
 view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
-printf '%-8s %6d  (budget 1425)\n' cli "$cli"
+printf '%-8s %6d  (budget 1500)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 lineage=$(count lineage)
 printf '%-8s %6d  (budget 500)\n' lineage "$lineage"
-[ "$kernel" -le 6200 ] && [ "$program" -le 1575 ] && [ "$tools" -le 1800 ] && [ "$workflow" -le 1050 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1425 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]
+[ "$kernel" -le 6800 ] && [ "$program" -le 1575 ] && [ "$tools" -le 1850 ] && [ "$workflow" -le 1050 ] \
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1500 ] && [ "$telemetry" -le 1000 ] && [ "$lineage" -le 500 ]

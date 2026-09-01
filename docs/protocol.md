@@ -245,7 +245,16 @@ waiting.
 
 An episode sends `cancel` to every child still running when it ends,
 whatever its outcome, and waits for each child's `episode/end` before
-writing its own. No child outlives the episode that started it.
+writing its own. On a host with delegated cgroup v2, the parent also empties
+the child's recursive process boundary before it publishes settlement. A
+detached descendant therefore cannot outlive the child reservation.
+
+The parent writes the child's episode and task cgroup paths in
+`lineage.json` beside the child log. These paths are runtime launch metadata.
+They do not participate in program identity or enter the episode log. A
+child enters the prepared boundary before its runtime code executes. The
+child refuses lineage metadata whose episode path differs from its current
+cgroup or whose task path lies outside the invocation hierarchy.
 
 A child's `notify`, `send`, and `team` tools are host tools from the child's
 point of view, and the parent foe process is the host that implements them.

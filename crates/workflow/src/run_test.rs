@@ -315,7 +315,12 @@ impl Fixture {
                 identity: "sha256:test".into(),
                 task: "run the graph".into(),
                 runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
-                sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+                sandbox: SandboxInfo {
+                    mode: SandboxMode::Off,
+                    landlock_abi: 0,
+                    effective_access: None,
+                    process_boundary: None,
+                },
                 effective_budget: None,
             },
             pool: Arc::new(Mutex::new(Pool::new(program.budget.clone()))),

@@ -10,6 +10,7 @@
 //! holds that authority. See docs/tools.md "session".
 
 use crate::exec::{end_group, CAPTURE_LIMIT};
+use crate::process_boundary::{command_in, ProcessBoundary, PROCESS_BOUNDARY_LAUNCHER};
 use crate::sandbox::{Policy, Sandbox};
 use crate::{CapError, SessionLifetime, SessionOutput, SessionRequest, SessionSettlement, SessionStatus, Sessions};
 use nix::errno::Errno;
@@ -18,7 +19,7 @@ use nix::unistd::Pid;
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -144,6 +145,7 @@ pub struct LocalSessions {
     /// Sessions that may be alive at once; a further start is refused.
     limit: usize,
     task_session: bool,
+    boundary: Option<Arc<ProcessBoundary>>,
     inner: Mutex<BTreeMap<u64, Arc<Session>>>,
     next: AtomicU64,
 }
@@ -158,9 +160,17 @@ impl LocalSessions {
             spill_dir,
             limit,
             task_session,
+            boundary: None,
             inner: Mutex::new(BTreeMap::new()),
             next: AtomicU64::new(0),
         }
+    }
+
+    /// Places authorized task-lifetime sessions in the invocation-owned
+    /// task cgroup before their user code starts.
+    pub fn with_boundary(mut self, boundary: Option<Arc<ProcessBoundary>>) -> Self {
+        self.boundary = boundary;
+        self
     }
 
     fn session(&self, id: u64) -> Result<Arc<Session>, CapError> {
@@ -208,16 +218,33 @@ impl Sessions for LocalSessions {
         };
         let (stdout, stdout_stdio) = output(stdout_path)?;
         let (stderr, stderr_stdio) = output(stderr_path)?;
-        let mut cmd = Command::new(&req.program);
-        cmd.args(&req.args)
-            .current_dir(&req.cwd)
+        let task_procs = (req.lifetime == SessionLifetime::Task)
+            .then(|| self.boundary.as_ref().map(|boundary| boundary.task_procs()))
+            .flatten();
+        let argv: Vec<_> =
+            std::iter::once(req.program.as_os_str().to_owned()).chain(req.args.iter().map(Into::into)).collect();
+        let mut cmd = match &task_procs {
+            Some(procs) => command_in(procs, &argv),
+            None => {
+                let mut command = Command::new(&req.program);
+                command.args(&req.args);
+                command
+            }
+        };
+        cmd.current_dir(&req.cwd)
             .env_clear()
             .envs(&req.env)
             .process_group(0)
             .stdin(Stdio::piped())
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
-        let narrowed = self.policy.for_executable(&req.program, false);
+        let mut narrowed = self.policy.for_executable(&req.program, false).map_err(CapError::ProcessStart)?;
+        if let Some(procs) = task_procs {
+            narrowed
+                .add_executable(Path::new(PROCESS_BOUNDARY_LAUNCHER), "cgroup process-boundary launcher".into())
+                .map_err(CapError::ProcessStart)?;
+            narrowed.add_runtime_control_file(procs);
+        }
         let mut child =
             self.sandbox.spawn_narrowed(&narrowed, cmd).map_err(|e| CapError::ProcessStart(e.to_string()))?;
         self.next.store(id, Ordering::SeqCst);

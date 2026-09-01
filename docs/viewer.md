@@ -105,8 +105,9 @@ not happen.
 The details region states the outcome, the model calls, input tokens, and
 output tokens consumed against the limits in
 `episode/start.program.budget`. It also states the sandbox mode and Landlock
-ABI, the program identity, the lineage, the event count, the start time, the
-duration, and the task. The identity is set as the
+ABI. When the log records a process boundary, the region states its mechanism,
+subtree-cleanup guarantee, and fallback reason. It also states the program
+identity, lineage, event count, start time, duration, and task. The identity is set as the
 first eight characters of its digest, with the whole hash in its tooltip. Its text wraps and its numbers are tabular; the
 region scrolls as a whole when its content exceeds it, and nothing inside
 it has a scrollbar of its own.
