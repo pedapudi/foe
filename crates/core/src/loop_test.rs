@@ -488,6 +488,30 @@ async fn block_ends_the_episode_with_the_reported_code() {
     assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::MissingCapability, message: "no network".into() });
 }
 
+/// docs/log-format.md "Blocked codes": a program allowed to start children
+/// can report that blocked children prevent the parent from proceeding.
+#[tokio::test]
+async fn a_parent_can_end_with_child_blocked() {
+    let fx = Fixture::new(
+        "loop-child-blocked",
+        |v| {
+            let root = v["grants"]["read"][0].clone();
+            v["tools"] = json!(["block", "spawn"]);
+            v["grants"]["spawn"] = json!(["worker"]);
+            v["programs"] = json!({ "worker": {
+                "name": "worker", "instructions": { "role": "work" }, "tools": ["block"],
+                "grants": { "read": [root] }, "budget": { "model_calls": 1 }
+            }});
+        },
+        vec![turn(
+            "all children stopped",
+            vec![call("a", "block", r#"{"code":"child-blocked","message":"every child is blocked"}"#)],
+        )],
+    );
+    let (outcome, _) = fx.tool(Probe::new("spawn", Effect::Spawns)).run().await;
+    assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::ChildBlocked, message: "every child is blocked".into() });
+}
+
 #[tokio::test]
 async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_spent() {
     let verifier = || Verifier {

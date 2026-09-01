@@ -15,6 +15,8 @@ use crate::harness_text as text;
 use crate::{Effect, HostToolDef, ProgramError, ToolDef, ToolSpec};
 use serde_json::{json, Value};
 
+const BLOCK_CODES: [&str; 4] = ["goal-unreachable", "ambiguous-task", "missing-capability", "child-blocked"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Builtin,
@@ -54,7 +56,7 @@ pub fn resolve_sources(
         .collect()
 }
 
-pub fn block_spec() -> ToolSpec {
+pub fn block_spec(may_report_child_blocked: bool) -> ToolSpec {
     ToolSpec {
         name: text::BLOCK_NAME.into(),
         description: text::BLOCK_DESCRIPTION.into(),
@@ -62,7 +64,7 @@ pub fn block_spec() -> ToolSpec {
         params: json!({
             "type": "object",
             "properties": {
-                "code": { "type": "string", "enum": ["goal-unreachable", "ambiguous-task", "missing-capability"] },
+                "code": { "type": "string", "enum": &BLOCK_CODES[..3 + usize::from(may_report_child_blocked)] },
                 "message": { "type": "string" }
             },
             "required": ["code", "message"],
@@ -112,7 +114,7 @@ pub fn host_spec(name: &str, def: &HostToolDef) -> ToolSpec {
 /// `extra_builtins` are the specifications of built-in tools implemented
 /// outside this crate.
 pub fn resolve_specs(program: &ResolvedProgram, extra_builtins: &[ToolSpec]) -> Result<Vec<ToolSpec>, ProgramError> {
-    let block = block_spec();
+    let block = block_spec(!program.grants.spawn.is_empty() && program.tools.iter().any(|name| name == "spawn"));
     let builtins: Vec<&ToolSpec> = std::iter::once(&block).chain(extra_builtins).collect();
     let builtin_names: Vec<&str> = builtins.iter().map(|s| s.name.as_str()).collect();
     let configured: Vec<&str> = program.tool_defs.keys().map(String::as_str).collect();

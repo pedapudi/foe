@@ -72,6 +72,11 @@ fn identity_hashes_harness_text_exec_content_and_children() {
     for (key, value) in harness_text::all() {
         assert_eq!(texts[key], json!(value));
     }
+    assert_eq!(
+        first.document["tools"][0]["params"]["properties"]["code"]["enum"],
+        json!(["goal-unreachable", "ambiguous-task", "missing-capability", "child-blocked"]),
+        "identity records the block schema selected by child-program permission"
+    );
     assert_eq!(first.document["tools"][1]["exec_sha256"], json!(super::sha256_hex(b"v1")));
     assert!(first.document["programs"]["kid"].as_str().unwrap().starts_with("sha256:"));
     std::fs::write(&exec, "v2").unwrap();

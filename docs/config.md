@@ -302,6 +302,12 @@ A tool whose declared effect exceeds the grants is refused at construction.
 An `edit` in `tools` with an empty `write` list is an error. A `spawn` in
 `tools` with an empty `spawn` list is an error.
 
+The built-in `block` tool derives its code enum from this grant and the
+`tools` list. A program that lists `spawn` and has a non-empty `spawn` grant
+receives `child-blocked` in addition to the three general model-reported
+codes. The resolved schema is shown to the model, enforced at dispatch, and
+included in program identity.
+
 The kinds present and the count of each participate in identity. The paths
 do not.
 

@@ -12,7 +12,7 @@ use crate::{CallCtx, ExecRequest, ExecResult, Executor, Tool, ToolValue};
 use foe_log::ToolCall;
 use foe_program::document::ResolvedProgram;
 use foe_program::harness_text as text;
-use foe_program::tools::{block_spec, resolve_specs, Source};
+use foe_program::tools::{resolve_specs, Source};
 use foe_program::{schema, Effect, ProgramError, ToolDef, ToolSpec};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -62,7 +62,9 @@ impl Registry {
         let specs = resolve_specs(program, &extra_specs)?;
         let mut builtins: BTreeMap<String, Arc<dyn Tool>> =
             extra_builtins.into_iter().map(|t| (t.spec().name.clone(), Arc::from(t))).collect();
-        builtins.insert(text::BLOCK_NAME.into(), Arc::new(BlockTool));
+        if let Some(spec) = specs.iter().find(|spec| spec.name == text::BLOCK_NAME) {
+            builtins.insert(text::BLOCK_NAME.into(), Arc::new(BlockTool(spec.clone())));
+        }
         let mut hosts: BTreeMap<String, Arc<dyn Tool>> =
             host_tools.into_iter().map(|t| (t.spec().name.clone(), Arc::from(t))).collect();
         let mut entries = Vec::new();
@@ -330,13 +332,12 @@ impl Tool for ExecTool {
 
 /// The built-in `block` tool. The loop ends the episode as `blocked` when
 /// a call to it succeeds.
-struct BlockTool;
+struct BlockTool(ToolSpec);
 
 #[async_trait::async_trait]
 impl Tool for BlockTool {
     fn spec(&self) -> &ToolSpec {
-        static SPEC: std::sync::OnceLock<ToolSpec> = std::sync::OnceLock::new();
-        SPEC.get_or_init(block_spec)
+        &self.0
     }
 
     async fn call(&self, args: Value, _ctx: &CallCtx) -> ToolValue {
