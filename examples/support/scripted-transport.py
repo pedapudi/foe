@@ -144,8 +144,14 @@ def edit_read_tool_docs(request_id: str) -> None:
             "path": "docs/tools.md",
             "edits": [
                 {
-                    "old_text": "| `path`, `offset`, `total_lines`, `shown`, `truncated`, `content`, `version` |",
-                    "new_text": "| `path`, `offset`, `total_lines`, `total_bytes`, `shown`, `truncated`, `content`, `version` |",
+                    "old_text": (
+                        "| `path`, `offset`, `shown`, `truncated`; a file adds `total_lines`, `content`, `version`; "
+                        "a directory adds `total_entries`, `entries` with `path` and `type` |"
+                    ),
+                    "new_text": (
+                        "| `path`, `offset`, `shown`, `truncated`; a file adds `total_lines`, `total_bytes`, "
+                        "`content`, `version`; a directory adds `total_entries`, `entries` with `path` and `type` |"
+                    ),
                 },
                 {
                     "old_text": (

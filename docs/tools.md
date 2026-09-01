@@ -153,7 +153,7 @@ the first `read` root, and paths in results are shown relative to it.
 
 | tool | effect | arguments | limits | canonical value |
 |---|---|---|---|---|
-| `read` | reads | `path`; `offset`, the first line to show, 1-indexed, default 1; `limit`, the maximum lines to show | 2,000 lines or 51,200 characters per call, whichever comes first; binary files are refused; the file streams through a 64 KiB buffer | `path`, `offset`, `total_lines`, `shown`, `truncated`, `content`, `version` |
+| `read` | reads | `path`; `offset`, the first line or directory entry to show, 1-indexed, default 1; `limit`, the maximum lines or entries to show | 2,000 lines or entries, or 51,200 characters per call, whichever comes first; binary files are refused; a file streams through a 64 KiB buffer; a directory lists sorted immediate entries | `path`, `offset`, `shown`, `truncated`; a file adds `total_lines`, `content`, `version`; a directory adds `total_entries`, `entries` with `path` and `type` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `traversal_failures`, `first_failure`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill` |
@@ -172,7 +172,7 @@ model received.
 
 | tool | subject on success | subject on failure |
 |---|---|---|
-| `read` | `src/parser.rs lines 1–6 of 42`, the span actually shown | the error, which names the file and what went wrong |
+| `read` | `src/parser.rs lines 1–6 of 42` for a file, or `src entries 1–6 of 42` for a directory | the error, which names the path and what went wrong |
 | `grep` | `3 match(es) in 2 file(s) under src`, with `; incomplete` when a collection bound or failed file stopped it | the error, which names the pattern or the root |
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
@@ -208,8 +208,15 @@ rendering carries its information.
 
 ### `read`
 
-Every successful read begins with a `sha256:` version of the complete raw
-file bytes. The same version appears in the canonical value. It is identical
+A directory read returns its immediate entries sorted by path. Each rendered
+line contains the 1-indexed entry number, its type, and its path, separated by
+tabs. The type is `file`, `directory`, or `other`; symbolic links and special
+files are `other`. `offset` and `limit` select entries in the same way that
+they select file lines. The directory itself is never traversed recursively.
+
+Every successful file read begins with a `sha256:` version of the complete
+raw file bytes. Directory reads have no version. The file version also appears
+in the canonical value. It is identical
 for every window of unchanged bytes, including windows that omit most of the
 file.
 

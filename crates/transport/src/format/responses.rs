@@ -334,7 +334,8 @@ impl Decoder for StreamDecoder {
                 } else {
                     &detail
                 };
-                let retryable = matches!(code, "unknown" | "server_error" | "rate_limit_exceeded");
+                let retryable =
+                    matches!(code, "unknown" | "server_error" | "service_unavailable_error" | "rate_limit_exceeded");
                 out(Chunk::Error {
                     message: format!("{provider}: response failed {code}: {display_detail}"),
                     retryable,
@@ -550,6 +551,15 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(
             chunks,
             vec![Chunk::Error { message: "openai: response failed server_error: overloaded".into(), retryable: true }]
+        );
+        let transcript = "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"service_unavailable_error\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n";
+        let (chunks, _server) = run(Reply::sse(transcript)).await;
+        assert_eq!(
+            chunks,
+            vec![Chunk::Error {
+                message: "openai: response failed service_unavailable_error: Our servers are currently overloaded. Please try again later.".into(),
+                retryable: true,
+            }]
         );
         let transcript = "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":null}}\n\n";
         let (chunks, _server) = run(Reply::sse(transcript)).await;
