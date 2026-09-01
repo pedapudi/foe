@@ -26,6 +26,7 @@ pub mod confine;
 pub mod context;
 pub mod exec;
 pub mod executable;
+pub mod executable_support;
 pub mod grants;
 pub mod identity;
 pub mod inbox;

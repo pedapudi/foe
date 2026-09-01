@@ -230,7 +230,10 @@ Construction reads the executable once, verifies that its source file is
 executable, and retains those exact bytes. Their SHA-256 digest participates
 in identity. Every invocation uses a descriptor for a private image of the
 retained bytes. Replacing, modifying, or deleting the configured path after
-construction cannot change what runs.
+construction cannot change what runs. An ELF image may name one exact dynamic
+loader. A script shebang must
+name one absolute interpreter directly. A script that starts other programs
+requires those paths in `grants.execute`.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant
@@ -528,6 +531,14 @@ version obtained. `required` refuses to start when Landlock is unavailable.
 
 The rules themselves are compiled from `grants` and `tool_defs`; there is
 nothing else to declare.
+
+`foe plan` reports the effective sandbox access of the root and every
+reachable descendant. Each filesystem entry states why the runtime adds it.
+Exact executable entries carry the content digest used during construction.
+The report includes descendant execute paths and configured-tool network
+requirements because an ancestor must reserve them before Landlock narrows
+the process tree. [sandbox.md](sandbox.md#effective-access-report) specifies
+the report and the corresponding `episode/start` evidence.
 
 ### `program_lineage`
 

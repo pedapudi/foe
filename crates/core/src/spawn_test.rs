@@ -301,7 +301,7 @@ async fn forked_child_launch_records_the_source_and_boundary() {
             identity: "sha256:parent".into(),
             task: "lead task".into(),
             runtime: crate::identity::runtime_info(),
-            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0, effective_access: None },
             effective_budget: Some(program.budget.clone()),
         }))
         .unwrap();

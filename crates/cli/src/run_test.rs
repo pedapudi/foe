@@ -245,6 +245,18 @@ fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
 }
 
 #[test]
+fn builtin_coding_declares_its_general_shell_command_surface() {
+    let config =
+        builtin_program_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
+            .unwrap();
+    let expected: Vec<PathBuf> = BUILTIN_EXECUTE_ROOTS.iter().map(PathBuf::from).collect();
+    assert_eq!(config.grants.execute, expected);
+    for node in config.workflow.as_ref().unwrap().nodes.values() {
+        assert_eq!(node.model.as_ref().unwrap().grants.execute, expected);
+    }
+}
+
+#[test]
 fn builtin_coding_can_retrieve_shortened_tool_results() {
     let config =
         builtin_program_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
@@ -336,7 +348,11 @@ fn child_resume_uses_recorded_allowance_and_identity() {
                 identity: "sha256:recorded".into(),
                 task: "task".into(),
                 runtime: runtime_info(),
-                sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+                sandbox: foe_log::SandboxInfo {
+                    mode: foe_log::SandboxMode::Off,
+                    landlock_abi: 0,
+                    effective_access: None,
+                },
                 effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
             }))
             .unwrap();
@@ -374,7 +390,7 @@ fn ordinary_prepared_fork_retains_source_identity_exemption() {
             identity: "sha256:source".into(),
             task: "task".into(),
             runtime: runtime_info(),
-            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0 },
+            sandbox: foe_log::SandboxInfo { mode: foe_log::SandboxMode::Off, landlock_abi: 0, effective_access: None },
             effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
         }))
         .unwrap();

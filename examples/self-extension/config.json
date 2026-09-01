@@ -14,7 +14,8 @@
   },
   "grants": {
     "read": ["/home/user/project"],
-    "write": ["/home/user/project"]
+    "write": ["/home/user/project"],
+    "execute": ["/usr/bin/grep", "/usr/bin/tr"]
   },
   "budget": { "model_calls": 5, "seconds": 120 },
   "done_when": { "verify": "check", "retries": 1 },

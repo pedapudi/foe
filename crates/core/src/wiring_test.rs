@@ -13,7 +13,7 @@ fn start() -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "t".into(),
         runtime: RuntimeInfo { version: "0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None },
         effective_budget: None,
     }
 }

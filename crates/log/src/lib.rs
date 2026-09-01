@@ -270,6 +270,36 @@ pub struct SandboxInfo {
     pub mode: SandboxMode,
     /// 0 when Landlock was unavailable.
     pub landlock_abi: u32,
+    /// The filesystem and network surface compiled for this episode.
+    /// Older logs omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_access: Option<SandboxAccess>,
+}
+
+/// The effective sandbox surface and the reason for each non-declared path.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxAccess {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub read: Vec<SandboxPath>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub write: Vec<SandboxPath>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub execute: Vec<SandboxPath>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bind_tcp: Vec<u16>,
+    /// Each entry explains one reason outbound TCP remains available.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connect_tcp: Vec<String>,
+}
+
+/// One filesystem path in an effective sandbox surface.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxPath {
+    pub path: String,
+    pub reason: String,
+    /// Present when the rule names one exact executable image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

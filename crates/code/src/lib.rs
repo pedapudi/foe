@@ -23,6 +23,9 @@ mod process_output;
 #[cfg(feature = "exec")]
 mod python;
 mod read;
+#[cfg(test)]
+#[path = "runtime_test.rs"]
+mod runtime_tests;
 #[cfg(feature = "exec")]
 mod session;
 #[cfg(test)]
@@ -67,6 +70,25 @@ pub const PYTHON_DIAGNOSTIC_MAX_CHARS: usize = 4_096;
 /// The shell that runs every `bash` and `session` command line.
 #[cfg(feature = "exec")]
 pub(crate) const SHELL: &str = "/bin/bash";
+
+/// Exact executables needed to implement the selected built-in tools. The
+/// sandbox uses this list instead of granting their containing directories.
+#[cfg(feature = "exec")]
+pub fn required_executables(tools: &[String]) -> Vec<(&'static str, &'static str)> {
+    let mut required = Vec::new();
+    if tools.iter().any(|name| name == "bash" || name == "session") {
+        required.push((SHELL, "built-in bash and session tools"));
+    }
+    if tools.iter().any(|name| name == "python") {
+        required.push((PYTHON_BIN, "built-in python tool"));
+    }
+    required
+}
+
+#[cfg(not(feature = "exec"))]
+pub fn required_executables(_tools: &[String]) -> Vec<(&'static str, &'static str)> {
+    Vec::new()
+}
 
 /// A literal NUL cannot cross the operating system's process-argument
 /// boundary. Shell source can create the byte after the process starts.

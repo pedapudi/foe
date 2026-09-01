@@ -19,7 +19,7 @@ pub fn start(id: &str) -> EpisodeStart {
         identity: "sha256:0".into(),
         task: "do it".into(),
         runtime: RuntimeInfo { version: "0.1.0".into(), build: "unknown".into() },
-        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0 },
+        sandbox: SandboxInfo { mode: SandboxMode::Off, landlock_abi: 0, effective_access: None },
         effective_budget: None,
     }
 }
@@ -31,6 +31,26 @@ fn episode_start_reads_logs_written_before_effective_budget_evidence() {
     value.as_object_mut().unwrap().remove("effective_budget");
     let decoded: EpisodeStart = serde_json::from_value(value).unwrap();
     assert_eq!(decoded, expected);
+}
+
+#[test]
+fn sandbox_access_is_optional_and_round_trips() {
+    let old: SandboxInfo = serde_json::from_value(serde_json::json!({ "mode": "off", "landlock_abi": 0 })).unwrap();
+    assert_eq!(old.effective_access, None);
+    let access = SandboxAccess {
+        read: vec![SandboxPath { path: "/lib".into(), reason: "shared-library lookup".into(), sha256: None }],
+        execute: vec![SandboxPath {
+            path: "/lib64/ld-linux-x86-64.so.2".into(),
+            reason: "dynamic loader for /bin/true".into(),
+            sha256: Some("sha256:01".into()),
+        }],
+        connect_tcp: vec!["configured tool fetch in program.programs.worker".into()],
+        ..Default::default()
+    };
+    let info = SandboxInfo { mode: SandboxMode::Required, landlock_abi: 7, effective_access: Some(access.clone()) };
+    let json = serde_json::to_value(&info).unwrap();
+    assert_eq!(json["effective_access"]["execute"][0]["sha256"], "sha256:01");
+    assert_eq!(serde_json::from_value::<SandboxInfo>(json).unwrap(), info);
 }
 
 pub fn text(s: &str) -> Vec<ContentBlock> {

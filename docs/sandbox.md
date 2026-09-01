@@ -24,21 +24,38 @@ declared.
 |---|---|
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
-| each `grants.execute` file or directory | read and execute the file or every file below the directory, including from a tool subprocess |
-| each reachable `tool_defs` executable image committed during construction | execute and read that inode |
-| the running `foe` binary, when `grants.spawn` is not empty | execute and read that file, so the episode can start children |
+| each `grants.execute` file or directory in the program and its reachable descendants | read and execute the file or every file below the directory, including from a tool subprocess |
+| each selected configured tool and executable model transport in the program and its reachable descendants | execute and read the retained executable image |
+| the running `foe` binary, when a child program is reachable | execute and read that file, so the episode can start children |
+| the shell or Python interpreter required by a selected built-in tool | execute and read that exact file |
+| an executable image's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
 | the credential file the `model` block resolves to, when present | read that file, so a child episode can read the credential after inheriting this domain |
 | the episode's own log directory | read and write |
-| the loader directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib`, `/bin`, `/usr/bin`, `/usr/local/bin` | read and execute |
+| the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
 | the resolved target of `/etc/resolv.conf`, when the process may connect | read that file |
 | the device files `/dev/null`, `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/tty` | read and write |
 | each `grants.bind` port | bind TCP on that port, in the episode and in every process it starts |
 | TCP | bind: listed ports only; connect: all ports or none |
 
-The loader directories let a process start: the kernel executes the dynamic
-loader from `/lib64`, the loader maps shared libraries from `/usr/lib`, and a
-script names its interpreter in `/usr/bin`.
+The runtime reads each selected executable image before confinement. An ELF
+image names its dynamic loader in a `PT_INTERP` program header. A script names
+its interpreter in the first line. The policy grants execute access to that
+exact loader or interpreter. Library directories remain readable because the
+loader searches them for shared objects. They carry no execute access.
+
+A shebang must name an absolute interpreter directly. A shebang that names
+`/usr/bin/env` is rejected because `env` selects another executable through a
+path search. The error asks the program author to name that interpreter in the
+shebang. This rule keeps the executable surface derivable before the episode
+starts.
+
+Configured tools and executable model transports run from retained copies of
+the bytes used for program identity. The runtime stores each copy in a private
+directory outside every declared write root and keeps its file descriptor
+open. Replacing or deleting the configured source path cannot change the
+executable bytes. The sandbox rule names the retained inode. The account names
+the source path and content digest so a reader can identify those bytes.
 A file under a read root is readable and is never executable through that
 grant alone. A project script runs when a `tool_defs` entry names the file or
 when an explicit execute grant covers it.
@@ -92,13 +109,15 @@ ruleset and receives a further one, so an executable or child can reach
 less than the episode and never more. The kernel allows sixteen nested
 rulesets; an episode tree of depth sixteen is the practical limit.
 
-Because a ruleset only narrows, an episode reserves what the programs below
-it need before it restricts itself. A child's read, write, and execute roots
-lie inside its parent's corresponding roots, and its bind ports among its
-parent's bind ports. Configuration resolution checks
-that containment. An episode also reserves the committed `tool_defs` images
-of every reachable program below it. Each descendant still narrows itself to
-its own configured executable images and explicit execute grants.
+Because a ruleset only narrows, an episode reserves what the reachable
+programs below it need before it restricts itself. A child's read, write, and
+execute roots lie inside its parent's corresponding roots. Its bind ports lie
+among its parent's bind ports. Configuration resolution checks that
+containment. The ancestor also reserves configured executable images,
+executable model transports, built-in interpreters, and outbound TCP required
+by reachable descendants. A declaration is reachable through a
+`grants.spawn` entry or a workflow model node. Each descendant applies a
+narrower policy for its own reachable subtree.
 
 ## The episode process
 
@@ -131,15 +150,16 @@ and no type expresses.
 The episode keeps:
 
 - read on its read roots, write on its write roots;
-- execute on every explicit execute grant and every committed `tool_defs`
-  image of its own program and of every reachable program below it;
-- execute on its own binary when it may spawn children;
+- execute on every explicit execute grant in its reachable program tree;
+- execute on every selected configured executable image and required exact
+  interpreter in that tree;
+- execute on its own binary when a child program is reachable;
 - read on the key file named by its `model` block, which its children need;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
-- the loader, system, and device paths;
-- outbound TCP when the configuration has a `model` block, because the
-  episode then calls the provider itself;
+- read on the library, system, and device paths;
+- outbound TCP when the episode calls a model transport or a reachable
+  configured tool declares `network: true`;
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
   a viewer, on the viewer's port, which the command line adds to the policy
   before applying it;
@@ -147,14 +167,14 @@ The episode keeps:
 
 ## Executables
 
-A configured executable runs under the episode's ruleset narrowed once
-more. The narrowed policy keeps the read roots, write roots, explicit execute
-grants, loader paths, system paths, and device paths. It also keeps execute on
-the private inode committed for that tool. It drops the log directory, key
-file, and execute access to other configured tools. It keeps the episode's
-bind ports. A server started by a shell or held by a session can listen on a
-granted port. Outbound TCP remains available when the tool definition sets
-`network: true`.
+A configured executable runs under the episode's ruleset narrowed once more.
+The narrowed policy keeps the read roots, write roots, explicit execute
+grants, library paths, system paths, and device paths. It also keeps execute
+access to its retained image and required exact interpreter. The log
+directory, credential file, and other configured executables are omitted. It
+keeps the episode's bind ports, so a server started by a shell or held by a
+session listens on a granted port. It keeps outbound TCP when the tool
+definition sets `network: true`.
 
 Construction reads the source file once and retains those exact bytes. It
 writes a content-addressed image under a private runtime directory outside
@@ -226,6 +246,19 @@ parent restricts its main thread before it starts any other thread, and a
 Landlock domain passes to every thread and process created afterwards, so
 the child inherits the parent's domain before it executes. The child's own
 ruleset nests inside that one, and the child's reach is the intersection.
+
+## Effective access report
+
+`foe plan` reports one effective sandbox envelope for the root and each
+reachable descendant program. Each read, write, or execute path includes the
+reason it is present. An exact executable includes its content digest. The
+report also names bind ports and every reason outbound TCP is reserved.
+
+`episode/start.sandbox.effective_access` records the policy compiled for that
+episode. This record includes runtime paths that a configuration-only plan
+cannot name, such as the episode log directory and resolved credential file.
+The sandbox mode and ABI state which parts the host kernel enforced. Logs that
+predate the field omit it.
 
 ## Modes
 

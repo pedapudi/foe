@@ -626,8 +626,8 @@ as further processes. Restrictions only narrow at each spawn.
 ```
    host            no restriction applied by foe, ever
      │
-     └─ episode    Landlock: read roots, write roots, execute roots, own log dir
-          │        network: open when foe holds the transport; closed when the host does
+     └─ episode    Landlock: declared roots, exact runtime executables, own log dir
+          │        network: open for the transport or a reachable network tool
           │
           ├─ tool  Landlock: subset of the episode's; network closed
           │
@@ -638,9 +638,13 @@ as further processes. Restrictions only narrow at each spawn.
 On Linux with Landlock available, the runtime compiles the grants into a
 ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
-becomes an execute rule on that exact file. The episode's log directory
-becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. Denied accesses are captured from the audit log and written to
+becomes an execute rule on the retained bytes used for identity. Dynamic ELF
+loaders and direct shebang interpreters receive rules on their exact files.
+Shared-library directories remain read-only. An ancestor reserves the
+explicit execute paths and configured-tool network authority of each reachable
+descendant because an inherited Landlock domain cannot widen. The episode's
+log directory becomes a write rule. When the kernel supports it, TCP access is
+removed from executables. Denied accesses are captured from the audit log and written to
 the episode log as `sandbox/denied` events. A blocked attempt therefore
 becomes evidence in the record.
 
@@ -695,7 +699,7 @@ foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode see
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print the resolved program, its identity, its transport, its tools with their sources, and its effective authority; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print the resolved program, identity, transport, tools, and effective tool and sandbox access; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe plan --config FILE --states DIR --evidence DIR       verify the configuration's ancestry claim against retained evidence
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs

@@ -82,7 +82,23 @@ nothing emits it.
   "identity": "sha256:…",
   "task": "Fix the failing parser test.",
   "runtime": { "version": "0.1.0", "build": "sha256:…" },
-  "sandbox": { "mode": "best-effort", "landlock_abi": 7 },
+  "sandbox": {
+    "mode": "best-effort",
+    "landlock_abi": 7,
+    "effective_access": {
+      "read": [
+        { "path": "/lib", "reason": "shared-library lookup" }
+      ],
+      "execute": [
+        {
+          "path": "/usr/bin/python3.13",
+          "reason": "script interpreter for configured tool check",
+          "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        }
+      ],
+      "connect_tcp": ["model transport in program"]
+    }
+  },
   "effective_budget": {
     "model_calls": 20,
     "input_tokens": 160000,
@@ -100,8 +116,15 @@ nothing emits it.
 `{ "episode_id": "…", "seq": N }` when the log was seeded from a prefix of
 another log. `team_id` names the lead episode when this episode is a team
 member. `program` is the resolved configuration with `task` removed.
-`landlock_abi` is 0 when Landlock was unavailable. `effective_budget` is the
-allowance the episode enforces. Its fields have the meanings and defaults in
+`landlock_abi` is 0 when Landlock was unavailable. `effective_access` records
+the filesystem and network surface compiled for the episode. Each filesystem
+entry names its reason. An exact executable may carry the SHA-256 digest of
+the bytes retained during program construction. The `connect_tcp` array names
+each reason outbound TCP was reserved; an empty array means it was denied on
+a kernel that enforces network rules. Logs written before this field was
+implemented omit it and remain readable.
+
+`effective_budget` is the allowance the episode enforces. Its fields have the meanings and defaults in
 [config.md](config.md#budget). A spawned episode can have an effective
 allowance below `program.budget`; this leaves `identity` unchanged. Logs
 written before this field was implemented omit it and remain readable. On

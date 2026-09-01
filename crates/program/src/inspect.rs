@@ -36,8 +36,32 @@ type AuthorityKey = (String, &'static str, String, String);
 /// because firing it starts that node's episode.
 pub fn authority(root: &ResolvedProgram, extra: &[ToolSpec]) -> Result<Vec<Authority>, String> {
     let mut found: BTreeMap<AuthorityKey, Authority> = BTreeMap::new();
-    collect_authority(root, "program", extra, &mut found)?;
+    for (path, program) in reachable_programs(root) {
+        collect_authority(program, &path, extra, &mut found)?;
+    }
     Ok(found.into_values().collect())
+}
+
+/// The root and every program reachable through a declared spawn edge or a
+/// workflow model node. Each row carries the path printed by `foe plan`.
+pub fn reachable_programs(root: &ResolvedProgram) -> Vec<(String, &ResolvedProgram)> {
+    fn collect<'a>(program: &'a ResolvedProgram, path: String, found: &mut Vec<(String, &'a ResolvedProgram)>) {
+        found.push((path.clone(), program));
+        for name in &program.grants.spawn {
+            if let Some(child) = program.programs.get(name) {
+                collect(child, format!("{path}.programs.{name}"), found);
+            }
+        }
+        if let Some(workflow) = &program.workflow {
+            for (node, _) in crate::workflow::model_nodes(workflow, "") {
+                let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
+                collect(&program.workflow_programs[&node], child_path, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    collect(root, "program".into(), &mut found);
+    found
 }
 
 /// Where each name in `program.tools` resolved, in `tools` order. The
@@ -68,18 +92,6 @@ fn collect_authority(
         let key = (name.clone(), source, definition.to_string(), format!("{:?}", spec.effect));
         let row = Authority { name: name.clone(), source, effect: spec.effect, definition, programs: BTreeSet::new() };
         found.entry(key).or_insert(row).programs.insert(path.to_string());
-    }
-    for name in &program.grants.spawn {
-        if let Some(child) = program.programs.get(name) {
-            collect_authority(child, &format!("{path}.programs.{name}"), extra, found)?;
-        }
-    }
-    if let Some(wf) = &program.workflow {
-        for (node, _) in crate::workflow::model_nodes(wf, "") {
-            let child_path = format!("{path}.workflow.nodes.{}.model", node.replace('/', ".workflow.nodes."));
-            let child = &program.workflow_programs[&node];
-            collect_authority(child, &child_path, extra, found)?;
-        }
     }
     Ok(())
 }

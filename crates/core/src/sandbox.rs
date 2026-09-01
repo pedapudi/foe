@@ -182,7 +182,7 @@ impl Sandbox {
 
     /// What `episode/start` records.
     pub fn info(&self) -> SandboxInfo {
-        SandboxInfo { mode: self.mode, landlock_abi: self.abi }
+        SandboxInfo { mode: self.mode, landlock_abi: self.abi, effective_access: None }
     }
 
     /// The ABI in use; 0 when nothing is enforced.

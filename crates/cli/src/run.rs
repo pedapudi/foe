@@ -69,6 +69,11 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("go", "/usr/bin/go"),
 ];
 
+/// The shell-based coding tools need a general command environment. These
+/// roots preserve the previous built-in workflow surface as declared
+/// authority after sandbox startup support narrows to exact files.
+const BUILTIN_EXECUTE_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin"];
+
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
     let probe = |(name, path): &(&str, &str)| match present(Path::new(path)) {
         true => format!("{name}={path}"),
@@ -368,7 +373,9 @@ fn builtin_program_document(
     }
     let repair_model = assessment_model.clone();
     let environment = builtin_environment(&cwd, Path::is_file);
-    let grants = serde_json::json!({ "read": [cwd], "write": [cwd] });
+    let grants = serde_json::json!({
+        "read": [cwd], "write": [cwd], "execute": BUILTIN_EXECUTE_ROOTS
+    });
     let mut document: serde_json::Value =
         serde_json::from_str(BUILTIN_PROGRAM_DOCUMENT).map_err(|e| format!("built-in program template: {e}"))?;
     document["version"] = serde_json::json!(foe_program::document::PROGRAM_FORMAT_VERSION);
