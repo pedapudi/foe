@@ -1,10 +1,12 @@
 """The host side of docs/protocol.md.
 
 `start_config` launches the binary on a configuration document, reads its
-standard output line by line, and answers `model/request` with the
-embedding contract's transport and `host/tool-call` with its host tools.
-Every line read is a log event; every line written is one of the four
-host-to-foe line types.
+standard output line by line, and answers `host/tool-call` with the
+embedding contract's host tools. It also answers `model/request` with the
+contract's transport when the document leaves the model to the host, which
+docs/config.md makes the meaning of a document with no `model` block. Every
+line read is a log event; every line written is one of the four host-to-foe
+line types.
 """
 
 from __future__ import annotations
@@ -48,6 +50,17 @@ def _collect_host_tool_names(doc: Mapping[str, Any]) -> set[str]:
     return names
 
 
+def _child_contracts_with_a_model_block(doc: Mapping[str, Any], prefix: str = "") -> list[str]:
+    """The `child_contracts` keys below `doc`, dotted, that declare a `model` block."""
+    found: list[str] = []
+    for key, child in sorted((doc.get("child_contracts") or {}).items()):
+        name = f"{prefix}{key}"
+        if "model" in child:
+            found.append(name)
+        found.extend(_child_contracts_with_a_model_block(child, f"{name}."))
+    return found
+
+
 class Handle:
     """A running episode.
 
@@ -63,7 +76,7 @@ class Handle:
         config: Mapping[str, Any],
         config_dir: str,
         log_dir: Path,
-        transport: Transport,
+        transport: Transport | None,
         tools: Mapping[str, HostTool],
         on_event: EventCallback | None,
         max_output_tokens: int | None,
@@ -156,7 +169,13 @@ class Handle:
             await self._shutdown()
 
     def _dispatch(self, event: Event) -> bool:
-        """Handle one event. Returns True when the root episode has ended."""
+        """Handle one event. Returns True when the root episode has ended.
+
+        A `model/request` is answered only when this host supplies the
+        transport. When the document has a `model` block, foe calls the
+        model through its built-in transport and writes the event for the
+        record, which docs/protocol.md "Launch" states.
+        """
         tag = event.episode_id
         if event.type == "episode/start" and tag is None:
             self.episode_id = str(event.data.get("id"))
@@ -164,7 +183,7 @@ class Handle:
             self.runtime_version = str(runtime.get("version", ""))
         elif event.type == "request/header":
             self._headers[(tag, event.seq)] = event.data
-        elif event.type == "model/request":
+        elif event.type == "model/request" and self._transport is not None:
             self._spawn(self._serve_model(event))
         elif event.type == "host/tool-call":
             self._spawn(self._serve_tool(event))
@@ -179,6 +198,7 @@ class Handle:
         task.add_done_callback(self._pending.discard)
 
     async def _serve_model(self, event: Event) -> None:
+        assert self._transport is not None
         data = event.data
         request_id = str(data["request_id"])
         tag = event.episode_id
@@ -276,7 +296,7 @@ class Handle:
 async def start_config(
     config: Mapping[str, Any] | PathLike,
     *,
-    transport: Transport,
+    transport: Transport | None = None,
     binary: PathLike,
     log_dir: PathLike,
     tools: Iterable[HostTool] = (),
@@ -285,16 +305,29 @@ async def start_config(
 ) -> Handle:
     """Launch the binary on a complete configuration document.
 
-    `config` is a document as a dict or the path of a JSON file. It must
-    carry `task` and no `model` block, since this host supplies the
-    transport. `tools` supplies the implementation of every name in the
-    document's `host_tools`.
+    `config` is a document as a dict or the path of a JSON file, and must
+    carry `task`. The document's `model` block decides who calls the model,
+    which docs/config.md `model` states: a document without one leaves the
+    model to the host and requires `transport`, and a document with one
+    leaves the model to foe's built-in transport and refuses `transport`.
+    The host registers and services the document's `host_tools` either way.
+    `tools` supplies the implementation of every name in `host_tools`.
     """
     doc = _load_config(config)
-    if "model" in doc:
-        raise ValueError("config: a document run through this host must have no `model` block")
     if "task" not in doc:
         raise ValueError("config: `task` is required")
+    host_calls_the_model = "model" not in doc
+    if host_calls_the_model and transport is None:
+        raise ValueError("config: a document with no `model` block leaves the model to this host, which needs a transport")
+    if not host_calls_the_model and transport is not None:
+        raise ValueError("config: a document with a `model` block leaves the model to foe, which takes no transport")
+    nested = _child_contracts_with_a_model_block(doc) if host_calls_the_model else []
+    if nested:
+        raise ValueError(
+            f"child_contracts: {', '.join(nested)} declares a `model` block while the document leaves the "
+            "model to this host; a descendant's recorded request reaches the host indistinguishable from one "
+            "the host must answer"
+        )
     by_name = {t.name: t for t in tools}
     missing = sorted(_collect_host_tool_names(doc) - set(by_name))
     if missing:
@@ -335,7 +368,7 @@ async def start_config(
 async def run_config(
     config: Mapping[str, Any] | PathLike,
     *,
-    transport: Transport,
+    transport: Transport | None = None,
     binary: PathLike,
     log_dir: PathLike,
     tools: Iterable[HostTool] = (),

@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -110,6 +110,37 @@ class Budget:
 
 
 @dataclass(frozen=True, slots=True)
+class Model:
+    """The model foe calls itself. See docs/config.md `model`.
+
+    A contract that declares one leaves the model to the binary's built-in
+    transport, and the host that runs it supplies no transport of its own.
+    `options` carries the provider-specific keys, whose values config.md
+    makes flat strings: `api_key_file`, `base_url`, `exec`, and the rest
+    docs/models.md lists per provider.
+    """
+
+    provider: str
+    model: str
+    max_output_tokens: int | None = None
+    options: Mapping[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        if not self.provider:
+            raise ConfigError("model.provider: must not be empty")
+        if not self.model:
+            raise ConfigError("model.model: must not be empty")
+        out: dict[str, Any] = {"provider": self.provider, "model": self.model}
+        if self.max_output_tokens is not None:
+            out["max_output_tokens"] = self.max_output_tokens
+        for key in sorted(self.options):
+            if key in ("provider", "model", "max_output_tokens"):
+                raise ConfigError(f"model.options.{key}: is a field of the block, not a provider option")
+            out[key] = self.options[key]
+        return out
+
+
+@dataclass(frozen=True, slots=True)
 class ToolDef:
     """A configured executable the model may invoke. See docs/config.md `tool_defs`."""
 
@@ -200,6 +231,7 @@ class ExecutionContract:
         tool_defs: Mapping[str, ToolDef] | None = None,
         done_when: DoneWhen | None = None,
         child_contracts: Mapping[str, ExecutionContract] | None = None,
+        model: Model | None = None,
         sandbox: str | None = None,
     ) -> None:
         if not name:
@@ -217,6 +249,7 @@ class ExecutionContract:
         self.tool_defs: dict[str, ToolDef] = dict(tool_defs or {})
         self.done_when = done_when
         self.child_contracts: dict[str, ExecutionContract] = dict(child_contracts or {})
+        self.model = model
         self.sandbox = sandbox
 
         listed: list[str | HostTool] = list(tools)
@@ -273,7 +306,9 @@ class ExecutionContract:
         """The configuration document as a dict.
 
         Without `task` the result is the contract alone. A child contract omits
-        `version` and `sandbox`, which are inherited.
+        `version` and `sandbox`, which are inherited; it keeps its own `model`
+        block when it declares one, because a child that omits the block
+        inherits the nearest ancestor's.
         """
         doc: dict[str, Any] = {}
         if not child:
@@ -289,6 +324,8 @@ class ExecutionContract:
         doc["budget"] = self.budget.to_dict()
         if self.done_when is not None:
             doc["done_when"] = self.done_when.to_dict()
+        if self.model is not None:
+            doc["model"] = self.model.to_dict()
         if self.sandbox is not None and not child:
             doc["sandbox"] = {"mode": self.sandbox}
         if self.child_contracts:
@@ -343,13 +380,18 @@ class ExecutionContract:
         self,
         task: str,
         *,
-        transport: Transport,
+        transport: Transport | None = None,
         binary: PathLike,
         log_dir: PathLike,
         on_event: EventCallback | None = None,
         max_output_tokens: int | None = None,
     ) -> Handle:
-        """Launch an episode and return a handle to steer, cancel, or await it."""
+        """Launch an episode and return a handle to steer, cancel, or await it.
+
+        A contract with a `model` calls the model through foe's built-in
+        transport and takes no `transport`; a contract without one leaves
+        the model to the host and requires it.
+        """
         return await start_config(
             self.to_dict(task),
             transport=transport,
@@ -364,7 +406,7 @@ class ExecutionContract:
         self,
         task: str,
         *,
-        transport: Transport,
+        transport: Transport | None = None,
         binary: PathLike,
         log_dir: PathLike,
         on_event: EventCallback | None = None,

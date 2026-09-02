@@ -5,15 +5,18 @@ the sense of [protocol.md](protocol.md): it builds the configuration
 document that [config.md](config.md) specifies, runs the `foe` binary,
 answers the protocol over the binary's standard input and standard output,
 and returns a typed outcome. The binary is the runtime; it owns the episode
-loop, the log, the grants, and the sandbox. The package performs no model
-call and executes no tool of its own. Both are routed to callables the
-embedding application supplies.
+loop, the log, the grants, and the sandbox. The package executes no tool of
+its own: a tool the application declares is routed to the callable it
+supplied. The model is called by a transport the application supplies, or
+by the binary's own transport when the contract declares a `model` block,
+which "Who calls the model" below states.
 
 The package lives in `python/foe`, targets Python 3.11 and later, and
 depends on the standard library alone. It ships `py.typed` and passes
 `mypy --strict`, so an editor sees every type from the source. Nothing in
-the package reads an environment variable; credentials live in the
-embedding application's transport.
+the package reads an environment variable. No credential passes through
+it: one lives in the embedding application's transport, or in the file the
+binary reads for the provider its `model` block names.
 
 ## A complete example
 
@@ -88,7 +91,7 @@ when the binary asks.
 | name | role |
 |---|---|
 | `foe.ExecutionContract(...)` | a contract document without a task |
-| `contract.to_dict()`, `contract.to_json()` | the document, without `task` and without `model` |
+| `contract.to_dict()`, `contract.to_json()` | the document, without `task` |
 | `contract.fingerprint(binary)` | the contract fingerprint computed by `foe plan` |
 | `await contract.run(task, ...)` | run one episode to its outcome |
 | `await contract.start(task, ...)` | run one episode and return a `Handle` |
@@ -97,7 +100,7 @@ when the binary asks.
 | `foe.serve(log_dir, binary=...)` | serve a log directory through the binary's viewer |
 | `@foe.tool`, `@tool.render` | declare a host tool and its rendering |
 | `foe.ReadFS`, `foe.WriteFS`, `foe.Exec` | capability handles a host tool may request |
-| `foe.Grants`, `foe.Budget`, `foe.ToolDef` | the `grants`, `budget`, and `tool_defs` keys |
+| `foe.Grants`, `foe.Budget`, `foe.ToolDef`, `foe.Model` | the `grants`, `budget`, `tool_defs`, and `model` keys |
 | `foe.Verified`, `foe.Returns` | the `done_when` key |
 | `foe.Completed`, `foe.Blocked`, `foe.Exhausted`, `foe.Failed` | the outcome union |
 | `foe.Event` | one log event, as delivered to `on_event` |
@@ -116,13 +119,17 @@ foe.ExecutionContract(
     tool_defs: Mapping[str, foe.ToolDef] | None = None,
     done_when: foe.Verified | foe.Returns | None = None,
     child_contracts: Mapping[str, foe.ExecutionContract] | None = None,
+    model: foe.Model | None = None,
     sandbox: str | None = None,
 )
 ```
 
 Each argument maps to the key of the same name in config.md. `child_contracts`
 holds child contracts; a child is an `ExecutionContract` whose `version` and `sandbox`
-are omitted from the document because they are inherited. `sandbox` is
+are omitted from the document because they are inherited, and which keeps
+its own `model` when it declares one. `model` names the provider and model
+the binary's own transport calls; when None the key is omitted and the host
+answers every model request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
 runtime's default applies.
 
@@ -152,9 +159,8 @@ and `Grants.spawn` are omitted when empty.
 
 `to_dict(task=None)` returns the document as a dict; `to_json(task=None)`
 returns it as a string. Without a task the result is the execution contract
-alone, which is the input to fingerprinting. With a task the result is a complete
-document except for the `model` block, which the package never writes: a
-host that runs a contract supplies the transport itself.
+alone, which is the input to fingerprinting. With a task the result is a
+complete document, ready for `foe --config`.
 
 Instruction sections are written in lexicographic key order, and object
 keys under `tool_defs`, `host_tools`, and `child_contracts` are sorted, so the same
@@ -180,7 +186,7 @@ therefore compute the fingerprint on a machine that cannot run the contract.
 await contract.run(
     task: str,
     *,
-    transport: Transport,
+    transport: Transport | None = None,
     binary: str | os.PathLike,
     log_dir: str | os.PathLike,
     on_event: Callable[[foe.Event], None] | None = None,
@@ -189,7 +195,9 @@ await contract.run(
 ```
 
 `start` takes the same arguments and returns a `foe.Handle` as soon as the
-binary is running. `run` is `start` followed by `await handle.wait()`.
+binary is running. `run` is `start` followed by `await handle.wait()`. A contract with a `model` takes no `transport`, and
+a contract without one requires it; "Who calls the model" below states the
+rule and what each choice means.
 
 The package writes the document to a temporary file, creates `log_dir`
 when it does not exist, and launches
@@ -229,8 +237,9 @@ await foe.run_config(
 
 These take a complete document, as a dict or as the path of a JSON file,
 and run it the way `ExecutionContract.run` does. They exist for a document written
-by hand or produced by another contract. The document must carry `task` and
-must not carry `model`. `tools` supplies the implementation of every name
+by hand or produced by another contract. The document must carry `task`,
+and its `model` block decides whether `transport` is required or refused.
+`tools` supplies the implementation of every name
 in the document's `host_tools`; a missing implementation is an error before
 launch.
 
@@ -240,6 +249,62 @@ launch.
 the URL the binary prints as its first line of standard output, and returns
 a `foe.Viewer` whose `url` attribute holds it and whose `close()` stops the
 viewer process. `str(viewer)` is the URL.
+
+## Who calls the model
+
+A contract's `model` block decides which process performs the model call.
+The block and a host transport are exclusive, and every episode needs one
+of the two, so the package refuses a document that carries both or
+neither.
+
+| the contract | who calls the model | `transport` |
+|---|---|---|
+| no `model` block | the host, over the protocol | required |
+| a `model` block | the binary, through its built-in transport | refused |
+
+Host tools work the same under both. The package writes the callables it
+was given into `host_tools`, the binary emits `host/tool-call` for every
+call the model makes to one, and the package runs the function and answers
+with a `tool/result` line. An application whose own model abstraction
+cannot carry foe's tool calls therefore still embeds foe through this
+package: it declares a `model` block and keeps its tools in Python.
+
+Without a `model` block, the package calls `transport` once per
+`model/request` and streams the chunks back. The `request/header` event
+names the route `host`/`host`, because the runtime does not know which
+model the host called.
+
+With a `model` block, the binary holds the credential, performs the
+request, and writes `model/request` for the record alone; the package
+answers nothing. The `request/header` event names the provider and model
+the block declares.
+
+```python
+contract = foe.ExecutionContract(
+    name="zicato-proposer",
+    instructions={"10-charter": "You propose experiments."},
+    tools=["read", mutation_usage],
+    grants=foe.Grants(read=["/gen/v37/snapshot"]),
+    budget=foe.Budget(model_calls=12),
+    model=foe.Model(provider="anthropic", model="claude-opus-5"),
+)
+outcome = await contract.run(task="Propose the next experiment.", binary=binary, log_dir=log_dir)
+```
+
+`foe.Model(provider, model, max_output_tokens=None, options={})` is the
+block. `options` carries the provider-specific keys, whose values
+config.md makes flat strings: `api_key_file`, `base_url`, `project`,
+`exec`, and the rest [models.md](models.md) lists per provider. A block
+that names no credential file leaves the binary to read the one
+`foe login` wrote. The block does not participate in the contract
+fingerprint, so two contracts that differ only in their model hash alike;
+the bytes of an `exec` transport are the exception models.md states.
+
+One document is refused before launch: one that leaves the model to the
+host while a contract under `child_contracts` declares a `model` block of
+its own. A descendant's `model/request` reaches the root host whichever
+process answers it, so the host would have no way to tell a request it
+owes from one already recorded.
 
 ## Host tools
 
@@ -458,11 +523,12 @@ log, and decides the outcome. Nothing the package does changes what the
 model sees or what the episode may touch; the package can only decline to
 launch a document it knows the binary would refuse.
 
-The package is a host. It holds the credentials, performs the model calls
-through the transport, runs the host tools, and reads the log as it is
-written. Every exchange between the two passes through the binary's log,
-so a log directory produced through the package replays and views the
-same way as one produced by the binary alone.
+The package is a host. It runs the host tools, reads the log as it is
+written, and, for a contract that leaves the model to it, holds the
+credential and performs the model call through the transport. Every
+exchange between the two passes through the binary's log, so a log
+directory produced through the package replays and views the same way as
+one produced by the binary alone.
 
 An application that needs the binary's other commands invokes them directly;
 the schema and tool listings of `foe plan` have no wrapper in the package.
@@ -474,5 +540,12 @@ protocol over standard input and standard output and writes
 `episode.jsonl`. It covers the episode shapes the package has to handle:
 a text turn, a host tool call, a built-in tool call, a `block` call, a
 `return` call with a verifier, a steer arriving mid-request, `cancel`, a
-transport error, and a spent `model_calls` budget. `uv run pytest` from
-`python/` runs the package's tests against it.
+transport error, and a spent `model_calls` budget. It also answers a
+document with a `model` block from a built-in transport of its own, for
+which it implements the `exec` provider, so the built-in and host seams
+are exercised against the same host tools. `uv run pytest` from `python/`
+runs the package's tests against it.
+
+The tests that need the real binary are in `python/tests/test_binary.py`
+and are skipped when `target/debug/foe` has not been built. One of them
+runs an episode with a `model` block and a Python host tool.

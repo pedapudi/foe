@@ -3,16 +3,18 @@
 The package builds the configuration document docs/config.md specifies,
 runs the `foe` binary, answers the host protocol docs/protocol.md specifies
 over the binary's standard input and output, and returns a typed outcome.
-It performs no model calls and executes no tools of its own; both are
-routed to callables the embedding contract supplies. Nothing in the package
-reads an environment variable.
+It executes no tool of its own: a host tool is routed to the callable the
+embedding contract supplies. The model is called by the embedding
+contract's transport, or by the binary's own transport when the document
+carries a `model` block. Nothing in the package reads an environment
+variable.
 """
 
 from ._capabilities import Exec, ExecResult, ReadFS, WriteFS
 from ._errors import BinaryError, CapabilityError, ConfigError, ProtocolError
 from ._host import EventCallback, Handle, Transport, Viewer, run_config, serve, start_config
 from ._outcome import Blocked, Completed, Event, Exhausted, Failed, Outcome
-from ._contract import BUILTIN_TOOLS, Budget, DoneWhen, Grants, ExecutionContract, Returns, ToolDef, Verified
+from ._contract import BUILTIN_TOOLS, Budget, DoneWhen, Grants, ExecutionContract, Model, Returns, ToolDef, Verified
 from ._schema import schema_for
 from ._tools import Capabilities, Effect, HostTool, ToolResult, ToolSpec, tool
 
@@ -36,6 +38,7 @@ __all__ = [
     "Grants",
     "Handle",
     "HostTool",
+    "Model",
     "Outcome",
     "ExecutionContract",
     "ProtocolError",

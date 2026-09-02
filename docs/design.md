@@ -104,7 +104,7 @@ A running foe is a tree of processes sharing one directory tree of logs.
 ```
                          host process
                 (Python package, orchestrator, or CLI shell)
-                   holds model credentials and host tools
+          holds host tools, and credentials when it calls the model
                               │
              stdin: answers   │   stdout: the log, line by line
                               ▼
@@ -134,9 +134,11 @@ A running foe is a tree of processes sharing one directory tree of logs.
 
 Three facts about this picture carry the design.
 
-The host holds every credential. The episode process has no key and, when
-the host supplies the transport, no network. A model call is a request the
-episode writes to its log and the host answers.
+A host that supplies the transport holds every credential, and the episode
+process then has no key and no network. A model call is a request the
+episode writes to its log and the host answers. A host that leaves the
+model to a `model` block answers no such request; the episode process then
+holds the credential that block names and reaches the provider itself.
 
 Restrictions only narrow downward. The root episode runs under a ruleset
 compiled from its grants. Every process it starts runs under a subset of

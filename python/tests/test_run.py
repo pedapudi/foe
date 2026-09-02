@@ -11,7 +11,7 @@ import pytest
 
 import foe
 
-from scripted import scripted, text_response, tool_response
+from scripted import SUMMARY, reference_count, scripted, scripted_model, text_response, tool_response
 
 
 def contract_with(
@@ -20,6 +20,7 @@ def contract_with(
     model_calls: int = 5,
     output_tokens: int | None = None,
     done_when: foe.DoneWhen | None = None,
+    model: foe.Model | None = None,
 ) -> foe.ExecutionContract:
     return foe.ExecutionContract(
         name="test",
@@ -28,6 +29,7 @@ def contract_with(
         grants=foe.Grants(read=["/"]),
         budget=foe.Budget(model_calls=model_calls, output_tokens=output_tokens),
         done_when=done_when,
+        model=model,
     )
 
 
@@ -285,16 +287,52 @@ def test_run_config_from_a_file(fake_binary: Path, tmp_path: Path) -> None:
     assert outcome == foe.Completed("hello")
 
 
-def test_run_config_rejects_a_model_block_and_missing_tools(fake_binary: Path, tmp_path: Path) -> None:
-    doc = contract_with(["read"]).to_dict("t")
-    doc["model"] = {"provider": "anthropic", "model": "m", "api_key_file": "/k"}
-    with pytest.raises(ValueError, match="no `model` block"):
-        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+def test_run_config_rejects_missing_tool_implementations(fake_binary: Path, tmp_path: Path) -> None:
     doc = contract_with(["read"]).to_dict("t")
     doc["host_tools"] = {"missing": {"description": "d", "params": {"type": "object"}, "effect": "pure"}}
     doc["tools"].append("missing")
     with pytest.raises(ValueError, match="host_tools: no implementation was supplied for missing"):
         asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+
+
+def test_a_model_block_and_a_host_transport_are_exclusive(fake_binary: Path, tmp_path: Path) -> None:
+    """docs/config.md `model`: the block decides who calls the model."""
+    with_block = contract_with(["read"], model=scripted_model()).to_dict("t")
+    with pytest.raises(ValueError, match="takes no transport"):
+        asyncio.run(foe.run_config(with_block, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+    without_block = contract_with(["read"]).to_dict("t")
+    with pytest.raises(ValueError, match="needs a transport"):
+        asyncio.run(foe.run_config(without_block, binary=fake_binary, log_dir=tmp_path / "e"))
+
+
+def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
+    """A descendant's recorded request is not distinguishable from one the host owes."""
+    doc = contract_with(["read"]).to_dict("t")
+    doc["child_contracts"] = {"survey": contract_with(["read"], model=scripted_model()).to_dict(child=True)}
+    with pytest.raises(ValueError, match="child_contracts: survey declares a `model` block"):
+        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+
+
+def test_a_model_block_runs_through_the_host_with_its_host_tools(fake_binary: Path, tmp_path: Path) -> None:
+    """The built-in transport answers the model; the host still serves `host/tool-call`."""
+    events: list[foe.Event] = []
+    outcome = asyncio.run(
+        contract_with(["read", reference_count], model=scripted_model()).run(
+            task="Count the references.",
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
+            on_event=events.append,
+        )
+    )
+    assert outcome == foe.Completed(SUMMARY)
+
+    # The route names the configured provider, so no `model/chunk` was owed.
+    header = next(e for e in events if e.type == "request/header")
+    assert header.data["model"] == {"provider": "exec", "model": "host-tool-then-text"}
+    call = next(e for e in events if e.type == "host/tool-call")
+    assert call.data["name"] == "reference_count"
+    result = next(e for e in events if e.type == "tool/result")
+    assert result.data["value"] == {"count": 3, "symbol": "add"}
 
 
 def test_serve_returns_the_url(fake_binary: Path, tmp_path: Path) -> None:

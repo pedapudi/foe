@@ -1,4 +1,4 @@
-"""One episode through the built binary. Skipped when `target/debug/foe` is absent."""
+"""Episodes through the built binary. Skipped when `target/debug/foe` is absent."""
 
 from __future__ import annotations
 
@@ -10,9 +10,21 @@ import pytest
 
 import foe
 
-from scripted import scripted, text_response, tool_response
+from scripted import SUMMARY, reference_count, scripted, scripted_model, text_response, tool_response
 
 BINARY = Path(__file__).resolve().parents[2] / "target" / "debug" / "foe"
+
+
+def contract_calling_its_model(tmp_path: Path) -> foe.ExecutionContract:
+    """A contract whose `model` block leaves the model to the binary itself."""
+    return foe.ExecutionContract(
+        name="built-in-transport",
+        instructions={"role": "You are under test."},
+        tools=["read", reference_count],
+        grants=foe.Grants(read=[tmp_path]),
+        budget=foe.Budget(model_calls=4),
+        model=scripted_model(),
+    )
 
 
 @pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
@@ -77,3 +89,23 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     assert result.data["rendered"] == "3 references"
     assert [e.type for e in events][-1] == "episode/end"
     assert contract.fingerprint(BINARY).startswith("sha256:")
+
+
+@pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
+def test_the_built_binary_calls_the_model_while_the_package_serves_its_host_tools(tmp_path: Path) -> None:
+    """A `model` block and `host_tools` in one document, run through the package."""
+    events: list[foe.Event] = []
+    outcome = asyncio.run(
+        contract_calling_its_model(tmp_path).run(
+            task="Count the references.",
+            binary=BINARY,
+            log_dir=tmp_path / "episode",
+            on_event=events.append,
+        )
+    )
+    assert outcome == foe.Completed(SUMMARY)
+    header = next(e for e in events if e.type == "request/header")
+    assert header.data["model"] == {"provider": "exec", "model": "host-tool-then-text"}
+    result = next(e for e in events if e.type == "tool/result")
+    assert result.data["name"] == "reference_count"
+    assert result.data["value"] == {"count": 3, "symbol": "add"}

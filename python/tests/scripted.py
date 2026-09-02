@@ -1,13 +1,39 @@
-"""Transports built from scripted responses, for tests."""
+"""Model responses for tests, and the host tool the scripted ones call.
+
+A response reaches an episode one of two ways. `scripted` builds a
+transport the host serves over the protocol. `scripted_model` builds the
+`model` block that leaves the model to the binary's own transport, whose
+`exec` provider runs `exec_transport.py`. Both drive the same host tool,
+`reference_count`, so a test can compare the two seams.
+"""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Sequence
+
+import foe
 
 Chunks = list[dict[str, Any]]
 
 USAGE = {"input": 10, "output": 5, "cache_read": 0}
+
+EXEC_TRANSPORT = Path(__file__).with_name("exec_transport.py")
+
+# What `exec_transport.py` answers with once the host tool has been called.
+SUMMARY = "Done: 3 references."
+
+
+def scripted_model() -> foe.Model:
+    """A `model` block the built-in transport answers without a credential."""
+    return foe.Model(provider="exec", model="host-tool-then-text", options={"exec": str(EXEC_TRANSPORT)})
+
+
+@foe.tool
+def reference_count(symbol: str) -> dict[str, Any]:
+    """Count the references to a symbol. The scripted responses call this name."""
+    return {"count": 3, "symbol": symbol}
 
 
 def text_response(text: str) -> Chunks:
