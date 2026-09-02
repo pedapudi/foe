@@ -28,3 +28,33 @@ rust_library(
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
+# The crate with `exec` alone: a model reached through a program over
+# standard input and output, and no wire format, so no HTTP client and no
+# TLS. What `//:foe-hosted` links.
+#
+# The dependencies are written out rather than taken from `all_crate_deps`,
+# which reports every optional dependency the manifest declares. Naming them
+# here is what keeps rustls, the roots compiled in beside it, and ring out of
+# this target; the CI job asserts they stay out.
+rust_library(
+    name = "foe_transport_exec",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["exec"],
+    crate_name = "foe_transport",
+    crate_root = "src/lib.rs",
+    edition = crate_edition(),
+    version = "0.2.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/contract:foe_contract",
+        "//crates/core:foe_core",
+        "//crates/log:foe_log",
+        "@crates//:nix",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:sha2",
+        "@crates//:thiserror",
+        "@crates//:tokio",
+    ],
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+)

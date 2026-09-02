@@ -29,3 +29,33 @@ rust_binary(
     rustc_flags = ["-Cstrip=symbols"],
 )
 
+# The same command line without the built-in HTTP clients, for the mode
+# `docs/protocol.md` describes: a host answers every model request over the
+# protocol, and `--host` is how it does so. `examples/host-transport` runs
+# against this binary. It keeps the `exec` seam, so a `model` block naming a
+# program still resolves; what it drops is the wire formats, `foe login`,
+# and the TLS stack all of them need.
+rust_binary(
+    name = "foe-hosted",
+    srcs = glob(["src/**/*.rs"]),
+    compile_data = ["src/builtin-coding.json"],
+    crate_features = ["transport"],
+    crate_name = "foe",
+    crate_root = "src/main.rs",
+    edition = crate_edition(),
+    version = "0.2.0",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//crates/contract:foe_contract",
+        "//crates/code:foe_code",
+        "//crates/context:foe_context",
+        "//crates/core:foe_core",
+        "//crates/log:foe_log",
+        "//crates/telemetry:foe_telemetry",
+        "//crates/transport:foe_transport_exec",
+        "//crates/view:foe_view",
+        "//crates/workflow:foe_workflow",
+    ] + all_crate_deps(normal = True),
+    proc_macro_deps = all_crate_deps(proc_macro = True),
+    rustc_flags = ["-Cstrip=symbols"],
+)

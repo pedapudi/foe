@@ -31,6 +31,49 @@ jobs:
           echo "bazel-bin/crates/cli/foe: ${size} bytes (limit ${BINARY_SIZE_LIMIT})"
           test "${size}" -le "${BINARY_SIZE_LIMIT}"
 
+      - name: Build the hosted binary
+        run: bazel build --lockfile_mode=error //:foe-hosted
+
+      # The reason the target exists. `//:foe-hosted` is the binary for the
+      # mode `docs/protocol.md` describes, where a host answers every model
+      # request and foe opens no socket, so nothing in it should reach a
+      # TLS stack. The check reads the binary rather than the build graph,
+      # because it is the shipped bytes that matter: `rustls` and `webpki`
+      # appear in panic paths and type names, and `DigiCert` is one of the
+      # roots `webpki-roots` compiles in. Any of the three coming back means
+      # the feature wiring has stopped holding.
+      - name: Check the hosted binary links no TLS stack
+        run: |
+          for name in rustls webpki DigiCert; do
+            if grep -qa "${name}" bazel-bin/crates/cli/foe-hosted; then
+              echo "bazel-bin/crates/cli/foe-hosted contains ${name}" >&2
+              exit 1
+            fi
+            if ! grep -qa "${name}" bazel-bin/crates/cli/foe; then
+              echo "bazel-bin/crates/cli/foe no longer contains ${name}; the check above proves nothing" >&2
+              exit 1
+            fi
+          done
+          echo "no TLS stack in the hosted binary"
+
+      - name: Compare the two binary sizes
+        run: |
+          full=$(stat -c %s bazel-bin/crates/cli/foe)
+          hosted=$(stat -c %s bazel-bin/crates/cli/foe-hosted)
+          echo "bazel-bin/crates/cli/foe:        ${full} bytes"
+          echo "bazel-bin/crates/cli/foe-hosted: ${hosted} bytes ($((full - hosted)) fewer)"
+          test "${hosted}" -lt "${full}"
+          test "${hosted}" -le "${BINARY_SIZE_LIMIT}"
+
+      # The two examples the hosted binary is for: one where the host answers
+      # every model request over the protocol, and one where a program does.
+      # Both are in the `rust` job's `scripts/examples.sh` run against the
+      # full binary; here they prove the hosted binary serves them too.
+      - name: Run the hosted examples against the hosted binary
+        run: |
+          python3 examples/host-transport/run.py "${PWD}/bazel-bin/crates/cli/foe-hosted"
+          sh examples/exec-transport/run.sh "${PWD}/bazel-bin/crates/cli/foe-hosted"
+
       - name: Test the end-to-end examples
         run: bazel test --lockfile_mode=error //examples/...
 
@@ -54,6 +97,14 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      # The feature set `//:foe-hosted` is built from, reached through Cargo
+      # the way an embedder reaches it. The Bazel target is the artifact that
+      # ships; this keeps the Cargo side of the same wiring from drifting.
+      - name: Hosted feature set
+        run: |
+          cargo build -p foe --no-default-features --features transport
+          cargo test -p foe --no-default-features --features transport
 
       - name: Line budget
         run: scripts/loc.sh

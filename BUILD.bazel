@@ -32,6 +32,12 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "foe-hosted",
+    actual = "//crates/cli:foe-hosted",
+    visibility = ["//visibility:public"],
+)
+
 portable_binary(
     name = "foe-portable",
     binary = "//crates/cli:foe",
