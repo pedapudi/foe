@@ -1400,7 +1400,7 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
     ("exec-transport", "sha256:e831dbc44bbe1f6d666e3033a70049b3b44e5fb9e61e39425cb33d6f6098ae45"),
     ("host-transport", "sha256:f88ee6fbf62bf4c0f992df784d356b517c26730f71475734a1c629f9a0a6ae01"),
     ("minimal", "sha256:3749aba577f9a7014716d95b61d965b89b9f8c1c96fa185c9dc0ba114836ac0c"),
-    ("recovery-exhausted", "sha256:b074b3ffc24b44a6c54b62ef6c08dd8a79d274f21679efb994dfbabbcaa2736a"),
+    ("recovery-exhausted", "sha256:f6e34210be5007468b1f9c67fa3f0acb104e5c4257a666fe18db976571866305"),
     ("sandbox", "sha256:d782d818af096573c8df312bace6be8ef32e0b80f781793e51bd6c13fef1bc91"),
     ("self-extension", "sha256:786075013e433f761e4b871d36c9c6a26bd3cc36aa7772209a230d01d5974e82"),
     ("subagents", "sha256:80d46911ef1aadc51635e89d95c1cf535b53fea15b71771414283f5015db17d3"),
