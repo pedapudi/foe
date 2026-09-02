@@ -39,7 +39,9 @@ execution-contract construction, Foe captures each configured executable's
 bytes, digest, source path, and invocation name. Every later invocation uses
 the captured executable, so replacing, modifying, or deleting the source
 cannot change the run. The tree also contains every nested contract and every
-workflow model node with inherited settings and canonical paths. Planning,
+workflow model node with inherited settings and canonical paths. A grant
+list is a set: two declared roots naming one canonical path, such as
+`/bin` and `/usr/bin` on a merged-usr host, resolve to one grant. Planning,
 fingerprinting, sandbox construction, reservation, and spawning use that same
 tree.
 

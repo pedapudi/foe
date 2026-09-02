@@ -23,14 +23,14 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
     std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let contract = contract_with(&root, |v| {
-        v["grants"]["read"] = json!([root.join("link")]);
+        v["grants"]["read"] = json!([root.join("link"), root.join("sub")]);
         v["grants"]["execute"] = json!([root.join("link")]);
         v["tools"] = json!(["block", "lint"]);
         v["tool_defs"] = json!({ "lint": { "exec": exec, "description": "lints" } });
     })
     .unwrap();
     let canonical = std::fs::canonicalize(root.join("sub")).unwrap();
-    assert_eq!(contract.grants.read, vec![canonical.clone()]);
+    assert_eq!(contract.grants.read, vec![canonical.clone()], "two roots naming one canonical path are one grant");
     assert_eq!(contract.grants.execute, vec![canonical.clone()]);
     let lint = &contract.tool_defs["lint"];
     assert_eq!(lint.cwd.as_deref(), Some(canonical.as_path()), "cwd defaults to the first read root");

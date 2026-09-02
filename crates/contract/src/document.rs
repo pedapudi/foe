@@ -317,8 +317,16 @@ fn resolve_section(
     let canonical = |k: String, path: &Path| -> Result<PathBuf, ContractError> {
         std::fs::canonicalize(path).map_err(|e| invalid(k, format!("names an existing path: {}: {e}", path.display())))
     };
+    // A grant list is a set: two declared roots naming one canonical path
+    // (such as /bin and /usr/bin on a merged-usr host) resolve to one grant.
     let roots = |k: &str, paths: &[PathBuf]| -> Result<Vec<PathBuf>, ContractError> {
-        paths.iter().enumerate().map(|(i, p)| canonical(key(&format!("{k}[{i}]")), p)).collect()
+        paths.iter().enumerate().try_fold(Vec::new(), |mut resolved, (i, p)| {
+            let path = canonical(key(&format!("{k}[{i}]")), p)?;
+            if !resolved.contains(&path) {
+                resolved.push(path);
+            }
+            Ok(resolved)
+        })
     };
     let grants = Grants {
         read: roots("grants.read", &s.grants.read)?,
