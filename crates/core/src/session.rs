@@ -16,6 +16,7 @@ use crate::{CapError, SessionLifetime, SessionOutput, SessionRequest, SessionSet
 use nix::errno::Errno;
 use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
@@ -39,6 +40,31 @@ pub fn subject(status: &SessionStatus) -> String {
         (true, _) => format!("session {}: {} \u{b7} alive", status.id, status.name),
         (false, Some(code)) => format!("session {}: exit {code} after {}s", status.id, status.seconds),
         (false, None) => format!("session {}: killed after {}s", status.id, status.seconds),
+    }
+}
+
+impl SessionSettlement {
+    /// The value and subject of the synthetic `tool/result` that records
+    /// this settlement in the episode log. A release to the task environment
+    /// carries the process and process-group ids the environment needs for
+    /// cleanup.
+    pub fn result(&self) -> (serde_json::Value, String) {
+        let status = &self.status;
+        let mut value = json!({
+            "session": status.id, "name": status.name, "alive": status.alive,
+            "exit_code": status.exit_code, "seconds": status.seconds,
+        });
+        let subject = match self.released_to_task {
+            true => {
+                value["lifetime"] = json!("task");
+                value["disposition"] = json!("released_to_task_environment");
+                value["pid"] = json!(self.pid);
+                value["process_group"] = json!(self.process_group);
+                format!("session {}: {} \u{b7} released to task environment", status.id, status.name)
+            }
+            false => subject(status),
+        };
+        (value, subject)
     }
 }
 

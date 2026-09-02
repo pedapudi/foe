@@ -1,9 +1,10 @@
 use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
-use crate::registry::{Handles, Registry};
+use crate::registry::Handles;
 use crate::test_util::{
-    call, contract_with, done, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport, Verifier,
+    call, contract_with, done, registry_for, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport,
+    Verifier,
 };
 use crate::{Tool, Transport};
 use foe_contract::document::ResolvedContract;
@@ -98,7 +99,7 @@ impl Fixture {
         if self.contract.tools.iter().any(|name| name == crate::retrieval::NAME) {
             self.tools.push(crate::retrieval::tool(self.log.clone()));
         }
-        let registry = Arc::new(Registry::new(&self.contract, vec![], self.tools).unwrap());
+        let registry = Arc::new(registry_for(&self.contract, vec![], self.tools).unwrap());
         let mut episode_start = start(&self.contract);
         episode_start.parent_id = self.parent_id;
         let params = Params {
@@ -976,7 +977,7 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
         log: log.clone(),
         start: start(&contract),
         contract: contract.clone(),
-        registry: Arc::new(Registry::new(&contract, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
+        registry: Arc::new(registry_for(&contract, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
         handles: Handles::default(),
         transport: Arc::new(ScriptedTransport::new(vec![turn("forked end", vec![])])),
         pool: Arc::new(Mutex::new(Pool::new(contract.budget.clone()))),

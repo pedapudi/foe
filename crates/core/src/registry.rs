@@ -50,22 +50,12 @@ fn invalid(rule: String) -> ContractError {
 }
 
 impl Registry {
-    /// Resolves `contract.tools`. `host_tools` are the implementations of the
+    /// Resolves `contract.tools`. `executables` holds the captured copy each
+    /// `tool_defs` entry runs. `host_tools` are the implementations of the
     /// document's `host_tools` entries; their specifications come from the
     /// document. `extra_builtins` are built-in tools implemented elsewhere:
     /// the coding tools and the spawn and team tools.
     pub fn new(
-        contract: &ResolvedContract,
-        host_tools: Vec<Box<dyn Tool>>,
-        extra_builtins: Vec<Box<dyn Tool>>,
-    ) -> Result<Self, ContractError> {
-        let executables =
-            CapturedExecutableTree::materialize(contract, std::path::Path::new("/tmp/foe-standalone-episode"))
-                .map_err(invalid)?;
-        Self::new_with_executables(contract, &executables, host_tools, extra_builtins)
-    }
-
-    pub fn new_with_executables(
         contract: &ResolvedContract,
         executables: &CapturedExecutableTree,
         host_tools: Vec<Box<dyn Tool>>,

@@ -220,35 +220,12 @@ pub async fn settle(
         let settled = tokio::task::spawn_blocking(move || settler.settle())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
-        let step = log.with_events(|events| {
-            events
-                .iter()
-                .rev()
-                .find_map(|e| match &e.data {
-                    EventData::ModelRequest(r) => Some(r.step),
-                    _ => None,
-                })
-                .unwrap_or(0)
-        });
+        let step = log.with_events(latest_step);
         for settlement in settled {
-            let status = settlement.status;
-            let mut value = serde_json::json!({
-                "session": status.id, "name": status.name, "alive": status.alive,
-                "exit_code": status.exit_code, "seconds": status.seconds,
-            });
-            let subject = match settlement.released_to_task {
-                true => {
-                    value["lifetime"] = serde_json::json!("task");
-                    value["disposition"] = serde_json::json!("released_to_task_environment");
-                    value["pid"] = serde_json::json!(settlement.pid);
-                    value["process_group"] = serde_json::json!(settlement.process_group);
-                    format!("session {}: {} · released to task environment", status.id, status.name)
-                }
-                false => crate::session::subject(&status),
-            };
+            let (value, subject) = settlement.result();
             log.append(EventData::ToolResult(ToolResult {
                 step,
-                call_id: format!("session-{}-settle", status.id),
+                call_id: format!("session-{}-settle", settlement.status.id),
                 name: crate::session::SESSION_TOOL.into(),
                 value,
                 rendered: subject.clone(),
@@ -273,6 +250,18 @@ pub async fn settle(
     }
     log.sync()?;
     Ok(())
+}
+
+/// The step of the most recent `model/request`, or zero before the first.
+fn latest_step(events: &[Event]) -> u32 {
+    events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.data {
+            EventData::ModelRequest(r) => Some(r.step),
+            _ => None,
+        })
+        .unwrap_or(0)
 }
 
 /// Waits until every child has settled, which is when the `spawn/end` and
@@ -352,14 +341,10 @@ impl Episode {
         let events = p.log.events();
         let state = fold::fold(&events)?;
         events.iter().for_each(|e| lock(&p.pool).apply(&e.data));
-        let step = events.iter().rev().find_map(|e| match &e.data {
-            EventData::ModelRequest(r) => Some(r.step),
-            _ => None,
-        });
         Ok(Self {
             inbox: Inbox::from_state(&state),
             header: state.header_seq.zip(state.header),
-            step: step.unwrap_or(0),
+            step: latest_step(&events),
             requests: state.model_calls,
             request_seq: 0,
             verify_attempts: 0,

@@ -1,7 +1,8 @@
 //! SHA-256 verification for content-addressed log evidence.
 //!
-//! This small implementation keeps the log reader independent of runtime
-//! crates and of dependencies beyond those listed in `AGENTS.md`.
+//! The log crate implements SHA-256 itself so that verifying a log carries
+//! no dependency beyond the workspace's serde set. The contract crate uses
+//! the `sha2` crate; a log reader never needs it.
 
 const INITIAL: [u32; 8] =
     [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];

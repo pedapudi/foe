@@ -267,7 +267,8 @@ mod episode {
         }))
         .unwrap();
         let resolved = foe_contract::document::resolve(&config).unwrap();
-        let registry = Arc::new(Registry::new(&resolved, vec![], crate::all()).unwrap());
+        let executables = foe_core::captured_executable::CapturedExecutableTree::materialize(&resolved, &root).unwrap();
+        let registry = Arc::new(Registry::new(&resolved, &executables, vec![], crate::all()).unwrap());
         let args = json!({ "source": source }).to_string();
         let turn = vec![
             Chunk::ToolCallStart { id: "tc_py".into(), name: "python".into() },

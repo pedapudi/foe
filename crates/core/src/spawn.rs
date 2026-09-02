@@ -234,18 +234,6 @@ impl ProcessSpawner {
         episode_id: String,
         log_dir: PathBuf,
         contract: ResolvedContract,
-        limits: Budget,
-        builtin_specs: Vec<ToolSpec>,
-        connections: ProcessConnections,
-    ) -> Result<Self, CapError> {
-        let executables = CapturedExecutableTree::materialize(&contract, &log_dir).map_err(CapError::Invalid)?;
-        Self::new_with_executables(episode_id, log_dir, contract, executables, limits, builtin_specs, connections)
-    }
-
-    pub fn new_with_executables(
-        episode_id: String,
-        log_dir: PathBuf,
-        contract: ResolvedContract,
         executables: CapturedExecutableTree,
         limits: Budget,
         builtin_specs: Vec<ToolSpec>,

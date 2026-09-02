@@ -70,7 +70,8 @@ fn the_assembled_system_prompt_never_mentions_the_subject() {
     }))
     .unwrap();
     let contract = foe_contract::document::resolve(&config).unwrap();
-    let registry = foe_core::registry::Registry::new(&contract, vec![], super::all()).unwrap();
+    let executables = foe_core::captured_executable::CapturedExecutableTree::materialize(&contract, &root).unwrap();
+    let registry = foe_core::registry::Registry::new(&contract, &executables, vec![], super::all()).unwrap();
     let prompt = registry.system_prompt(&contract.instructions);
     assert!(!prompt.contains("subject"), "the system prompt mentions the subject:\n{prompt}");
     for schema in registry.schemas() {

@@ -73,10 +73,12 @@ pub(crate) fn process_spawner(
 ) -> ProcessSpawner {
     let contract = foe_contract::document::resolve(&config).unwrap();
     let limits = contract.budget.clone();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &log_dir).unwrap();
     ProcessSpawner::new(
         episode_id.into(),
         log_dir,
         contract,
+        executables,
         limits,
         extra_specs(),
         ProcessConnections { uplink, router, observer },
@@ -302,10 +304,12 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     );
     let contract = foe_contract::document::resolve(&config).unwrap();
     std::fs::write(&tool, "second").unwrap();
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir).unwrap();
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
         dir.to_path_buf(),
         contract.clone(),
+        executables,
         contract.budget.clone(),
         extra_specs(),
         ProcessConnections {
@@ -356,10 +360,12 @@ async fn forked_child_launch_records_the_source_and_boundary() {
         .unwrap();
     writer.sync().unwrap();
     let router = Arc::new(Router::new());
+    let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir).unwrap();
     let spawner = ProcessSpawner::new(
         "ep_root".into(),
         dir.to_path_buf(),
         contract.clone(),
+        executables,
         contract.budget.clone(),
         extra_specs(),
         ProcessConnections {
