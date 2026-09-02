@@ -7,7 +7,7 @@
 <style id="dia-theme">
 :root {
   --dia-paper: #FDF6E3; --dia-ink: #586E75; --dia-ink-soft: #657B83;
-  --dia-ink-faint: #93A1A1; --dia-accent: #268BD2; --dia-rule: #E7DCBE;
+  --dia-ink-faint: #93A1A1; --dia-accent: #268BD2; --dia-rule: #E7DCBE; --foe-accent: #C7791A;
   --dia-good: #6B9B0B; --dia-bad: #DC322F;
   --dia-face-display: "Source Sans 3", system-ui, sans-serif;
   --dia-face-body: "Source Sans 3", system-ui, sans-serif;
@@ -92,7 +92,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       </ul>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 220" role="img" aria-label="ambient authority as a flood plain versus granted authority as a walled channel">
+      <svg viewBox="0 0 340 220" role="img" aria-label="ambient authority painted as a flood spreading over a sand plain; granted authority as a deep blue channel held between two amber stone walls">
       <defs>
         <symbol id="m-shield" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
           <g fill="none" stroke="currentColor" stroke-width="1.5">
@@ -105,18 +105,19 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
           <g fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 z"/><path d="M3 7 L12 12"/><path d="M12 12 L21 7"/><path d="M12 12 L12 22"/></g></symbol>
       </defs>
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <path d="M24,64 C70,50 120,74 168,58 C220,42 270,66 316,54" opacity=".4"/>
-          <path d="M24,80 C70,68 124,92 172,76 C222,60 272,84 316,72" opacity=".3"/>
-          <path d="M24,48 C70,36 118,58 166,44 C218,28 268,50 316,40" opacity=".3"/>
-        </g>
-        <text x="28" y="30" font-size="9" fill="var(--dia-ink-faint)">ambient: authority spreads wherever the account reaches</text>
-        <g stroke="var(--dia-accent)" stroke-width="1.8" fill="none">
-          <path d="M24,150 L316,150"/>
-          <path d="M24,178 L316,178"/>
-        </g>
-        <path d="M24,164 C80,158 160,170 240,162 C270,159 296,164 316,164" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
-        <text x="28" y="140" font-size="9" fill="var(--dia-ink-soft)">granted: the run flows only inside declared walls</text>
+        <rect x="24" y="36" width="292" height="60" fill="#EFE4C8"/>
+        <path d="M24,52 C70,44 110,64 160,54 C210,44 260,66 316,50 L316,72 C260,84 210,60 160,72 C110,84 70,62 24,72 Z" fill="#C9DCE8" opacity=".85"/>
+        <path d="M40,80 C80,74 120,88 170,82 C220,76 268,90 306,82 L306,92 C268,98 220,86 170,92 C120,98 80,86 40,92 Z" fill="#B7D0E2" opacity=".6"/>
+        <path d="M60,40 C100,36 150,46 200,40 C250,34 286,44 310,40 L310,48 C286,52 250,42 200,48 C150,54 100,44 60,48 Z" fill="#D8E6EF" opacity=".7"/>
+        <text x="28" y="28" font-size="9" fill="var(--dia-ink-faint)">ambient: authority spreads wherever the account reaches</text>
+        <rect x="24" y="146" width="292" height="9" fill="#C7994F"/>
+        <rect x="24" y="146" width="292" height="2.6" fill="#DDB877"/>
+        <rect x="24" y="180" width="292" height="9" fill="#C7994F"/>
+        <rect x="24" y="180" width="292" height="2.6" fill="#DDB877"/>
+        <rect x="24" y="155" width="292" height="25" fill="#5D8FBF"/>
+        <path d="M40,162 C70,159 100,165 130,162 C160,159 190,165 214,162 L214,166 C190,169 160,163 130,166 C100,169 70,163 40,166 Z" fill="#7FA9D2" opacity=".8"/>
+        <path d="M120,172 C150,169 180,175 240,171 C270,169 292,173 308,171 L308,175 C292,177 270,173 240,175 C180,179 150,173 120,176 Z" fill="#8FB5DA" opacity=".6"/>
+        <text x="28" y="138" font-size="9" fill="var(--dia-ink-soft)">granted: the run flows only inside declared walls</text>
         <text x="170" y="210" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the walls are readable before the water moves</text>
       </svg>
       <figcaption class="dia-caption">An allow list can be reviewed before the run, reported during it, and enforced throughout; ambient authority offers none of the three.</figcaption>
@@ -149,24 +150,35 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       places, and two spellings of one directory are one grant.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 220" role="img" aria-label="a keyring of six keys; each key is one grant kind">
-        <circle cx="170" cy="86" r="34" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.4"/>
-        <circle cx="170" cy="86" r="7" fill="none" stroke="var(--dia-ink-faint)" stroke-width="1"/>
-        <g stroke="var(--dia-ink-faint)" stroke-width="1.1" fill="none">
-          <path d="M148,113 L128,160 L134,166 L128,172" opacity=".85"/>
-          <path d="M170,120 L170,170 L177,176 L170,182" opacity=".85"/>
-          <path d="M192,113 L212,160 L206,166 L212,172" opacity=".85"/>
-          <path d="M136,64 L96,42" opacity=".6"/>
-          <path d="M204,64 L244,42" opacity=".6"/>
-        </g>
-        <path d="M170,52 L170,20 L163,14 L170,8" fill="none" stroke="var(--dia-accent)" stroke-width="1.8"/>
+      <svg viewBox="0 0 340 220" role="img" aria-label="a brass keyring holding six colored keys, one per grant kind — read, write, execute, spawn, bind, task_session — with the spawn key in the amber of the mark">
+        <circle cx="170" cy="52" r="44" fill="none" stroke="#B08D57" stroke-width="3.4"/>
+        <circle cx="170" cy="52" r="44" fill="none" stroke="#D8BC8A" stroke-width="1"/>
+        <circle cx="132" cy="74" r="6.5" fill="#5D8FBF"/>
+        <rect x="130.4" y="80" width="3.2" height="52" fill="#B08D57"/>
+        <rect x="133.6" y="120" width="5" height="3" fill="#B08D57"/><rect x="133.6" y="127" width="7" height="3" fill="#B08D57"/>
+        <circle cx="148" cy="90" r="6.5" fill="#7A9B5D"/>
+        <rect x="146.4" y="96" width="3.2" height="58" fill="#B08D57"/>
+        <rect x="149.6" y="142" width="5" height="3" fill="#B08D57"/><rect x="149.6" y="149" width="7" height="3" fill="#B08D57"/>
+        <circle cx="163" cy="95" r="6.5" fill="#B5654A"/>
+        <rect x="161.4" y="101" width="3.2" height="46" fill="#B08D57"/>
+        <rect x="164.6" y="137" width="5" height="3" fill="#B08D57"/><rect x="164.6" y="143" width="7" height="3" fill="#B08D57"/>
+        <circle cx="178" cy="95" r="8" fill="var(--foe-accent)"/>
+        <circle cx="178" cy="95" r="3" fill="#FDF6E3"/>
+        <rect x="176.2" y="102" width="3.6" height="62" fill="#C7791A"/>
+        <rect x="179.8" y="150" width="6" height="3.4" fill="#C7791A"/><rect x="179.8" y="158" width="8" height="3.4" fill="#C7791A"/>
+        <circle cx="193" cy="89" r="6.5" fill="#8A6FB0"/>
+        <rect x="191.4" y="95" width="3.2" height="52" fill="#B08D57"/>
+        <rect x="194.6" y="135" width="5" height="3" fill="#B08D57"/><rect x="194.6" y="142" width="7" height="3" fill="#B08D57"/>
+        <circle cx="209" cy="72" r="6.5" fill="#7A8A99"/>
+        <rect x="207.4" y="78" width="3.2" height="48" fill="#B08D57"/>
+        <rect x="210.6" y="114" width="5" height="3" fill="#B08D57"/><rect x="210.6" y="120" width="7" height="3" fill="#B08D57"/>
         <g font-size="8.5" fill="var(--dia-ink-soft)">
-          <text x="104" y="188" text-anchor="middle">read</text>
-          <text x="170" y="200" text-anchor="middle">write</text>
-          <text x="236" y="188" text-anchor="middle">execute</text>
-          <text x="86" y="34" text-anchor="middle">bind</text>
-          <text x="254" y="34" text-anchor="middle">task_session</text>
-          <text x="182" y="12" fill="var(--dia-ink)">spawn</text>
+          <text x="118" y="146" text-anchor="end">read</text>
+          <text x="134" y="168" text-anchor="end">write</text>
+          <text x="158" y="184" text-anchor="end">execute</text>
+          <text x="184" y="180" fill="var(--foe-accent)">spawn</text>
+          <text x="202" y="162">bind</text>
+          <text x="222" y="138">task_session</text>
         </g>
       </svg>
       <figcaption class="dia-caption">Each key opens one kind of door and no other; there is no master key on the ring.</figcaption>
@@ -197,31 +209,30 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       it, so a reader knows what a run's walls actually were.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 210" role="img" aria-label="a grants document compiled through a policy into kernel rules guarding syscalls">
-        <rect x="30" y="34" width="92" height="56" rx="5" fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
-        <g font-size="8" fill="var(--dia-ink-faint)">
-          <text x="40" y="50">"grants": {</text>
-          <text x="46" y="62">"read": […],</text>
-          <text x="46" y="74">"write": […]</text>
-          <text x="40" y="86">}</text>
+      <svg viewBox="0 0 340 210" role="img" aria-label="the grants sheet feeds a terracotta press that casts three amber bars — the kernel rules — standing as a portcullis before the doorway every syscall must pass">
+        <rect x="24" y="100" width="292" height="5" fill="#D9C9A0"/>
+        <rect x="30" y="40" width="70" height="56" fill="#FFFDF2"/>
+        <rect x="30" y="40" width="70" height="56" fill="none" stroke="#D8CBAA" stroke-width="1"/>
+        <g fill="#B8AA88">
+          <rect x="38" y="50" width="50" height="2.4"/><rect x="38" y="60" width="54" height="2.4"/>
+          <rect x="38" y="70" width="42" height="2.4"/><rect x="38" y="80" width="48" height="2.4"/>
         </g>
-        <path d="M122,62 L162,62" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
-        <path d="M162,62 L155,58 M162,62 L155,66" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
-        <rect x="166" y="42" width="70" height="40" rx="5" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
-        <text x="201" y="64" text-anchor="middle" font-size="9" fill="var(--dia-ink)">compile</text>
-        <path d="M236,62 L276,62" stroke="var(--dia-accent)" stroke-width="1.8"/>
-        <path d="M276,62 L269,58 M276,62 L269,66" stroke="var(--dia-accent)" stroke-width="1.8" fill="none"/>
-        <g stroke="var(--dia-accent)" stroke-width="1.6" fill="none">
-          <path d="M282,40 L282,84"/>
-          <path d="M292,40 L292,84"/>
-          <path d="M302,40 L302,84"/>
+        <text x="65" y="116" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">"grants": {…}</text>
+        <path d="M100,66 L140,66" stroke="#8A8A7A" stroke-width="1.1"/>
+        <rect x="140" y="36" width="72" height="64" fill="#B5654A"/>
+        <rect x="140" y="36" width="72" height="10" fill="#C97F60"/>
+        <circle cx="176" cy="68" r="15" fill="#8A4A34"/>
+        <circle cx="176" cy="68" r="15" fill="none" stroke="#DDA285" stroke-width="1.2"/>
+        <circle cx="176" cy="68" r="4" fill="#DDA285"/>
+        <text x="176" y="116" text-anchor="middle" font-size="9" fill="var(--dia-ink)">compile</text>
+        <path d="M250,100 L250,58 C250,38 296,38 296,58 L296,100 Z" fill="#4A5560"/>
+        <path d="M212,66 L256,66" stroke="var(--foe-accent)" stroke-width="1.6"/>
+        <g fill="var(--foe-accent)">
+          <rect x="256" y="40" width="4" height="60"/><rect x="270" y="34" width="4" height="66"/><rect x="284" y="40" width="4" height="60"/>
         </g>
-        <text x="292" y="98" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">kernel rules</text>
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <path d="M240,140 C260,120 276,110 288,104" opacity=".7" stroke-dasharray="3 3"/>
-        </g>
-        <text x="200" y="152" font-size="8.5" fill="var(--dia-ink-faint)">open("/etc/shadow") → denied in the kernel</text>
-        <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the model is never asked to behave — the syscall is refused</text>
+        <text x="272" y="116" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">kernel rules</text>
+        <text x="316" y="152" text-anchor="end" font-size="8.5" fill="var(--dia-ink-faint)">open("/etc/shadow") → denied in the kernel</text>
+        <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the model is never asked to behave</text>
       </svg>
       <figcaption class="dia-caption">The declaration and the enforcement are one computation; no prose asks the code to comply.</figcaption>
     </figure>
@@ -250,26 +261,29 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       chose.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 220" role="img" aria-label="a constellation of system binaries; only the resolved closure is joined by the accent line">
-        <g fill="var(--dia-ink-faint)">
-          <circle cx="52" cy="58" r="1.8" opacity=".5"/><circle cx="94" cy="34" r="1.4" opacity=".4"/>
-          <circle cx="140" cy="66" r="1.8" opacity=".55"/><circle cx="196" cy="40" r="1.4" opacity=".4"/>
-          <circle cx="250" cy="62" r="1.8" opacity=".5"/><circle cx="292" cy="44" r="1.4" opacity=".35"/>
-          <circle cx="66" cy="120" r="1.6" opacity=".45"/><circle cx="118" cy="146" r="1.8" opacity=".5"/>
-          <circle cx="240" cy="150" r="1.6" opacity=".4"/><circle cx="288" cy="118" r="1.8" opacity=".5"/>
-          <circle cx="54" cy="180" r="1.4" opacity=".35"/><circle cx="160" cy="184" r="1.6" opacity=".45"/>
-          <circle cx="296" cy="182" r="1.4" opacity=".4"/><circle cx="206" cy="96" r="1.6" opacity=".45"/>
+      <svg viewBox="0 0 340 220" role="img" aria-label="a framed night sky over the light page: the binaries of /usr/bin are faint stars, and only the resolved closure — python3, its loader, your script — is joined as an amber constellation">
+        <path d="M28,22 h284 v156 h-284 Z" fill="#C4A165"/>
+        <path d="M36,30 h268 v140 h-268 Z" fill="#2B3A55"/>
+        <g fill="#8FA0C0">
+          <circle cx="62" cy="58" r="1.8" opacity=".6"/><circle cx="104" cy="42" r="1.4" opacity=".5"/>
+          <circle cx="146" cy="66" r="1.8" opacity=".65"/><circle cx="198" cy="46" r="1.4" opacity=".5"/>
+          <circle cx="252" cy="62" r="1.8" opacity=".6"/><circle cx="288" cy="48" r="1.4" opacity=".45"/>
+          <circle cx="72" cy="118" r="1.6" opacity=".55"/><circle cx="120" cy="142" r="1.8" opacity=".6"/>
+          <circle cx="240" cy="146" r="1.6" opacity=".5"/><circle cx="284" cy="116" r="1.8" opacity=".6"/>
+          <circle cx="58" cy="158" r="1.4" opacity=".45"/><circle cx="162" cy="156" r="1.6" opacity=".55"/>
+          <circle cx="208" cy="96" r="1.6" opacity=".55"/>
         </g>
-        <g stroke="var(--dia-accent)" stroke-width="1.4" fill="none">
-          <path d="M96,96 L164,118 L232,102"/>
+        <path d="M100,96 L166,116 L230,100" fill="none" stroke="#E8A43E" stroke-width="1.5"/>
+        <g fill="#E8A43E">
+          <circle cx="100" cy="96" r="3.4"/><circle cx="166" cy="116" r="3.4"/><circle cx="230" cy="100" r="3.4"/>
         </g>
-        <g fill="var(--dia-accent)">
-          <circle cx="96" cy="96" r="3"/><circle cx="164" cy="118" r="3"/><circle cx="232" cy="102" r="3"/>
+        <g fill="#E8A43E" opacity=".22">
+          <circle cx="100" cy="96" r="7"/><circle cx="166" cy="116" r="7"/><circle cx="230" cy="100" r="7"/>
         </g>
-        <g font-size="8.5" fill="var(--dia-ink-soft)">
-          <text x="96" y="86" text-anchor="middle">python3</text>
-          <text x="164" y="134" text-anchor="middle">its loader</text>
-          <text x="232" y="92" text-anchor="middle">your script</text>
+        <g font-size="8.5" fill="#D9C9A8">
+          <text x="100" y="86" text-anchor="middle">python3</text>
+          <text x="166" y="132" text-anchor="middle">its loader</text>
+          <text x="230" y="90" text-anchor="middle">your script</text>
         </g>
         <text x="170" y="210" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">every other star in /usr/bin stays scenery</text>
       </svg>
@@ -295,30 +309,36 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       delete the source file mid-run — the run does not change.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 210" role="img" aria-label="bytes sealed in a jar at construction; later changes to the source cannot reach the run">
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <rect x="36" y="44" width="74" height="90" rx="4" opacity=".8"/>
-          <path d="M46,62 L100,62 M46,76 L100,76 M46,90 L88,90" opacity=".6"/>
-          <path d="M46,110 L100,110 M46,122 L82,122" opacity=".35" stroke-dasharray="3 3"/>
+      <svg viewBox="0 0 340 210" role="img" aria-label="the configured file as a paper sheet that may change later; at construction its bytes pour into a glass jar sealed with amber wax, and the run drinks only from the jar by descriptor">
+        <rect x="36" y="44" width="74" height="90" fill="#FFFDF2"/>
+        <rect x="36" y="44" width="74" height="90" fill="none" stroke="#D8CBAA" stroke-width="1"/>
+        <g fill="#B8AA88">
+          <rect x="46" y="58" width="54" height="2.4"/><rect x="46" y="72" width="54" height="2.4"/>
+          <rect x="46" y="86" width="42" height="2.4"/>
+        </g>
+        <g fill="#D0C4A2">
+          <rect x="46" y="106" width="54" height="2.4"/><rect x="46" y="118" width="36" height="2.4"/>
         </g>
         <text x="73" y="152" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">the file at its path</text>
         <text x="73" y="166" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">(may change later)</text>
-        <path d="M110,88 L158,88" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
-        <path d="M158,88 L151,84 M158,88 L151,92" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
+        <path d="M110,88 L158,88" stroke="#8A8A7A" stroke-width="1.1"/>
+        <path d="M158,88 L151,84 M158,88 L151,92" stroke="#8A8A7A" stroke-width="1.1" fill="none"/>
         <text x="134" y="80" text-anchor="middle" font-size="8" fill="var(--dia-ink-soft)">capture</text>
-        <g stroke="var(--dia-accent)" stroke-width="1.8" fill="none">
-          <path d="M180,70 C180,54 232,54 232,70 L232,128 C232,144 180,144 180,128 Z"/>
-          <path d="M188,64 L224,64"/>
-        </g>
-        <g stroke="var(--dia-ink-soft)" stroke-width="0.9">
-          <path d="M192,88 L220,88 M192,100 L220,100 M192,112 L212,112"/>
+        <path d="M180,70 C180,52 232,52 232,70 L232,128 C232,146 180,146 180,128 Z" fill="#E4EEE9"/>
+        <path d="M180,70 C180,52 232,52 232,70 L232,128 C232,146 180,146 180,128 Z" fill="none" stroke="#9BB5A8" stroke-width="1.4"/>
+        <path d="M184,62 C192,54 220,54 228,62 L228,68 C220,62 192,62 184,68 Z" fill="var(--foe-accent)"/>
+        <circle cx="206" cy="58" r="4.6" fill="#B06812"/>
+        <g fill="#D9932C">
+          <circle cx="192" cy="88" r="2.6"/><circle cx="206" cy="94" r="2.6"/><circle cx="220" cy="88" r="2.6"/>
+          <circle cx="196" cy="106" r="2.6"/><circle cx="212" cy="112" r="2.6"/><circle cx="222" cy="102" r="2.6"/>
+          <circle cx="200" cy="122" r="2.6"/><circle cx="214" cy="126" r="2.6"/>
         </g>
         <text x="206" y="162" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">sealed bytes · digest in</text>
         <text x="206" y="174" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">the fingerprint</text>
-        <path d="M240,96 L292,96" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
-        <path d="M292,96 L285,92 M292,96 L285,100" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
-        <text x="300" y="92" font-size="8.5" fill="var(--dia-ink-soft)">runs by</text>
-        <text x="300" y="104" font-size="8.5" fill="var(--dia-ink-soft)">descriptor</text>
+        <path d="M240,96 L292,96" stroke="#8A8A7A" stroke-width="1.1"/>
+        <path d="M292,96 L285,92 M292,96 L285,100" stroke="#8A8A7A" stroke-width="1.1" fill="none"/>
+        <text x="288" y="92" font-size="8.5" fill="var(--dia-ink-soft)">runs by</text>
+        <text x="288" y="104" font-size="8.5" fill="var(--dia-ink-soft)">descriptor</text>
       </svg>
       <figcaption class="dia-caption">Identity hashes the sealed bytes, so "same fingerprint" includes "same tools, byte for byte".</figcaption>
     </figure>
@@ -348,23 +368,36 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       the walls you did not get are stated, never assumed.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 210" role="img" aria-label="a process tree inside an owned boundary; one granted session steps outside through a gate">
-        <rect x="36" y="30" width="220" height="150" rx="8" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.2"/>
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <path d="M96,60 L96,96 M96,96 L66,126 M96,96 L126,126 M126,126 L126,156" opacity=".8"/>
-          <path d="M96,60 L176,96 M176,96 L206,126" opacity=".6"/>
+      <svg viewBox="0 0 340 210" role="img" aria-label="the episode as a walled garden: the process tree grows inside sand-stone walls with its children as fruit, and one amber path leaves through the gate that a task_session grant opens">
+        <rect x="24" y="168" width="292" height="8" fill="#D9C9A0"/>
+        <rect x="24" y="164" width="292" height="4" fill="#A8B87A"/>
+        <rect x="128" y="96" width="9" height="68" fill="#8A6A4A"/>
+        <rect x="128" y="96" width="3" height="68" fill="#A3835F"/>
+        <circle cx="132" cy="76" r="26" fill="#7A9B5D"/>
+        <circle cx="112" cy="90" r="18" fill="#7A9B5D"/>
+        <circle cx="154" cy="88" r="19" fill="#7A9B5D"/>
+        <circle cx="124" cy="64" r="16" fill="#93B274"/>
+        <circle cx="148" cy="72" r="12" fill="#93B274"/>
+        <g fill="#B5654A">
+          <circle cx="116" cy="82" r="3"/><circle cx="140" cy="90" r="3"/><circle cx="158" cy="78" r="3"/>
+          <circle cx="128" cy="98" r="3"/><circle cx="146" cy="60" r="3"/>
         </g>
-        <g fill="var(--dia-ink-faint)">
-          <circle cx="96" cy="58" r="3"/><circle cx="66" cy="128" r="2.2"/><circle cx="126" cy="128" r="2.2"/>
-          <circle cx="126" cy="158" r="2.2"/><circle cx="176" cy="96" r="2.2"/><circle cx="206" cy="128" r="2.2"/>
-        </g>
-        <text x="96" y="48" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">episode</text>
-        <text x="140" y="196" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">killed together at settlement</text>
-        <path d="M256,100 L256,84 L300,84" fill="none" stroke="var(--dia-accent)" stroke-width="1.6"/>
-        <circle cx="300" cy="84" r="2.6" fill="var(--dia-accent)"/>
-        <text x="300" y="72" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">task_session</text>
-        <text x="300" y="100" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">the one gate out —</text>
-        <text x="300" y="111" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">granted, recorded</text>
+        <rect x="36" y="88" width="18" height="76" fill="#C4A165"/>
+        <rect x="36" y="88" width="18" height="5" fill="#DDB877"/>
+        <rect x="32" y="82" width="26" height="8" fill="#B08D57"/>
+        <rect x="238" y="88" width="18" height="76" fill="#C4A165"/>
+        <rect x="238" y="88" width="18" height="5" fill="#DDB877"/>
+        <rect x="234" y="82" width="26" height="8" fill="#B08D57"/>
+        <rect x="54" y="132" width="184" height="32" fill="#C4A165"/>
+        <rect x="54" y="132" width="184" height="5" fill="#DDB877"/>
+        <path d="M240,164 L240,132 C240,118 254,118 254,132 L254,164 Z" fill="#5A4A38"/>
+        <path d="M254,158 C276,156 298,158 316,156 L316,166 C298,168 276,166 254,168 Z" fill="var(--foe-accent)" opacity=".85"/>
+        <text x="28" y="40" font-size="8.5" fill="var(--dia-ink-soft)">the episode and</text>
+        <text x="28" y="52" font-size="8.5" fill="var(--dia-ink-soft)">everything it forks</text>
+        <text x="146" y="196" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">killed together at settlement</text>
+        <text x="288" y="52" text-anchor="middle" font-size="8.5" fill="var(--foe-accent)">task_session</text>
+        <text x="288" y="64" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">the one gate out —</text>
+        <text x="288" y="75" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">granted, recorded</text>
       </svg>
       <figcaption class="dia-caption">The boundary is a kernel object; a process leaves it only through the declared grant.</figcaption>
     </figure>
@@ -390,20 +423,23 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       There is no call path that regains what an ancestor gave up.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 210" role="img" aria-label="nested funnels: each level passes on a strictly smaller opening">
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <path d="M40,40 L300,40 L262,86 L78,86 Z" opacity=".45"/>
-          <path d="M78,86 L262,86 L232,132 L108,132 Z" opacity=".65"/>
-          <path d="M108,132 L232,132 L206,178 L134,178 Z" opacity=".85"/>
-        </g>
-        <path d="M134,178 L206,178" stroke="var(--dia-accent)" stroke-width="2"/>
+      <svg viewBox="0 0 340 210" role="img" aria-label="authority as water descending mountain terraces: each pool is strictly smaller than the one above, and the smallest — what actually runs — is rimmed in amber">
+        <path d="M40,42 L300,42 L262,86 L78,86 Z" fill="#E3D3A8"/>
+        <path d="M52,46 L288,46 L280,56 L60,56 Z" fill="#9BC0DC"/>
+        <path d="M78,86 L262,86 L232,130 L108,130 Z" fill="#D9C592"/>
+        <path d="M88,90 L252,90 L246,100 L94,100 Z" fill="#7FA9D2"/>
+        <path d="M108,130 L232,130 L206,174 L134,174 Z" fill="#CBB27E"/>
+        <path d="M118,134 L222,134 L216,144 L124,144 Z" fill="#5D8FBF"/>
+        <path d="M162,56 L178,56 L176,66 L164,66 Z" fill="#B7D0E2" opacity=".85"/>
+        <path d="M164,100 L176,100 L175,110 L165,110 Z" fill="#B7D0E2" opacity=".85"/>
+        <path d="M134,174 L206,174 L206,179 L134,179 Z" fill="var(--foe-accent)"/>
         <g font-size="8.5" fill="var(--dia-ink-soft)">
-          <text x="308" y="44">the episode's grants</text>
-          <text x="270" y="90">a child episode</text>
-          <text x="240" y="136">a tool process</text>
-          <text x="214" y="182" fill="var(--dia-ink)">what actually runs</text>
+          <text x="334" y="36" text-anchor="end">the episode's grants</text>
+          <text x="334" y="90" text-anchor="end">a child episode</text>
+          <text x="334" y="134" text-anchor="end">a tool process</text>
+          <text x="334" y="180" text-anchor="end" fill="var(--dia-ink)">what actually runs</text>
         </g>
-        <text x="170" y="202" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">each opening fits inside the one above — by construction, checked at resolution</text>
+        <text x="170" y="202" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">each opening fits inside the one above</text>
       </svg>
       <figcaption class="dia-caption">Monotone narrowing is what makes delegation safe to reason about.</figcaption>
     </figure>
@@ -432,20 +468,29 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       rights.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 200" role="img" aria-label="a shared parent directory: the owned child is fully held, the parent gets one narrow right">
-        <path d="M40,54 L300,54" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
-        <text x="44" y="44" font-size="8.5" fill="var(--dia-ink-soft)">the shared parent</text>
-        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
-          <path d="M84,54 L84,86" opacity=".7"/><rect x="56" y="86" width="56" height="40" rx="4" opacity=".6"/>
-          <path d="M256,54 L256,86" opacity=".7"/><rect x="228" y="86" width="56" height="40" rx="4" opacity=".6"/>
+      <svg viewBox="0 0 340 200" role="img" aria-label="the shared parent as one long beam over three chests: two siblings in pale wood, the owned amber chest fully held, and on the beam itself only the small latch of remove-directory">
+        <rect x="30" y="44" width="280" height="9" fill="#8A6A4A"/>
+        <rect x="30" y="44" width="280" height="2.6" fill="#A3835F"/>
+        <text x="44" y="36" font-size="8.5" fill="var(--dia-ink-soft)">the shared parent</text>
+        <rect x="82" y="53" width="3" height="43" fill="#B0A288"/>
+        <rect x="168" y="53" width="3" height="43" fill="#B08D57"/>
+        <rect x="254" y="53" width="3" height="43" fill="#B0A288"/>
+        <rect x="160" y="53" width="20" height="7" fill="var(--foe-accent)"/>
+        <rect x="56" y="96" width="56" height="38" fill="#C9BC9C"/>
+        <rect x="56" y="96" width="56" height="9" fill="#D9CDAF"/>
+        <rect x="228" y="96" width="56" height="38" fill="#C9BC9C"/>
+        <rect x="228" y="96" width="56" height="9" fill="#D9CDAF"/>
+        <rect x="140" y="92" width="60" height="42" fill="#C7791A"/>
+        <rect x="140" y="92" width="60" height="10" fill="#E0A055"/>
+        <circle cx="170" cy="116" r="4" fill="#6E4210"/>
+        <circle cx="170" cy="116" r="1.6" fill="#FDF6E3"/>
+        <g font-size="8" fill="var(--dia-ink-faint)" text-anchor="middle">
+          <text x="84" y="148">a sibling's data</text>
+          <text x="256" y="148">another episode</text>
         </g>
-        <text x="84" y="110" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">a sibling's data</text>
-        <text x="256" y="110" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">another episode</text>
-        <path d="M170,54 L170,86" stroke="var(--dia-accent)" stroke-width="1.4"/>
-        <rect x="140" y="86" width="60" height="40" rx="4" fill="none" stroke="var(--dia-accent)" stroke-width="1.8"/>
-        <text x="170" y="106" text-anchor="middle" font-size="8" fill="var(--dia-ink)">the owned store</text>
-        <text x="170" y="146" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">read + remove, in full</text>
-        <text x="170" y="176" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">on the parent: remove-directory alone — the one right cleanup needs</text>
+        <text x="170" y="150" text-anchor="middle" font-size="8.5" fill="var(--dia-ink)">the owned store</text>
+        <text x="170" y="163" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">read + remove, in full</text>
+        <text x="170" y="184" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">on the parent: remove-directory alone</text>
       </svg>
       <figcaption class="dia-caption">The narrow right covers exactly the cleanup duty; a read-write grant on the parent would have covered every sibling.</figcaption>
     </figure>
@@ -504,21 +549,25 @@ warnings    <b>none</b></pre>
       fails exactly when it matters, and a measured one does not surprise.</p>
     </div>
     <figure class="dia-figure">
-      <svg viewBox="0 0 340 200" role="img" aria-label="a surveyor's elevation of the wall: measured height marked, the unmeasured part left honest">
-        <path d="M40,160 L300,160" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
-        <rect x="80" y="76" width="130" height="84" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.2"/>
-        <g stroke="var(--dia-ink-faint)" stroke-width="0.7" opacity=".5">
-          <path d="M80,104 L210,104 M80,132 L210,132 M124,76 L124,160 M167,76 L167,160"/>
+      <svg viewBox="0 0 340 200" role="img" aria-label="a painted elevation of the sandstone wall with the surveyor's amber rod beside it: the measured height is what the mode says, and the dashed blue arc above is what only a container adds">
+        <rect x="24" y="160" width="292" height="5" fill="#A8B87A"/>
+        <rect x="24" y="165" width="292" height="8" fill="#D9C9A0"/>
+        <g>
+          <rect x="80" y="139" width="43" height="21" fill="#D3BC8C"/><rect x="124" y="139" width="43" height="21" fill="#C9AF7C"/><rect x="168" y="139" width="42" height="21" fill="#DEC79A"/>
+          <rect x="80" y="118" width="28" height="20" fill="#C9AF7C"/><rect x="109" y="118" width="50" height="20" fill="#DEC79A"/><rect x="160" y="118" width="50" height="20" fill="#D3BC8C"/>
+          <rect x="80" y="97" width="43" height="20" fill="#DEC79A"/><rect x="124" y="97" width="43" height="20" fill="#D3BC8C"/><rect x="168" y="97" width="42" height="20" fill="#C9AF7C"/>
+          <rect x="80" y="76" width="28" height="20" fill="#D3BC8C"/><rect x="109" y="76" width="50" height="20" fill="#C9AF7C"/><rect x="160" y="76" width="50" height="20" fill="#DEC79A"/>
         </g>
-        <g stroke="var(--dia-accent)" stroke-width="1.6" fill="none">
-          <path d="M226,76 L226,160"/>
-          <path d="M220,76 L232,76 M220,160 L232,160"/>
+        <rect x="224" y="76" width="3.4" height="84" fill="var(--foe-accent)"/>
+        <g fill="var(--foe-accent)">
+          <rect x="220" y="75" width="12" height="3"/><rect x="220" y="158" width="12" height="3"/>
+          <rect x="227.4" y="96" width="6" height="2.2"/><rect x="227.4" y="117" width="6" height="2.2"/><rect x="227.4" y="138" width="6" height="2.2"/>
         </g>
         <text x="240" y="122" font-size="8.5" fill="var(--dia-ink-soft)">measured height —</text>
         <text x="240" y="134" font-size="8.5" fill="var(--dia-ink-soft)">what the mode says</text>
-        <path d="M80,76 C116,54 168,52 210,76" fill="none" stroke="var(--dia-rule)" stroke-width="1" stroke-dasharray="3 4"/>
-        <text x="96" y="48" font-size="8.5" fill="var(--dia-ink-faint)">what a container adds — declared in the log</text>
-        <text x="170" y="188" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the log states the walls each run actually had</text>
+        <path d="M80,76 C116,52 174,50 210,76" fill="none" stroke="#268BD2" stroke-width="1.1" stroke-dasharray="3 4"/>
+        <text x="96" y="44" font-size="8.5" fill="var(--dia-ink-faint)">what a container adds — declared in the log</text>
+        <text x="170" y="190" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the log states the walls each run actually had</text>
       </svg>
       <figcaption class="dia-caption">Every run records mode, kernel level, and fallbacks — auditable, never assumed.</figcaption>
     </figure>
