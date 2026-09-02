@@ -215,10 +215,15 @@ declares none and relies on its host to answer or to cancel.
 
 A child episode is a further foe process. The parent foe process is the
 child's host: it launches the child, reads the child's standard output, and
-forwards the child's `model/request` and `host/tool-call` events to its own
-host, tagged with the child's id. The root host therefore sees every request
-in the tree and answers each one. Answers carry the same tag so that the root
-parent can route them down.
+forwards the child's `request/header`, `model/request`, and
+`host/tool-call` events to its own host, tagged with the child's id. The
+root host therefore sees every request in the tree and answers each one.
+Answers carry the same tag so that the root parent can route them down.
+
+The header travels with the requests it governs. A `model/request` names
+its header by seq and carries neither the system prompt nor the tool
+schemas, so a host that has not seen the child's header cannot build the
+child's request.
 
 The parent also passes read-only descriptors for every configured
 executable reachable from the selected child contract. A sealed manifest

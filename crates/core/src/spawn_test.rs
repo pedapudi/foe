@@ -146,6 +146,22 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
     script(dir, "fake-foe.sh", FAKE_CHILD)
 }
 
+/// A stand-in child that writes a header before its request, which is
+/// what a real episode does. The header names the system prompt and the
+/// tool schemas; the request that follows names the header by seq and
+/// carries neither.
+pub(crate) const HEADER_CHILD: &str = r#"#!/bin/sh
+echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
+echo '{"seq":1,"time":1,"type":"request/header","data":{"reason":"initial","system":"survey the module","tools":[],"model":{"provider":"exec","model":"m"}}}'
+echo '{"seq":2,"time":1,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_1","header_seq":1,"consumed":[],"messages":[]}}'
+read -r answer
+echo '{"seq":3,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
+"#;
+
+pub(crate) fn header_child(dir: &Path) -> Vec<OsString> {
+    script(dir, "header-foe.sh", HEADER_CHILD)
+}
+
 /// A stand-in child that settles one child of its own and then ends, so
 /// that what it reports covers a subtree rather than itself alone.
 pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
@@ -504,6 +520,49 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     assert!(!router.has_child(&handle.child_id));
     let kinds: Vec<String> = seen.0.lock().unwrap().iter().map(|(_, e)| e.data.type_name()).collect();
     assert_eq!(kinds, ["episode/start", "model/request", "assistant/message", "host/tool-call", "episode/end"]);
+}
+
+/// A host that never saw a child's `request/header` cannot answer the
+/// child's requests: a `model/request` names its header by seq and carries
+/// neither the system prompt nor the tool schemas. Before the header was
+/// forwarded, every child episode under a real host died with
+/// "request/header N was never received".
+#[tokio::test]
+async fn a_child_header_reaches_the_host_before_the_request_that_names_it() {
+    let dir = scratch("spawn", "header");
+    let uplink = Arc::new(Lines::default());
+    let router = Arc::new(Router::new());
+    let seen = Arc::new(Seen::default());
+    let spawner =
+        process_spawner("ep_root", dir.to_path_buf(), parent_config(), uplink.clone(), router.clone(), seen.clone())
+            .with_launcher(header_child(&dir));
+    let handle = spawner
+        .spawn(SpawnRequest {
+            contract: "worker".into(),
+            task: "survey".into(),
+            context: SpawnContext::Fresh,
+            reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
+            call_id: "tc_spawn".into(),
+        })
+        .unwrap();
+
+    let forwarded = wait_for(|| {
+        let lines = uplink.0.lock().unwrap();
+        (lines.len() == 2).then(|| lines.clone())
+    });
+    let header: serde_json::Value = serde_json::from_str(&forwarded[0]).unwrap();
+    assert_eq!(header["type"], "request/header", "the header is forwarded, and before the request");
+    assert_eq!(header["episode_id"], handle.child_id.as_str(), "tagged with the child's id, like every forward");
+    assert_eq!(header["data"]["system"], "survey the module");
+    let request: serde_json::Value = serde_json::from_str(&forwarded[1]).unwrap();
+    assert_eq!(request["type"], "model/request");
+    assert_eq!(request["data"]["header_seq"], header["seq"], "the request names the header the host just saw");
+
+    let answer = r#"{"type":"model/chunk","request_id":"rq_1","chunk":{"kind":"done"}}"#;
+    router.route(&handle.child_id, answer).unwrap();
+    let settled = handle.run.clone().settle().await;
+    assert!(matches!(settled.outcome, Outcome::Completed { .. }), "{:?}", settled.outcome);
+    assert_eq!(settled.spent.model_calls, Some(1), "a forwarded header is not counted as a call");
 }
 
 #[test]
