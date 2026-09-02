@@ -1,12 +1,18 @@
 # Recovery exhausted
 
 An episode that never gets an answer to its first request. The transport
-reports a retryable provider error every time. The runtime makes five
-attempts at the one step, waiting a delay that doubles from 500 milliseconds
-to 4 seconds between them. The episode ends with the outcome `{"kind":
-"blocked", "code": "recovery-exhausted", "message": "5 attempts at step 1
-failed"}`, and the process exits with code 2. The whole run takes about 8
-seconds, almost all of it spent in those delays.
+reports a retryable provider error every time — an outage, which the
+runtime waits out with a delay that doubles from 500 milliseconds for as
+long as the seconds budget funds the next delay. The contract grants ten
+seconds, which funds five attempts; the sixth delay would not fit, so the
+episode ends with the outcome `{"kind": "blocked", "code":
+"recovery-exhausted", "message": "provider unavailable through 5 attempts
+at step 1; the remaining seconds budget cannot fund another"}`, and the
+process exits with code 2. The whole run takes about 8 seconds, almost all
+of it spent in those delays. A failure that repeating cannot fix — a
+transport loss, an interrupted stream — is bounded by a fixed attempt
+ceiling instead; docs/design.md "Failure of a model request" states both
+bounds.
 
 `blocked` is the outcome kind for an episode the runtime stopped because it
 had no way to continue, and its `code` says which way was missing.
@@ -24,7 +30,7 @@ which demonstrates the script rather than the runtime. The runtime decides
 the remaining codes for itself.
 
 `recovery-exhausted` is the one of those that needs nothing from the model
-at all. The transport answers no request, and the retry ceiling and the
+at all. The transport answers no request, and the budget bound and the
 backoff schedule that produce the outcome are the runtime's, so the log this
 example writes is the log a real unreachable provider writes. That is also
 the failure an operator meets most often when a run is handed to an
@@ -35,7 +41,7 @@ decides on its own.
 
 For an error a transport reports, the `retryable` flag decides between
 `blocked` and `failed`. This transport sets the flag, so the runtime retries
-and reaches its ceiling, which is `blocked`. A transport that reports the
+until the budget cannot fund another attempt, which is `blocked`. A transport that reports the
 same error with `retryable` false ends the episode as `failed` at the first
 attempt, with the message as the error.
 
@@ -101,10 +107,11 @@ the run learns from that shape alone that the endpoint was never reachable,
 rather than briefly overloaded. The error message repeats unchanged in every
 attempt, so it names the condition to fix.
 
-There are five attempts and four retries. The fifth attempt is the last the
-ceiling allows, so its failure ends the episode with no delay waited and no
-retry recorded: a `request/retry` states that a request is being retried,
-and the log format requires the attempt it announces to follow it.
+There are five attempts and four retries. After the fifth failure the next
+delay would outrun the remaining seconds budget, so the episode ends with
+no delay waited and no retry recorded: a `request/retry` states that a
+request is being retried, and the log format requires the attempt it
+announces to follow it.
 
 No `assistant/message` is written, because none was assembled. No
 `tool/result` is written, because no tool ran. The episode read nothing from

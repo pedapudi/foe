@@ -8,7 +8,7 @@
   "grants": {
     "read": ["/home/user/project"]
   },
-  "budget": { "model_calls": 20, "seconds": 300 },
+  "budget": { "model_calls": 20, "seconds": 10 },
   "model": {
     "provider": "exec",
     "exec": "/home/user/project/tools/unreachable-provider-transport",
