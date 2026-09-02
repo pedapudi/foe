@@ -53,8 +53,8 @@ fn version_check(from: u64, bytes: &[u8]) -> Result<(), LogError> {
 }
 
 /// Parses complete lines of `bytes`; returns the events and the byte count
-/// of the lines parsed.
-fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
+/// of the lines parsed. A trailing line without a newline is left unparsed.
+pub fn parse_lines(bytes: &[u8]) -> Result<(Vec<Event>, u64), LogError> {
     let mut events = Vec::new();
     let mut consumed = 0usize;
     for (index, line) in bytes.split_inclusive(|b| *b == b'\n').enumerate() {

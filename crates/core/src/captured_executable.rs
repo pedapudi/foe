@@ -42,7 +42,7 @@ impl CapturedExecutable {
             source_path: captured.source_path.clone(),
             sha256: captured.sha256.clone(),
             bytes: captured.bytes.clone(),
-            invocation_name: captured.invocation_name.clone(),
+            invocation_name: captured.invocation_name.clone().into(),
             stored_path,
             fd,
             _store: Some(store.root.clone()),
@@ -94,7 +94,7 @@ impl CapturedExecutable {
         if !path.is_absolute() {
             return Err("is not an absolute path".into());
         }
-        let invocation_name = path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
+        let invocation_name = path.file_name().and_then(|n| n.to_str()).ok_or("has a UTF-8 file name")?.to_owned();
         let path = std::fs::canonicalize(path).map_err(|e| format!("names an existing path: {e}"))?;
         let mut file = File::open(&path).map_err(|e| format!("is readable for construction: {e}"))?;
         let metadata = file.metadata().map_err(|e| format!("has readable metadata: {e}"))?;
@@ -366,7 +366,7 @@ impl Store {
     }
 
     fn write(&mut self, captured: &CapturedExecutableSource) -> Result<(PathBuf, Arc<OwnedFd>), String> {
-        let fingerprint = (captured.sha256.clone(), captured.invocation_name.clone());
+        let fingerprint = (captured.sha256.clone(), captured.invocation_name.clone().into());
         if let Some((path, fd)) = self.executables.get(&fingerprint) {
             return Ok((path.clone(), fd.clone()));
         }

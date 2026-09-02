@@ -1,4 +1,4 @@
-use super::{completion_evidence_required, parse, resolve, validate, ContractTreeSelection};
+use super::{completion_evidence_required, parse, resolve, resolve_with_executables, validate, ContractTreeSelection};
 use crate::test_util::{config, config_value, contract_with, tmp};
 use crate::ContractError;
 use serde_json::{json, Value};
@@ -37,6 +37,26 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
     assert_eq!(lint.timeout_seconds, 120);
     assert_eq!(contract.budget.loop_threshold, 8);
     assert!(contract.to_value().get("task").is_none(), "the contract omits the task");
+}
+
+/// A spawned child receives each captured executable's bytes and invocation
+/// name from its parent as raw OS bytes. The fingerprint records the name as
+/// text, so resolution rejects a name that is not UTF-8.
+#[test]
+fn an_inherited_invocation_name_must_be_utf8() {
+    use std::os::unix::ffi::OsStringExt;
+    let root = tmp("config-inherited-name");
+    let mut value = config_value(&root);
+    value["tools"] = json!(["block", "lint"]);
+    value["tool_defs"] = json!({ "lint": { "exec": root.join("tool.sh"), "description": "lints" } });
+    let config = serde_json::from_value(value).unwrap();
+    let name = std::ffi::OsString::from_vec(vec![b'l', 0xFF]);
+    let bytes: std::sync::Arc<[u8]> = std::sync::Arc::from(b"#!/bin/sh\n".as_slice());
+    let inherited = std::collections::BTreeMap::from([("tool_defs.lint.exec".to_string(), (bytes, name))]);
+    let error = resolve_with_executables(&config, &inherited).unwrap_err();
+    let ContractError::Invalid { key, rule } = error else { panic!("expected an Invalid error, got {error:?}") };
+    assert_eq!(key, "tool_defs.lint.exec");
+    assert_eq!(rule, "has a UTF-8 file name");
 }
 
 #[test]

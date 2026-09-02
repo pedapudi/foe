@@ -67,10 +67,10 @@ fn args(dir: &Path, seq: &str) -> Vec<String> {
 fn writes_the_adoption_record_and_canonical_manifest_and_prints_the_address() {
     let dir = bundle("valid");
     let address = run(&args(&dir, "7")).unwrap();
-    let (manifest, verified_address) = verify_bundle(&dir).unwrap();
-    assert_eq!(address, verified_address);
-    assert_eq!(manifest.proposal_log, "episode/episode.jsonl");
-    assert_eq!(manifest.adoption_record, RECORD_FILE);
+    let bundle = verify_bundle(&dir).unwrap();
+    assert_eq!(address, bundle.address);
+    assert_eq!(bundle.manifest.proposal_log, "episode/episode.jsonl");
+    assert_eq!(bundle.manifest.adoption_record, RECORD_FILE);
     let bytes = std::fs::read(dir.join(MANIFEST_FILE)).unwrap();
     assert_eq!(address, digest_of(&bytes));
     let record: AdoptionRecord = serde_json::from_slice(&std::fs::read(dir.join(RECORD_FILE)).unwrap()).unwrap();
@@ -90,9 +90,9 @@ fn rebuilding_replaces_the_prior_record_and_manifest() {
     let first = run(&args(&dir, "1")).unwrap();
     let second = run(&args(&dir, "2")).unwrap();
     assert_ne!(first, second, "changed coordinates change the content address");
-    let (manifest, verified_address) = verify_bundle(&dir).unwrap();
-    assert_eq!(second, verified_address);
-    assert_eq!(manifest.files.iter().filter(|f| f.path == RECORD_FILE).count(), 1);
+    let bundle = verify_bundle(&dir).unwrap();
+    assert_eq!(second, bundle.address);
+    assert_eq!(bundle.manifest.files.iter().filter(|f| f.path == RECORD_FILE).count(), 1);
 }
 
 #[test]

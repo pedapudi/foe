@@ -195,8 +195,9 @@ tree. A copied event from an unrelated episode fails provenance checking.
 The verifier performs these checks in order:
 
 1. Parse `manifest.json` and require its canonical schema-version-1 form.
-2. Require every listed path, length, and SHA-256 digest to match the retained
-   file.
+2. Read every listed file once; require its length and SHA-256 digest to
+   match, and keep the verified bytes. Every later step parses these bytes,
+   so a file rewritten mid-verification cannot reach the established facts.
 3. Recompute the bundle address from the canonical manifest bytes.
 4. Parse the selected adoption record and require its canonical
    schema-version-2 form.

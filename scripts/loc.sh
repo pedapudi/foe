@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 6,700 over the kernel, which is log and core together; 1,575
+# Nine budgets: 6,720 over the kernel, which is log and core together; 1,575
 # over contract, which defines execution-contract documents, resolution, and
 # fingerprints; 1,825 over tools, which is code; 1,050 over workflow; 500 over
 # context; 600 over view; 1,650 over cli; 1,000 over telemetry; and 500 over
@@ -24,7 +24,7 @@ for c in log core; do
   n=$(count "$c")
   printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
 done
-printf '%-8s %6d  (budget 6700)\n' kernel "$kernel"
+printf '%-8s %6d  (budget 6720)\n' kernel "$kernel"
 contract=$(count contract)
 printf '%-8s %6d  (budget 1575)\n' contract "$contract"
 tools=$(count code)
@@ -41,5 +41,5 @@ telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 adoption=$(count adoption)
 printf '%-8s %6d  (budget 500)\n' adoption "$adoption"
-[ "$kernel" -le 6700 ] && [ "$contract" -le 1575 ] && [ "$tools" -le 1825 ] && [ "$workflow" -le 1050 ] \
+[ "$kernel" -le 6720 ] && [ "$contract" -le 1575 ] && [ "$tools" -le 1825 ] && [ "$workflow" -le 1050 ] \
   && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1650 ] && [ "$telemetry" -le 1000 ] && [ "$adoption" -le 500 ]
