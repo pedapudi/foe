@@ -5,14 +5,14 @@ answers the model from a script rather than a provider, checks its own
 result, and leaves an episode log to read. None needs a credential, a
 network, or a repository of your own.
 
-Eleven examples are started by `run.sh` and two by `run.py`:
+Eleven examples are started by `run.sh` and three by `run.py`:
 
 ```sh
 sh examples/minimal/run.sh
 python3 examples/embed-an-execution-contract/run.py
 ```
 
-`scripts/examples.sh` runs all thirteen against one binary and reports how
+`scripts/examples.sh` runs all fourteen against one binary and reports how
 long each took. Continuous integration runs it, and it is the slow tier of
 the test suite: about fifteen seconds, of which the recovery-exhausted
 example is eight, because that example waits the whole retry backoff rather
@@ -47,6 +47,7 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | fix the order of the work and let the model choose only within it | [workflow](workflow/) |
 | prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
 | drive foe from my own contract | [embed-an-execution-contract](embed-an-execution-contract/) |
+| keep my tools in Python and let foe call the model | [embed-with-a-model-block](embed-with-a-model-block/) |
 | have foe evaluate and improve its own source, test, and specification | [self-extension](self-extension/) |
 | reach a model foe has no provider for | [exec-transport](exec-transport/), [host-transport](host-transport/) |
 
@@ -74,6 +75,7 @@ have seen before.
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
 | [sandbox](sandbox/) | a configured executable under a required Landlock policy |
 | [embed-an-execution-contract](embed-an-execution-contract/) | the Python SDK: a contract supplying the model, its own host tools, and acting on the outcome |
+| [embed-with-a-model-block](embed-with-a-model-block/) | the Python SDK with the model left to foe: a `model` block beside Python host tools, and the episode's process identity |
 | [self-extension](self-extension/) | a direct episode and an evaluator-to-terminal-node workflow improving a disposable copy of foe's source, test, and specification |
 | [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |
 | [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
@@ -96,9 +98,11 @@ holds its markers. It reports
 Run it against the materialized configuration a runner leaves in its run
 directory.
 
-[`embed-an-execution-contract`](embed-an-execution-contract/) carries no configuration file,
-because the Python package builds the document in memory. Its contract is
-the `foe.ExecutionContract` that `triage_contract` returns in `run.py`.
+[`embed-an-execution-contract`](embed-an-execution-contract/) and
+[`embed-with-a-model-block`](embed-with-a-model-block/) carry no
+configuration file, because the Python package builds the document in
+memory. Their contracts are the `foe.ExecutionContract` that
+`triage_contract` and `review_contract` return in each `run.py`.
 
 Every example that runs without a provider names the `exec` provider and
 points it at a transport script. [`support/README.md`](support/) explains
@@ -120,5 +124,5 @@ schema, materialize its markers, and run `foe plan`, which catches a missing
 executable, a grant that cannot hold, and a workflow graph that cannot run.
 `cargo test --workspace` runs them. `bazel test //examples/...` runs the
 workflow, sandbox, and self-extension examples themselves, so each of those
-three READMEs describes a log the build produces. Running the other ten is
+three READMEs describes a log the build produces. Running the other eleven is
 what checks that their "What to look for" sections still hold.
