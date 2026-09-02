@@ -264,8 +264,10 @@ fn declared_tree_references_share_one_captured_executable() {
     .unwrap();
     let contract = foe_contract::document::resolve(&config).unwrap();
     let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, &dir).unwrap();
-    assert_eq!(executables.reachable_entries().len(), 1, "ungranted contracts carry no execute permission");
-    assert_eq!(executables.fingerprint_entries().len(), 3, "every declaration can be reconstructed");
+    let entries = executables.entries();
+    let reachable = entries.iter().filter(|(_, _, reachable)| *reachable).count();
+    assert_eq!(reachable, 1, "ungranted contracts carry no execute permission");
+    assert_eq!(entries.len(), 3, "every declaration can be reconstructed");
     assert_eq!(executables.child_descriptors("ep_child").unwrap().len(), 2, "one image plus one manifest");
 }
 

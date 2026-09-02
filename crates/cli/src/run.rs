@@ -740,7 +740,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone(), pool.clone()));
     let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
     let connections = ProcessConnections { uplink, router: router.clone(), observer: team.clone() };
-    let spawner = ProcessSpawner::new_with_executables(
+    let spawner = ProcessSpawner::new(
         id,
         log_dir.clone(),
         contract.clone(),
@@ -769,8 +769,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
     builtins.push(foe_core::retrieval::tool(log.clone()));
     builtins.extend(team::tools(team.clone(), parent));
-    let registry = Registry::new_with_executables(&contract, &executables, host_tools, builtins)
-        .map_err(|e| format!("config: {e}"))?;
+    let registry = Registry::new(&contract, &executables, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
     let write = contract.grants.write.clone();
     let reader = RootReader::new(contract.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
     let writer = match write.is_empty() {

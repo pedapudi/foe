@@ -182,51 +182,65 @@ impl CapturedExecutableTree {
         self.workflow.get(name).or_else(|| self.child_contracts.get(name).map(|(_, child)| child))
     }
 
+    /// Every declared executable: its configuration key, the captured copy,
+    /// and whether the episode can reach it. Every entry contributes to the
+    /// contract fingerprint; only reachable ones receive sandbox
+    /// authorization, so a child contract without a spawn grant is declared
+    /// but not reachable.
+    pub fn entries(&self) -> Vec<(String, Arc<CapturedExecutable>, bool)> {
+        let mut out = Vec::new();
+        self.collect(true, &mut out);
+        out
+    }
+
+    fn collect(&self, reachable: bool, out: &mut Vec<(String, Arc<CapturedExecutable>, bool)>) {
+        for (name, executable) in &self.tools {
+            out.push((format!("{}.tool_defs.{name}.exec", self.path), executable.clone(), reachable));
+        }
+        if let Some(executable) = &self.transport {
+            out.push((format!("{}.model.exec", self.path), executable.clone(), reachable));
+        }
+        for (granted, child) in self.child_contracts.values() {
+            child.collect(reachable && *granted, out);
+        }
+        for child in self.workflow.values() {
+            child.collect(reachable, out);
+        }
+    }
+
     /// Every executable inode that the episode sandbox must authorize.
     pub fn reachable(&self) -> Vec<Arc<CapturedExecutable>> {
-        let mut out: Vec<_> = self.reachable_entries().into_iter().map(|(_, executable)| executable).collect();
         let mut seen = BTreeSet::new();
-        out.retain(|executable| seen.insert((executable.sha256.clone(), executable.invocation_name.clone())));
-        out
-    }
-
-    /// Configuration keys and captured executables for every reachable executable.
-    pub fn reachable_entries(&self) -> Vec<(String, Arc<CapturedExecutable>)> {
-        let mut out = Vec::new();
-        self.walk(ContractTreeSelection::ExecutableReachable, &mut |key, executable| {
-            out.push((key, executable.clone()))
-        });
-        out
-    }
-
-    /// Configuration keys and captured executables that contribute to this contract's fingerprint.
-    pub fn fingerprint_entries(&self) -> Vec<(String, Arc<CapturedExecutable>)> {
-        let mut out = Vec::new();
-        self.walk(ContractTreeSelection::AllDeclared, &mut |key, executable| {
-            let relative = key.strip_prefix(&format!("{}.", self.path)).unwrap_or(&key).to_string();
-            out.push((relative, executable.clone()));
-        });
-        out
+        self.entries()
+            .into_iter()
+            .filter(|(_, executable, reachable)| {
+                *reachable && seen.insert((executable.sha256.clone(), executable.invocation_name.clone()))
+            })
+            .map(|(_, executable, _)| executable)
+            .collect()
     }
 
     /// Private storage directories the episode process removes after confinement.
     pub fn cleanup_roots(&self) -> Vec<PathBuf> {
-        self.fingerprint_entries()
+        self.entries()
             .into_iter()
-            .filter_map(|(_, executable)| executable.cleanup_root().map(Path::to_path_buf))
+            .filter_map(|(_, executable, _)| executable.cleanup_root().map(Path::to_path_buf))
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect()
     }
 
     /// Descriptor mappings and a sealed manifest for launching `child_id`.
+    /// Manifest keys are relative to this tree, matching the keys
+    /// construction looks up when the child inherits them.
     pub fn child_descriptors(&self, child_id: &str) -> Result<Vec<(i32, Arc<OwnedFd>)>, String> {
-        let found = self.fingerprint_entries();
+        let prefix = format!("{}.", self.path);
         let mut entries = Vec::new();
         let mut executable_ids = BTreeMap::new();
         let mut executables = Vec::new();
         let mut mappings = Vec::new();
-        for (key, executable) in found {
+        for (key, executable, _) in self.entries() {
+            let key = key.strip_prefix(&prefix).unwrap_or(&key).to_string();
             let fingerprint = (executable.sha256.clone(), executable.invocation_name.clone());
             let executable_index = match executable_ids.get(&fingerprint) {
                 Some(index) => *index,
@@ -251,27 +265,6 @@ impl CapturedExecutableTree {
         let bytes = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
         mappings.push((MANIFEST_FD, sealed_file("foe-executable-manifest", &bytes)?));
         Ok(mappings)
-    }
-
-    fn walk<'a>(
-        &'a self,
-        selection: ContractTreeSelection,
-        visit: &mut impl FnMut(String, &'a Arc<CapturedExecutable>),
-    ) {
-        for (name, executable) in &self.tools {
-            visit(format!("{}.tool_defs.{name}.exec", self.path), executable);
-        }
-        if let Some(executable) = &self.transport {
-            visit(format!("{}.model.exec", self.path), executable);
-        }
-        for (reachable, child) in self.child_contracts.values() {
-            if selection == ContractTreeSelection::AllDeclared || *reachable {
-                child.walk(selection, visit);
-            }
-        }
-        for child in self.workflow.values() {
-            child.walk(selection, visit);
-        }
     }
 }
 

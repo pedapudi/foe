@@ -115,6 +115,19 @@ fn scratch_cleanup_does_not_follow_a_replacement_symlink() {
     assert_eq!(std::fs::read_to_string(target.join("marker")).unwrap(), "present");
 }
 
+/// Builds a registry the way production does, materializing the contract's
+/// captured executables to a scratch directory first.
+pub fn registry_for(
+    contract: &ResolvedContract,
+    host_tools: Vec<Box<dyn Tool>>,
+    extra_builtins: Vec<Box<dyn Tool>>,
+) -> Result<crate::registry::Registry, foe_contract::ContractError> {
+    let executables =
+        crate::captured_executable::CapturedExecutableTree::materialize(contract, &tmp("registry-executables"))
+            .unwrap();
+    crate::registry::Registry::new(contract, &executables, host_tools, extra_builtins)
+}
+
 /// A valid document granting read and write on `root`, with `block` as its
 /// only tool and the host transport.
 pub fn config_value(root: &Path) -> Value {

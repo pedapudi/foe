@@ -289,7 +289,9 @@ impl Fixture {
         let log_dir = self.dir.join("episode");
         std::fs::create_dir_all(&log_dir).unwrap();
         let log = Arc::new(Log::create_or_open(&log_dir, self.mirror.take()).unwrap());
-        let registry = Registry::new(&contract, vec![], std::mem::take(&mut self.tools)).unwrap();
+        let executables =
+            foe_core::captured_executable::CapturedExecutableTree::materialize(&contract, &log_dir).unwrap();
+        let registry = Registry::new(&contract, &executables, vec![], std::mem::take(&mut self.tools)).unwrap();
         let (stop, stop_rx) = tokio::sync::watch::channel(None);
         let stop_after = self.stop_after;
         // The sender lives for the whole run: dropping it would make every

@@ -429,7 +429,8 @@ fn an_episode_reserves_the_configured_executables_of_every_contract_below_it() {
     let executables = crate::captured_executable::CapturedExecutableTree::materialize(&resolved, &dir).unwrap();
     let p = Policy::for_episode(&resolved, &executables, Path::new("/logs/ep")).unwrap();
     assert_eq!(p.exec_files.len(), paths.len(), "the ancestor reserves every reachable captured executable");
-    let keys: Vec<_> = executables.reachable_entries().into_iter().map(|(key, _)| key).collect();
+    let keys: Vec<_> =
+        executables.entries().into_iter().filter(|(_, _, reachable)| *reachable).map(|(key, _, _)| key).collect();
     assert_eq!(
         keys,
         [
