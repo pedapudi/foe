@@ -1,7 +1,8 @@
-//! The reports `foe plan` prints below a resolved contract: the workflow's
-//! nodes, its edges, every cycle with the bound that closes it, every pair
-//! of nodes whose write roots overlap, whether a terminal node exists, and
-//! every tool definition the contract's reachable tree can invoke. See
+//! The reports `foe plan` prints: the readiness summary above the
+//! resolved contract, and below it the workflow's nodes, its edges, every
+//! cycle with the bound that closes it, every pair of nodes whose write
+//! roots overlap, whether a terminal node exists, and every tool
+//! definition the contract's reachable tree can invoke. See
 //! docs/workflow.md "Firing" and "The flow guarantee, stated exactly", and
 //! docs/design.md "Subagents and teams".
 
@@ -68,6 +69,73 @@ pub fn permissions_report(contracts: &[ContractPermissions]) -> String {
         for reason in &contract.permissions.connect_tcp {
             writeln!(out, "    connect tcp  {reason}").ok();
         }
+    }
+    out
+}
+
+/// The plain-language summary `foe plan` prints before the detailed
+/// report: one line per question an operator asks before a run. Every
+/// line projects the resolved objects the detail below also prints, so
+/// the two cannot disagree.
+pub fn summary_report(
+    contract: &ResolvedContract,
+    transport: Option<&str>,
+    warnings: &[ConfigurationWarning],
+) -> String {
+    let paths = |paths: &[std::path::PathBuf], empty: &str| -> String {
+        if paths.is_empty() {
+            empty.into()
+        } else {
+            paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")
+        }
+    };
+    let completion = match &contract.done_when {
+        Some(done) => {
+            let verifier = done.verify.as_ref().map(|v| format!("verifier {v} (retries {})", done.retries));
+            let returned = done.returns.is_some().then(|| "typed return".to_string());
+            [verifier, returned].into_iter().flatten().collect::<Vec<_>>().join(", ")
+        }
+        None => "none declared: the episode ends only on budget or block".into(),
+    };
+    let budget = &contract.budget;
+    let mut limits = format!("{} model calls", budget.model_calls);
+    match budget.seconds {
+        Some(seconds) => write!(limits, ", {seconds}s").ok(),
+        None => write!(limits, ", no time limit").ok(),
+    };
+    for (name, tokens) in [("input", budget.input_tokens), ("output", budget.output_tokens)] {
+        if let Some(tokens) = tokens {
+            write!(limits, ", {tokens} {name} tokens").ok();
+        }
+    }
+    write!(limits, ", loop threshold {}", budget.loop_threshold).ok();
+    let sandbox = serde_json::to_value(contract.sandbox.mode)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default();
+    let warning_list = match warnings.len() {
+        0 => "none".to_string(),
+        n => {
+            let codes: Vec<String> = warnings.iter().map(|w| format!("{} ({})", w.code, w.configuration_key)).collect();
+            format!("{n}: {}", codes.join(", "))
+        }
+    };
+    let mut rows = vec![
+        ("model", transport.unwrap_or("answered by the host over the protocol").to_string()),
+        ("read", paths(&contract.grants.read, "(none)")),
+        ("write", paths(&contract.grants.write, "(none)")),
+        ("execute", paths(&contract.grants.execute, "(none: shell built-ins only)")),
+        ("completion", completion),
+        ("limits", limits),
+        ("sandbox", sandbox),
+    ];
+    if let Some(wf) = &contract.workflow {
+        rows.push(("workflow", format!("{} nodes, {} possible firings", wf.nodes.len(), wf.possible_firings())));
+    }
+    rows.push(("warnings", warning_list));
+    let mut out = String::new();
+    for (label, value) in rows {
+        writeln!(out, "{label:<11} {value}").ok();
     }
     out
 }

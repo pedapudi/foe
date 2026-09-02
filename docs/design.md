@@ -400,7 +400,12 @@ separate invocation input.
 The `grants` object declares configured permissions. Contract construction
 resolves those declarations with the exact tools, captured executables,
 interpreters, loaders, credentials, and runtime paths needed for execution.
-`foe plan` reports the resulting reachable tools and resolved permissions.
+`foe plan` opens with a readiness summary — one line each for the model,
+the granted read, write, and execute roots, the completion mechanism, the
+limits, the sandbox mode, the workflow size when one is declared, and the
+static warnings — then reports the resulting reachable tools and resolved
+permissions. Each summary line projects the same resolved objects the
+detailed report prints, so the two cannot disagree.
 The episode log records the resolved permissions with the sandbox mode,
 Landlock ABI, and process boundary that state what the host enforced.
 
@@ -713,7 +718,7 @@ foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode see
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print the resolved contract, its fingerprint, transport, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, transport, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```

@@ -58,7 +58,7 @@ const FORMS: &[Form] = &[
     form("", "[TASK]", "run one bounded episode: the task named here, or the task a contract document names"),
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
-    form("plan", "", "print a resolved contract with its fingerprint, transport, reachable tools, and resolved permissions; bare, list the built-in tools"),
+    form("plan", "", "print a readiness summary, then the resolved contract with its fingerprint, transport, reachable tools, and resolved permissions; bare, list the built-in tools"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
 ];
 
@@ -347,7 +347,12 @@ fn load(config: &Path) -> Result<foe_contract::document::ResolvedContract, Strin
     foe_contract::document::load(config).map_err(|e| format!("{}: {e}", config.display()))
 }
 
-/// Resolves the contract and prints it with its fingerprint. Without `--config`,
+/// Resolves the contract and prints a readiness summary — one line each
+/// for the model, the granted read, write, and execute roots, the
+/// completion mechanism, the limits, the sandbox mode, the workflow size
+/// when one is declared, and the static warnings — then the detailed
+/// report. Each summary line projects the same resolved objects the
+/// detail prints. Without `--config`,
 /// lists the built-in tools the binary carries instead, one row per tool.
 /// `--json` prints one object with `contract_fingerprint`, `fingerprint_document` — the
 /// canonical serialized form the fingerprint hash is computed over — and
@@ -391,6 +396,8 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         });
         println!("{report}");
     } else {
+        print!("{}", plan::summary_report(&contract, transport.as_deref(), &warnings));
+        println!();
         println!("fingerprint  {}", fingerprint.hash);
         println!("model     {}", transport.as_deref().unwrap_or("answered by the host over the protocol"));
         if let Some(context) = &context {
