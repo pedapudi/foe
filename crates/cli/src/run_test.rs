@@ -37,6 +37,9 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     }
 }
 
+/// The providers named here are HTTP ones, so the rows exist only in a
+/// build that has the wire formats and the credential sources.
+#[cfg(feature = "http")]
 #[test]
 fn builtin_key_file_uses_the_providers_credential_option() {
     let dir = crate::tests::scratch("foe-cli-run", "builtin-credential");

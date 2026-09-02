@@ -6,7 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod init;
-#[cfg(feature = "transport")]
+#[cfg(feature = "http")]
 mod login;
 mod plan;
 mod run;
@@ -333,14 +333,14 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     }
 }
 
-#[cfg(feature = "transport")]
+#[cfg(feature = "http")]
 fn login(provider: Option<String>, model: Option<String>, status: bool) -> Result<ExitCode, String> {
     login::login(login::Options { provider, model, status })
 }
 
-#[cfg(not(feature = "transport"))]
+#[cfg(not(feature = "http"))]
 fn login(_provider: Option<String>, _model: Option<String>, _status: bool) -> Result<ExitCode, String> {
-    Err("this binary was built without the transport feature; there is no provider to log in to".into())
+    Err("this binary has no built-in model client; there is no provider to log in to".into())
 }
 
 /// Starts the user's browser on a URL. A running form calls this before the

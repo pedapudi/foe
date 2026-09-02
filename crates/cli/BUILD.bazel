@@ -5,7 +5,10 @@ rust_binary(
     name = "foe",
     srcs = glob(["src/**/*.rs"]),
     compile_data = ["src/builtin-coding.json"],
-    crate_features = ["transport"],
+    crate_features = [
+        "http",
+        "transport",
+    ],
     crate_name = "foe",
     crate_root = "src/main.rs",
     edition = crate_edition(),
@@ -25,3 +28,4 @@ rust_binary(
     proc_macro_deps = all_crate_deps(proc_macro = True),
     rustc_flags = ["-Cstrip=symbols"],
 )
+

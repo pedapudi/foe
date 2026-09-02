@@ -19,7 +19,7 @@ foe-code = { path = "../code" }
 foe-view = { path = "../view" }
 foe-workflow = { path = "../workflow" }
 foe-context = { path = "../context" }
-foe-transport = { path = "../transport", optional = true }
+foe-transport = { path = "../transport", optional = true, default-features = false, features = ["exec"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -29,10 +29,16 @@ tokio = { workspace = true, features = ["io-std", "signal"] }
 nix = { version = "0.31", features = ["term", "fs"] }
 
 [features]
-default = ["transport"]
-# The built-in model clients and `foe login`. Without this feature every
-# model request must be answered by a host.
+default = ["transport", "http"]
+# The transport crate: a `model` block resolved against the provider table,
+# and the `exec` seam, which reaches a model through a program over standard
+# input and output. Without this feature every model request must be
+# answered by a host.
 transport = ["dep:foe-transport"]
+# The built-in HTTP clients and `foe login`. Without this feature the only
+# `model` block that resolves is an `exec` one, and the binary links no TLS
+# stack. `docs/protocol.md` describes the mode that wants such a build.
+http = ["transport", "foe-transport/default"]
 
 [dev-dependencies]
 tempfile.workspace = true

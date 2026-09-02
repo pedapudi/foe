@@ -10,6 +10,7 @@ rust_library(
         "exec",
         "gemini",
         "google",
+        "http",
         "messages",
         "responses",
         "token-file",
@@ -26,3 +27,4 @@ rust_library(
     ] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
+

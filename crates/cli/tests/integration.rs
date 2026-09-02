@@ -1228,12 +1228,21 @@ fn plan_reports_reachable_tools_and_resolved_permissions() {
     std::fs::set_permissions(&root_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::set_permissions(&child_exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::write(&credential, "secret\n").unwrap();
-    let grand = json!({
+    #[allow(unused_mut)]
+    let mut grand = json!({
         "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
         "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
-        "model": {"provider": "openai", "model": "test", "api_key_file": credential},
         "grants": { "read": [dir] }, "budget": { "model_calls": 1 }
     });
+    // The grandchild's credential is what puts that file in the root's
+    // resolved read set. A provider that names one exists only in a build
+    // that has the wire formats; without them the grandchild is a contract
+    // the host answers, and the rest of the reachability this test is about
+    // is unchanged.
+    #[cfg(feature = "http")]
+    {
+        grand["model"] = json!({"provider": "openai", "model": "test", "api_key_file": credential});
+    }
     let unused = json!({
         "name": "unused", "instructions": { "role": "remain unreachable" }, "tools": ["hidden"],
         "host_tools": { "hidden": { "description": "Hidden declaration", "params": {}, "effect": "pure" } },
@@ -1284,6 +1293,7 @@ fn plan_reports_reachable_tools_and_resolved_permissions() {
         .unwrap()
         .iter()
         .any(|reason| reason.as_str().unwrap().contains("contract.child_contracts.child.tool_defs.inspect.network")));
+    #[cfg(feature = "http")]
     assert!(root["permissions"]["read"].as_array().unwrap().iter().any(|entry| {
         entry["path"] == credential.to_string_lossy().as_ref()
             && entry["reason"].as_str().unwrap().contains("contract.child_contracts.child.child_contracts.grand")

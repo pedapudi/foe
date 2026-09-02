@@ -41,7 +41,7 @@ use crate::TransportError;
 const PROVIDER: &str = "exec";
 
 /// Longest run of one request, matching the HTTP client's read timeout.
-pub const TIMEOUT: std::time::Duration = crate::http::READ_TIMEOUT;
+pub const TIMEOUT: std::time::Duration = crate::READ_TIMEOUT;
 
 /// Bytes of standard error quoted in an error message.
 const STDERR_QUOTE: usize = 2000;

@@ -26,12 +26,10 @@ use std::time::Duration;
 /// Longest wait for a TCP connection to be established.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Longest silence tolerated between bytes of a response. Providers keep a
-/// stream alive with periodic events, and a model that is thinking with its
-/// reasoning hidden may send nothing for minutes, so the limit is generous.
-/// The episode's wall-clock budget, enforced by the runtime, bounds the
-/// whole request.
-pub const READ_TIMEOUT: Duration = Duration::from_secs(600);
+/// Longest silence tolerated between bytes of a response. Defined at the
+/// crate root, because the `exec` transport honours the same limit and
+/// builds without this module.
+pub(crate) use crate::READ_TIMEOUT;
 
 /// Largest response head (status line plus headers) accepted.
 const MAX_HEAD_BYTES: usize = 64 * 1024;

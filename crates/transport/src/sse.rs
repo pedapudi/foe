@@ -7,6 +7,7 @@
 //! Only the `event` and `data` fields are kept. `id` and `retry` have no
 //! use here because a request is never resumed.
 
+#[cfg(feature = "http")]
 use std::io::{self, BufRead};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -20,6 +21,7 @@ pub struct Event {
 /// Reads the next event. Returns `Ok(None)` at the end of the body. An
 /// event that has no `data` line is not dispatched, as the specification
 /// requires; an incomplete event cut off by the end of the body is dropped.
+#[cfg(feature = "http")]
 pub fn next_event<R: BufRead>(reader: &mut R) -> io::Result<Option<Event>> {
     let mut event = Event::default();
     let mut line = String::new();

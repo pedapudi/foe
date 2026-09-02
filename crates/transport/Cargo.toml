@@ -8,15 +8,20 @@ description = "Built-in model clients: wire formats times credential sources, be
 
 [features]
 default = ["messages", "chat", "responses", "gemini", "api-key", "token-file", "google", "exec"]
+# The HTTP client and the TLS stack it needs. Every wire format implies it;
+# an embedder that wants only `exec` leaves it off and links no TLS.
+http = ["dep:rustls", "dep:webpki-roots"]
 # Wire formats. A provider row needs its format's feature.
-messages = []
-chat = []
-responses = []
-gemini = []
-# Credential sources. A provider row needs its source's feature.
-api-key = []
-token-file = ["dep:base64"]
-google = ["dep:ring", "dep:base64"]
+messages = ["http"]
+chat = ["http"]
+responses = ["http"]
+gemini = ["http"]
+# Credential sources. A provider row needs its source's feature. Each one
+# speaks to its provider — to verify a key, to refresh a token — so each
+# implies the client.
+api-key = ["http"]
+token-file = ["http", "dep:base64"]
+google = ["http", "dep:ring", "dep:base64"]
 # The out-of-tree seam: a contract spoken to over standard input and output.
 exec = []
 
@@ -34,9 +39,9 @@ sha2.workspace = true
 nix = { version = "0.31", features = ["user"] }
 # TLS with the ring provider and Mozilla's roots compiled in. The system
 # certificate store is never read. No crate in this tree reads an
-# environment variable.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-webpki-roots = "1"
+# environment variable. Both arrive with `http` and with nothing else.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "1", optional = true }
 # RS256 for service-account assertions; already in the tree through rustls.
 ring = { version = "0.17", optional = true }
 base64 = { version = "0.22", optional = true }
