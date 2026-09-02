@@ -194,7 +194,7 @@ impl Registry {
             return ToolValue::invalid(text::fill(text::UNKNOWN_TOOL, &[("name", &call.name)]));
         };
         let reason = match call.args.is_object() {
-            false => Some("arguments are a JSON object".to_string()),
+            false => Some("arguments must be one JSON object".to_string()),
             true => schema::arguments_conform(&entry.spec.params, &call.args).err(),
         };
         if let Some(reason) = reason {

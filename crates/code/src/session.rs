@@ -106,7 +106,7 @@ impl Tool for Session {
         let sid = match (a.action, a.session) {
             (Action::Start, _) => 0,
             (_, Some(id)) => id,
-            (_, None) => return ToolValue::invalid("session: `session` names the session id"),
+            (_, None) => return ToolValue::invalid("session: this action requires `session`, the id `start` returned"),
         };
         match a.action {
             Action::Start => {

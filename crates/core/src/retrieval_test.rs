@@ -147,10 +147,18 @@ async fn invalid_changed_and_future_cursors_are_rejected() {
     let mut changed = cursor_value.clone();
     let last = changed.pop().unwrap();
     changed.push(if last == '0' { '1' } else { '0' });
-    for (candidate, step) in [("invalid".to_string(), 2), (changed, 2), (cursor_value.clone(), 1)] {
+    // A cursor failing syntax or checksum validation is a malformed
+    // argument. A well-formed cursor naming an ineligible source fails
+    // as an operation on the recorded evidence.
+    for (candidate, step, code) in [
+        ("invalid".to_string(), 2, crate::ToolFailureCode::InvalidCall),
+        (changed, 2, crate::ToolFailureCode::InvalidCall),
+        (cursor_value.clone(), 1, crate::ToolFailureCode::OperationFailed),
+    ] {
         let value =
             tool(log.clone()).call(json!({ "cursor": candidate }), &context(&log.dir().join("spill"), step)).await;
         assert!(value.is_error, "{:?}", value.value);
+        assert_eq!(value.failure.as_ref().unwrap().code, code, "{:?}", value.value);
     }
     let other = cursor(1, "tc_source", "another episode's bytes", 0);
     let value = tool(log.clone()).call(json!({ "cursor": other }), &context(&log.dir().join("spill"), 2)).await;

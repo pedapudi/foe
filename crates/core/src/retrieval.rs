@@ -211,7 +211,7 @@ impl Tool for RetrieveTool {
         };
         let parsed = match parse_cursor(raw) {
             Ok(parsed) => parsed,
-            Err(error) => return ToolValue::error(error),
+            Err(error) => return ToolValue::invalid(error),
         };
         let events = self.log.events();
         let source = match source(&events, &ctx.spill_dir, ctx.step, &parsed.key) {

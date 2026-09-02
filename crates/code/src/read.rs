@@ -328,10 +328,9 @@ impl Tool for Read {
         };
         let path = resolve(reader.roots(), &a.path);
         let shown = display(reader.roots(), &path);
-        let offset = a.offset.unwrap_or(1);
-        if offset == 0 {
-            return ToolValue::invalid("read: offset must be at least 1");
-        }
+        // Dispatch has enforced `minimum` 1; the clamp keeps the 0-based
+        // window arithmetic safe for a caller that bypasses the schema.
+        let offset = a.offset.unwrap_or(1).max(1);
         let max_lines = a.limit.unwrap_or(OUTPUT_MAX_LINES).clamp(1, OUTPUT_MAX_LINES);
         let metadata = match reader.metadata(&path) {
             Ok(metadata) => metadata,

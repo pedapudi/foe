@@ -1,0 +1,23 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "tool_audit_test",
+    srcs = ["run_tool_audit.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        "mistake_transport.py",
+        "//:foe",
+    ],
+    size = "small",
+)
+
+sh_test(
+    name = "tool_audit_unit_test",
+    srcs = ["run_tool_audit_unit_tests.sh"],
+    data = [
+        "mistake_transport.py",
+        "run_tool_audit.py",
+        "tool_audit_test.py",
+    ],
+    size = "small",
+)

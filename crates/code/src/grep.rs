@@ -208,12 +208,15 @@ impl Tool for Grep {
         if let Err(e) = reader.metadata(&root) {
             return ToolValue::from_cap_error(&format!("grep: {root_shown}"), e);
         }
-        let matcher =
-            match RegexMatcherBuilder::new().case_insensitive(a.ignore_case).fixed_strings(a.literal).build(&a.pattern)
-            {
-                Ok(m) => m,
-                Err(e) => return ToolValue::invalid(format!("grep: invalid pattern: {e}")),
-            };
+        let mut builder = RegexMatcherBuilder::new();
+        let matcher = match builder.case_insensitive(a.ignore_case).fixed_strings(a.literal).build(&a.pattern) {
+            Ok(m) => m,
+            Err(e) => {
+                return ToolValue::invalid(format!(
+                    "grep: invalid pattern: {e}; set literal to true to match it as a fixed string"
+                ))
+            }
+        };
         let override_matcher = if let Some(glob) = &a.glob {
             let mut ov = OverrideBuilder::new(&root);
             let built = ov.add(glob).and_then(|b| b.build());
