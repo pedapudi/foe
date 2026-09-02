@@ -1,0 +1,8 @@
+{
+  "items": [
+    {"category": "bolt", "quantity": 40},
+    {"category": "nut", "quantity": 25},
+    {"category": "bolt", "quantity": 10},
+    {"category": "washer", "quantity": 5}
+  ]
+}

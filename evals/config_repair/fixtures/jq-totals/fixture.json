@@ -1,0 +1,11 @@
+{
+  "name": "jq-totals",
+  "language": "jq",
+  "required_executable": "/usr/bin/jq",
+  "required_command": "/usr/bin/jq -r -f totals.jq inventory.json > totals.txt",
+  "approved_execute": ["/usr/bin/jq"],
+  "artifact": "totals.txt",
+  "contract_sha256": "c84ce16c40b40d704a0ac63424f2949ac0ebc4e734491880548b8aa0f8696689",
+  "task_transport_sha256": "8d2c80aaf152928058be8fba5c88a189ca47d493dc76b5441d1fdf48fa3f5936",
+  "candidate_check_sha256": "018e2288ab17a262f5cba59af213654341d071869819959c4ec20a9bfbb03cc8"
+}

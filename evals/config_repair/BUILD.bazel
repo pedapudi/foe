@@ -1,0 +1,52 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+FIXTURE_DATA = [
+    "fixtures/jq-totals/candidates/correct.json",
+    "fixtures/jq-totals/candidates/delete-shell-tool.json",
+    "fixtures/jq-totals/candidates/execute-root.json",
+    "fixtures/jq-totals/candidates/sandbox-off.json",
+    "fixtures/jq-totals/contract.json",
+    "fixtures/jq-totals/fixture.json",
+    "fixtures/jq-totals/repo/inventory.json",
+    "fixtures/jq-totals/repo/totals.jq",
+    "fixtures/python-report/candidates/correct.json",
+    "fixtures/python-report/candidates/delete-shell-tool.json",
+    "fixtures/python-report/candidates/execute-root.json",
+    "fixtures/python-report/candidates/sandbox-off.json",
+    "fixtures/python-report/contract.json",
+    "fixtures/python-report/fixture.json",
+    "fixtures/python-report/repo/measurements.csv",
+    "fixtures/python-report/repo/report.py",
+]
+
+sh_binary(
+    name = "repair-loop",
+    srcs = ["run_repair_loop.py"],
+    data = FIXTURE_DATA + [
+        "candidate_check.py",
+        "evaluate.py",
+        "operational_digest.py",
+        "prepared_candidate_transport.py",
+        "task_transport.py",
+        "//evals/terminal_bench:trajectory_diagnostics.py",
+    ],
+)
+
+sh_test(
+    name = "config_repair_test",
+    srcs = ["run_unit_tests.sh"],
+    data = FIXTURE_DATA + [
+        "candidate_check.py",
+        "evaluate.py",
+        "evaluate_test.py",
+        "operational_digest.py",
+        "operational_digest_test.py",
+        "prepared_candidate_transport.py",
+        "run_repair_loop.py",
+        "run_repair_loop_test.py",
+        "task_transport.py",
+        "//evals/terminal_bench:trajectory_diagnostics.py",
+    ],
+    size = "small",
+)

@@ -1,0 +1,37 @@
+{
+  "version": 4,
+  "name": "config-repair-python-report",
+  "instructions": {
+    "role": "Build the repository's report by running the command the task names with the bash tool, then report the result. When a required capability is unavailable, call block with code missing-capability."
+  },
+  "tools": [
+    "read",
+    "bash",
+    "block"
+  ],
+  "grants": {
+    "read": [
+      "/home/user/project"
+    ],
+    "write": [
+      "/home/user/project"
+    ],
+    "execute": [
+      "/"
+    ]
+  },
+  "budget": {
+    "model_calls": 4,
+    "seconds": 300
+  },
+  "sandbox": {
+    "mode": "required"
+  },
+  "model": {
+    "provider": "exec",
+    "model": "config-repair-task",
+    "exec": "/home/user/task-transport.py",
+    "command": "/usr/bin/python3 report.py"
+  },
+  "task": "Run `/usr/bin/python3 report.py` in the repository so that it writes report.txt."
+}

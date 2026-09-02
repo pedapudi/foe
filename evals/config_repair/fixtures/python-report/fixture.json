@@ -1,0 +1,11 @@
+{
+  "name": "python-report",
+  "language": "Python",
+  "required_executable": "/usr/bin/python3",
+  "required_command": "/usr/bin/python3 report.py",
+  "approved_execute": ["/usr/bin/python3"],
+  "artifact": "report.txt",
+  "contract_sha256": "e37041791dd1cd319c1cd188c362114a73618df70eab3577e704ba363aa0ec3f",
+  "task_transport_sha256": "8d2c80aaf152928058be8fba5c88a189ca47d493dc76b5441d1fdf48fa3f5936",
+  "candidate_check_sha256": "018e2288ab17a262f5cba59af213654341d071869819959c4ec20a9bfbb03cc8"
+}
