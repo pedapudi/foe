@@ -35,9 +35,9 @@ A fixture whose contract no longer matches `contract_sha256` is refused by
 | `../../candidate_check.py` | `018e2288ab17a262f5cba59af213654341d071869819959c4ec20a9bfbb03cc8` |
 
 The resolved contract fingerprint at freeze time is
-`sha256:fd8aac104b93e3f81d52c7d3392ff82ce7442bac4a6ea3107f8a8be765b238e9`
+`sha256:0da24c0f8a6749343792c1bc71addcdb10add0c8c47317b79bde5d617826da4e`
 under runtime build
-`sha256:3f2c0a6e98606ba5bd5867e209d8b40d039910afe119cf5830f449bfa071df6d`;
+`sha256:4c0dce854a5e9ce17e431e1310047b06034db6620561f4ebe81c37197db4bb52`;
 the fingerprint covers the captured transport bytes and
 runtime-contributed text, so a different runtime build reports a different
 fingerprint over the same frozen files.

@@ -32,9 +32,9 @@ longer matches `contract_sha256` is refused by `evaluate.load_fixture`.
 | `../../candidate_check.py` | `018e2288ab17a262f5cba59af213654341d071869819959c4ec20a9bfbb03cc8` |
 
 The resolved contract fingerprint at freeze time is
-`sha256:b9192849704ff7ebcaebab62abbf2bd92e5bf7ff3ba9d6b6e7c59ff46bdef468`
+`sha256:1234ddf1353930d9165d2abcfc4e6db4a31262e0dc0f01c15d8f566ff5f8fd3a`
 under runtime build
-`sha256:3f2c0a6e98606ba5bd5867e209d8b40d039910afe119cf5830f449bfa071df6d`;
+`sha256:4c0dce854a5e9ce17e431e1310047b06034db6620561f4ebe81c37197db4bb52`;
 the fingerprint covers the captured transport bytes and
 runtime-contributed text, so a different runtime build reports a different
 fingerprint over the same frozen files.
