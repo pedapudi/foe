@@ -1,4 +1,7 @@
-use super::{build_manifest, digest_of, manifest_bytes, record_bytes, verify_adoption, AdoptionRecord, MANIFEST_FILE};
+use super::{
+    build_manifest, digest_of, manifest_bytes, record_bytes, verify_adoption, verify_bundle, AdoptionRecord,
+    MANIFEST_FILE,
+};
 use foe_contract::fingerprint::canonical;
 use foe_log::append::Writer;
 use foe_log::{
@@ -131,6 +134,23 @@ fn policy_predecessor_must_match_the_record_and_proposal_root() {
     bundle(root.path(), None, None);
     let error = verify_adoption(root.path(), Some(&digest('a'))).unwrap_err().to_string();
     assert!(error.contains("predecessor_contract_fingerprint"), "{error}");
+}
+
+/// Facts are established from the bytes the digest pass verified:
+/// `verify_bundle` retains every listed file's bytes, and the later
+/// phases of `verify_adoption` parse only the retained map, never the
+/// directory, so a file rewritten after the digest pass cannot reach
+/// fact establishment.
+#[test]
+fn facts_come_from_retained_bytes_not_from_re_reads() {
+    let root = tempfile::tempdir().unwrap();
+    bundle(root.path(), None, None);
+    let verified = verify_bundle(root.path()).unwrap();
+    std::fs::write(root.path().join("adoption-record.json"), "rewritten after the digest pass").unwrap();
+    std::fs::write(root.path().join("episode/episode.jsonl"), "rewritten after the digest pass").unwrap();
+    for file in &verified.manifest.files {
+        assert_eq!(digest_of(&verified.files[&file.path]), file.sha256, "{} holds its verified bytes", file.path);
+    }
 }
 
 #[test]
