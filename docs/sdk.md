@@ -96,6 +96,7 @@ when the binary asks.
 | `await contract.run(task, ...)` | run one episode to its outcome |
 | `await contract.start(task, ...)` | run one episode and return a `Handle` |
 | `handle.steer(text)`, `handle.cancel()`, `handle.wait()` | steer, stop, or await a running episode |
+| `handle.pid`, `handle.runtime` | the episode's process id and the build identity of the binary running it |
 | `foe.run_config(doc, ...)`, `foe.start_config(doc, ...)` | the same two operations on a complete document written by hand |
 | `foe.serve(log_dir, binary=...)` | serve a log directory through the binary's viewer |
 | `@foe.tool`, `@tool.render` | declare a host tool and its rendering |
@@ -104,6 +105,7 @@ when the binary asks.
 | `foe.Verified`, `foe.Returns` | the `done_when` key |
 | `foe.Completed`, `foe.Blocked`, `foe.Exhausted`, `foe.Failed` | the outcome union |
 | `foe.Event` | one log event, as delivered to `on_event` |
+| `foe.Runtime` | the version and build hash the binary states |
 | `foe.adapters.litellm.litellm_transport` | the reference transport adapter |
 
 ### `ExecutionContract`
@@ -194,8 +196,9 @@ await contract.run(
 ) -> foe.Outcome
 ```
 
-`start` takes the same arguments and returns a `foe.Handle` as soon as the
-binary is running. `run` is `start` followed by `await handle.wait()`. A contract with a `model` takes no `transport`, and
+`start` takes the same arguments and returns a `foe.Handle` once the binary
+has written `episode/start`. `run` is `start` followed by
+`await handle.wait()`. A contract with a `model` takes no `transport`, and
 a contract without one requires it; "Who calls the model" below states the
 rule and what each choice means.
 
@@ -216,8 +219,17 @@ request; the package has no opinion about its value.
   runtime records it and includes it in the next request;
 - `await handle.cancel()`, which writes a `cancel` line and returns the
   outcome the runtime records, `Failed("cancelled")`;
-- `handle.episode_id`, `handle.runtime_version`, `handle.log_dir`,
-  `handle.outcome`, and `handle.done`.
+- `handle.pid`, the process id of the binary, and `handle.runtime`, a
+  `foe.Runtime` with the `version` and `build` the binary stated in
+  `episode/start`; `build` is `sha256:<hex>` of the running binary, or the
+  word `unknown` when the binary could not read its own image;
+- `handle.episode_id`, `handle.log_dir`, `handle.outcome`, and
+  `handle.done`.
+
+Both `pid` and `runtime` hold their values before the episode's first
+model request and first tool call, because `start` returns only after
+`episode/start`. A supervisor that must kill an episode on a wall-clock
+budget of its own, or record which build produced a log, reads them there.
 
 A handle is not an episode. The host process is never sandboxed, and
 closing the Python process without cancelling leaves the binary to notice
@@ -547,5 +559,6 @@ are exercised against the same host tools. `uv run pytest` from `python/`
 runs the package's tests against it.
 
 The tests that need the real binary are in `python/tests/test_binary.py`
-and are skipped when `target/debug/foe` has not been built. One of them
-runs an episode with a `model` block and a Python host tool.
+and are skipped when `target/debug/foe` has not been built. They run one
+episode with a `model` block and a Python host tool, and read the process
+id and the build identity from the handle.

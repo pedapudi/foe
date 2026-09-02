@@ -22,7 +22,7 @@ from typing import Any, AsyncIterator, Callable, Iterable, Mapping
 
 from ._capabilities import PathLike
 from ._errors import BinaryError, ProtocolError
-from ._outcome import Event, Failed, Outcome, outcome_from_json
+from ._outcome import Event, Failed, Outcome, Runtime, outcome_from_json
 from ._tools import Capabilities, HostTool, ToolResult
 
 Transport = Callable[[dict[str, Any]], AsyncIterator[dict[str, Any]]]
@@ -67,6 +67,11 @@ class Handle:
     `wait` returns the outcome. `steer` appends to the episode's inbox with
     source `parent`. `cancel` asks the runtime to stop and returns the
     outcome it records, which is `Failed("cancelled")`.
+
+    `pid` is the process id of the binary, and `runtime` is the build
+    identity that binary stated. A handle is returned only after
+    `episode/start`, so a supervisor holds both before the episode's first
+    request and first tool call.
     """
 
     def __init__(
@@ -93,11 +98,19 @@ class Handle:
         self._pending: set[asyncio.Task[None]] = set()
         self._write_lock = asyncio.Lock()
         self._outcome: Outcome | None = None
+        # Set when `episode/start` has been read, and again when the reader
+        # stops, so that a wait for the start cannot outlive the process.
+        self._start_known = asyncio.Event()
         self.episode_id: str | None = None
-        self.runtime_version: str | None = None
+        self.runtime: Runtime | None = None
         self._reader = asyncio.create_task(self._read_loop(), name="foe-host-reader")
 
     # ---- public -------------------------------------------------------------
+
+    @property
+    def pid(self) -> int:
+        """The process id of the binary running this episode."""
+        return self._process.pid
 
     @property
     def outcome(self) -> Outcome | None:
@@ -111,6 +124,10 @@ class Handle:
         await asyncio.shield(self._reader)
         assert self._outcome is not None
         return self._outcome
+
+    async def _await_start(self) -> None:
+        """Wait until `episode_id` and `runtime` hold what the binary stated."""
+        await self._start_known.wait()
 
     async def steer(self, text: str) -> None:
         """Append a message with source `parent`; it enters the next request."""
@@ -180,7 +197,8 @@ class Handle:
         if event.type == "episode/start" and tag is None:
             self.episode_id = str(event.data.get("id"))
             runtime = event.data.get("runtime") or {}
-            self.runtime_version = str(runtime.get("version", ""))
+            self.runtime = Runtime(str(runtime.get("version", "")), str(runtime.get("build", "")))
+            self._start_known.set()
         elif event.type == "request/header":
             self._headers[(tag, event.seq)] = event.data
         elif event.type == "model/request" and self._transport is not None:
@@ -276,6 +294,7 @@ class Handle:
         )
 
     async def _shutdown(self) -> None:
+        self._start_known.set()
         for task in list(self._pending):
             task.cancel()
         if self._pending:
@@ -312,6 +331,9 @@ async def start_config(
     leaves the model to foe's built-in transport and refuses `transport`.
     The host registers and services the document's `host_tools` either way.
     `tools` supplies the implementation of every name in `host_tools`.
+
+    Returns once the binary has written `episode/start`, so the handle
+    carries the process id and the runtime build before the first request.
     """
     doc = _load_config(config)
     if "task" not in doc:
@@ -353,7 +375,7 @@ async def start_config(
     except OSError as exc:
         shutil.rmtree(config_dir, ignore_errors=True)
         raise BinaryError(f"{os.fspath(binary)}: {exc}") from exc
-    return Handle(
+    handle = Handle(
         process=process,
         config=doc,
         config_dir=config_dir,
@@ -363,6 +385,8 @@ async def start_config(
         on_event=on_event,
         max_output_tokens=max_output_tokens,
     )
+    await handle._await_start()
+    return handle
 
 
 async def run_config(

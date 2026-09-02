@@ -109,3 +109,35 @@ def test_the_built_binary_calls_the_model_while_the_package_serves_its_host_tool
     result = next(e for e in events if e.type == "tool/result")
     assert result.data["name"] == "reference_count"
     assert result.data["value"] == {"count": 3, "symbol": "add"}
+
+
+@pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
+def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_call(tmp_path: Path) -> None:
+    at_call: list[tuple[int, foe.Runtime | None]] = []
+    started: list[foe.Handle] = []
+
+    @foe.tool(name="reference_count")
+    def record_identity(symbol: str) -> dict[str, Any]:
+        """Count the references to a symbol."""
+        at_call.append((started[0].pid, started[0].runtime))
+        return {"count": 3, "symbol": symbol}
+
+    contract = foe.ExecutionContract(
+        name="process-identity",
+        instructions={"role": "You are under test."},
+        tools=["read", record_identity],
+        grants=foe.Grants(read=[tmp_path]),
+        budget=foe.Budget(model_calls=4),
+        model=scripted_model(),
+    )
+
+    async def scenario() -> foe.Outcome:
+        handle = await contract.start(task="Count the references.", binary=BINARY, log_dir=tmp_path / "episode")
+        started.append(handle)
+        assert handle.runtime is not None
+        assert handle.runtime.version == foe.__version__
+        assert handle.runtime.build.startswith("sha256:")
+        return await handle.wait()
+
+    assert asyncio.run(scenario()) == foe.Completed(SUMMARY)
+    assert at_call == [(started[0].pid, started[0].runtime)]

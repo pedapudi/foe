@@ -151,7 +151,7 @@ class Episode:
                 "contract": contract,
                 "contract_fingerprint": contract_fingerprint_of(contract),
                 "task": config["task"],
-                "runtime": {"version": "0.2.0", "build": "unknown"},
+                "runtime": {"version": "0.2.0", "build": "sha256:" + "0" * 64},
                 "sandbox": {"mode": (config.get("sandbox") or {}).get("mode", "best-effort"), "landlock_abi": 0},
             },
         )

@@ -335,6 +335,30 @@ def test_a_model_block_runs_through_the_host_with_its_host_tools(fake_binary: Pa
     assert result.data["value"] == {"count": 3, "symbol": "add"}
 
 
+def test_the_handle_carries_the_process_id_and_the_runtime_build(fake_binary: Path, tmp_path: Path) -> None:
+    """Both are known before the first tool call, which the host tool records."""
+    started: list[foe.Handle] = []
+    at_call: list[tuple[int, foe.Runtime | None]] = []
+
+    @foe.tool(name="reference_count")
+    def record_identity(symbol: str) -> dict[str, Any]:
+        """Count the references to a symbol."""
+        at_call.append((started[0].pid, started[0].runtime))
+        return {"count": 3, "symbol": symbol}
+
+    async def scenario() -> foe.Outcome:
+        handle = await contract_with(["read", record_identity], model=scripted_model()).start(
+            task="Count the references.", binary=fake_binary, log_dir=tmp_path / "episode"
+        )
+        started.append(handle)
+        assert handle.pid > 0
+        assert handle.runtime == foe.Runtime(version="0.2.0", build="sha256:" + "0" * 64)
+        return await handle.wait()
+
+    assert asyncio.run(scenario()) == foe.Completed(SUMMARY)
+    assert at_call == [(started[0].pid, started[0].runtime)]
+
+
 def test_serve_returns_the_url(fake_binary: Path, tmp_path: Path) -> None:
     async def scenario() -> str:
         viewer = await foe.serve(tmp_path, binary=fake_binary)

@@ -65,6 +65,18 @@ def outcome_from_json(data: Mapping[str, Any]) -> Outcome:
 
 
 @dataclass(frozen=True, slots=True)
+class Runtime:
+    """The build of the binary running the episode, from `episode/start.runtime`.
+
+    `build` is `sha256:<hex>` of the running binary, or the word `unknown`
+    when the binary could not read its own image.
+    """
+
+    version: str
+    build: str
+
+
+@dataclass(frozen=True, slots=True)
 class Event:
     """One log event as foe wrote it to standard output.
 
