@@ -48,7 +48,7 @@ pub fn compute(
         if contract.tool_defs.contains_key(&spec.name) {
             let captured = contract.captured_executables.get(&spec.name).expect("a resolved executable is captured");
             entry["exec_sha256"] = Value::String(captured.sha256.clone());
-            entry["exec_name"] = Value::String(captured.invocation_name.to_string_lossy().into_owned());
+            entry["exec_name"] = Value::String(captured.invocation_name.clone());
         }
         tools.push(entry);
     }
@@ -69,7 +69,7 @@ pub fn compute(
     let mut runtime = serde_json::to_value(runtime)?;
     if let Some(captured) = &contract.captured_transport {
         runtime["exec_transport_sha256"] = Value::String(captured.sha256.clone());
-        runtime["exec_transport_name"] = Value::String(captured.invocation_name.to_string_lossy().into_owned());
+        runtime["exec_transport_name"] = Value::String(captured.invocation_name.clone());
     }
     let document = json!({
         "name": contract.name,

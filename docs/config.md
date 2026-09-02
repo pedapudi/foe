@@ -243,10 +243,12 @@ error are captured. The exit code is reported as part of the result. An exit
 code other than zero is a result rather than an error.
 
 During execution-contract construction, Foe captures the configured
-executable's bytes, digest, source path, and invocation name. The digest and
-invocation name participate in the fingerprint. Every later invocation uses
-the captured executable. Source replacement, modification, or deletion cannot
-change the run.
+executable's bytes, digest, source path, and invocation name. The invocation
+name is the final component of the configured `exec` path and must be valid
+UTF-8; resolution rejects any other name, so the fingerprint records name
+bytes exactly. The digest and invocation name participate in the fingerprint.
+Every later invocation uses the captured executable. Source replacement,
+modification, or deletion cannot change the run.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant
