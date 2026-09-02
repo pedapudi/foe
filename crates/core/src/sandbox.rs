@@ -558,12 +558,8 @@ pub fn probe_abi() -> u32 {
             .ok()?
             .restrict_self()
             .ok()?;
-        match status.landlock {
-            LandlockStatus::Available { effective_abi, kernel_abi } => {
-                Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32))
-            }
-            _ => Some(0),
-        }
+        let LandlockStatus::Available { effective_abi, kernel_abi } = status.landlock else { return Some(0) };
+        Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32))
     })
     .join()
     .ok()

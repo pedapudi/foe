@@ -220,8 +220,13 @@ nests inside a parent domain that also carries the task cgroup.
 
 When a direct child exits, the parent writes `1` to the child's
 `cgroup.kill`. The kernel kills every descendant, including processes that
-created another process group or session. The parent waits for recursive
-`populated 0`, removes the boundary, and publishes the child's settlement.
+created another process group or session and processes forked after the
+write. The parent polls for recursive `populated 0` under a bound, removes
+the boundary, and publishes the child's settlement. A subtree still
+populated when the bound expires holds a process the kernel cannot reap,
+such as one in uninterruptible sleep on a dead mount; cleanup then fails
+with an error naming the populated cgroup, published in the child's
+settlement, rather than blocking settlement forever.
 
 A root invocation removes its own cgroup directory at exit. Its episode
 policy therefore carries read and removal on the invocation directory and

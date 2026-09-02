@@ -45,6 +45,20 @@ fn a_child_boundary_owns_a_grandchild_and_a_detached_process() {
     std::fs::remove_dir(invocation).unwrap();
 }
 
+/// A subtree that stays populated past the bound fails cleanup with an
+/// error naming the populated cgroup instead of waiting forever, and a
+/// subtree the kernel does reap passes within the same poll loop.
+#[test]
+fn an_unreapable_subtree_fails_cleanup_at_the_bound() {
+    let dir = crate::exec::tests::scratch("process-boundary", "unreapable");
+    std::fs::write(dir.join("cgroup.events"), "populated 1\n").unwrap();
+    let error = await_reaped(&dir, Duration::from_millis(50)).unwrap_err().to_string();
+    assert!(error.contains(&dir.display().to_string()), "the failure names the populated cgroup: {error}");
+    assert!(error.contains("still populated"), "{error}");
+    std::fs::write(dir.join("cgroup.events"), "populated 0\n").unwrap();
+    await_reaped(&dir, Duration::from_millis(50)).unwrap();
+}
+
 fn exited(pid: u32) -> bool {
     let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
         return true;
