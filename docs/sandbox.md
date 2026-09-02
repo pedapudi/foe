@@ -355,8 +355,12 @@ descendant contract. Every read, write, or execute path includes its reason.
 A captured executable includes its content digest. The report also names bind
 ports and every reason outbound TCP remains available.
 
-For a captured executable, the path is its construction-time source. The
-digest identifies the captured bytes without reopening that source. For a
+Each row names the object the compiled rule binds. A captured executable's
+row is `captured:` followed by its content digest, because the rule binds
+the retained private copy rather than any pathname; the construction-time
+source path appears as provenance in the reason and is itself not
+executable. An execute grant that names a directory is reported as that
+directory, the subtree grant [config.md](config.md) specifies. For a
 sandbox mode other than `off`, the plan includes the exact cgroup entry shell
 with a conditional reason. The host decides whether cgroup delegation is
 available when an episode starts.
@@ -364,7 +368,8 @@ available when an episode starts.
 `episode/start.sandbox.resolved_permissions` records the permission set
 compiled for that episode. It includes runtime paths unavailable to a
 configuration-only plan, such as the episode log directory and delegated
-cgroup paths.
+cgroup paths. A cgroup control file that cannot be opened when the policy
+is built compiles no rule and appears in no row.
 
 The resolved permission set states what the runtime attempted to permit.
 `sandbox.mode`, `landlock_abi`, and `process_boundary` state what the host
