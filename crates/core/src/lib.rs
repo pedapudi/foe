@@ -1,7 +1,7 @@
 //! The episode runtime.
 //!
 //! This crate owns grants, budget, the tool registry, the agent loop, the
-//! inbox, spawning, teams, the executable runner, the Landlock sandbox, and
+//! inbox, spawning, the executable runner, the Landlock sandbox, and
 //! the host protocol. What a contract is — the contract document, its
 //! resolution, and fingerprint — is `foe-contract`, which this crate reads.
 //! `docs/design.md` states what each part guarantees.
@@ -42,7 +42,6 @@ pub mod retrieval;
 pub mod sandbox;
 pub mod session;
 pub mod spawn;
-pub mod team;
 #[cfg(test)]
 #[path = "fixtures_test.rs"]
 mod test_util;
@@ -351,6 +350,13 @@ pub struct SessionStatus {
 pub struct SessionOutput {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+/// This episode's own log, as the lead of its team: appends team events and
+/// reads everything written so far. The team coordinator writes through it.
+pub trait LeadLog: Send + Sync {
+    fn append(&self, event: foe_log::EventData);
+    fn events(&self) -> Vec<foe_log::Event>;
 }
 
 /// Starts child episodes limited to the declared child contracts.

@@ -10,7 +10,7 @@ use crate::budget::Pool;
 use crate::loop_::{lock, Log};
 use crate::protocol::{self, Downlink};
 use crate::spawn::{ChildRun, ProcessSpawner, Router, Uplink};
-use crate::team::LeadLog;
+use crate::LeadLog;
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner};
 use foe_log::{BudgetAmount, Event, EventData};
 use std::sync::{Arc, Mutex};

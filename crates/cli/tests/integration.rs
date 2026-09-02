@@ -1430,7 +1430,7 @@ fn builtin_specs() -> Vec<foe_contract::ToolSpec> {
         .iter()
         .map(|tool| tool.spec().clone())
         .chain(std::iter::once(foe_core::retrieval::spec()))
-        .chain(foe_core::team::builtin_specs())
+        .chain(foe_code::team::builtin_specs())
         .collect()
 }
 
