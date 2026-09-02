@@ -184,7 +184,10 @@ fn a_confined_episode_removes_private_executable_storage() {
     let (_, _, executables) =
         configured_executor("confined-cleanup", &source, SandboxMode::BestEffort, vec![dir.to_path_buf()]);
     let stored_path = executables.tools["configured"].stored_path().to_path_buf();
-    let policy = Policy { runtime_storage: executables.cleanup_roots(), ..Policy::default() };
+    let mut policy = Policy::default();
+    for root in executables.cleanup_roots() {
+        policy.add_cleanup(root, "private captured-executable store");
+    }
     let sandbox = Sandbox::new(SandboxMode::BestEffort).unwrap();
     if sandbox.abi() == 0 {
         return;

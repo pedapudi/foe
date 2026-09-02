@@ -120,13 +120,13 @@ fn executable_policy_keeps_only_its_own_file() {
     let other = dir.join("true");
     std::fs::copy("/bin/true", &other).unwrap();
     let mut episode =
-        Policy { read: vec![dir.to_path_buf()], runtime_storage: vec![dir.join("runtime-only")], ..Policy::default() };
+        Policy { read: vec![dir.to_path_buf()], cleanup: vec![dir.join("runtime-only")], ..Policy::default() };
     episode.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
     episode.add_executable(&other, "other test executable".into()).unwrap();
     let tool = episode.for_executable(Path::new("/bin/sh"), false).unwrap();
     assert!(tool.exec.contains(&std::fs::canonicalize("/bin/sh").unwrap()));
     assert!(!tool.exec.contains(&other));
-    assert!(tool.runtime_storage.is_empty());
+    assert!(tool.cleanup.is_empty());
     assert!(tool.log_dir.is_none());
     let run = |policy: &Policy| {
         let mut cmd = Command::new("/bin/sh");
@@ -157,6 +157,41 @@ fn executable_policy_keeps_explicit_subprocess_grants() {
     cmd.arg("-c").arg(helper.display().to_string()).env_clear();
     let status = s.spawn_narrowed(&tool, cmd).unwrap().wait().unwrap();
     assert!(status.success(), "the explicit subprocess grant survives executable narrowing");
+}
+
+/// docs/sandbox.md "Executables": cleanup carries read and removal alone,
+/// so an episode can enumerate and delete its own runtime-owned directory
+/// while a sibling directory beneath the same shared parent stays outside
+/// its read and write envelope.
+#[test]
+fn cleanup_removes_the_owned_directory_without_reaching_a_sibling() {
+    let Some(s) = sandbox() else { return };
+    let parent = temp_dir("cleanup-shared-parent");
+    let store = parent.join("store");
+    std::fs::create_dir_all(store.join("0")).unwrap();
+    std::fs::write(store.join("0").join("captured"), b"x").unwrap();
+    let sibling_log = parent.join("sibling-episode").join("log");
+    std::fs::create_dir(parent.join("sibling-episode")).unwrap();
+    std::fs::write(&sibling_log, b"evidence").unwrap();
+    let mut policy = Policy::default();
+    policy.add_cleanup(store.clone(), "test store");
+    let (own, created, log) = (store.clone(), parent.join("created"), sibling_log.clone());
+    let (write_denied, read_denied, create_denied, removed) = s
+        .run_narrowed(&policy, move || {
+            (
+                std::fs::write(&log, b"tampered").is_err(),
+                std::fs::read(&log).is_err(),
+                std::fs::create_dir(&created).is_err(),
+                std::fs::remove_dir_all(&own).is_ok(),
+            )
+        })
+        .unwrap();
+    assert!(write_denied, "a sibling's file cannot be written");
+    assert!(read_denied, "a sibling's file cannot be read");
+    assert!(create_denied, "nothing can be created beneath the shared parent");
+    assert!(removed, "the owned directory is enumerated and removed");
+    assert!(!store.exists());
+    assert_eq!(std::fs::read(&sibling_log).unwrap(), b"evidence");
 }
 
 #[test]
@@ -266,7 +301,15 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.exec.contains(&shell));
     assert!(!p.exec.contains(&tool), "configured executables are authorized by their committed inode");
     assert_eq!(p.exec_files.len(), 1);
-    assert_eq!(p.runtime_storage.len(), 1, "the episode owns private executable cleanup");
+    assert_eq!(p.cleanup.len(), 1, "the episode owns private executable cleanup");
+    assert_eq!(p.cleanup_parents, vec![p.cleanup[0].parent().unwrap().to_path_buf()]);
+    let rows = p.resolved_permissions();
+    let (store, parent) = (p.cleanup[0].to_string_lossy(), p.cleanup_parents[0].to_string_lossy());
+    assert!(rows.write.iter().any(|entry| entry.path == store && entry.reason.contains("removal only")));
+    assert!(
+        rows.write.iter().all(|entry| entry.path != parent || entry.reason.contains("directory removal alone")),
+        "the report claims nothing on the shared parent beyond directory removal"
+    );
     assert_eq!(p.log_dir, Some(PathBuf::from("/logs/ep")));
     assert_eq!(p.bind_tcp, vec![8080], "the episode may bind the granted port");
     assert!(!p.connect_tcp, "an episode without a model block holds no transport");
@@ -291,7 +334,7 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert!(p.connect_tcp);
     p.read_files.push(PathBuf::from("/keys/anthropic"));
     let offline = p.for_executable(Path::new("/bin/sh"), false).unwrap();
-    assert!(offline.runtime_storage.is_empty(), "a configured executable cannot reach runtime storage");
+    assert!(offline.cleanup.is_empty(), "a configured executable cannot reach runtime storage");
     assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
     let online = p.for_executable(Path::new("/bin/sh"), true).unwrap();
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");

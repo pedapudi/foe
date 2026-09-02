@@ -92,6 +92,60 @@ fn cgroup_ownership_reports_its_launcher_and_control_paths() {
     assert!(access.write.iter().any(|entry| entry.path == paths.task.to_string_lossy()));
 }
 
+/// docs/sandbox.md "Process ownership": a root episode's policy carries
+/// read and removal on its own invocation cgroup directory and directory
+/// removal alone on the shared manager parent, so sibling invocations'
+/// control files stay outside its read and write envelope.
+#[test]
+fn root_cleanup_carries_removal_rights_without_the_shared_manager() {
+    let manager = PathBuf::from("/sys/fs/cgroup/foe-runtime");
+    let invocation = manager.join("foe-inv");
+    let paths = BoundaryPaths { episode: invocation.join("episode"), task: invocation.join("task") };
+    let root = RootCleanup { origin: PathBuf::from("/sys/fs/cgroup/origin"), invocation: invocation.clone() };
+    let ownership = ProcessOwnership::enforced(ProcessBoundary { paths }, Some(root));
+    let mut policy = Policy::default();
+    ownership.authorize(&mut policy).unwrap();
+    assert_eq!(policy.cleanup, vec![invocation.clone()]);
+    assert_eq!(policy.cleanup_parents, vec![manager.clone()]);
+    assert!(!policy.runtime_control.contains(&manager), "the shared manager directory is not runtime-controlled");
+    assert!(!policy.runtime_control.contains(&invocation));
+    let access = policy.resolved_permissions();
+    assert!(access
+        .write
+        .iter()
+        .all(|entry| entry.path != manager.to_string_lossy() || entry.reason.contains("directory removal alone")));
+}
+
+/// The compiled cleanup rules suffice for root-invocation removal: under
+/// Landlock the runtime still reads the boundary state, removes the task
+/// and episode trees, and removes the invocation directory from its parent.
+#[test]
+fn root_cleanup_succeeds_under_landlock() {
+    let sandbox = crate::sandbox::Sandbox::new(SandboxMode::BestEffort).unwrap();
+    if sandbox.abi() == 0 {
+        return;
+    }
+    let Ok((boundary, invocation)) = test_boundary("landlock-cleanup") else {
+        return;
+    };
+    let origin = current_cgroup().unwrap();
+    let root = RootCleanup { origin, invocation: invocation.clone() };
+    let ownership = ProcessOwnership::enforced(boundary, Some(root));
+    let mut policy = Policy::default();
+    ownership.authorize(&mut policy).unwrap();
+    let gone = invocation.clone();
+    let removed = sandbox
+        .run_narrowed(&policy, move || {
+            drop(ownership);
+            !gone.exists()
+        })
+        .unwrap();
+    if !removed {
+        let _ = remove_tree(&invocation);
+    }
+    assert!(removed, "cleanup removed the invocation tree under the compiled policy");
+}
+
 /// docs/protocol.md "Children": a child accepts only the boundary that its
 /// parent placed it in before launch.
 #[test]

@@ -101,7 +101,7 @@ impl ProcessOwnership {
             policy.add_runtime_control(boundary.paths.task.clone());
         }
         if let Some(root) = &self.root {
-            policy.add_runtime_control(root.invocation.parent().unwrap().to_path_buf());
+            policy.add_cleanup(root.invocation.clone(), "invocation cgroup");
             policy.add_runtime_control_file(root.origin.join("cgroup.procs"));
         }
         Ok(())
@@ -144,13 +144,7 @@ impl ProcessBoundary {
             return Err(error);
         }
         let boundary = Self { paths: BoundaryPaths { episode, task } };
-        let cleanup = RootCleanup {
-            origin,
-            invocation,
-            episode: boundary.paths.episode.clone(),
-            task: boundary.paths.task.clone(),
-        };
-        Ok((boundary, cleanup))
+        Ok((boundary, RootCleanup { origin, invocation }))
     }
 
     fn enter(paths: BoundaryPaths) -> Result<Self, RuntimeError> {
@@ -293,11 +287,11 @@ fn cgroup_error(action: &str, path: &Path, error: std::io::Error) -> RuntimeErro
     RuntimeError::Sandbox(format!("cgroup v2: {action} {}: {error}", path.display()))
 }
 
+/// Removal duty for a root invocation's cgroup directory, whose `episode`
+/// and `task` boundaries lie directly beneath it.
 struct RootCleanup {
     origin: PathBuf,
     invocation: PathBuf,
-    episode: PathBuf,
-    task: PathBuf,
 }
 
 impl RootCleanup {
@@ -305,9 +299,10 @@ impl RootCleanup {
         if join(&self.origin).is_err() {
             return;
         }
-        let _ = kill_and_remove(&self.episode);
-        if populated(&self.task).is_ok_and(|is_populated| !is_populated) {
-            let _ = remove_tree(&self.task);
+        let _ = kill_and_remove(&self.invocation.join("episode"));
+        let task = self.invocation.join("task");
+        if populated(&task).is_ok_and(|is_populated| !is_populated) {
+            let _ = remove_tree(&task);
             let _ = std::fs::remove_dir(&self.invocation);
         }
     }

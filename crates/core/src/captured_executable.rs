@@ -84,7 +84,7 @@ impl CapturedExecutable {
     }
 
     fn cleanup_root(&self) -> Option<&Path> {
-        self._store.as_ref().and_then(|root| root.0.parent())
+        self._store.as_ref().map(|root| root.0.as_path())
     }
 
     /// Commits an executable for callers that construct an exec transport
@@ -209,7 +209,7 @@ impl CapturedExecutableTree {
         out
     }
 
-    /// Private storage parents the episode process removes after confinement.
+    /// Private storage directories the episode process removes after confinement.
     pub fn cleanup_roots(&self) -> Vec<PathBuf> {
         self.fingerprint_entries()
             .into_iter()

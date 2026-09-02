@@ -43,7 +43,8 @@ source cannot change the run.
 | each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
 | the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
-| the runtime-owned cgroup hierarchy | runtime-only read and write for process ownership and cleanup; configured executables receive no access |
+| the episode's cgroup boundary and the invocation task cgroup | runtime-only read and write for process ownership; configured executables receive no access |
+| the invocation cgroup directory, for a root episode | runtime-only read and removal for cleanup; the shared manager directory above it carries directory removal alone |
 | the parent cgroup's `cgroup.procs`, for a root episode | runtime-only write so the runtime can leave its episode boundary before cleanup |
 | `/bin/sh`, when cgroup v2 is delegated | execute and read the exact shell used to place a child or task-lifetime session in its boundary |
 | the system directories `/etc`, `/usr/share`, `/proc`, `/sys` | read |
@@ -209,6 +210,15 @@ When a direct child exits, the parent writes `1` to the child's
 created another process group or session. The parent waits for recursive
 `populated 0`, removes the boundary, and publishes the child's settlement.
 
+A root invocation removes its own cgroup directory at exit. Its episode
+policy therefore carries read and removal on the invocation directory and
+directory removal alone on the shared manager directory above it. Landlock
+checks a directory removal against the removed directory's parent, which is
+why the manager directory appears at all; it grants nothing else, so a
+concurrent invocation's control files stay outside the episode's read and
+write envelope, and the residual surface is removal of a sibling's empty
+directory.
+
 The boundary path is runtime launch metadata in the child's
 `child-launch.json`.
 It does not participate in the contract fingerprint or enter a model
@@ -248,10 +258,16 @@ argument zero use the basename from the configured absolute path. This
 preserves dispatch by BusyBox, coreutils, and other multicall executables. The
 source pathname is never reopened.
 
-The episode process receives internal read and write access to the storage
-parent so it can remove the private directory after confinement. Tool and
-session policies omit this access. A configured write root that contains the
-episode log therefore does not expose a captured executable stored elsewhere.
+The episode process receives internal cleanup access so it can delete the
+store after confinement: it may enumerate the store directory and remove the
+files and directories inside it, and the store's parent carries directory
+removal alone, which the kernel checks when the store directory itself is
+removed. Nothing may be created, written, or read beneath that shared
+parent, so a sibling episode's directory beside the store stays outside the
+episode's envelope; the residual surface is removal of a sibling's empty
+directory, which destroys no data. Tool and session policies omit this
+access. A configured write root that contains the episode log therefore
+does not expose a captured executable stored elsewhere.
 
 A script receives its descriptor path as `$0`. A script that needs adjacent
 resources uses its declared working directory or an absolute configured path.

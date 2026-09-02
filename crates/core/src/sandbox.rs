@@ -52,8 +52,13 @@ pub struct Policy {
     pub exec: Vec<PathBuf>,
     /// Captured executable inodes retained during contract construction.
     pub exec_files: Vec<Arc<CapturedExecutable>>,
-    /// Storage parents available only to the episode process during cleanup.
-    pub runtime_storage: Vec<PathBuf>,
+    /// Runtime-owned directories only the episode process enumerates and
+    /// removes during cleanup: read and removal, never creation or writing.
+    pub cleanup: Vec<PathBuf>,
+    /// Shared parents of `cleanup` directories. Landlock checks a directory
+    /// removal against the victim's parent, so each parent carries directory
+    /// removal alone and no other access.
+    pub cleanup_parents: Vec<PathBuf>,
     /// Explicit contract grants that remain available to subprocesses after
     /// the executable that starts them receives its narrower policy.
     pub delegated_exec: Vec<PathBuf>,
@@ -152,8 +157,7 @@ impl Policy {
         let mut policy = Self::for_plan(config)?;
         policy.exec_files = executables.reachable();
         for path in executables.cleanup_roots() {
-            policy.runtime_storage.push(path.clone());
-            policy.record_read_write(path, "private captured-executable storage cleanup", None);
+            policy.add_cleanup(path, "private captured-executable store");
         }
         policy.log_dir = Some(log_dir.to_path_buf());
         policy.record_read_write(log_dir.to_path_buf(), "episode log and spill directory", None);
@@ -322,6 +326,19 @@ impl Policy {
         permissions
     }
 
+    /// Gives only the episode process the right to enumerate and remove a
+    /// runtime-owned directory, plus removal of the directory itself out of
+    /// its shared parent, which carries no other access.
+    pub fn add_cleanup(&mut self, dir: PathBuf, what: &str) {
+        if let Some(parent) = dir.parent() {
+            self.cleanup_parents.push(parent.to_path_buf());
+            self.record_write(parent.to_path_buf(), format!("{what}: directory removal alone"), None);
+        }
+        self.record_read(dir.clone(), format!("{what}: read and enumerate for cleanup"), None);
+        self.record_write(dir.clone(), format!("{what}: cleanup removal only, no creation or writing"), None);
+        self.cleanup.push(dir);
+    }
+
     /// Gives only the runtime control of a cgroup directory after the
     /// episode enters Landlock.
     pub fn add_runtime_control(&mut self, path: PathBuf) {
@@ -473,7 +490,8 @@ impl Sandbox {
             (policy.read.clone(), read),
             (policy.write.clone(), write),
             (policy.exec.clone(), AccessFs::Execute | AccessFs::ReadFile),
-            (policy.runtime_storage.clone(), read | write),
+            (policy.cleanup.clone(), read | AccessFs::RemoveFile | AccessFs::RemoveDir),
+            (policy.cleanup_parents.clone(), BitFlags::from(AccessFs::RemoveDir)),
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
             (policy.runtime_control.clone(), read | write),
