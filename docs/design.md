@@ -367,6 +367,16 @@ recorded as an interrupted assistant message; its tool calls receive synthetic
 error results, and the next step continues from there. Retries consume the
 episode's request budget. There is no unbounded retry.
 
+The bound depends on the cause. A provider-reported outage — a retryable
+provider error or rate limit — is waited out with backoff rising to a
+minute per delay, for as long as the seconds budget funds the next delay
+and the model-call budget funds the next attempt; when the remaining
+budget cannot fund another attempt, the step ends blocked with a message
+naming the budget. Waiting costs only what the budget already meters, so
+the budget, not an attempt count, is its bound. Every other cause —
+transport loss, an interrupted stream — has a fixed attempt ceiling,
+because repeating does not fix what it names.
+
 The attempt ceiling is tested before the delay is computed, and the
 `request/retry` event is written immediately before the attempt it
 announces. A step whose last permitted attempt fails therefore ends at

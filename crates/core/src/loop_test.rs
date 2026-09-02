@@ -342,7 +342,9 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
 /// to each sleep's deadline as soon as the episode is idle.
 #[tokio::test(start_paused = true)]
 async fn the_last_permitted_attempt_records_no_retry() {
-    let failure = || vec![Chunk::Error { message: "unreachable".into(), retryable: true }];
+    // Partial text makes each failure an interrupted cause, which the
+    // attempt ceiling bounds; a bare provider cause is budget-bounded.
+    let failure = || vec![text_chunk("partial"), Chunk::Error { message: "unreachable".into(), retryable: true }];
     let responses: Vec<_> = (0..MAX_ATTEMPTS).map(|_| failure()).collect();
     let fx = Fixture::new("loop-ceiling", |v| v["budget"]["model_calls"] = json!(20), responses);
     let started = tokio::time::Instant::now();
@@ -361,6 +363,56 @@ async fn the_last_permitted_attempt_records_no_retry() {
     let waited: u64 = (0..MAX_ATTEMPTS - 1).map(|n| 500u64 << n).sum();
     let elapsed = started.elapsed().as_millis() as u64;
     assert_eq!(elapsed, waited, "the episode waited every delay it announced and no delay it did not");
+}
+
+/// docs/design.md "Failure of a model request": a provider-reported
+/// outage is bounded by the budget, not the attempt ceiling. Attempts
+/// continue past `MAX_ATTEMPTS` while the seconds budget funds the next
+/// delay, and a recovered provider completes the episode.
+#[tokio::test(start_paused = true)]
+async fn a_provider_outage_is_waited_out_within_the_budget() {
+    let failure = || vec![Chunk::Error { message: "overloaded".into(), retryable: true }];
+    let mut responses: Vec<_> = (0..MAX_ATTEMPTS + 1).map(|_| failure()).collect();
+    responses.push(turn("recovered", vec![]));
+    let fx = Fixture::new(
+        "loop-outage-recovers",
+        |v| {
+            v["budget"]["model_calls"] = json!(20);
+            v["budget"]["seconds"] = json!(3600);
+        },
+        responses,
+    );
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("recovered") });
+    let retries = types(&events).iter().filter(|t| *t == "request/retry").count();
+    assert_eq!(retries, MAX_ATTEMPTS as usize + 1, "the attempt ceiling does not bound a provider outage");
+}
+
+/// The outage wait never exceeds the seconds budget: when the remaining
+/// budget cannot fund the next delay, the episode ends blocked and the
+/// message names the budget.
+#[tokio::test(start_paused = true)]
+async fn an_outage_beyond_the_seconds_budget_ends_blocked() {
+    let failure = || vec![Chunk::Error { message: "overloaded".into(), retryable: true }];
+    let responses: Vec<_> = (0..3).map(|_| failure()).collect();
+    let fx = Fixture::new(
+        "loop-outage-budget",
+        |v| {
+            v["budget"]["model_calls"] = json!(20);
+            v["budget"]["seconds"] = json!(3);
+        },
+        responses,
+    );
+    let (outcome, events) = fx.run().await;
+    match outcome {
+        Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message } => {
+            assert!(message.contains("cannot fund another"), "{message}");
+            assert!(message.contains("3 attempts"), "{message}");
+        }
+        other => panic!("expected a blocked outcome, got {other:?}"),
+    }
+    let retries = types(&events).iter().filter(|t| *t == "request/retry").count();
+    assert_eq!(retries, 2, "two funded delays preceded the unfunded third");
 }
 
 #[tokio::test]
