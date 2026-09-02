@@ -82,7 +82,7 @@ fn cgroup_ownership_reports_its_launcher_and_control_paths() {
     let paths = BoundaryPaths { episode: PathBuf::from("/cgroup/episode"), task: PathBuf::from("/cgroup/task") };
     let ownership = ProcessOwnership::enforced(ProcessBoundary { paths: paths.clone() }, None);
     let mut policy = Policy::default();
-    ownership.authorize(&mut policy).unwrap();
+    ownership.authorize(&mut policy, true).unwrap();
     let access = policy.resolved_permissions();
     assert!(access.execute.iter().any(|entry| {
         entry.path == std::fs::canonicalize(PROCESS_BOUNDARY_LAUNCHER).unwrap().to_string_lossy()
@@ -90,6 +90,52 @@ fn cgroup_ownership_reports_its_launcher_and_control_paths() {
     }));
     assert!(access.read.iter().any(|entry| entry.path == paths.episode.to_string_lossy()));
     assert!(access.write.iter().any(|entry| entry.path == paths.task.to_string_lossy()));
+}
+
+/// docs/sandbox.md "Process ownership": the task cgroup joins the policy
+/// only when the contract grants task_session. The path still reaches a
+/// child through its launch metadata, which authorizes nothing.
+#[test]
+fn the_task_cgroup_joins_the_policy_only_with_the_grant() {
+    let paths = BoundaryPaths { episode: PathBuf::from("/cgroup/episode"), task: PathBuf::from("/cgroup/task") };
+    let ownership = ProcessOwnership::enforced(ProcessBoundary { paths: paths.clone() }, None);
+    let mut ungranted = Policy::default();
+    ownership.authorize(&mut ungranted, false).unwrap();
+    assert!(ungranted.runtime_control.contains(&paths.episode));
+    assert!(!ungranted.runtime_control.contains(&paths.task));
+    let access = ungranted.resolved_permissions();
+    assert!(access.write.iter().all(|entry| entry.path != paths.task.to_string_lossy()));
+    let mut granted = Policy::default();
+    ownership.authorize(&mut granted, true).unwrap();
+    assert!(granted.runtime_control.contains(&paths.task));
+}
+
+/// docs/sandbox.md "Process ownership": kernel authority over the task
+/// cgroup follows grants.task_session. An ungranted policy cannot open the
+/// task cgroup.procs for writing, so a compromised episode cannot park a
+/// process in the task boundary; a granted policy opens it, which is what
+/// lets the session wrapper enter before its command executes.
+#[test]
+fn task_cgroup_write_requires_the_grant() {
+    let sandbox = crate::sandbox::Sandbox::new(SandboxMode::BestEffort).unwrap();
+    if sandbox.abi() == 0 {
+        return;
+    }
+    let Ok((boundary, invocation)) = test_boundary("task-grant") else {
+        return;
+    };
+    let procs = boundary.task_procs();
+    let ownership = ProcessOwnership::enforced(boundary, None);
+    let open = |granted: bool| {
+        let mut policy = Policy::default();
+        ownership.authorize(&mut policy, granted).unwrap();
+        let procs = procs.clone();
+        sandbox.run_narrowed(&policy, move || std::fs::OpenOptions::new().write(true).open(procs).is_ok()).unwrap()
+    };
+    assert!(!open(false), "an ungranted policy cannot open the task cgroup for writing");
+    assert!(open(true), "a granted policy enters the task boundary");
+    let boundary = ownership.boundary().unwrap();
+    remove_test_boundary(&boundary, &invocation);
 }
 
 /// docs/sandbox.md "Process ownership": a root episode's policy carries
@@ -104,7 +150,7 @@ fn root_cleanup_carries_removal_rights_without_the_shared_manager() {
     let root = RootCleanup { origin: PathBuf::from("/sys/fs/cgroup/origin"), invocation: invocation.clone() };
     let ownership = ProcessOwnership::enforced(ProcessBoundary { paths }, Some(root));
     let mut policy = Policy::default();
-    ownership.authorize(&mut policy).unwrap();
+    ownership.authorize(&mut policy, false).unwrap();
     assert_eq!(policy.cleanup, vec![invocation.clone()]);
     assert_eq!(policy.cleanup_parents, vec![manager.clone()]);
     assert!(!policy.runtime_control.contains(&manager), "the shared manager directory is not runtime-controlled");
@@ -132,7 +178,7 @@ fn root_cleanup_succeeds_under_landlock() {
     let root = RootCleanup { origin, invocation: invocation.clone() };
     let ownership = ProcessOwnership::enforced(boundary, Some(root));
     let mut policy = Policy::default();
-    ownership.authorize(&mut policy).unwrap();
+    ownership.authorize(&mut policy, false).unwrap();
     let gone = invocation.clone();
     let removed = sandbox
         .run_narrowed(&policy, move || {

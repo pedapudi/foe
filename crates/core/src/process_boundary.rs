@@ -91,14 +91,19 @@ impl ProcessOwnership {
     }
 
     /// Adds the cgroup paths that the runtime must manage after Landlock
-    /// narrows the episode. Executable policies drop these paths.
-    pub fn authorize(&self, policy: &mut Policy) -> Result<(), RuntimeError> {
+    /// narrows the episode. Executable policies drop these paths. Write
+    /// authority over the task cgroup follows the contract's `task_session`
+    /// grant: launch metadata names the path for validation but authorizes
+    /// nothing, so an ungranted episode compiles no task-cgroup rule.
+    pub fn authorize(&self, policy: &mut Policy, task_session: bool) -> Result<(), RuntimeError> {
         if let Some(boundary) = &self.boundary {
             policy
                 .add_executable(Path::new(PROCESS_BOUNDARY_LAUNCHER), "cgroup process-boundary launcher".into())
                 .map_err(RuntimeError::Sandbox)?;
             policy.add_runtime_control(boundary.paths.episode.clone());
-            policy.add_runtime_control(boundary.paths.task.clone());
+            if task_session {
+                policy.add_runtime_control(boundary.paths.task.clone());
+            }
         }
         if let Some(root) = &self.root {
             policy.add_cleanup(root.invocation.clone(), "invocation cgroup");

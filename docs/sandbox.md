@@ -43,7 +43,7 @@ source cannot change the run.
 | each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
 | the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
-| the episode's cgroup boundary and the invocation task cgroup | runtime-only read and write for process ownership; configured executables receive no access |
+| the episode's cgroup boundary and, when the contract grants `task_session`, the invocation task cgroup | runtime-only read and write for process ownership; configured executables receive no access |
 | the invocation cgroup directory, for a root episode | runtime-only read and removal for cleanup; the shared manager directory above it carries directory removal alone |
 | the parent cgroup's `cgroup.procs`, for a root episode | runtime-only write so the runtime can leave its episode boundary before cleanup |
 | `/bin/sh`, when cgroup v2 is delegated | execute and read the exact shell used to place a child or task-lifetime session in its boundary |
@@ -204,6 +204,19 @@ A task-lifetime session enters the invocation's task boundary before its
 command executes. It never enters the child episode boundary. Child
 settlement can therefore remove the child boundary while the task session
 continues under the task environment's ownership.
+
+Kernel write access to the task boundary follows the contract's
+`task_session` grant. A granted contract's episode policy carries read and
+write on the task cgroup, so the session wrapper can write its process id
+there before the command executes; the session tool's own authorization
+check remains the first line. A contract without the grant compiles no
+task-cgroup rule at all. The rule is per contract: a descendant learns the
+task path from its launch metadata, which it must validate at entry, but
+the metadata authorizes nothing — a child whose own contract lacks the
+grant holds no kernel write authority over the task cgroup, whatever its
+ancestors hold. Contract resolution requires that a child grants
+`task_session` only when its parent does, so a granted child's ruleset
+nests inside a parent domain that also carries the task cgroup.
 
 When a direct child exits, the parent writes `1` to the child's
 `cgroup.kill`. The kernel kills every descendant, including processes that

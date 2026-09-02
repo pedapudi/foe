@@ -599,7 +599,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         Policy::for_episode(&contract, &executables, &log_dir).map_err(|e| format!("sandbox permissions: {e}"))?;
     add_builtin_runtime_access(&mut policy, &contract).map_err(|e| format!("sandbox permissions: {e}"))?;
     add_transport_runtime_access(&mut policy, &contract).map_err(|e| format!("sandbox permissions: {e}"))?;
-    process.authorize(&mut policy).map_err(|e| e.to_string())?;
+    process.authorize(&mut policy, contract.grants.task_session).map_err(|e| e.to_string())?;
     let mut unconfined = Unconfined::new(sandbox, policy);
     // Telemetry is resolved before confinement: the capture directory must
     // be writable after the sandbox closes, so it is created now and
