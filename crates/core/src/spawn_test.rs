@@ -33,6 +33,21 @@ impl ProcessSpawner {
     }
 }
 
+/// Stand-in specifications for the tools the fixture contracts list. The
+/// spawner only needs names to resolve and effects to check; the real
+/// team specifications live in the tools crate and are wired by the
+/// command line.
+pub(crate) fn extra_specs() -> Vec<foe_contract::ToolSpec> {
+    let spec = |name: &str, effect| foe_contract::ToolSpec {
+        name: name.into(),
+        description: format!("{name} stand-in"),
+        instruction: None,
+        params: serde_json::json!({ "type": "object" }),
+        effect,
+    };
+    vec![spec("spawn", foe_contract::Effect::Spawns), spec("notify", foe_contract::Effect::Pure)]
+}
+
 pub(crate) fn parent_config() -> ContractDocument {
     serde_json::from_value(serde_json::json!({
         "version": 4, "name": "lead", "instructions": {"r": "lead"}, "tools": ["spawn"],
@@ -63,7 +78,7 @@ pub(crate) fn process_spawner(
         log_dir,
         contract,
         limits,
-        crate::team::builtin_specs(),
+        extra_specs(),
         ProcessConnections { uplink, router, observer },
     )
     .unwrap()
@@ -227,7 +242,7 @@ fn child_fingerprint_is_stable_across_different_runtime_allowances() {
     worker.budget.max_episodes = 6;
     let resolved = foe_contract::document::resolve(&config).unwrap();
     let worker = resolved.spawned_contract("worker").unwrap();
-    let specs = crate::team::builtin_specs();
+    let specs = extra_specs();
     let declared = foe_contract::fingerprint::compute(worker, &specs, &crate::fingerprint::runtime_info()).unwrap();
     let first = effective_budget(
         &resolved.budget,
@@ -292,7 +307,7 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
         dir.to_path_buf(),
         contract.clone(),
         contract.budget.clone(),
-        crate::team::builtin_specs(),
+        extra_specs(),
         ProcessConnections {
             uplink: Arc::new(Lines::default()),
             router: Arc::new(Router::new()),
@@ -346,7 +361,7 @@ async fn forked_child_launch_records_the_source_and_boundary() {
         dir.to_path_buf(),
         contract.clone(),
         contract.budget.clone(),
-        crate::team::builtin_specs(),
+        extra_specs(),
         ProcessConnections {
             uplink: Arc::new(Lines::default()),
             router: router.clone(),
@@ -446,8 +461,7 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     let parent = foe_contract::document::resolve(&parent_config()).unwrap();
     let child = parent.spawned_contract("worker").unwrap();
     let expected =
-        foe_contract::fingerprint::compute(child, &crate::team::builtin_specs(), &crate::fingerprint::runtime_info())
-            .unwrap();
+        foe_contract::fingerprint::compute(child, &extra_specs(), &crate::fingerprint::runtime_info()).unwrap();
     assert_eq!(launch["expected_contract_fingerprint"], expected.hash);
 
     let forwarded = wait_for(|| {

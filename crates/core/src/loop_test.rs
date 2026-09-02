@@ -1092,14 +1092,7 @@ async fn wait_until_observes_a_session_exit_while_it_blocks() {
         vec![turn("waiting", vec![call("w", "wait", r#"{"until": [{"session": "any"}]}"#)]), turn("done", vec![])],
     );
     fx.sessions = Some(Arc::new(fake));
-    let team = Arc::new(crate::team::Team::new(
-        "ep_test".into(),
-        fx.log.clone(),
-        Arc::new(NoSink),
-        Arc::new(crate::spawn::Router::new()),
-        Arc::new(Mutex::new(crate::budget::Pool::new(fx.contract.budget.clone()))),
-    ));
-    fx.tools.extend(crate::team::tools(team, None));
+    fx.tools.push(Box::new(SessionWait(fx.log.clone())));
     let (outcome, events) = fx.run().await;
     assert_eq!(outcome, Outcome::Completed { value: json!("done") });
     let waited = results(&events).into_iter().find(|r| r.name == "wait").unwrap();
@@ -1123,10 +1116,36 @@ fn waited_result_seq(events: &[Event]) -> u64 {
     events.iter().find(|e| matches!(&e.data, EventData::ToolResult(r) if r.name == "wait")).map(|e| e.seq).unwrap()
 }
 
-struct NoSink;
+/// A stand-in for a blocking wait tool: returns once the log holds a
+/// `session`-source inbox item, which is exactly what the loop's mid-turn
+/// exit posting must make observable. The team coordinator's wait tool
+/// carries the full condition vocabulary and is tested beside it.
+struct SessionWait(Arc<super::Log>);
 
-impl crate::protocol::InboxSink for NoSink {
-    fn append(&self, _item: foe_log::InboxItem) {}
+#[async_trait::async_trait]
+impl crate::Tool for SessionWait {
+    fn spec(&self) -> &foe_contract::ToolSpec {
+        static SPEC: std::sync::OnceLock<foe_contract::ToolSpec> = std::sync::OnceLock::new();
+        SPEC.get_or_init(|| foe_contract::ToolSpec {
+            name: "wait".into(),
+            description: "wait for a session exit".into(),
+            instruction: None,
+            params: json!({ "type": "object" }),
+            effect: foe_contract::Effect::Pure,
+        })
+    }
+
+    async fn call(&self, _args: serde_json::Value, _ctx: &crate::CallCtx) -> crate::ToolValue {
+        loop {
+            let arrived = self.0.with_events(|e| {
+                e.iter().any(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == InboxSource::Session))
+            });
+            if arrived {
+                return crate::ToolValue::ok(json!({ "matched": { "session": "any" } }), "matched");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
 }
 
 #[test]

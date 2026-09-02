@@ -58,7 +58,7 @@ python3 "$repo_dir/examples/support/materialize.py" \
   "$example_dir/config.json" "$config" \
   /home/user/project "$project_dir"
 
-echo "recovery-exhausted example: five attempts with a growing delay take about 8 seconds"
+echo "recovery-exhausted example: a provider outage is waited out until the seconds budget cannot fund the next delay; about 8 seconds here"
 status=0
 "$binary" --config "$config" --log-dir "$log_dir" --headless >"$run_dir/outcome.json" || status=$?
 cat "$run_dir/outcome.json"
@@ -81,7 +81,10 @@ end = of("episode/end")[0]["outcome"]
 check(events[-1]["type"] == "episode/end", "the log ends with episode/end")
 check(end["kind"] == "blocked", f"the outcome is blocked, not {end['kind']}")
 check(end["code"] == "recovery-exhausted", f"the code is recovery-exhausted, not {end['code']}")
-check(end["message"] == "5 attempts at step 1 failed", f"the message counts the attempts: {end['message']!r}")
+check(
+    end["message"] == "provider unavailable through 5 attempts at step 1; the remaining seconds budget cannot fund another",
+    f"the message names the budget bound: {end['message']!r}",
+)
 check(status == 2, f"the exit code for a blocked outcome is 2, not {status}")
 
 requests = of("model/request")

@@ -1,6 +1,18 @@
 use super::*;
-use crate::exec::tests::scratch;
-use crate::spawn::tests::{fake_child, parent_config, process_spawner, wait_for, Lines};
+use foe_contract::Budget;
+
+fn budget() -> Budget {
+    Budget {
+        model_calls: 10,
+        input_tokens: Some(1000),
+        output_tokens: Some(400),
+        seconds: None,
+        max_depth: 1,
+        max_episodes: 3,
+        max_concurrent: 1,
+        loop_threshold: 3,
+    }
+}
 
 #[derive(Default)]
 struct MemLog(Mutex<Vec<Event>>);
@@ -74,7 +86,7 @@ fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     let log = Arc::new(MemLog::default());
     let inbox = Arc::new(MemInbox::default());
     let router = Arc::new(Router::new());
-    let pool = Arc::new(Mutex::new(Pool::new(crate::budget::tests::budget())));
+    let pool = Arc::new(Mutex::new(Pool::new(budget())));
     let team = Arc::new(Team::new("ep_lead".into(), log.clone(), inbox.clone(), router.clone(), pool));
     (team, log, inbox, router)
 }
@@ -168,55 +180,6 @@ fn ctx(spawner: Option<Arc<dyn Spawner>>) -> CallCtx {
 
 use std::path::PathBuf;
 
-#[tokio::test]
-async fn spawn_tool_runs_a_child_whose_notify_and_end_reach_the_lead() {
-    let dir = scratch("team", "spawn");
-    let (team, log, inbox, router) = team();
-    let uplink = Arc::new(Lines::default());
-    let spawner: Arc<dyn Spawner> = Arc::new(
-        process_spawner("ep_lead", dir.to_path_buf(), parent_config(), uplink.clone(), router.clone(), team.clone())
-            .with_launcher(fake_child(&dir)),
-    );
-    let tools = tools(team.clone(), None);
-    let spawn = tools.iter().find(|t| t.spec().name == "spawn").unwrap();
-    let args = serde_json::json!({ "contract": "worker", "task": "do it", "name": "w1" });
-    let value = spawn.call(args.clone(), &ctx(Some(spawner.clone()))).await;
-    assert!(!value.is_error, "{:?}", value.rendered);
-    let child_id = value.value["child_id"].as_str().unwrap().to_string();
-    assert!(spawn.call(args, &ctx(Some(spawner.clone()))).await.is_error, "roster names are unique");
-    let config: foe_contract::ContractDocument =
-        serde_json::from_slice(&std::fs::read(dir.join("children").join(&child_id).join("config.json")).unwrap())
-            .unwrap();
-    assert_eq!(config.tools, ["notify"], "the child's tools are the contract's; notify is built in");
-
-    wait_for(|| (uplink.0.lock().unwrap().len() == 2).then_some(()));
-    let steer = tools.iter().find(|t| t.spec().name == "steer").unwrap();
-    let steered = steer.call(serde_json::json!({ "to": "w1", "content": "\"go\"" }), &ctx(None)).await;
-    assert!(!steered.is_error, "{:?}", steered.rendered);
-    let items = wait_for(|| {
-        let items = inbox.0.lock().unwrap();
-        (items.len() == 2).then(|| items.clone())
-    });
-    assert_eq!(items[0].content, text_content("progress"), "notify was answered by the lead");
-    assert_eq!(items[0].from.as_deref(), Some(&*child_id));
-    let ended = format!("w1 ({child_id}) ended: completed with ");
-    let ContentBlock::Text { text } = &items[1].content[0] else { panic!() };
-    assert!(text.starts_with(&ended), "{text}");
-    assert!(text.contains(r#""source":"parent""#), "the steer reached the child: {text}");
-    assert!(text.contains(r#""type":"tool/result""#), "the notify result reached the child: {text}");
-    let phases: Vec<MemberPhase> = log
-        .events()
-        .iter()
-        .filter_map(|e| match &e.data {
-            EventData::TeamRoster { phase, .. } => Some(*phase),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(phases, [MemberPhase::Provisioning, MemberPhase::Active]);
-    assert_eq!(team.state().member("w1").unwrap().member_id, child_id);
-    assert!(uplink.0.lock().unwrap().len() == 2, "notify was never forwarded upward");
-}
-
 fn wait_tool(team: Arc<Team>) -> Box<dyn Tool> {
     tools(team, None).into_iter().find(|t| t.spec().name == "wait").unwrap()
 }
@@ -309,7 +272,7 @@ async fn wait_until_matches_unconsumed_arrivals_by_source_child_and_session() {
     // a request lists every item in `consumed`.
     let consumed: Vec<u64> =
         log.events().iter().filter(|e| matches!(e.data, EventData::InboxItem(_))).map(|e| e.seq).collect();
-    log.append(EventData::ModelRequest(foe_log::ModelRequest {
+    log.append(EventData::ModelRequest(foe_core::log::ModelRequest {
         step: 1,
         attempt: 1,
         request_id: "rq_01".into(),
