@@ -659,8 +659,8 @@ class DiagnosisValidatorTest(unittest.TestCase):
         self.assertIn("no supported candidate branch", judged[8])
 
 
-class AdoptionBundleTest(unittest.TestCase):
-    """Synthetic adoption bundles per candidate kind, checked end to end."""
+class EvidenceBundleTest(unittest.TestCase):
+    """Synthetic evidence bundles per candidate kind, checked end to end."""
 
     # Keep the runfiles path under Bazel so declared binary dependencies are
     # addressable. Direct test execution uses the checkout path unchanged.
@@ -670,17 +670,17 @@ class AdoptionBundleTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.build_bundle = cls.repository / "crates" / "adoption" / "build-adoption-bundle"
-        cls.verify_bundle = cls.repository / "crates" / "adoption" / "verify-adoption-bundle"
+        cls.build_bundle = cls.repository / "crates" / "evidence" / "build-evidence-bundle"
+        cls.verify_bundle = cls.repository / "crates" / "evidence" / "verify-evidence-bundle"
         if cls.build_bundle.is_file() and cls.verify_bundle.is_file():
             return
         subprocess.run(
-            ["cargo", "build", "--quiet", "-p", "foe-adoption", "--bins"],
+            ["cargo", "build", "--quiet", "-p", "foe-evidence", "--bins"],
             cwd=cls.repository,
             check=True,
         )
-        cls.build_bundle = cls.repository / "target" / "debug" / "build-adoption-bundle"
-        cls.verify_bundle = cls.repository / "target" / "debug" / "verify-adoption-bundle"
+        cls.build_bundle = cls.repository / "target" / "debug" / "build-evidence-bundle"
+        cls.verify_bundle = cls.repository / "target" / "debug" / "verify-evidence-bundle"
 
     def parent_document(self):
         """A fingerprint document declaring the two admission verifiers."""

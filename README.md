@@ -155,7 +155,7 @@ Eleven numbers bound the source. Nine are line budgets over Rust, excluding
 tests and generated code. The kernel stays under 6,700 lines. The contract
 crate stays under 1,575, tools under 1,825, workflow under 1,050, context
 under 500, view under 600, the command line under 1,425, telemetry under 1,000,
-and adoption under 500. The separate tool budget allows capability growth while
+and evidence under 500. The separate tool budget allows capability growth while
 keeping the kernel ceiling fixed. The kernel measures the machine. The contract
 crate defines the execution-contract data model. Their separate budgets keep a
 document key from enlarging the loop budget.
@@ -179,7 +179,7 @@ over 8 MiB.
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
-| [docs/adoption.md](docs/adoption.md) | portable evidence for accepting a proposed execution contract |
+| [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
 | [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |

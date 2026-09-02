@@ -598,20 +598,20 @@ digest. A workflow candidate records the independent-audit setting and
 preserved controls. `direct_implementation_required` is true when deterministic
 validation finds an error or the workflow produces no candidate.
 
-The runner records every accepted candidate as a portable adoption bundle
-under `adoption/bundles/` in the retained run directory. The bundle contains
+The runner records every accepted candidate as a portable evidence bundle
+under `evidence/bundles/` in the retained run directory. The bundle contains
 the proposal episode tree, the candidate fingerprint document, an artifact
 manifest over the retained candidate files, and the accepted verifier result.
 The adoption record may also name the evaluated contract fingerprint as the
 candidate's intended predecessor.
 
-The `foe-adoption` builder writes the canonical manifest and adoption record.
+The `foe-evidence` builder writes the canonical manifest and adoption record.
 Its standalone verifier then checks the completed bundle without executing
 the candidate or opening any external file. The runner accepts the bundle
 only when the verifier fingerprint appears in its external adoption policy.
 The result's `adoption` member records the bundle address, directory, contract
 fingerprint, optional predecessor fingerprint, verifier fingerprint, and
-verification coordinates. [`docs/adoption.md`](../../docs/adoption.md)
+verification coordinates. [`docs/evidence.md`](../../docs/evidence.md)
 specifies the portable format and verification rules.
 
 Apply a retained workflow candidate to any permitted task set with:

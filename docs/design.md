@@ -963,7 +963,7 @@ not finished.
                                         context seam └── crates/view ◄── view/ (browser bundle)
                                                           projection, HTTP, SSE, export
 
-                     crates/adoption ◄── contract fingerprints and proposal logs
+                     crates/evidence ◄── contract fingerprints and proposal logs
 
                                           crates/cli ◄── all of the above; plan reports
 
@@ -1028,7 +1028,7 @@ write. The binary supplies only the path that file is found at, which is a
 convention `crates/transport` owns, so the telemetry crate still depends on
 `crates/log` alone.
 
-`crates/adoption` verifies portable evidence for accepting a proposed
+`crates/evidence` verifies portable evidence for accepting a proposed
 execution contract. It checks the bundle manifest, the candidate fingerprint
 document, artifact evidence, the proposal episode tree, and the accepted
 verification result. It depends on `crates/contract` for canonical hashing
@@ -1089,10 +1089,10 @@ the crate depends on `log` alone, and an installation that never enables
 telemetry carries none of its behavior.
 See [docs/telemetry.md](telemetry.md).
 
-Adoption is budgeted apart on the same terms: `crates/adoption` stays under
+Evidence is budgeted apart on the same terms: `crates/evidence` stays under
 500 lines. It reads finished evidence and produces no runtime event. A bundle
 check that gains a rule must not buy room in the runtime or execution-contract
-crates. See [adoption.md](adoption.md).
+crates. See [evidence.md](evidence.md).
 
 Rust outside every line budget, in the built-in transport, is bounded by the
 size of the binary it compiles into. Continuous integration enforces every

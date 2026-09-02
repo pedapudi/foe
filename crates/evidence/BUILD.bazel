@@ -2,7 +2,7 @@ load("@crates//:defs.bzl", "all_crate_deps", "crate_edition")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
 
 rust_binary(
-    name = "build-adoption-bundle",
+    name = "build-evidence-bundle",
     srcs = [
         "src/bin/build_bundle.rs",
         "src/bin/build_bundle_test.rs",
@@ -12,27 +12,27 @@ rust_binary(
     version = "0.2.0",
     visibility = ["//visibility:public"],
     deps = [
-        ":foe_adoption",
+        ":foe_evidence",
         "//crates/contract:foe_contract",
     ] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
 rust_binary(
-    name = "verify-adoption-bundle",
+    name = "verify-evidence-bundle",
     srcs = ["src/bin/verify_bundle.rs"],
     crate_root = "src/bin/verify_bundle.rs",
     edition = crate_edition(),
     version = "0.2.0",
     visibility = ["//visibility:public"],
-    deps = [":foe_adoption"] + all_crate_deps(normal = True),
+    deps = [":foe_evidence"] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),
 )
 
 rust_library(
-    name = "foe_adoption",
+    name = "foe_evidence",
     srcs = glob(["src/**/*.rs"]),
-    crate_name = "foe_adoption",
+    crate_name = "foe_evidence",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
     version = "0.2.0",

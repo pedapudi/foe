@@ -265,18 +265,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "foe-adoption"
-version = "0.2.0"
-dependencies = [
- "foe-contract",
- "foe-log",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "foe-code"
 version = "0.2.0"
 dependencies = [
@@ -339,6 +327,18 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "foe-evidence"
+version = "0.2.0"
+dependencies = [
+ "foe-contract",
+ "foe-log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

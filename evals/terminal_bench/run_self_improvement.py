@@ -377,7 +377,7 @@ def record_adoption(
     retained as canonical JSON in `candidate.json`, so standalone
     verification can match it against the digest the event attests.
     """
-    build = root / "adoption" / "bundle-build"
+    build = root / "evidence" / "bundle-build"
     shutil.copytree(episode, build / "episode")
     fingerprint_bytes = canonical_json(fingerprint_document)
     (build / "fingerprint-document.json").write_bytes(fingerprint_bytes)
@@ -413,7 +413,7 @@ def record_adoption(
     if result.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", address):
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
         raise ValueError(f"bundle builder failed: {detail}")
-    bundle_dir = root / "adoption" / "bundles" / address.removeprefix("sha256:")
+    bundle_dir = root / "evidence" / "bundles" / address.removeprefix("sha256:")
     bundle_dir.parent.mkdir(parents=True, exist_ok=True)
     build.rename(bundle_dir)
     verified_result = subprocess.run(
@@ -1681,9 +1681,9 @@ def main(argv: list[str] | None = None) -> int:
                     "run",
                     "--quiet",
                     "-p",
-                    "foe-adoption",
+                    "foe-evidence",
                     "--bin",
-                    "build-adoption-bundle",
+                    "build-evidence-bundle",
                     "--",
                 ],
                 [
@@ -1691,9 +1691,9 @@ def main(argv: list[str] | None = None) -> int:
                     "run",
                     "--quiet",
                     "-p",
-                    "foe-adoption",
+                    "foe-evidence",
                     "--bin",
-                    "verify-adoption-bundle",
+                    "verify-evidence-bundle",
                     "--",
                 ],
                 {permitted_verifier},

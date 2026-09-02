@@ -1,6 +1,6 @@
 //! Portable evidence for adopting a proposed execution contract.
 //!
-//! An adoption bundle retains a proposal episode tree, the proposed
+//! An evidence bundle retains a proposal episode tree, the proposed
 //! contract's canonical fingerprint document, an artifact manifest, and a
 //! canonical record that associates those files with one accepted verifier result.
 //! Verification reads only the supplied directory. It runs no command,
@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 #[derive(Debug, thiserror::Error)]
-pub enum AdoptionError {
+pub enum EvidenceError {
     #[error("{key}: {rule}")]
     Invalid { key: String, rule: String },
     #[error("{0}")]
@@ -25,11 +25,11 @@ pub enum AdoptionError {
     Io(#[from] std::io::Error),
 }
 
-fn invalid(key: impl Into<String>, rule: impl Into<String>) -> AdoptionError {
-    AdoptionError::Invalid { key: key.into(), rule: rule.into() }
+fn invalid(key: impl Into<String>, rule: impl Into<String>) -> EvidenceError {
+    EvidenceError::Invalid { key: key.into(), rule: rule.into() }
 }
 
-pub fn require_digest(key: &str, text: &str) -> Result<(), AdoptionError> {
+pub fn require_digest(key: &str, text: &str) -> Result<(), EvidenceError> {
     let hex = text.strip_prefix("sha256:").unwrap_or("");
     match hex.len() == 64 && hex.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')) {
         true => Ok(()),
@@ -37,7 +37,7 @@ pub fn require_digest(key: &str, text: &str) -> Result<(), AdoptionError> {
     }
 }
 
-pub fn require_manifest_path(key: &str, path: &str) -> Result<(), AdoptionError> {
+pub fn require_manifest_path(key: &str, path: &str) -> Result<(), EvidenceError> {
     match !path.contains('\\') && path.split('/').all(|component| !matches!(component, "" | "." | "..")) {
         true => Ok(()),
         false => Err(invalid(key, "is a relative path with no empty, `.`, or `..` component")),
@@ -68,9 +68,9 @@ pub struct Manifest {
     pub adoption_record: String,
 }
 
-pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, AdoptionError> {
+pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, EvidenceError> {
     let manifest: Manifest = serde_json::from_slice(bytes)?;
-    let key = "adoption.manifest";
+    let key = "evidence.manifest";
     if canonical(&serde_json::to_value(&manifest)?).as_bytes() != bytes {
         return Err(invalid(key, "is the canonical serialization of its object"));
     }
@@ -104,23 +104,23 @@ pub struct VerifiedBundle {
     pub files: BTreeMap<String, Vec<u8>>,
 }
 
-pub fn verify_bundle(dir: &Path) -> Result<VerifiedBundle, AdoptionError> {
+pub fn verify_bundle(dir: &Path) -> Result<VerifiedBundle, EvidenceError> {
     let bytes = std::fs::read(dir.join(MANIFEST_FILE))
-        .map_err(|error| invalid("adoption.manifest", format!("is readable: {}: {error}", dir.display())))?;
+        .map_err(|error| invalid("evidence.manifest", format!("is readable: {}: {error}", dir.display())))?;
     let manifest = check_manifest(&bytes)?;
     let mut files = BTreeMap::new();
     for file in &manifest.files {
         let content = std::fs::read(dir.join(&file.path))
-            .map_err(|error| invalid(format!("adoption file {}", file.path), format!("is readable: {error}")))?;
+            .map_err(|error| invalid(format!("evidence file {}", file.path), format!("is readable: {error}")))?;
         if content.len() as u64 != file.bytes || digest_of(&content) != file.sha256 {
-            return Err(invalid(format!("adoption file {}", file.path), "matches its manifest length and digest"));
+            return Err(invalid(format!("evidence file {}", file.path), "matches its manifest length and digest"));
         }
         files.insert(file.path.clone(), content);
     }
     Ok(VerifiedBundle { manifest, address: digest_of(&bytes), files })
 }
 
-pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, AdoptionError> {
+pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, EvidenceError> {
     require_manifest_path("proposal_log", proposal_log)?;
     require_manifest_path("adoption_record", adoption_record)?;
     let mut files = Vec::new();
@@ -156,7 +156,7 @@ pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> 
     check_manifest(&manifest_bytes(&manifest)?)
 }
 
-pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, AdoptionError> {
+pub fn manifest_bytes(manifest: &Manifest) -> Result<Vec<u8>, EvidenceError> {
     Ok(canonical(&serde_json::to_value(manifest)?).into_bytes())
 }
 
@@ -173,7 +173,7 @@ pub struct AdoptionRecord {
     pub predecessor_contract_fingerprint: Option<String>,
 }
 
-pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, AdoptionError> {
+pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, EvidenceError> {
     Ok(canonical(&serde_json::to_value(record)?).into_bytes())
 }
 
@@ -199,9 +199,9 @@ pub struct VerifiedAdoption {
     pub candidate_file: Option<String>,
 }
 
-/// Verifies a portable adoption bundle. When `expected_predecessor` is
+/// Verifies a portable evidence bundle. When `expected_predecessor` is
 /// present, both the record and proposal root must name that fingerprint.
-pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result<VerifiedAdoption, AdoptionError> {
+pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result<VerifiedAdoption, EvidenceError> {
     if let Some(expected) = expected_predecessor {
         require_digest("expected_predecessor", expected)?;
     }
@@ -274,9 +274,9 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
             })?;
             let content = &bundle.files[&file.path];
             let value: Value = serde_json::from_slice(content)
-                .map_err(|error| invalid(format!("adoption file {}", file.path), format!("is JSON: {error}")))?;
+                .map_err(|error| invalid(format!("evidence file {}", file.path), format!("is JSON: {error}")))?;
             if canonical(&value).as_bytes() != content.as_slice() {
-                return Err(invalid(format!("adoption file {}", file.path), "is canonical JSON"));
+                return Err(invalid(format!("evidence file {}", file.path), "is canonical JSON"));
             }
             Some(file.path.clone())
         }
@@ -284,9 +284,9 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
 
     let (_, root_state) = logs
         .get(&manifest.proposal_log)
-        .ok_or_else(|| invalid("adoption.manifest.proposal_log", "names an episode log"))?;
+        .ok_or_else(|| invalid("evidence.manifest.proposal_log", "names an episode log"))?;
     let root_start =
-        root_state.start.as_ref().ok_or_else(|| invalid("adoption.manifest.proposal_log", "has episode/start"))?;
+        root_state.start.as_ref().ok_or_else(|| invalid("evidence.manifest.proposal_log", "has episode/start"))?;
     if let Some(predecessor) = &record.predecessor_contract_fingerprint {
         if &root_start.contract_fingerprint != predecessor {
             return Err(invalid(
@@ -309,7 +309,7 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
     })
 }
 
-fn read_logs(bundle: &VerifiedBundle) -> Result<BTreeMap<String, (Vec<Event>, State)>, AdoptionError> {
+fn read_logs(bundle: &VerifiedBundle) -> Result<BTreeMap<String, (Vec<Event>, State)>, EvidenceError> {
     let mut logs = BTreeMap::new();
     for file in bundle
         .manifest
@@ -318,17 +318,17 @@ fn read_logs(bundle: &VerifiedBundle) -> Result<BTreeMap<String, (Vec<Event>, St
         .filter(|file| file.path == "episode.jsonl" || file.path.ends_with("/episode.jsonl"))
     {
         fold::version_check(0, &bundle.files[&file.path])
-            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
+            .map_err(|error| invalid(format!("evidence log {}", file.path), format!("is valid: {error}")))?;
         let (events, _) = fold::parse_lines(&bundle.files[&file.path])
-            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
+            .map_err(|error| invalid(format!("evidence log {}", file.path), format!("is valid: {error}")))?;
         let state = fold::fold(&events)
-            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
+            .map_err(|error| invalid(format!("evidence log {}", file.path), format!("is valid: {error}")))?;
         logs.insert(file.path.clone(), (events, state));
     }
     Ok(logs)
 }
 
-fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), AdoptionError> {
+fn verify_provenance(root: &str, log: &str, logs: &BTreeMap<String, (Vec<Event>, State)>) -> Result<(), EvidenceError> {
     if log == root {
         return Ok(());
     }

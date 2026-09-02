@@ -4,7 +4,7 @@
 This transport stands in for the model child in the runner's
 --repair-with-file mode: it reads the candidate document the model
 block's `candidate_file` option names and returns it unchanged, so the
-proposal episode, its verification event, and the adoption bundle are
+proposal episode, its verification event, and the evidence bundle are
 exercised without a model request. The candidate file sits under the
 proposal read root because the transport process is confined to it.
 """

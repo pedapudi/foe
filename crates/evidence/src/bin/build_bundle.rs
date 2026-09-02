@@ -8,18 +8,18 @@
 //! self-improvement runner among them — invoke it so the canonical form
 //! has one implementation.
 
-use foe_adoption::{
+use foe_contract::fingerprint::canonical;
+use foe_evidence::{
     build_manifest, digest_of, manifest_bytes, record_bytes, require_digest, require_manifest_path, AdoptionRecord,
     MANIFEST_FILE,
 };
-use foe_contract::fingerprint::canonical;
 use std::path::Path;
 use std::process::ExitCode;
 
 /// File name of the adoption record this binary writes.
 pub const RECORD_FILE: &str = "adoption-record.json";
 
-const USAGE: &str = "usage: build-adoption-bundle DIR PROPOSAL_LOG FINGERPRINT_DOCUMENT ARTIFACT_MANIFEST \
+const USAGE: &str = "usage: build-evidence-bundle DIR PROPOSAL_LOG FINGERPRINT_DOCUMENT ARTIFACT_MANIFEST \
                      VERIFICATION_LOG VERIFICATION_SEQ [PREDECESSOR_CONTRACT_FINGERPRINT]";
 
 /// Writes the adoption record and manifest into the bundle at `args[0]`
@@ -81,7 +81,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("build-adoption-bundle: {error}");
+            eprintln!("build-evidence-bundle: {error}");
             ExitCode::FAILURE
         }
     }

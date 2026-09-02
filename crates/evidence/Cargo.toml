@@ -1,5 +1,5 @@
 [package]
-name = "foe-adoption"
+name = "foe-evidence"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,11 +11,11 @@ description = "Portable evidence that associates proposed execution contracts wi
 autobins = false
 
 [[bin]]
-name = "build-adoption-bundle"
+name = "build-evidence-bundle"
 path = "src/bin/build_bundle.rs"
 
 [[bin]]
-name = "verify-adoption-bundle"
+name = "verify-evidence-bundle"
 path = "src/bin/verify_bundle.rs"
 
 [dependencies]

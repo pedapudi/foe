@@ -4,7 +4,7 @@
 The loop is: a baseline run of the fixture's deliberately broken contract
 fails; the operational digest cites the plan warning and the denial
 evidence; a repair child returns a corrected contract document, judged
-structurally in its own episode and retained in a verified adoption
+structurally in its own episode and retained in a verified evidence
 bundle; foe plan confirms the warning is gone and the resolved
 permissions show the granted executable; an unchanged rerun of the task
 under the candidate feeds the external evaluator, which alone decides
@@ -220,7 +220,7 @@ def build_bundle(
     candidate: dict[str, Any],
     candidate_plan: dict[str, Any],
 ) -> tuple[Path, dict[str, Any], str]:
-    """Assemble, complete, and verify the adoption bundle for the accepted
+    """Assemble, complete, and verify the evidence bundle for the accepted
     candidate; returns the bundle directory, the verified result, and the
     proposal contract fingerprint the record names as predecessor."""
     events = read_events(proposal_episode)
@@ -235,7 +235,7 @@ def build_bundle(
     ]
     if not accepted:
         raise PipelineError("the proposal episode records no accepted check verification")
-    build = output / "adoption" / "bundle-build"
+    build = output / "evidence" / "bundle-build"
     shutil.copytree(proposal_episode, build / "episode")
     (build / "candidate.json").write_bytes(canonical_json(candidate))
     (build / "fingerprint-document.json").write_bytes(canonical_json(candidate_plan["fingerprint_document"]))
@@ -265,8 +265,8 @@ def build_bundle(
     address = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
     if result.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", address):
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
-        raise PipelineError(f"adoption bundle build failed: {detail}")
-    bundle_dir = output / "adoption" / "bundles" / address.removeprefix("sha256:")
+        raise PipelineError(f"evidence bundle build failed: {detail}")
+    bundle_dir = output / "evidence" / "bundles" / address.removeprefix("sha256:")
     bundle_dir.parent.mkdir(parents=True, exist_ok=True)
     build.rename(bundle_dir)
     verified = evaluate.verify_bundle(args.bundle_verifier, bundle_dir, predecessor)
@@ -364,7 +364,7 @@ def run_loop(args: argparse.Namespace) -> int:
     if WARNING_CODE in report["candidate_warning_codes"]:
         raise PipelineError("the candidate contract still produces the configuration warning")
 
-    # Adoption bundle: portable, standalone-verified evidence for the
+    # Evidence bundle: portable, standalone-verified evidence for the
     # accepted candidate, attesting the exact judged value.
     bundle_dir, bundle_result, predecessor = build_bundle(
         args, output, repair / "episode", candidate, candidate_plan
@@ -414,12 +414,12 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument(
         "--bundle-builder",
         type=Path,
-        default=REPO_ROOT / "target" / "release" / "build-adoption-bundle",
+        default=REPO_ROOT / "target" / "release" / "build-evidence-bundle",
     )
     answer.add_argument(
         "--bundle-verifier",
         type=Path,
-        default=REPO_ROOT / "target" / "release" / "verify-adoption-bundle",
+        default=REPO_ROOT / "target" / "release" / "verify-evidence-bundle",
     )
     repair_source = answer.add_mutually_exclusive_group(required=True)
     repair_source.add_argument(

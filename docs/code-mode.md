@@ -204,7 +204,7 @@ uses one immutable execution contract. Episode-local tool definition is
 outside this design. Useful Python source can become a configured tool in a
 later execution contract, packaged behind a `tool_defs` executable with a
 declared schema and verifier;
-[adoption.md](adoption.md) can record the transition and
+[evidence.md](evidence.md) can record the transition and
 its admission evidence.
 
 ## Adoption evidence
