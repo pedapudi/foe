@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en" data-dia-version="1" data-dia-transition="fade">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>foe — isolation and permissions</title>
+<style id="dia-theme">
+:root {
+  --dia-paper: #FDF6E3; --dia-ink: #586E75; --dia-ink-soft: #657B83;
+  --dia-ink-faint: #93A1A1; --dia-accent: #268BD2; --dia-rule: #E7DCBE;
+  --dia-good: #6B9B0B; --dia-bad: #DC322F;
+  --dia-face-display: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-body: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-label: "Source Code Pro", ui-monospace, monospace;
+  --dia-scale-1: 12px; --dia-scale-2: 15px; --dia-scale-3: 18px;
+  --dia-scale-4: 22px; --dia-scale-5: 30px; --dia-scale-6: 38px;
+  --dia-scale-7: 48px; --dia-gap: 24px; --dia-pad: 52px;
+}
+section.dia-slide {
+  aspect-ratio: 16 / 9; box-sizing: border-box; overflow: hidden;
+  background: var(--dia-paper); color: var(--dia-ink);
+  padding: var(--dia-pad); font-family: var(--dia-face-body);
+  display: flex; flex-direction: column;
+}
+.dia-kicker { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dia-ink-faint);
+  margin-bottom: 14px; }
+.dia-title { font-family: var(--dia-face-display); font-size: var(--dia-scale-5);
+  line-height: 1.22; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.01em; }
+.dia-title em { color: var(--dia-accent); font-style: normal; }
+.dia-cover-title { font-size: var(--dia-scale-7); max-width: 24ch; line-height: 1.14; }
+.dia-body { font-size: var(--dia-scale-2); line-height: 1.62; color: var(--dia-ink-soft); }
+.dia-body p { margin: 0 0 11px; }
+.dia-body strong { color: var(--dia-ink); font-weight: 600; }
+.dia-body code, .dia-caption code, .dia-title code {
+  font-family: var(--dia-face-label); font-size: 0.92em; color: var(--dia-ink);
+  background: rgba(0, 0, 0, 0.035); border: 1px solid var(--dia-rule);
+  border-radius: 4px; padding: 0 5px; }
+.dia-caption { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-soft); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.dia-columns { display: grid; grid-template-columns: 1.05fr 1fr; gap: var(--dia-gap); align-items: start; min-height: 0; }
+.dia-figure { margin: 0; align-self: center; }
+.dia-figure svg { width: 100%; font-family: var(--dia-face-label); }
+.dia-body ul, .dia-body ol { margin: 0; padding-left: 1.1em; }
+.dia-body li { margin-bottom: 9px; line-height: 1.5; }
+li::before { content: var(--dia-marker, none); color: var(--dia-marker-ink, var(--dia-accent)); margin-right: 0.55em; }
+.foot { display: flex; justify-content: space-between; align-items: baseline;
+  border-top: 1px solid var(--dia-rule); padding-top: 10px; margin-top: auto;
+  font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-faint); }
+.wordmark { font-family: var(--dia-face-label); font-weight: 700; letter-spacing: -0.02em; }
+.lede { font-size: var(--dia-scale-3); line-height: 1.6; max-width: 54ch; }
+.dia-cover { justify-content: center; }
+pre.plan { font-family: var(--dia-face-label); font-size: 12.5px; line-height: 1.75;
+  color: var(--dia-ink); background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--dia-rule); border-radius: 6px; padding: 16px 20px; margin: 0;
+  overflow: hidden; }
+pre.plan b { color: var(--dia-accent); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<section class="dia-slide dia-cover" data-dia-part="cover">
+  <div class="dia-kicker">an explainer for new users</div>
+  <h1 class="dia-title dia-cover-title">how <em>foe</em> decides what a run may touch</h1>
+  <p class="dia-body lede">The isolation and permissions model, from first principles: why
+  authority is an allow list, how a list in a JSON file becomes kernel enforcement,
+  and where the honest limits are.</p>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the principle">
+  <div class="dia-kicker">why · the principle</div>
+  <h2 class="dia-title">Nothing is reachable unless granted</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>An unattended agent holds real authority over a real machine.
+      Most software carries <strong>ambient</strong> authority — whatever the user
+      account can do, it can do. For an autonomous run that default is
+      backwards: the surprising action is exactly the one nobody reviewed.</p>
+      <p>foe inverts it. A contract <em>declares</em> what the run may touch, and
+      everything else does not exist for it:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>no environment variable is read, anywhere,</li>
+        <li>no search of the system path — executables by absolute path,</li>
+        <li>no network unless a grant implies it,</li>
+        <li>no file outside the declared roots.</li>
+      </ul>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="ambient authority as a flood plain versus granted authority as a walled channel">
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M24,64 C70,50 120,74 168,58 C220,42 270,66 316,54" opacity=".4"/>
+          <path d="M24,80 C70,68 124,92 172,76 C222,60 272,84 316,72" opacity=".3"/>
+          <path d="M24,48 C70,36 118,58 166,44 C218,28 268,50 316,40" opacity=".3"/>
+        </g>
+        <text x="28" y="30" font-size="9" fill="var(--dia-ink-faint)">ambient: authority spreads wherever the account reaches</text>
+        <g stroke="var(--dia-accent)" stroke-width="1.8" fill="none">
+          <path d="M24,150 L316,150"/>
+          <path d="M24,178 L316,178"/>
+        </g>
+        <path d="M24,164 C80,158 160,170 240,162 C270,159 296,164 316,164" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
+        <text x="28" y="140" font-size="9" fill="var(--dia-ink-soft)">granted: the run flows only inside declared walls</text>
+        <text x="170" y="210" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the walls are readable before the water moves</text>
+      </svg>
+      <figcaption class="dia-caption">An allow list can be reviewed, reported, and enforced. Ambient authority can only be regretted.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the vocabulary">
+  <div class="dia-kicker">how · the vocabulary</div>
+  <h2 class="dia-title">Six kinds of grant</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><code>read</code> / <code>write</code> — filesystem roots; a directory grants its
+        whole subtree.</li>
+        <li><code>execute</code> — files or directories a subprocess may run.</li>
+        <li><code>spawn</code> — which declared child contracts may start.</li>
+        <li><code>bind</code> — TCP ports a process may listen on.</li>
+        <li><code>task_session</code> — whether a process may outlive the episode
+        into the surrounding task.</li>
+      </ul>
+      <p>Declared paths resolve to canonical form — symlinks followed,
+      duplicates collapsed — so the enforced list is a <em>set</em> of real
+      places, and two spellings of one directory are one grant.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="a keyring of six keys; each key is one grant kind">
+        <circle cx="170" cy="86" r="34" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.4"/>
+        <circle cx="170" cy="86" r="7" fill="none" stroke="var(--dia-ink-faint)" stroke-width="1"/>
+        <g stroke="var(--dia-ink-faint)" stroke-width="1.1" fill="none">
+          <path d="M148,113 L128,160 L134,166 L128,172" opacity=".85"/>
+          <path d="M170,120 L170,170 L177,176 L170,182" opacity=".85"/>
+          <path d="M192,113 L212,160 L206,166 L212,172" opacity=".85"/>
+          <path d="M136,64 L96,42" opacity=".6"/>
+          <path d="M204,64 L244,42" opacity=".6"/>
+        </g>
+        <path d="M170,52 L170,20 L163,14 L170,8" fill="none" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <g font-size="8.5" fill="var(--dia-ink-soft)">
+          <text x="104" y="188" text-anchor="middle">read</text>
+          <text x="170" y="200" text-anchor="middle">write</text>
+          <text x="236" y="188" text-anchor="middle">execute</text>
+          <text x="86" y="34" text-anchor="middle">bind</text>
+          <text x="254" y="34" text-anchor="middle">task_session</text>
+          <text x="182" y="12" fill="var(--dia-ink)">spawn</text>
+        </g>
+      </svg>
+      <figcaption class="dia-caption">Each key opens one kind of door and no other; there is no master key on the ring.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="compilation">
+  <div class="dia-kicker">how · enforcement</div>
+  <h2 class="dia-title">The list becomes kernel rules</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Grants are not instructions the model is asked to respect — they
+      compile into <strong>Landlock</strong> rules the Linux kernel applies to each
+      process before it runs. A denied access fails in the kernel, whatever
+      the code inside wanted.</p>
+      <p>Three declared modes:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><code>required</code> — Landlock must be available, or the run refuses
+        to start,</li>
+        <li><code>best-effort</code> — enforce what the kernel offers, record what
+        it could not,</li>
+        <li><code>off</code> — grants stay advisory; chosen when an outer boundary
+        (a container) is the real wall.</li>
+      </ul>
+      <p>The log records which mode held and which kernel level enforced
+      it, so a reader knows what a run's walls actually were.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="a grants document compiled through a policy into kernel rules guarding syscalls">
+        <rect x="30" y="34" width="92" height="56" rx="5" fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
+        <g font-size="8" fill="var(--dia-ink-faint)">
+          <text x="40" y="50">"grants": {</text>
+          <text x="46" y="62">"read": […],</text>
+          <text x="46" y="74">"write": […]</text>
+          <text x="40" y="86">}</text>
+        </g>
+        <path d="M122,62 L162,62" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
+        <path d="M162,62 L155,58 M162,62 L155,66" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
+        <rect x="166" y="42" width="70" height="40" rx="5" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
+        <text x="201" y="64" text-anchor="middle" font-size="9" fill="var(--dia-ink)">compile</text>
+        <path d="M236,62 L276,62" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <path d="M276,62 L269,58 M276,62 L269,66" stroke="var(--dia-accent)" stroke-width="1.8" fill="none"/>
+        <g stroke="var(--dia-accent)" stroke-width="1.6" fill="none">
+          <path d="M282,40 L282,84"/>
+          <path d="M292,40 L292,84"/>
+          <path d="M302,40 L302,84"/>
+        </g>
+        <text x="292" y="98" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">kernel rules</text>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M240,140 C260,120 276,110 288,104" opacity=".7" stroke-dasharray="3 3"/>
+        </g>
+        <text x="200" y="152" font-size="8.5" fill="var(--dia-ink-faint)">open("/etc/shadow") → denied in the kernel</text>
+        <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the model is never asked to behave — the syscall is refused</text>
+      </svg>
+      <figcaption class="dia-caption">Policy is data compiled to enforcement, not prose hoping for compliance.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="exactness">
+  <div class="dia-kicker">how · exactness</div>
+  <h2 class="dia-title">Execute means <em>these files</em>, not "binaries"</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>The lazy version of execute permission grants whole system
+      directories and hopes. foe resolves the actual closure instead:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>each <strong>selected executable</strong>, by canonical path,</li>
+        <li>the <strong>interpreter</strong> its shebang line names — followed
+        recursively if that is itself a script,</li>
+        <li>the <strong>dynamic loader</strong> its ELF header names,</li>
+        <li>shared-library directories as <em>read-only</em> — a library is
+        loaded, not executed.</li>
+      </ul>
+      <p>A directory in <code>grants.execute</code> is honored as a declared
+      subtree grant — a usable starting breadth — but the vocabulary can
+      say exactly one file, and the resolved report shows whichever you
+      chose.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="a constellation of system binaries; only the resolved closure is joined by the accent line">
+        <g fill="var(--dia-ink-faint)">
+          <circle cx="52" cy="58" r="1.8" opacity=".5"/><circle cx="94" cy="34" r="1.4" opacity=".4"/>
+          <circle cx="140" cy="66" r="1.8" opacity=".55"/><circle cx="196" cy="40" r="1.4" opacity=".4"/>
+          <circle cx="250" cy="62" r="1.8" opacity=".5"/><circle cx="292" cy="44" r="1.4" opacity=".35"/>
+          <circle cx="66" cy="120" r="1.6" opacity=".45"/><circle cx="118" cy="146" r="1.8" opacity=".5"/>
+          <circle cx="240" cy="150" r="1.6" opacity=".4"/><circle cx="288" cy="118" r="1.8" opacity=".5"/>
+          <circle cx="54" cy="180" r="1.4" opacity=".35"/><circle cx="160" cy="184" r="1.6" opacity=".45"/>
+          <circle cx="296" cy="182" r="1.4" opacity=".4"/><circle cx="206" cy="96" r="1.6" opacity=".45"/>
+        </g>
+        <g stroke="var(--dia-accent)" stroke-width="1.4" fill="none">
+          <path d="M96,96 L164,118 L232,102"/>
+        </g>
+        <g fill="var(--dia-accent)">
+          <circle cx="96" cy="96" r="3"/><circle cx="164" cy="118" r="3"/><circle cx="232" cy="102" r="3"/>
+        </g>
+        <g font-size="8.5" fill="var(--dia-ink-soft)">
+          <text x="96" y="86" text-anchor="middle">python3</text>
+          <text x="164" y="134" text-anchor="middle">its loader</text>
+          <text x="232" y="92" text-anchor="middle">your script</text>
+        </g>
+        <text x="170" y="210" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">every other star in /usr/bin stays scenery</text>
+      </svg>
+      <figcaption class="dia-caption">The resolved closure is computed for you and reported — exactness without archaeology.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="captured bytes">
+  <div class="dia-kicker">how · captured executables</div>
+  <h2 class="dia-title">A run executes the bytes it was promised</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Naming a path is not enough: a file can be replaced after the
+      contract resolves and before — or while — the run uses it.</p>
+      <p>So configured executables are <strong>captured at construction</strong>: the
+      bytes are read once, their digest joins the contract fingerprint, a
+      private read-only copy is retained, and every invocation runs that
+      copy by file descriptor. The configured path is never reopened.</p>
+      <p>Children inherit the same sealed copies over descriptors and
+      re-check digest and mode before accepting them. Replace, edit, or
+      delete the source file mid-run — the run does not change.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="bytes sealed in a jar at construction; later changes to the source cannot reach the run">
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <rect x="36" y="44" width="74" height="90" rx="4" opacity=".8"/>
+          <path d="M46,62 L100,62 M46,76 L100,76 M46,90 L88,90" opacity=".6"/>
+          <path d="M46,110 L100,110 M46,122 L82,122" opacity=".35" stroke-dasharray="3 3"/>
+        </g>
+        <text x="73" y="152" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">the file at its path</text>
+        <text x="73" y="166" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">(may change later)</text>
+        <path d="M110,88 L158,88" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
+        <path d="M158,88 L151,84 M158,88 L151,92" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
+        <text x="134" y="80" text-anchor="middle" font-size="8" fill="var(--dia-ink-soft)">capture</text>
+        <g stroke="var(--dia-accent)" stroke-width="1.8" fill="none">
+          <path d="M180,70 C180,54 232,54 232,70 L232,128 C232,144 180,144 180,128 Z"/>
+          <path d="M188,64 L224,64"/>
+        </g>
+        <g stroke="var(--dia-ink-soft)" stroke-width="0.9">
+          <path d="M192,88 L220,88 M192,100 L220,100 M192,112 L212,112"/>
+        </g>
+        <text x="206" y="162" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">sealed bytes · digest in</text>
+        <text x="206" y="174" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">the fingerprint</text>
+        <path d="M240,96 L292,96" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
+        <path d="M292,96 L285,92 M292,96 L285,100" stroke="var(--dia-ink-faint)" stroke-width="0.9" fill="none"/>
+        <text x="300" y="92" font-size="8.5" fill="var(--dia-ink-soft)">runs by</text>
+        <text x="300" y="104" font-size="8.5" fill="var(--dia-ink-soft)">descriptor</text>
+      </svg>
+      <figcaption class="dia-caption">Identity hashes the sealed bytes, so "same fingerprint" includes "same tools, byte for byte".</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="processes">
+  <div class="dia-kicker">how · process ownership</div>
+  <h2 class="dia-title">Every process a run starts is accounted for</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Filesystem walls are half the story; the other half is processes.
+      On hosts that delegate cgroup v2, each invocation owns a process
+      subtree: every child episode, tool, and stray grandchild a command
+      forks lives inside it.</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>when a child episode settles, its subtree is <strong>killed
+        recursively</strong> — nothing survives by daemonizing,</li>
+        <li>the reap wait is <strong>bounded</strong>, and an unreapable subtree is a
+        named error, not a hang,</li>
+        <li>a process may outlive the episode only through an explicit
+        <code>task_session</code> grant — and without that grant the episode holds
+        no kernel authority over the task boundary at all.</li>
+      </ul>
+      <p>Without delegation the log records the observational fallback —
+      the walls you did not get are stated, never assumed.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="a process tree inside an owned boundary; one granted session steps outside through a gate">
+        <rect x="36" y="30" width="220" height="150" rx="8" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.2"/>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M96,60 L96,96 M96,96 L66,126 M96,96 L126,126 M126,126 L126,156" opacity=".8"/>
+          <path d="M96,60 L176,96 M176,96 L206,126" opacity=".6"/>
+        </g>
+        <g fill="var(--dia-ink-faint)">
+          <circle cx="96" cy="58" r="3"/><circle cx="66" cy="128" r="2.2"/><circle cx="126" cy="128" r="2.2"/>
+          <circle cx="126" cy="158" r="2.2"/><circle cx="176" cy="96" r="2.2"/><circle cx="206" cy="128" r="2.2"/>
+        </g>
+        <text x="96" y="48" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">episode</text>
+        <text x="140" y="196" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">killed together at settlement</text>
+        <path d="M256,100 L256,84 L300,84" fill="none" stroke="var(--dia-accent)" stroke-width="1.6"/>
+        <circle cx="300" cy="84" r="2.6" fill="var(--dia-accent)"/>
+        <text x="300" y="72" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">task_session</text>
+        <text x="300" y="100" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">the one gate out —</text>
+        <text x="300" y="111" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">granted, recorded</text>
+      </svg>
+      <figcaption class="dia-caption">The boundary is a kernel object, and leaving it is a grant — not an accident.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="narrowing">
+  <div class="dia-kicker">how · narrowing</div>
+  <h2 class="dia-title">Authority only shrinks as it flows down</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Every boundary inside a run gets a policy derived from — and
+      contained in — the one above it:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>a <strong>child episode</strong>'s grants must be a subset of its parent's;
+        resolution refuses a contract that widens,</li>
+        <li>a <strong>tool process</strong> gets the episode policy narrowed to its own
+        executable and declared reach — internal runtime paths drop out,</li>
+        <li>a <strong>session</strong> gets the same treatment for its lifetime.</li>
+      </ul>
+      <p>The deepest process in the tree holds the smallest authority.
+      There is no call path that regains what an ancestor gave up.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="nested funnels: each level passes on a strictly smaller opening">
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M40,40 L300,40 L262,86 L78,86 Z" opacity=".45"/>
+          <path d="M78,86 L262,86 L232,132 L108,132 Z" opacity=".65"/>
+          <path d="M108,132 L232,132 L206,178 L134,178 Z" opacity=".85"/>
+        </g>
+        <path d="M134,178 L206,178" stroke="var(--dia-accent)" stroke-width="2"/>
+        <g font-size="8.5" fill="var(--dia-ink-soft)">
+          <text x="308" y="44">the episode's grants</text>
+          <text x="270" y="90">a child episode</text>
+          <text x="240" y="136">a tool process</text>
+          <text x="214" y="182" fill="var(--dia-ink)">what actually runs</text>
+        </g>
+        <text x="170" y="202" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">each opening fits inside the one above — by construction, checked at resolution</text>
+      </svg>
+      <figcaption class="dia-caption">Monotone narrowing is what makes delegation safe to reason about.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="cleanup">
+  <div class="dia-kicker">how · a worked detail</div>
+  <h2 class="dia-title">Even cleanup refuses to widen</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>A small case that shows the discipline. The runtime keeps private
+      working directories — the sealed executable store, the process-tree
+      bookkeeping — beside data it does not own. Deleting a directory
+      requires a removal right <em>on its parent</em>, and the parent is shared.</p>
+      <p>The easy fix is read-write on the shared parent. foe grants
+      instead:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>read and <strong>removal</strong> rights on the owned directory itself,</li>
+        <li><strong>directory-removal alone</strong> on the shared parent — enough to
+        delete its own empty directory, nothing more.</li>
+      </ul>
+      <p>The residual power is removing a sibling's <em>empty</em> directory —
+      which destroys no data. The report rows name exactly these narrowed
+      rights.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 200" role="img" aria-label="a shared parent directory: the owned child is fully held, the parent gets one narrow right">
+        <path d="M40,54 L300,54" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
+        <text x="44" y="44" font-size="8.5" fill="var(--dia-ink-soft)">the shared parent</text>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M84,54 L84,86" opacity=".7"/><rect x="56" y="86" width="56" height="40" rx="4" opacity=".6"/>
+          <path d="M256,54 L256,86" opacity=".7"/><rect x="228" y="86" width="56" height="40" rx="4" opacity=".6"/>
+        </g>
+        <text x="84" y="110" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">a sibling's data</text>
+        <text x="256" y="110" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">another episode</text>
+        <path d="M170,54 L170,86" stroke="var(--dia-accent)" stroke-width="1.4"/>
+        <rect x="140" y="86" width="60" height="40" rx="4" fill="none" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <text x="170" y="106" text-anchor="middle" font-size="8" fill="var(--dia-ink)">the owned store</text>
+        <text x="170" y="146" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">read + remove, in full</text>
+        <text x="170" y="176" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">on the parent: remove-directory alone — the one right cleanup needs</text>
+      </svg>
+      <figcaption class="dia-caption">Where a convenience grant would have covered every sibling, the narrow right covers only the duty.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="reading the report">
+  <div class="dia-kicker">how · reading what you got</div>
+  <h2 class="dia-title"><code>foe plan</code> answers "will this work?" first</h2>
+  <div class="dia-columns" style="grid-template-columns: 1fr 1.1fr;">
+    <div class="dia-body">
+      <p>Before any run, the plan opens with one line per question an
+      operator asks — and every warning names the configuration key to
+      change.</p>
+      <p>The same resolution feeds the run itself: the log's
+      <code>episode/start</code> records the resolved permissions <em>from the same
+      policy object the kernel enforces</em>, including captured-executable
+      rows by digest. The report cannot be wider than the enforcement,
+      because they are one computation.</p>
+    </div>
+    <figure class="dia-figure">
+<pre class="plan">model       openai/gpt: streaming, key from file
+read        /home/user/project
+write       /home/user/project
+execute     /usr/bin/python3 <b>(+ interpreter, loader)</b>
+completion  verifier .foe/verify (retries 12)
+limits      600 model calls, 14400s
+sandbox     required
+warnings    <b>none</b></pre>
+      <figcaption class="dia-caption" style="margin-top: 8px;">A contract that selects a shell tool with nothing
+      executable warns here — <code>external-commands-unavailable (grants.execute)</code> — before a single request is spent.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="honest limits">
+  <div class="dia-kicker">why · the honest limits</div>
+  <h2 class="dia-title">What the sandbox does not claim</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '—'; list-style: none;">
+        <li><strong>It is a backstop, not a container.</strong> For hostile workloads
+        at scale, run foe inside a container or VM and set the mode
+        accordingly; the grants then document intent while the outer
+        boundary enforces it.</li>
+        <li><strong>Same-user processes are inside the trust boundary.</strong>
+        Landlock confines what foe starts; it does not protect one
+        process of your account from another.</li>
+        <li><strong>Budgets and sandbox are floors.</strong> They are never tuned to
+        make a run "work harder" — capability grows through better
+        contracts, never looser walls.</li>
+      </ul>
+      <p>Stating the limits is part of the model: a wall you overestimate
+      is worse than a wall you know the height of.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 200" role="img" aria-label="a surveyor's elevation of the wall: measured height marked, the unmeasured part left honest">
+        <path d="M40,160 L300,160" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
+        <rect x="80" y="76" width="130" height="84" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.2"/>
+        <g stroke="var(--dia-ink-faint)" stroke-width="0.7" opacity=".5">
+          <path d="M80,104 L210,104 M80,132 L210,132 M124,76 L124,160 M167,76 L167,160"/>
+        </g>
+        <g stroke="var(--dia-accent)" stroke-width="1.6" fill="none">
+          <path d="M226,76 L226,160"/>
+          <path d="M220,76 L232,76 M220,160 L232,160"/>
+        </g>
+        <text x="240" y="122" font-size="8.5" fill="var(--dia-ink-soft)">measured height —</text>
+        <text x="240" y="134" font-size="8.5" fill="var(--dia-ink-soft)">what the mode says</text>
+        <path d="M80,76 C116,54 168,52 210,76" fill="none" stroke="var(--dia-rule)" stroke-width="1" stroke-dasharray="3 4"/>
+        <text x="96" y="48" font-size="8.5" fill="var(--dia-ink-faint)">what a container adds — declared, not pretended</text>
+        <text x="170" y="188" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the log states the walls each run actually had</text>
+      </svg>
+      <figcaption class="dia-caption">Every run records mode, kernel level, and fallbacks — auditable, never assumed.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide dia-cover" data-dia-part="close">
+  <div class="dia-kicker">start narrow, stay honest</div>
+  <h2 class="dia-title">Working with the model, day one</h2>
+  <div class="dia-body lede">
+    <ul style="--dia-marker: '▸'; list-style: none;">
+      <li><code>foe init --repository .</code> writes a working contract and tells you its
+      tradeoffs out loud — the write grant includes version-control state, execute
+      grants start directory-broad.</li>
+      <li>Narrow from there: replace directory execute grants with the exact files
+      your task needs; <code>foe plan</code> shows the resolved result every time.</li>
+      <li>Read <code>docs/sandbox.md</code> for the enforcement details and
+      <code>docs/config.md</code> for the grant vocabulary.</li>
+    </ul>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+</body>
+</html>

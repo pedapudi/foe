@@ -105,7 +105,7 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
-`examples/` holds thirteen examples, each of which runs. Every one builds a
+`examples/` holds fourteen examples, each of which runs. Every one builds a
 disposable project, answers the model from a script rather than a provider,
 checks its own result, and leaves an episode to read, so none of them needs a
 credential or a network. Three of them end in the outcomes that are not

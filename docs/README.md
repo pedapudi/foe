@@ -26,7 +26,19 @@ to find the relevant specification, report, or guide.
 | [design-language.md](design-language.md) | the visual language the viewer follows |
 | [brand/README.md](brand/README.md) | the name, the mark, the wordmark, the accent, and the rules for using them |
 
+## Presentations
+
+`presentations/` holds slide decks in the diastil dialect — self-contained
+HTML files that present themselves when opened and stay editable in the
+diastil editor or any text editor.
+
+| deck | subject |
+|---|---|
+| [presentations/what-is-foe.html](presentations/what-is-foe.html) | an introduction: the problem foe solves and the concepts it prioritizes |
+| [presentations/foe-overview.html](presentations/foe-overview.html) | the architecture and the feature set, one pass over the whole machine |
+| [presentations/foe-isolation-and-permissions.html](presentations/foe-isolation-and-permissions.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
+
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds thirteen runnable
+rules for changing the repository. `examples/` holds fourteen runnable
 programs, one per mechanism. Each answers the model from a script
 and checks its own result; `examples/README.md` indexes them.

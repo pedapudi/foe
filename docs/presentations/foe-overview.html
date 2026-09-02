@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en" data-dia-version="1" data-dia-transition="fade">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>foe — architecture and features</title>
+<style id="dia-theme">
+:root {
+  --dia-paper: #181818; --dia-ink: #DEDEDE; --dia-ink-soft: #B9B9B9;
+  --dia-ink-faint: #606060; --dia-accent: #56D8C9; --dia-rule: #353535;
+  --dia-good: #83C746; --dia-bad: #FF5E56;
+  --dia-face-display: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-body: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-label: "Source Code Pro", ui-monospace, monospace;
+  --dia-scale-1: 12px; --dia-scale-2: 15px; --dia-scale-3: 18px;
+  --dia-scale-4: 22px; --dia-scale-5: 30px; --dia-scale-6: 38px;
+  --dia-scale-7: 48px; --dia-gap: 24px; --dia-pad: 52px;
+}
+section.dia-slide {
+  aspect-ratio: 16 / 9; box-sizing: border-box; overflow: hidden;
+  background: var(--dia-paper); color: var(--dia-ink);
+  padding: var(--dia-pad); font-family: var(--dia-face-body);
+  display: flex; flex-direction: column;
+}
+.dia-kicker { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dia-ink-faint);
+  margin-bottom: 14px; }
+.dia-title { font-family: var(--dia-face-display); font-size: var(--dia-scale-5);
+  line-height: 1.22; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.01em; }
+.dia-title em { color: var(--dia-accent); font-style: normal; }
+.dia-cover-title { font-size: var(--dia-scale-7); max-width: 24ch; line-height: 1.14; }
+.dia-body { font-size: var(--dia-scale-2); line-height: 1.62; color: var(--dia-ink-soft); }
+.dia-body p { margin: 0 0 11px; }
+.dia-body strong { color: var(--dia-ink); font-weight: 600; }
+.dia-body code, .dia-caption code, .dia-title code {
+  font-family: var(--dia-face-label); font-size: 0.92em; color: var(--dia-ink);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--dia-rule);
+  border-radius: 4px; padding: 0 5px; }
+.dia-caption { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-soft); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.dia-columns { display: grid; grid-template-columns: 1.05fr 1fr; gap: var(--dia-gap); align-items: start; min-height: 0; }
+.dia-stack { display: flex; flex-direction: column; gap: calc(var(--dia-gap) / 2); }
+.dia-figure { margin: 0; align-self: center; }
+.dia-figure svg { width: 100%; font-family: var(--dia-face-label); }
+.dia-body ul, .dia-body ol { margin: 0; padding-left: 1.1em; }
+.dia-body li { margin-bottom: 9px; line-height: 1.5; }
+li::before { content: var(--dia-marker, none); color: var(--dia-marker-ink, var(--dia-accent)); margin-right: 0.55em; }
+.dia-scene { width: 100%; font-family: var(--dia-face-label); }
+.dia-scene .dia-node-shape { fill: var(--dia-node-fill, #222826); stroke: var(--dia-node-stroke, var(--dia-ink-soft)); stroke-width: var(--dia-node-stroke-w, 1.1); }
+.dia-scene .dia-node-label { font: 11.5px var(--dia-face-label); fill: var(--dia-node-ink, var(--dia-ink)); }
+.dia-scene .dia-edge-path { stroke: var(--dia-edge-stroke, var(--dia-ink-faint)); stroke-width: var(--dia-edge-w, 1); fill: none; color: var(--dia-edge-stroke, var(--dia-ink-faint)); }
+.dia-scene .dia-edge-label { font: 10px var(--dia-face-label); fill: var(--dia-edge-ink, var(--dia-ink-soft)); }
+.dia-scene [data-dia-emphasis] .dia-node-shape { stroke: var(--dia-accent); stroke-width: 2; }
+.foot { display: flex; justify-content: space-between; align-items: baseline;
+  border-top: 1px solid var(--dia-rule); padding-top: 10px; margin-top: auto;
+  font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-faint); }
+.wordmark { font-family: var(--dia-face-label); font-weight: 700; letter-spacing: -0.02em; }
+.lede { font-size: var(--dia-scale-3); line-height: 1.6; max-width: 54ch; }
+.dia-cover { justify-content: center; }
+table { border-collapse: collapse; font-size: var(--dia-scale-1); width: 100%; }
+th { font-family: var(--dia-face-label); text-transform: uppercase; letter-spacing: .08em;
+  font-size: 10.5px; text-align: left; color: var(--dia-ink-faint);
+  border-bottom: 1px solid var(--dia-ink-soft); padding: 4px 10px 6px 0; }
+td { border-bottom: 1px solid var(--dia-rule); padding: 5px 10px 5px 0; color: var(--dia-ink-soft); vertical-align: top; }
+td:first-child { font-family: var(--dia-face-label); color: var(--dia-ink); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<section class="dia-slide dia-cover" data-dia-part="cover">
+  <div class="dia-kicker">an overview</div>
+  <h1 class="dia-title dia-cover-title"><em>foe</em> — architecture and features</h1>
+  <p class="dia-body lede">One pass over the whole machine: how a contract becomes an
+  episode, what the kernel guarantees while it runs, and the surface built around it —
+  workflows, teams, transports, verification, and the evidence loop.</p>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the shape of a run">
+  <div class="dia-kicker">the shape of a run</div>
+  <h2 class="dia-title">Contract in, outcome and log out</h2>
+  <figure class="dia-figure" style="width: 92%;">
+    <svg class="dia-scene" viewBox="0 0 760 190" role="img" aria-label="the pipeline from contract document to outcome and log">
+      <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"></path></marker></defs>
+      <g data-dia-node="doc" data-shape="rounded" data-x="16" data-y="60" data-w="118" data-h="46">
+        <rect class="dia-node-shape" x="16" y="60" width="118" height="46" rx="8"/>
+        <text class="dia-node-label" x="75" y="83" text-anchor="middle" dominant-baseline="central">contract.json</text>
+      </g>
+      <g data-dia-node="resolve" data-shape="rounded" data-x="170" data-y="60" data-w="118" data-h="46">
+        <rect class="dia-node-shape" x="170" y="60" width="118" height="46" rx="8"/>
+        <text class="dia-node-label" x="229" y="76" text-anchor="middle" dominant-baseline="central">resolve</text>
+        <text class="dia-node-label" x="229" y="92" text-anchor="middle" dominant-baseline="central" opacity=".6">+ capture bytes</text>
+      </g>
+      <g data-dia-node="fp" data-shape="rounded" data-x="324" data-y="60" data-w="118" data-h="46">
+        <rect class="dia-node-shape" x="324" y="60" width="118" height="46" rx="8"/>
+        <text class="dia-node-label" x="383" y="83" text-anchor="middle" dominant-baseline="central">fingerprint</text>
+      </g>
+      <g data-dia-node="episode" data-shape="rounded" data-x="478" data-y="60" data-w="118" data-h="46" data-dia-emphasis="">
+        <rect class="dia-node-shape" x="478" y="60" width="118" height="46" rx="8"/>
+        <text class="dia-node-label" x="537" y="83" text-anchor="middle" dominant-baseline="central">episode</text>
+      </g>
+      <g data-dia-node="outcome" data-shape="rounded" data-x="632" data-y="24" data-w="112" data-h="42">
+        <rect class="dia-node-shape" x="632" y="24" width="112" height="42" rx="8"/>
+        <text class="dia-node-label" x="688" y="45" text-anchor="middle" dominant-baseline="central">outcome</text>
+      </g>
+      <g data-dia-node="log" data-shape="rounded" data-x="632" data-y="106" data-w="112" data-h="42">
+        <rect class="dia-node-shape" x="632" y="106" width="112" height="42" rx="8"/>
+        <text class="dia-node-label" x="688" y="127" text-anchor="middle" dominant-baseline="central">episode.jsonl</text>
+      </g>
+      <g data-dia-edge="doc->resolve" data-anchors="E,W" data-route="ortho">
+        <path class="dia-edge-path" d="M134,83 L170,83" marker-end="url(#arr)"/>
+      </g>
+      <g data-dia-edge="resolve->fp" data-anchors="E,W" data-route="ortho">
+        <path class="dia-edge-path" d="M288,83 L324,83" marker-end="url(#arr)"/>
+      </g>
+      <g data-dia-edge="fp->episode" data-anchors="E,W" data-route="ortho">
+        <path class="dia-edge-path" d="M442,83 L478,83" marker-end="url(#arr)"/>
+      </g>
+      <g data-dia-edge="episode->outcome" data-anchors="E,W" data-route="ortho">
+        <path class="dia-edge-path" d="M596,83 L614,83 L614,45 L632,45" marker-end="url(#arr)"/>
+      </g>
+      <g data-dia-edge="episode->log" data-anchors="E,W" data-route="ortho" data-label="every event">
+        <path class="dia-edge-path" d="M596,83 L614,83 L614,127 L632,127" marker-end="url(#arr)"/>
+        <text class="dia-edge-label" x="624" y="152">every event</text>
+      </g>
+    </svg>
+    <figcaption class="dia-caption">Resolution happens once: the tree of child contracts and workflow nodes, canonical paths,
+    and captured executable bytes are all fixed before the first model call. The fingerprint names that fixed behavior.</figcaption>
+  </figure>
+  <div class="dia-body" style="margin-top: 12px;">
+    <p><code>foe plan</code> shows this whole pipeline statically — resolved permissions, reachable tools,
+    warnings — without spending a request. <code>foe view</code> renders the log afterwards.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the crates">
+  <div class="dia-kicker">the crates</div>
+  <h2 class="dia-title">Small parts with enforced budgets</h2>
+  <div class="dia-columns" style="grid-template-columns: 1.15fr 1fr;">
+    <div class="dia-body">
+      <table>
+        <tr><th>crate</th><th>owns</th></tr>
+        <tr><td>log</td><td>the event vocabulary, append, fold, seeding — the record</td></tr>
+        <tr><td>core</td><td>the agent loop, registry, sandbox, spawning, budgets — the machine</td></tr>
+        <tr><td>contract</td><td>the document, resolution, the fingerprint — the data model</td></tr>
+        <tr><td>code</td><td>the built-in tools and the team coordinator — the verbs</td></tr>
+        <tr><td>workflow</td><td>graph execution over episodes</td></tr>
+        <tr><td>transport</td><td>model providers behind one streaming interface</td></tr>
+        <tr><td>evidence</td><td>portable bundle verification for adoption decisions</td></tr>
+        <tr><td>cli · view · telemetry · context</td><td>the operator surface, the viewer, emission, compaction</td></tr>
+      </table>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 320 230" role="img" aria-label="crates drawn to their enforced line budgets; the kernel pair carries the accent">
+        <g font-size="9" fill="var(--dia-ink-soft)">
+          <text x="16" y="34">kernel (log+core)</text>
+          <text x="16" y="64">code</text>
+          <text x="16" y="94">contract</text>
+          <text x="16" y="124">cli</text>
+          <text x="16" y="154">workflow</text>
+          <text x="16" y="184">telemetry</text>
+          <text x="16" y="214">evidence</text>
+        </g>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <rect x="130" y="24" width="170" height="12" opacity=".8"/>
+          <rect x="130" y="54" width="64" height="12" opacity=".6"/>
+          <rect x="130" y="84" width="43" height="12" opacity=".6"/>
+          <rect x="130" y="114" width="45" height="12" opacity=".6"/>
+          <rect x="130" y="144" width="29" height="12" opacity=".6"/>
+          <rect x="130" y="174" width="27" height="12" opacity=".6"/>
+          <rect x="130" y="204" width="14" height="12" opacity=".6"/>
+        </g>
+        <rect x="130" y="24" width="169" height="12" fill="var(--dia-accent)" opacity=".22"/>
+        <path d="M299,20 L299,40" stroke="var(--dia-accent)" stroke-width="1.6"/>
+        <text x="299" y="14" text-anchor="end" font-size="8.5" fill="var(--dia-ink-soft)">the ceiling — scripts/loc.sh fails the build past it</text>
+      </svg>
+      <figcaption class="dia-caption">Every crate has a line ceiling a script enforces. Growth must state the failure that
+      activates it; deletions fund additions. The kernel is budgeted apart because it is the machine.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the episode loop">
+  <div class="dia-kicker">the kernel</div>
+  <h2 class="dia-title">The episode loop</h2>
+  <figure class="dia-figure" style="width: 90%;">
+    <svg class="dia-scene" viewBox="0 0 760 200" role="img" aria-label="the loop: assemble, stream, execute, settle; settle checks block, looping, done_when, budget in order">
+      <defs><marker id="arr2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"></path></marker></defs>
+      <g data-dia-node="assemble" data-shape="rounded" data-x="20" data-y="30" data-w="130" data-h="46">
+        <rect class="dia-node-shape" x="20" y="30" width="130" height="46" rx="8"/>
+        <text class="dia-node-label" x="85" y="46" text-anchor="middle" dominant-baseline="central">assemble</text>
+        <text class="dia-node-label" x="85" y="62" text-anchor="middle" dominant-baseline="central" opacity=".6">derive from log</text>
+      </g>
+      <g data-dia-node="stream" data-shape="rounded" data-x="200" data-y="30" data-w="130" data-h="46">
+        <rect class="dia-node-shape" x="200" y="30" width="130" height="46" rx="8"/>
+        <text class="dia-node-label" x="265" y="46" text-anchor="middle" dominant-baseline="central">stream</text>
+        <text class="dia-node-label" x="265" y="62" text-anchor="middle" dominant-baseline="central" opacity=".6">model request</text>
+      </g>
+      <g data-dia-node="execute" data-shape="rounded" data-x="380" data-y="30" data-w="130" data-h="46">
+        <rect class="dia-node-shape" x="380" y="30" width="130" height="46" rx="8"/>
+        <text class="dia-node-label" x="445" y="46" text-anchor="middle" dominant-baseline="central">execute</text>
+        <text class="dia-node-label" x="445" y="62" text-anchor="middle" dominant-baseline="central" opacity=".6">tool calls</text>
+      </g>
+      <g data-dia-node="settle" data-shape="rounded" data-x="560" data-y="30" data-w="176" data-h="46" data-dia-emphasis="">
+        <rect class="dia-node-shape" x="560" y="30" width="176" height="46" rx="8"/>
+        <text class="dia-node-label" x="648" y="46" text-anchor="middle" dominant-baseline="central">settle</text>
+        <text class="dia-node-label" x="648" y="62" text-anchor="middle" dominant-baseline="central" opacity=".6">block · looping · done · budget</text>
+      </g>
+      <g data-dia-edge="assemble->stream" data-anchors="E,W" data-route="ortho"><path class="dia-edge-path" d="M150,53 L200,53" marker-end="url(#arr2)"/></g>
+      <g data-dia-edge="stream->execute" data-anchors="E,W" data-route="ortho"><path class="dia-edge-path" d="M330,53 L380,53" marker-end="url(#arr2)"/></g>
+      <g data-dia-edge="execute->settle" data-anchors="E,W" data-route="ortho"><path class="dia-edge-path" d="M510,53 L560,53" marker-end="url(#arr2)"/></g>
+      <g data-dia-edge="settle->assemble" data-anchors="S,S" data-route="ortho" data-label="next step">
+        <path class="dia-edge-path" d="M648,76 L648,140 L85,140 L85,76" marker-end="url(#arr2)"/>
+        <text class="dia-edge-label" x="340" y="134">no ending? next step — the inbox drains into the request</text>
+      </g>
+    </svg>
+    <figcaption class="dia-caption">Settlement checks in a fixed order: an explicit block, mechanical loop detection,
+    the declared completion, then budgets — so a turn that finishes the task on its last permitted call still completes.</figcaption>
+  </figure>
+  <div class="dia-body" style="margin-top: 10px;">
+    <p>Request failures are typed: a provider outage is retried with growing delays for as long as the
+    seconds budget funds the next attempt; causes repetition cannot fix keep a fixed attempt ceiling.
+    Arrivals — parent messages, child reports, session exits — enter only at request boundaries, through a typed inbox.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the log">
+  <div class="dia-kicker">the record</div>
+  <h2 class="dia-title">One log, fully reconstructable</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><strong>Append-only JSONL</strong>, format version stated on the first
+        event; a reader that meets a version it does not speak refuses
+        with both versions named.</li>
+        <li><strong>Derived messages</strong> — what the model sees each step is folded
+        from events, never held as separate state.</li>
+        <li><strong>Obligations</strong> — calls without results, unsettled children,
+        open sessions are tracked and closed by settlement, so a log
+        always ends well-formed.</li>
+        <li><strong>Seeding</strong> — a new episode can start from any prefix of an
+        existing log: fork a run at a decision point, or resume one.</li>
+        <li><strong>Spill</strong> — oversized values move to files beside the log and
+        leave a locator, so the record stays complete and the requests stay bounded.</li>
+      </ul>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="a log line with obligation arcs opening and closing; a fork lifts a prefix into a new line">
+        <path d="M24,70 L316,70" stroke="var(--dia-ink-faint)" stroke-width="1"/>
+        <g stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M44,64 L44,76" opacity=".6"/><path d="M76,64 L76,76" opacity=".85"/>
+          <path d="M108,64 L108,76" opacity=".6"/><path d="M140,64 L140,76" opacity=".85"/>
+          <path d="M172,64 L172,76" opacity=".6"/><path d="M204,64 L204,76" opacity=".85"/>
+          <path d="M236,64 L236,76" opacity=".6"/><path d="M300,64 L300,76" opacity=".85"/>
+        </g>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M76,62 C90,40 126,40 140,62" opacity=".7"/>
+          <path d="M172,62 C186,44 222,44 236,62" opacity=".5"/>
+        </g>
+        <text x="108" y="34" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">call → result</text>
+        <text x="204" y="40" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">spawn → settle</text>
+        <path d="M140,76 C170,110 210,124 268,128" fill="none" stroke="var(--dia-accent)" stroke-width="1.6"/>
+        <path d="M268,128 L316,128" stroke="var(--dia-accent)" stroke-width="1.6"/>
+        <circle cx="140" cy="70" r="2.6" fill="var(--dia-accent)"/>
+        <text x="222" y="148" font-size="9" fill="var(--dia-ink-soft)">a fork: same prefix, new episode</text>
+        <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">version stated up front · every obligation closed by the end</text>
+      </svg>
+      <figcaption class="dia-caption">Because requests derive from the log, a copied prefix is a complete starting state.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="tools">
+  <div class="dia-kicker">tools</div>
+  <h2 class="dia-title">Three sources, one registry, typed failures</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><strong>Built-in</strong> — <code>read</code>, <code>grep</code>, <code>edit</code>, <code>bash</code>,
+        <code>session</code>, <code>retrieve</code>, the opt-in <code>python</code> composer, and the
+        team verbs. Defined by the runtime, described from the same
+        constants that enforce their limits.</li>
+        <li><strong>Configured</strong> — any executable, by absolute path. Its bytes are
+        captured at construction and invoked by descriptor, so replacing
+        the file cannot change the run.</li>
+        <li><strong>Host</strong> — tools the embedding application implements and
+        services over the protocol.</li>
+      </ul>
+      <p>Every failure carries one code from a closed vocabulary —
+      <code>invalid-call</code>, <code>capability-denied</code>, <code>limit-exceeded</code>, and the
+      rest — with the corrective action in the message. Recovery reads
+      codes, never error prose.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="three tool sources meeting in one registry; the single dispatch path carries the accent">
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <rect x="30" y="30" width="88" height="34" rx="5" opacity=".8"/>
+          <rect x="30" y="86" width="88" height="34" rx="5" opacity=".8"/>
+          <rect x="30" y="142" width="88" height="34" rx="5" opacity=".8"/>
+          <path d="M118,47 C150,52 166,78 182,94" opacity=".6"/>
+          <path d="M118,103 C146,103 162,103 182,103" opacity=".6"/>
+          <path d="M118,159 C150,154 166,128 182,112" opacity=".6"/>
+        </g>
+        <g font-size="9" fill="var(--dia-ink-soft)" text-anchor="middle">
+          <text x="74" y="50">built-in</text><text x="74" y="106">configured</text><text x="74" y="162">host</text>
+        </g>
+        <rect x="184" y="84" width="72" height="40" rx="5" fill="none" stroke="var(--dia-ink-soft)" stroke-width="1.1"/>
+        <text x="220" y="106" text-anchor="middle" font-size="9" fill="var(--dia-ink)">registry</text>
+        <path d="M256,104 L308,104" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <path d="M308,104 L300,99 M308,104 L300,109" stroke="var(--dia-accent)" stroke-width="1.8" fill="none"/>
+        <text x="282" y="92" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">the only path</text>
+        <text x="282" y="126" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">to an effect</text>
+        <text x="170" y="206" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">validation, capability handles, and recording happen here — for every source</text>
+      </svg>
+      <figcaption class="dia-caption">Even the python composer's inner calls dispatch through the registry and are logged one by one.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="workflows">
+  <div class="dia-kicker">workflows</div>
+  <h2 class="dia-title">Graphs of episodes, bounded before they run</h2>
+  <figure class="dia-figure" style="width: 88%;">
+    <svg class="dia-scene" viewBox="0 0 760 210" role="img" aria-label="the built-in coding workflow: implement, then assess, then conditional repair">
+      <defs><marker id="arr3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"></path></marker></defs>
+      <g data-dia-node="task" data-shape="rounded" data-x="20" data-y="70" data-w="96" data-h="42">
+        <rect class="dia-node-shape" x="20" y="70" width="96" height="42" rx="8"/>
+        <text class="dia-node-label" x="68" y="91" text-anchor="middle" dominant-baseline="central">task</text>
+      </g>
+      <g data-dia-node="implement" data-shape="rounded" data-x="160" data-y="70" data-w="130" data-h="42" data-dia-emphasis="">
+        <rect class="dia-node-shape" x="160" y="70" width="130" height="42" rx="8"/>
+        <text class="dia-node-label" x="225" y="91" text-anchor="middle" dominant-baseline="central">implement</text>
+      </g>
+      <g data-dia-node="assess" data-shape="rounded" data-x="334" data-y="70" data-w="130" data-h="42">
+        <rect class="dia-node-shape" x="334" y="70" width="130" height="42" rx="8"/>
+        <text class="dia-node-label" x="399" y="86" text-anchor="middle" dominant-baseline="central">assess</text>
+        <text class="dia-node-label" x="399" y="101" text-anchor="middle" dominant-baseline="central" opacity=".6">fresh context</text>
+      </g>
+      <g data-dia-node="repair" data-shape="rounded" data-x="508" data-y="70" data-w="130" data-h="42">
+        <rect class="dia-node-shape" x="508" y="70" width="130" height="42" rx="8"/>
+        <text class="dia-node-label" x="573" y="86" text-anchor="middle" dominant-baseline="central">repair</text>
+        <text class="dia-node-label" x="573" y="101" text-anchor="middle" dominant-baseline="central" opacity=".6">only on findings</text>
+      </g>
+      <g data-dia-edge="task->implement" data-anchors="E,W" data-route="ortho"><path class="dia-edge-path" d="M116,91 L160,91" marker-end="url(#arr3)"/></g>
+      <g data-dia-edge="implement->assess" data-anchors="E,W" data-route="ortho"><path class="dia-edge-path" d="M290,91 L334,91" marker-end="url(#arr3)"/></g>
+      <g data-dia-edge="assess->repair" data-anchors="E,W" data-route="ortho" data-label="findings">
+        <path class="dia-edge-path" d="M464,91 L508,91" marker-end="url(#arr3)"/>
+        <text class="dia-edge-label" x="470" y="84">findings</text>
+      </g>
+      <g data-dia-edge="repair->assess" data-anchors="S,S" data-route="ortho" data-label="re-assess, bounded">
+        <path class="dia-edge-path" d="M573,112 L573,150 L399,150 L399,112" marker-end="url(#arr3)"/>
+        <text class="dia-edge-label" x="430" y="144">re-assess · max_fires bounds the cycle</text>
+      </g>
+    </svg>
+    <figcaption class="dia-caption">The built-in coding run is this graph: independent implementation, independent assessment
+    in a fresh child episode, and repair that fires only when assessment reports findings.</figcaption>
+  </figure>
+  <div class="dia-body" style="margin-top: 10px;">
+    <p>Workflow nodes are tools, model episodes, or nested workflows. Data flows over declared edges;
+    every cycle carries a firing bound; edge references and total possible firings are counted and refused
+    at construction past fixed ceilings — a graph that could run away never starts.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="spawning and teams">
+  <div class="dia-kicker">spawning &amp; teams</div>
+  <h2 class="dia-title">Child episodes, and six verbs over them</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>A contract may declare child contracts and grant spawning them. Each
+      child is its own process, its own log, its own narrowed sandbox —
+      with budget reserved from the parent's pool and returned on
+      settlement. No child outlives its parent.</p>
+      <p>The team layer is six built-in tools over that machinery:
+      <code>spawn</code>, <code>wait</code> (with typed conditions), <code>steer</code>,
+      <code>notify</code>, <code>send</code>, and <code>team</code>. Members message each other
+      through the lead; the roster and queue fold from the lead's log.</p>
+      <p>One writer per log holds everywhere: messages travel over the
+      host protocol, never by writing into someone else's file.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="a lead episode with two members; all messages route through the lead">
+        <rect x="118" y="24" width="104" height="44" rx="6" fill="none" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <text x="170" y="47" text-anchor="middle" font-size="9.5" fill="var(--dia-ink)">lead</text>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <rect x="42" y="128" width="96" height="42" rx="6" opacity=".85"/>
+          <rect x="202" y="128" width="96" height="42" rx="6" opacity=".85"/>
+          <path d="M140,68 C120,88 104,106 92,128" opacity=".7"/>
+          <path d="M200,68 C220,88 236,106 248,128" opacity=".7"/>
+        </g>
+        <g font-size="9" fill="var(--dia-ink-soft)" text-anchor="middle">
+          <text x="90" y="151">reviewer</text><text x="250" y="151">tester</text>
+        </g>
+        <path d="M138,150 C158,178 182,178 202,152" fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9" stroke-dasharray="4 3"/>
+        <text x="170" y="192" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">send: peer → lead → peer, recorded in the lead's log</text>
+        <text x="60" y="98" font-size="8.5" fill="var(--dia-ink-faint)">narrowed grants ↓</text>
+        <text x="234" y="98" font-size="8.5" fill="var(--dia-ink-faint)">reserved budget ↓</text>
+      </svg>
+      <figcaption class="dia-caption">The parent is the natural orchestrator; the team layer stays thin on purpose.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="models">
+  <div class="dia-kicker">models</div>
+  <h2 class="dia-title">Providers behind one streaming interface</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><strong>Named providers</strong> — OpenAI-style endpoints, a subscription
+        route, and Vertex AI, each configured with explicit credential
+        <em>files</em>: no environment variables, ever.</li>
+        <li><strong>exec</strong> — any executable speaking the chunk protocol on its
+        standard streams; how the examples script deterministic models.</li>
+        <li><strong>host</strong> — the embedding application answers requests itself,
+        through the Python package or the raw protocol.</li>
+      </ul>
+      <p>Streams record as chunks in the log — text, thinking, tool-call
+      deltas — so a replayed request shows exactly what arrived, in
+      order, including the errors.</p>
+      <p><code>foe login</code> stores a credential and a default model once;
+      <code>foe plan</code> reports the resolved route before any run.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="several provider routes converging on one chunk stream into the log">
+        <g font-size="9" fill="var(--dia-ink-soft)">
+          <text x="30" y="46">openai</text><text x="30" y="78">subscription</text>
+          <text x="30" y="110">vertex</text><text x="30" y="142">exec</text><text x="30" y="174">host</text>
+        </g>
+        <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
+          <path d="M110,42 C160,52 190,76 216,96" opacity=".5"/>
+          <path d="M118,74 C166,80 194,88 216,100" opacity=".6"/>
+          <path d="M96,106 C150,104 190,104 216,104" opacity=".85"/>
+          <path d="M80,138 C140,128 190,116 216,108" opacity=".6"/>
+          <path d="M78,170 C140,152 192,124 216,112" opacity=".5"/>
+        </g>
+        <path d="M218,104 L302,104" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        <g fill="var(--dia-accent)">
+          <rect x="232" y="100" width="5" height="8" rx="1"/><rect x="246" y="100" width="5" height="8" rx="1"/>
+          <rect x="260" y="100" width="5" height="8" rx="1"/><rect x="274" y="100" width="5" height="8" rx="1"/>
+        </g>
+        <text x="260" y="90" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">one chunk stream</text>
+        <text x="260" y="126" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">recorded, replayable</text>
+        <text x="170" y="198" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">credentials are files at explicit paths — no ambient configuration</text>
+      </svg>
+      <figcaption class="dia-caption">The transport is part of the contract; an executable transport's bytes join the fingerprint.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="isolation">
+  <div class="dia-kicker">isolation, in one slide</div>
+  <h2 class="dia-title">Granted, compiled, enforced</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Grants compile to kernel filesystem rules per process; execute
+      access names exact files and their interpreters, not directories of
+      binaries. Configured executables run captured bytes by descriptor.
+      Each invocation owns a process subtree that is killed, bounded, and
+      removed at settlement.</p>
+      <p>The report is honest by construction: what <code>foe plan</code> and the
+      log's <code>episode/start</code> state is built from the same policy object
+      the kernel enforces.</p>
+      <p>The full story — why each choice, and its limits — is its own
+      deck: <code>foe-isolation-and-permissions.html</code>.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 200" role="img" aria-label="three nested rings: grants, compiled rules, running processes">
+        <g fill="none">
+          <circle cx="170" cy="100" r="82" stroke="var(--dia-rule)" stroke-width="1" stroke-dasharray="3 4"/>
+          <circle cx="170" cy="100" r="56" stroke="var(--dia-ink-faint)" stroke-width="0.9"/>
+          <circle cx="170" cy="100" r="30" stroke="var(--dia-accent)" stroke-width="1.8"/>
+        </g>
+        <text x="170" y="104" text-anchor="middle" font-size="9" fill="var(--dia-ink)">the run</text>
+        <text x="170" y="34" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">declared grants</text>
+        <text x="170" y="60" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">compiled kernel rules</text>
+        <text x="170" y="192" text-anchor="middle" font-size="9.5" fill="var(--dia-ink-faint)">what is not in the outer ring cannot appear in the inner ones</text>
+      </svg>
+      <figcaption class="dia-caption">Enforcement narrows monotonically: child episodes, tools, and sessions each get subsets.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="evidence">
+  <div class="dia-kicker">verification &amp; evidence</div>
+  <h2 class="dia-title">From "it passed" to bytes you can check</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>Every authoritative verifier run is a recorded event carrying
+        the <strong>digest of the exact candidate it judged</strong>.</li>
+        <li>A completion can be required to cite <strong>learned evidence</strong> —
+        claims paired with log sequence numbers that must reconstruct.</li>
+        <li>An <strong>evidence bundle</strong> packages a candidate contract, its
+        retained proposal logs, and the accepted verifier result —
+        digest-checked file by file, verifiable standalone, portable to
+        whoever decides adoption.</li>
+      </ul>
+      <p>This closed one real loop already: from retained failure evidence,
+      a model repaired a broken configuration, an unchanged external
+      evaluator confirmed the fix, and the same workflow transferred to a
+      fixture it had never seen.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="the evidence loop: run, retain, diagnose, propose, verify, adopt">
+        <circle cx="170" cy="102" r="66" fill="none" stroke="var(--dia-rule)" stroke-width="1" stroke-dasharray="3 4"/>
+        <g font-size="8.5" fill="var(--dia-ink-soft)" text-anchor="middle">
+          <text x="170" y="26">run</text>
+          <text x="252" y="66">retain</text>
+          <text x="262" y="150">diagnose</text>
+          <text x="170" y="188">propose</text>
+          <text x="80" y="150">verify</text>
+          <text x="88" y="66">adopt</text>
+        </g>
+        <g fill="var(--dia-ink-faint)">
+          <circle cx="170" cy="36" r="2"/><circle cx="227" cy="69" r="2"/><circle cx="227" cy="135" r="2"/>
+          <circle cx="170" cy="168" r="2"/><circle cx="113" cy="135" r="2"/>
+        </g>
+        <circle cx="113" cy="69" r="3" fill="var(--dia-accent)"/>
+        <path d="M120,63 C140,48 152,42 162,38" fill="none" stroke="var(--dia-accent)" stroke-width="1.6"/>
+        <path d="M162,38 L153,38 M162,38 L158,46" stroke="var(--dia-accent)" stroke-width="1.6" fill="none"/>
+        <text x="60" y="42" font-size="8.5" fill="var(--dia-ink-soft)">a better contract</text>
+        <text x="60" y="54" font-size="8.5" fill="var(--dia-ink-soft)">enters the next run</text>
+        <text x="170" y="106" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">every arc leaves bytes behind</text>
+      </svg>
+      <figcaption class="dia-caption">The runtime attests; an external policy adopts. Verification never grades its own homework.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="operator surface">
+  <div class="dia-kicker">the operator surface</div>
+  <h2 class="dia-title">Five verbs and a viewer</h2>
+  <div class="dia-body">
+    <table>
+      <tr><th>command</th><th>what it does</th></tr>
+      <tr><td>foe "task"</td><td>runs the built-in coding workflow against the current repository</td></tr>
+      <tr><td>foe init --repository PATH</td><td>writes a complete starting contract and a placeholder verifier; refuses to overwrite</td></tr>
+      <tr><td>foe plan</td><td>readiness summary first — model, roots, execute, completion, limits, sandbox, warnings — then the full resolution, statically</td></tr>
+      <tr><td>foe login</td><td>stores a provider credential file and the default model</td></tr>
+      <tr><td>foe view DIR</td><td>renders a log as one self-contained HTML page; also serves it live</td></tr>
+      <tr><td>foe telemetry LOG…</td><td>what emission writes for finished logs — local, scrubbed, optional</td></tr>
+    </table>
+    <p style="margin-top: 14px;">Fourteen runnable examples cover the surface — from <code>minimal</code> and
+    <code>sandbox</code> to <code>workflow</code>, <code>team</code>, <code>self-extension</code>, and embedding through the
+    Python package — and every one runs in the merge gate.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide dia-cover" data-dia-part="close">
+  <div class="dia-kicker">the whole machine</div>
+  <h2 class="dia-title">Everything reduces to the same five claims</h2>
+  <div class="dia-body lede">
+    <ul style="--dia-marker: '▸'; list-style: none;">
+      <li>the task is fixed at launch, with a declared completion,</li>
+      <li>nothing is reachable unless granted,</li>
+      <li>stuck detection is mechanical,</li>
+      <li>an episode ends only by budget, verifier, or typed report, and</li>
+      <li>the append-only log is the only state.</li>
+    </ul>
+    <p style="margin-top: 8px;">Every feature above is one of these claims, made concrete.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+</body>
+</html>
