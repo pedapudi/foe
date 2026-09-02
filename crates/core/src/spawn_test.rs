@@ -89,7 +89,7 @@ fn inherited_executable_name_preserves_child_contract_fingerprint() {
     let captured = parent.captured_executables["configured"].clone();
     let inherited = std::collections::BTreeMap::from([(
         "tool_defs.configured.exec".into(),
-        (captured.bytes.clone(), captured.invocation_name.clone()),
+        (captured.bytes.clone(), captured.invocation_name.clone().into()),
     )]);
     let child = foe_contract::document::resolve_with_executables(&document, &inherited).unwrap();
     let runtime = crate::fingerprint::runtime_info();

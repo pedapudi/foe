@@ -25,7 +25,7 @@ pub const CONTRACT_FORMAT_VERSION: u32 = 4;
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapturedExecutable {
     pub source_path: PathBuf,
-    pub invocation_name: std::ffi::OsString,
+    pub invocation_name: String,
     pub sha256: String,
     pub bytes: Arc<[u8]>,
 }
@@ -355,8 +355,8 @@ fn resolve_section(
         require(!grants.task_session || parent.task_session, key("grants.task_session"), "is granted by the parent")?;
     }
     let capture = |key: String, path: &Path, configured: &Path| -> Result<CapturedExecutable, ContractError> {
-        let (bytes, invocation_name): (Arc<[u8]>, std::ffi::OsString) = match inherited_executables.get(&key) {
-            Some((bytes, invocation_name)) => (bytes.clone(), invocation_name.clone()),
+        let (bytes, name): (Arc<[u8]>, std::ffi::OsString) = match inherited_executables.get(&key) {
+            Some((bytes, name)) => (bytes.clone(), name.clone()),
             None => {
                 let mut file = std::fs::File::open(path)
                     .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
@@ -366,11 +366,11 @@ fn resolve_section(
                 let mut bytes = Vec::new();
                 std::io::Read::read_to_end(&mut file, &mut bytes)
                     .map_err(|e| invalid(&key, format!("is readable for construction: {e}")))?;
-                let invocation_name =
-                    configured.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
-                (Arc::from(bytes), invocation_name)
+                let name = configured.file_name().unwrap_or_else(|| std::ffi::OsStr::new("executable")).to_owned();
+                (Arc::from(bytes), name)
             }
         };
+        let invocation_name = name.into_string().map_err(|_| invalid(&key, "has a UTF-8 file name"))?;
         Ok(CapturedExecutable {
             source_path: path.to_path_buf(),
             invocation_name,
