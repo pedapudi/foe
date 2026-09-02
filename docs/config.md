@@ -22,6 +22,14 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved contract, its fingerprint, and every tool definition the contract's
 reachable tree can invoke, without running anything.
 
+`foe init --repository PATH` writes a starting document for a repository to
+`PATH/.foe/contract.json`, with a placeholder verifier at `PATH/.foe/verify`
+that rejects every completion candidate until a person replaces it with a
+real completion check; docs/design.md "The command line" states what the
+command decides. The paths mean nothing to the runtime: the document names
+the verifier by absolute path like any configured tool, and running it is
+`foe "the task" --config PATH/.foe/contract.json` like any other document.
+
 `crates/contract` implements this document: every rule stated here is a check
 there, it holds the JSON Schema `foe plan --schema` prints, and it resolves a
 document into the contract `episode/start.contract` records.
@@ -311,6 +319,11 @@ An execute grant covers its named file or every file below its named
 directory. It also grants read access because a process must read an
 executable and its runtime files to start it. The grant remains available
 inside a configured executable, so `bash` can start a compiler or build tool.
+A directory entry is therefore a subtree grant: resolution accepts it
+without examining what the subtree holds, no interpreter analysis narrows
+it, and the resolved permissions `foe plan` reports name the directory
+itself as the granted object. An author who wants the exact-executables
+discipline lists files.
 
 The kernel sandbox enforces the same grants on the episode process and on
 every process it starts, which [sandbox.md](sandbox.md) specifies. The open

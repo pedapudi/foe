@@ -1,10 +1,11 @@
 //! The `foe` binary. docs/design.md "The command line" states the forms.
 //! This file parses the command line and implements the forms that run
-//! nothing: `view` and `plan`. The running form is in `run.rs` and `login`
-//! in `login.rs`.
+//! nothing: `view` and `plan`. The running form is in `run.rs`, `login` in
+//! `login.rs`, and `init` in `init.rs`.
 
 #![forbid(unsafe_code)]
 
+mod init;
 #[cfg(feature = "transport")]
 mod login;
 mod plan;
@@ -57,6 +58,7 @@ const fn form(name: Text, args: Text, about: Text) -> Form {
 const FORMS: &[Form] = &[
     form("", "[TASK]", "run one bounded episode: the task named here, or the task a contract document names"),
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
+    form("init", "", "write a repository's starting execution contract and placeholder verifier into its .foe directory"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
     form("plan", "", "print a readiness summary, then the resolved contract with its fingerprint, transport, reachable tools, and resolved permissions; bare, list the built-in tools"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
@@ -92,6 +94,7 @@ const OPTS: &[Opt] = &[
     opt("", "--headless", "", "", "run with no viewer at all"),
     opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
     opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
+    opt("init", "--repository", "PATH", "required", "the repository to write .foe/contract.json and .foe/verify for"),
     opt("login", "--status", "", "", "print the default model and every configured credential path"),
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
     opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
@@ -209,6 +212,7 @@ fn help(form: &'static Form) -> String {
 
 enum Command {
     Run(run::Options),
+    Init { repository: PathBuf },
     Login { provider: Option<String>, model: Option<String>, status: bool },
     View { dir: PathBuf, serve: bool, port: u16 },
     Plan { config: Option<PathBuf>, json: bool },
@@ -260,6 +264,12 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 false => Command::Plan { config, json },
             }
         }
+        "init" => Command::Init {
+            repository: args
+                .value("--repository")
+                .map(PathBuf::from)
+                .ok_or("`foe init` takes --repository PATH; run `foe init --help`")?,
+        },
         "login" => Command::Login {
             provider: args.positional.pop(),
             model: args.value("--model"),
@@ -316,6 +326,7 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Schema => printed(SCHEMA),
         Command::Plan { config, json } => plan(config.as_deref(), json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
+        Command::Init { repository } => printed(&init::init(&repository)?),
         Command::Login { provider, model, status } => login(provider, model, status),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),
         Command::Run(options) => run::run(options),

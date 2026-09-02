@@ -72,7 +72,7 @@ const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
 
 /// The built-in coding workflow declares these standard command roots for
 /// its shell-based tools. Configured contracts choose their own execute roots.
-const BUILTIN_EXECUTE_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin"];
+pub(crate) const BUILTIN_EXECUTE_ROOTS: &[&str] = &["/bin", "/usr/bin", "/usr/local/bin"];
 
 fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
     let probe = |(name, path): &(&str, &str)| match present(Path::new(path)) {
@@ -366,12 +366,12 @@ const NO_DEFAULT_MODEL: &str =
     "no model: run `foe login <provider>` once to set a default, or give --model PROVIDER/MODEL";
 
 #[cfg(feature = "transport")]
-fn default_model() -> Result<Option<ModelConfig>, String> {
+pub(crate) fn default_model() -> Result<Option<ModelConfig>, String> {
     foe_transport::auth::login::default_model()
 }
 
 #[cfg(not(feature = "transport"))]
-fn default_model() -> Result<Option<ModelConfig>, String> {
+pub(crate) fn default_model() -> Result<Option<ModelConfig>, String> {
     Ok(None)
 }
 
@@ -390,30 +390,49 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// verifier, the assessment's typed choice governs completion.
 fn builtin_contract_document(
     task: String,
-    mut model: ModelConfig,
+    model: ModelConfig,
     key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
-    let explicit_reasoning = model.option("reasoning_effort").is_some();
-    apply_builtin_model_defaults(&mut model);
-    if let Some(key_file) = key_file {
-        let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-        let option = credential_option(&model.provider);
-        model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
+    coding_contract_document(&cwd, task, Some(model), key_file, verify, sandbox)
+}
+
+/// The same coding workflow over an explicit root directory, which becomes
+/// every episode's read, write, and working root. `foe init` reuses this
+/// with the repository as the root. Without a `model` the document omits
+/// the block, so a host must answer its model requests.
+pub(crate) fn coding_contract_document(
+    root: &Path,
+    task: String,
+    mut model: Option<ModelConfig>,
+    key_file: Option<&Path>,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    let explicit_reasoning = model.as_ref().is_some_and(|m| m.option("reasoning_effort").is_some());
+    if let Some(model) = &mut model {
+        apply_builtin_model_defaults(model);
+        if let Some(key_file) = key_file {
+            let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
+            let option = credential_option(&model.provider);
+            model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
+        }
     }
     let mut assessment_model = model.clone();
-    if !explicit_reasoning
-        && matches!(assessment_model.provider.as_str(), "openai" | "openai-codex")
-        && assessment_model.model == "gpt-5.6-sol"
-    {
-        assessment_model.options.insert("reasoning_effort".into(), "xhigh".into());
+    if let Some(assessment) = &mut assessment_model {
+        if !explicit_reasoning
+            && matches!(assessment.provider.as_str(), "openai" | "openai-codex")
+            && assessment.model == "gpt-5.6-sol"
+        {
+            assessment.options.insert("reasoning_effort".into(), "xhigh".into());
+        }
     }
     let repair_model = assessment_model.clone();
-    let environment = builtin_environment(&cwd, Path::is_file);
+    let environment = builtin_environment(root, Path::is_file);
     let grants = serde_json::json!({
-        "read": [cwd], "write": [cwd], "execute": BUILTIN_EXECUTE_ROOTS
+        "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS
     });
     let mut document: serde_json::Value =
         serde_json::from_str(BUILTIN_CONTRACT_DOCUMENT).map_err(|e| format!("built-in contract template: {e}"))?;
@@ -443,7 +462,7 @@ fn builtin_contract_document(
     }
     if let Some(check) = verify {
         let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
-        let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": cwd });
+        let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": root });
         document["budget"]["max_episodes"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 4);
         document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
         document["tool_defs"] = serde_json::json!({ "check": def });

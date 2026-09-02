@@ -708,7 +708,7 @@ own.
 
 ## The command line
 
-The binary has one running form and four forms that run nothing.
+The binary has one running form and five forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
@@ -717,6 +717,7 @@ foe "task" --headless                                    run; no viewer; print t
 foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
+foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
 foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, transport, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
@@ -880,6 +881,28 @@ database, never from the environment.
 with one request, writes it under `~/.config/foe/credentials/` with mode
 0600, and sets the default model when none is set. [models.md](models.md)
 specifies the providers and the flows.
+
+`foe init --repository PATH` writes a starting execution contract to
+`PATH/.foe/contract.json` and a placeholder verifier to `PATH/.foe/verify`,
+and refuses to run when either file exists. Each file lands by renaming a
+completed temporary in the same directory. The document is the built-in
+coding workflow over the canonicalized repository root, with the default
+model `foe login` recorded when one exists — without one the document omits
+`model` and runs under a host. The read and write grants cover the whole
+root, `.git` included, because grants are additive allow lists with no
+exclusion syntax and excluding `.git` would exclude root files. The execute
+grants are the standard command directories and the root: directory
+breadth, a usable starting point to narrow later. The budget carries
+backstops in model calls, seconds, and episodes — safety floors, not
+targets — with token allowances unlimited and the loop threshold at its
+default. The placeholder verifier rejects every completion candidate with
+one finding naming the file a person must replace, so a run against the
+untouched document ends blocked rather than completed, and the verifier's
+capture at contract construction keeps the active episode judging by the
+captured bytes while a future run reads the file as it then exists. The
+runtime reads configuration from no well-known location: only `foe init`
+and the document it writes name these paths, and the report the command
+prints states every one of these decisions.
 
 Without `--headless` and without `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with

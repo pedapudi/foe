@@ -3,7 +3,7 @@
 # Nine budgets: 6,700 over the kernel, which is log and core together; 1,575
 # over contract, which defines execution-contract documents, resolution, and
 # fingerprints; 1,825 over tools, which is code; 1,050 over workflow; 500 over
-# context; 600 over view; 1,500 over cli; 1,000 over telemetry; and 500 over
+# context; 600 over view; 1,650 over cli; 1,000 over telemetry; and 500 over
 # adoption, which verifies portable evidence. The kernel is budgeted apart
 # from contract because the kernel measures the machine and contract measures
 # the data model. A document that gains a key must not buy room in the loop.
@@ -36,10 +36,10 @@ printf '%-8s %6d  (budget 500)\n' context "$context"
 view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
-printf '%-8s %6d  (budget 1500)\n' cli "$cli"
+printf '%-8s %6d  (budget 1650)\n' cli "$cli"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 adoption=$(count adoption)
 printf '%-8s %6d  (budget 500)\n' adoption "$adoption"
 [ "$kernel" -le 6700 ] && [ "$contract" -le 1575 ] && [ "$tools" -le 1825 ] && [ "$workflow" -le 1050 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1500 ] && [ "$telemetry" -le 1000 ] && [ "$adoption" -le 500 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1650 ] && [ "$telemetry" -le 1000 ] && [ "$adoption" -le 500 ]

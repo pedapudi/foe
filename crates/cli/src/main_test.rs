@@ -110,6 +110,7 @@ fn golden(line: &str) -> String {
             "run task={:?} config={:?} model={:?} key_file={:?} log_dir={:?} no_open={} headless={} host={}",
             o.task, o.config, o.model, o.key_file, o.log_dir, o.no_open, o.headless, o.host
         ),
+        Ok(Command::Init { repository }) => format!("init repository={repository:?}"),
         Ok(Command::Login { provider, model, status }) => {
             format!("login provider={provider:?} model={model:?} status={status}")
         }
@@ -139,6 +140,9 @@ fn representative_invocations_parse_to_known_values() {
             "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") no_open=false \
              headless=false host=true",
         ),
+        ("init --repository repo", "init repository=\"repo\""),
+        ("init", "error"),
+        ("init --repository repo extra", "error"),
         ("login", "login provider=None model=None status=false"),
         ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") status=false"),
         ("login --status", "login provider=None model=None status=true"),
