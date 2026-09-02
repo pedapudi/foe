@@ -166,8 +166,13 @@ pub fn record_bytes(record: &AdoptionRecord) -> Result<Vec<u8>, AdoptionError> {
 /// Facts established by standalone adoption verification. The caller's
 /// adoption policy decides whether `verifier_fingerprint` is permitted.
 /// `contract_fingerprint` is checked against the retained fingerprint
-/// document alone; its association with the accepted verifier result is
-/// the record author's claim, left to that policy.
+/// document alone. When the accepted event attests `candidate_sha256`,
+/// `candidate_file` names the retained canonical-JSON file with that
+/// digest, so the bytes the verifier judged are established; whether that
+/// value corresponds to the candidate contract remains the record
+/// author's claim. When the event lacks the field, `candidate_file` is
+/// `None` and the whole candidate-to-verification association is the
+/// record author's claim, left to that policy.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VerifiedAdoption {
     pub bundle_address: String,
@@ -177,6 +182,7 @@ pub struct VerifiedAdoption {
     pub verification_tool: String,
     pub verification_log: String,
     pub verification_seq: u64,
+    pub candidate_file: Option<String>,
 }
 
 /// Verifies a portable adoption bundle. When `expected_predecessor` is
@@ -244,6 +250,22 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
         return Err(invalid("adoption_record.verification_seq", "names an accepted verification/result"));
     }
     require_digest("verification/result.verifier_fingerprint", &result.verifier_fingerprint)?;
+    let candidate_file = match &result.candidate_sha256 {
+        None => None,
+        Some(attested) => {
+            require_digest("verification/result.candidate_sha256", attested)?;
+            let file = listed(attested).ok_or_else(|| {
+                invalid("verification/result.candidate_sha256", "equals the digest of a retained candidate file")
+            })?;
+            let content = std::fs::read(dir.join(&file.path))?;
+            let value: Value = serde_json::from_slice(&content)
+                .map_err(|error| invalid(format!("adoption file {}", file.path), format!("is JSON: {error}")))?;
+            if canonical(&value).as_bytes() != content {
+                return Err(invalid(format!("adoption file {}", file.path), "is canonical JSON"));
+            }
+            Some(file.path.clone())
+        }
+    };
 
     let (_, root_state) = logs
         .get(&manifest.proposal_log)
@@ -268,6 +290,7 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
         verification_tool: result.tool.clone(),
         verification_log: record.verification_log,
         verification_seq: record.verification_seq,
+        candidate_file,
     })
 }
 

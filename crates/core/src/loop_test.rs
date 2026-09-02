@@ -7,6 +7,7 @@ use crate::test_util::{
 };
 use crate::{Tool, Transport};
 use foe_contract::document::ResolvedContract;
+use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
 use foe_contract::Effect;
 use foe_log::{
@@ -607,6 +608,9 @@ async fn every_authoritative_verification_is_recorded_as_one_event() {
     assert_eq!(recorded[0].verifier_fingerprint, "unknown", "a built-in verifier carries the runtime build hash");
     assert_eq!(recorded[1].status, VerificationStatus::Accepted);
     assert!(recorded[1].findings.is_empty(), "an accepted run reports no finding");
+    let judged = |value: &serde_json::Value| Some(format!("sha256:{}", sha256_hex(canonical(value).as_bytes())));
+    assert_eq!(recorded[0].candidate_sha256, judged(&json!("first try")), "the event attests what it judged");
+    assert_eq!(recorded[1].candidate_sha256, judged(&json!("second try")), "the event attests what it judged");
     let EventData::ModelRequest(second) =
         &events.iter().filter(|e| matches!(e.data, EventData::ModelRequest(_))).nth(1).unwrap().data
     else {

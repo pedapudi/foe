@@ -81,6 +81,33 @@ fn episode_start_reads_logs_written_before_effective_budget_evidence() {
     assert_eq!(decoded, expected);
 }
 
+/// docs/log-format.md "Verification": `candidate_sha256` is an optional
+/// additive field. An event carrying it round-trips; a log written before
+/// the field existed parses with no association claim.
+#[test]
+fn verification_result_reads_logs_written_before_candidate_sha256() {
+    let mut expected = VerificationResult {
+        step: 1,
+        tool: "check".into(),
+        verifier_fingerprint: format!("sha256:{}", "a".repeat(64)),
+        status: VerificationStatus::Accepted,
+        findings: Vec::new(),
+        error: None,
+        candidate_sha256: Some(format!("sha256:{}", "b".repeat(64))),
+        duration_ms: 1,
+    };
+    let line = serde_json::to_string(&expected).unwrap();
+    assert!(line.contains("candidate_sha256"), "{line}");
+    assert_eq!(serde_json::from_str::<VerificationResult>(&line).unwrap(), expected);
+    let mut value = serde_json::to_value(&expected).unwrap();
+    value.as_object_mut().unwrap().remove("candidate_sha256");
+    let decoded: VerificationResult = serde_json::from_value(value).unwrap();
+    expected.candidate_sha256 = None;
+    assert_eq!(decoded, expected);
+    let absent = serde_json::to_string(&decoded).unwrap();
+    assert!(!absent.contains("candidate_sha256"), "absence serializes as absence: {absent}");
+}
+
 pub fn text(s: &str) -> Vec<ContentBlock> {
     vec![ContentBlock::Text { text: s.into() }]
 }
@@ -784,6 +811,7 @@ fn every_event_variant_round_trips() {
             status: VerificationStatus::Findings,
             findings: vec!["missing test".into()],
             error: None,
+            candidate_sha256: Some(format!("sha256:{}", "b".repeat(64))),
             duration_ms: 12,
         }),
     ];

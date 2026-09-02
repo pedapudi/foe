@@ -692,7 +692,9 @@ class AdoptionBundleTest(unittest.TestCase):
             ],
         }
 
-    def write_episode(self, episode: Path, fingerprint: str, tool: str, exec_sha256: str):
+    def write_episode(
+        self, episode: Path, fingerprint: str, tool: str, exec_sha256: str, candidate_sha256: str | None = None
+    ):
         contract = {
             "tools": ["block", tool],
             "tool_defs": {tool: {"exec": "/verifier", "description": "judges the candidate"}},
@@ -734,6 +736,7 @@ class AdoptionBundleTest(unittest.TestCase):
                     "verifier_fingerprint": "sha256:" + exec_sha256,
                     "status": "accepted",
                     "findings": [],
+                    **({"candidate_sha256": candidate_sha256} if candidate_sha256 else {}),
                     "duration_ms": 1,
                 },
             },
@@ -749,11 +752,14 @@ class AdoptionBundleTest(unittest.TestCase):
             "\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8"
         )
 
-    def record(self, root: Path, kind, candidate, retained, tool, exec_sha256, artifacts=None):
+    def record(
+        self, root: Path, kind, candidate, retained, tool, exec_sha256, artifacts=None,
+        candidate_value=None, candidate_sha256=None,
+    ):
         parent = self.parent_document()
         predecessor = digest_bytes(canonical_json(parent))
         episode = root / "episode"
-        self.write_episode(episode, predecessor, tool, exec_sha256)
+        self.write_episode(episode, predecessor, tool, exec_sha256, candidate_sha256=candidate_sha256)
         return record_adoption(
             root,
             episode,
@@ -765,6 +771,7 @@ class AdoptionBundleTest(unittest.TestCase):
             [str(self.verify_bundle)],
             {"sha256:" + exec_sha256},
             artifacts=artifacts,
+            candidate_value=candidate_value,
         )
 
     def fingerprint_document(self, record):
@@ -872,6 +879,54 @@ class AdoptionBundleTest(unittest.TestCase):
                 record["predecessor_contract_fingerprint"],
                 digest_bytes(canonical_json(self.parent_document())),
             )
+
+    def test_adoption_retains_and_binds_the_judged_candidate(self):
+        candidate = create_instruction_candidate(
+            EVALUATED_FOE,
+            EVIDENCE_SHA256,
+            BASE_CONFIGURATION,
+            REVISION,
+            {"contract.json": CONTRACT_DOCUMENT},
+        )
+        judged = {"branch": "revise-instructions", "instruction_revision": REVISION}
+        attested = digest_bytes(canonical_json(judged))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            record = self.record(
+                root,
+                "instruction-revision",
+                candidate,
+                {"instruction-candidate.json": json.dumps(candidate).encode()},
+                DIAGNOSIS_VALIDATOR_TOOL,
+                self.validator_sha256,
+                candidate_value=judged,
+                candidate_sha256=attested,
+            )
+            self.assertEqual(record["candidate_file"], "candidate.json")
+            retained = Path(record["bundle_directory"]) / "candidate.json"
+            self.assertEqual(retained.read_bytes(), canonical_json(judged))
+
+    def test_an_attested_candidate_missing_from_the_bundle_is_refused(self):
+        candidate = create_instruction_candidate(
+            EVALUATED_FOE,
+            EVIDENCE_SHA256,
+            BASE_CONFIGURATION,
+            REVISION,
+            {"contract.json": CONTRACT_DOCUMENT},
+        )
+        judged = {"branch": "revise-instructions", "instruction_revision": REVISION}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "candidate_sha256"):
+                self.record(
+                    root,
+                    "instruction-revision",
+                    candidate,
+                    {"instruction-candidate.json": json.dumps(candidate).encode()},
+                    DIAGNOSIS_VALIDATOR_TOOL,
+                    self.validator_sha256,
+                    candidate_sha256=digest_bytes(canonical_json(judged)),
+                )
 
     def test_missing_verification_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:

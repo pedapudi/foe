@@ -14,6 +14,7 @@ use crate::registry::{Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_contract::document::{completion_evidence_required, ResolvedContract};
+use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
@@ -286,8 +287,9 @@ pub async fn settled_children(pool: &Mutex<Pool>, deadline: Option<Instant>) -> 
 /// the invocation owes: `accepted` for an empty finding list, `findings`
 /// otherwise, and `failed` when the verifier could not judge. The agent
 /// loop and the workflow executor both verify through this, so no
-/// authoritative invocation goes unrecorded. Returns the verifier's
-/// judgment and the appended event's `seq`.
+/// authoritative invocation goes unrecorded, and every recorded event
+/// attests the canonical-JSON digest of the exact candidate it judged.
+/// Returns the verifier's judgment and the appended event's `seq`.
 #[allow(clippy::too_many_arguments)]
 pub async fn verify_recorded(
     log: &Log,
@@ -314,6 +316,7 @@ pub async fn verify_recorded(
         status,
         findings,
         error,
+        candidate_sha256: Some(format!("sha256:{}", sha256_hex(canonical(candidate).as_bytes()))),
         duration_ms: started.elapsed().as_millis() as u64,
     }))?;
     Ok((judged, event.seq))

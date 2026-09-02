@@ -48,14 +48,18 @@ manifest.json
 adoption-record.json
 fingerprint-document.json
 artifact-manifest.json
+candidate.json
 episode/episode.jsonl
 episode/children/<episode-id>/episode.jsonl
 ...
 ```
 
-The file names for the fingerprint document and artifact manifest are caller
-choices. The standard self-improvement runner uses the names above. The
-adoption record selects both files by their digests.
+The file names for the fingerprint document, the artifact manifest, and the
+retained candidate value are caller choices. The standard self-improvement
+runner uses the names above. The adoption record selects the first two files
+by their digests; the retained candidate value is selected by the
+`candidate_sha256` digest the cited verification event attests, when that
+event carries one.
 
 Every path stored in the bundle uses forward slashes. A stored path is
 relative and contains no empty, `.`, or `..` component.
@@ -63,8 +67,9 @@ relative and contains no empty, `.`, or `..` component.
 ## Canonical JSON
 
 Owned JSON is UTF-8 with sorted object keys, no insignificant whitespace, and
-no trailing newline. The manifest, adoption record, and fingerprint document
-must use this canonical form. Arrays retain their declared order.
+no trailing newline. The manifest, adoption record, fingerprint document, and
+a retained candidate value that a `candidate_sha256` attestation selects must
+use this canonical form. Arrays retain their declared order.
 
 The artifact manifest is caller-owned evidence. The bundle verifier checks
 its retained bytes against the adoption record and outer manifest. The policy
@@ -147,7 +152,8 @@ Successful standalone verification returns these facts:
   "verifier_fingerprint": "sha256:…",
   "verification_tool": "check",
   "verification_log": "episode/episode.jsonl",
-  "verification_seq": 17
+  "verification_seq": 17,
+  "candidate_file": "candidate.json"
 }
 ```
 
@@ -155,14 +161,23 @@ Successful standalone verification returns these facts:
 Verification establishes that `contract_fingerprint` digests the retained
 fingerprint document, that the verifier result at `verification_seq` is an
 accepted event inside the retained proposal tree, and that the provenance
-rule below holds. The association between the candidate and that verifier
-result is the record author's claim: the verification event does not record
-what it judged, so no retained byte ties the two together.
+rule below holds.
+
+The `verification/result` event may attest `candidate_sha256`, the digest of
+the canonical JSON of the exact value the runtime handed to the verifier.
+When the accepted event carries it, verification requires a retained file
+with that digest whose content is canonical JSON, and `candidate_file` names
+that file: the retained bytes are then established as what the verifier
+judged. Whether that value corresponds to the candidate contract remains the
+record author's claim. When the event lacks the field, `candidate_file` is
+`null` and the whole association between the candidate and the verifier
+result is the record author's claim: no retained byte ties the two together.
 
 An external adoption policy selects the permitted verifier fingerprints,
 may require an expected predecessor fingerprint, and decides whether to
-accept the record's candidate-to-verification association. Bundle
-verification establishes facts and does not decide that policy.
+accept what remains the record author's claim in the
+candidate-to-verification association. Bundle verification establishes
+facts and does not decide that policy.
 
 ## Proposal provenance
 
@@ -194,8 +209,10 @@ The verifier performs these checks in order:
 10. Parse and structurally validate every retained episode log.
 11. Require the selected event to be an accepted `verification/result`.
 12. Validate the event's verifier fingerprint form.
-13. Match an optional predecessor to the proposal root contract fingerprint.
-14. Verify the selected log's spawn provenance from the proposal root.
+13. When the event attests `candidate_sha256`, require a retained file with
+    that digest and canonical JSON content, and name it in the result.
+14. Match an optional predecessor to the proposal root contract fingerprint.
+15. Verify the selected log's spawn provenance from the proposal root.
 
 Any failure names the record field, manifest field, file, event, or provenance
 rule involved.
@@ -225,7 +242,9 @@ It prints the verified result as one JSON object.
 The self-improvement runner writes completed bundles under
 `adoption/bundles/<manifest-digest>`. Each bundle retains the complete
 proposal episode tree, the resolved candidate fingerprint document, the
-candidate artifact manifest, and candidate files selected by the runner.
+candidate artifact manifest, the value the cited verification judged as
+`candidate.json` in canonical JSON, and candidate files selected by the
+runner.
 
 The runner invokes standalone verification after moving the bundle into its
 content-addressed directory. Its policy permits the configured verifier
