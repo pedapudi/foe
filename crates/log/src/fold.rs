@@ -42,8 +42,9 @@ pub fn read_from(dir: &Path, from: u64) -> Result<(Vec<Event>, u64), LogError> {
 /// reader cannot parse still names its version instead of failing on the
 /// first shape the reader does not know. A first line stating no version
 /// belongs to a version 3 log, the last version whose writers stated none,
-/// and passes.
-fn version_check(from: u64, bytes: &[u8]) -> Result<(), LogError> {
+/// and passes. Callers holding a complete log as bytes run the same check
+/// through [`parse_lines`]' companion here with `from` 0.
+pub fn version_check(from: u64, bytes: &[u8]) -> Result<(), LogError> {
     let first = (from == 0).then(|| bytes.split(|b| *b == b'\n').next()).flatten().unwrap_or_default();
     let stated = serde_json::from_slice::<serde_json::Value>(first).ok().and_then(|v| v["version"].as_u64());
     match stated.filter(|v| *v != u64::from(LOG_VERSION)) {

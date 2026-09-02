@@ -123,6 +123,25 @@ fn an_attested_candidate_must_be_retained_as_canonical_json() {
     assert!(error.contains("canonical JSON"), "a non-canonical candidate fails: {error}");
 }
 
+/// A retained log stating an unsupported format version is refused with
+/// the typed error naming both versions, before event parsing.
+#[test]
+fn a_retained_log_with_an_unsupported_version_is_refused() {
+    let root = tempfile::tempdir().unwrap();
+    bundle(root.path(), None, None);
+    let log_path = root.path().join("episode/episode.jsonl");
+    let log = std::fs::read_to_string(&log_path).unwrap();
+    let (first, rest) = log.split_once('\n').unwrap();
+    let mut event: serde_json::Value = serde_json::from_str(first).unwrap();
+    event["version"] = json!(99);
+    std::fs::write(&log_path, format!("{event}\n{rest}")).unwrap();
+    let manifest = build_manifest(root.path(), "episode/episode.jsonl", "adoption-record.json").unwrap();
+    std::fs::write(root.path().join(MANIFEST_FILE), manifest_bytes(&manifest).unwrap()).unwrap();
+    let error = verify_adoption(root.path(), None).unwrap_err().to_string();
+    assert!(error.contains("version 99"), "{error}");
+    assert!(error.contains("version 3"), "{error}");
+}
+
 #[test]
 fn policy_predecessor_must_match_the_record_and_proposal_root() {
     let root = tempfile::tempdir().unwrap();

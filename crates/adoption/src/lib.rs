@@ -317,6 +317,8 @@ fn read_logs(bundle: &VerifiedBundle) -> Result<BTreeMap<String, (Vec<Event>, St
         .iter()
         .filter(|file| file.path == "episode.jsonl" || file.path.ends_with("/episode.jsonl"))
     {
+        fold::version_check(0, &bundle.files[&file.path])
+            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
         let (events, _) = fold::parse_lines(&bundle.files[&file.path])
             .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
         let state = fold::fold(&events)
