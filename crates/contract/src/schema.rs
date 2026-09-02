@@ -106,10 +106,8 @@ fn check_value(schema: &Value, value: &Value, path: String) -> Result<(), String
     if !allowed.is_empty() && !allowed.iter().any(|t| *t == type_name || (*t == "number" && type_name == "integer")) {
         return fail(&path, format!("expected type {}, found {type_name}", allowed.join(" or ")));
     }
-    if let Some(options) = obj.get("enum").and_then(Value::as_array) {
-        if !options.contains(value) {
-            return fail(&path, format!("is not one of {}", Value::Array(options.clone())));
-        }
+    if let Some(options) = obj.get("enum").and_then(Value::as_array).filter(|o| !o.contains(value)) {
+        return fail(&path, format!("is not one of {}", Value::Array(options.clone())));
     }
     if obj.get("const").is_some_and(|c| c != value) {
         return fail(&path, format!("is not the constant {}", obj["const"]));
@@ -132,7 +130,8 @@ fn check_value(schema: &Value, value: &Value, path: String) -> Result<(), String
             match properties.and_then(|p| p.get(name)).or_else(|| extra.filter(|e| e.is_object())) {
                 Some(sub) => check_value(sub, field, format!("{path}.{name}"))?,
                 None if extra == Some(&Value::Bool(false)) => {
-                    return fail(&path, format!("has unexpected property `{name}`"))
+                    let known = properties.into_iter().flat_map(|p| p.keys()).cloned().collect::<Vec<_>>().join(", ");
+                    return fail(&path, format!("has unexpected property `{name}`; the properties are {known}"));
                 }
                 None => {}
             }

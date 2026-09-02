@@ -24,7 +24,8 @@ reason, and the episode continues.";
 pub const RETRIEVE_DESCRIPTION: &str = "Read the next bounded segment of a complete earlier tool result from \
 this episode. Copy the opaque cursor from a shortening notice or an aged-result notice. The result comes from \
 recorded episode evidence; this tool does not inspect the live filesystem or repeat the original call.";
-pub const RETRIEVE_INVALID: &str = "retrieve: cursor syntax, version, or checksum is invalid";
+pub const RETRIEVE_INVALID: &str =
+    "retrieve: cursor syntax, version, or checksum is invalid; copy the whole cursor from its notice unchanged";
 pub const RETRIEVE_UNAVAILABLE: &str =
     "retrieve: cursor does not name a result visible in an earlier step of this episode";
 pub const RETRIEVE_OFFSET: &str = "retrieve: cursor offset is outside the rendering or splits a UTF-8 character";

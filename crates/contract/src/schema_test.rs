@@ -48,7 +48,11 @@ fn every_implemented_assertion_is_enforced() {
     }
     assert!(conforms(&schema, &json!({ "count": 3, "label": "ab" })).unwrap_err().contains("`tags`"));
     let extra = json!({ "count": 3, "label": "ab", "tags": [], "surprise": 1 });
-    assert!(conforms(&schema, &extra).unwrap_err().contains("`surprise`"));
+    let unexpected = conforms(&schema, &extra).unwrap_err();
+    assert!(unexpected.contains("`surprise`"), "{unexpected}");
+    // The error lists the accepted properties, so a caller that misnamed a
+    // field sees the name it should have used.
+    assert!(unexpected.contains("count, kind, label, tags, version"), "{unexpected}");
 }
 
 /// docs/config.md "JSON Schema subset": `additionalProperties` closes an
