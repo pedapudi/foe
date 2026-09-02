@@ -1268,11 +1268,17 @@ fn plan_reports_reachable_tools_and_resolved_permissions() {
     let contracts = report["resolved_permissions"].as_array().unwrap();
     assert_eq!(contracts.len(), 3, "one permission set is reported for each reachable contract");
     let root = contracts.iter().find(|row| row["contract"] == "contract").unwrap();
-    assert!(root["permissions"]["execute"].as_array().unwrap().iter().any(|entry| {
-        entry["path"] == child_exec.to_string_lossy().as_ref()
+    let execute = root["permissions"]["execute"].as_array().unwrap();
+    assert!(execute.iter().any(|entry| {
+        let digest = entry["sha256"].as_str().filter(|digest| digest.len() == 64);
+        digest.is_some_and(|digest| entry["path"] == format!("captured:{digest}"))
             && entry["reason"].as_str().unwrap().contains("contract.child_contracts.child.tool_defs.inspect")
-            && entry["sha256"].as_str().is_some_and(|digest| digest.len() == 64)
+            && entry["reason"].as_str().unwrap().contains(child_exec.to_string_lossy().as_ref())
     }));
+    assert!(
+        execute.iter().all(|entry| entry["path"] != child_exec.to_string_lossy().as_ref()),
+        "the captured tool's source path is not an executable object"
+    );
     assert!(root["permissions"]["connect_tcp"]
         .as_array()
         .unwrap()

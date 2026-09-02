@@ -15,8 +15,16 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 const CGROUP_MOUNT: &str = "/sys/fs/cgroup";
+/// Longest wait for the kernel to reap a killed subtree before cleanup
+/// fails. Reaping normally completes within milliseconds; the bound covers
+/// slow teardown of a large subtree while keeping settlement deterministic
+/// when a process cannot be reaped at all.
+const KILL_WAIT: Duration = Duration::from_secs(30);
+/// Interval between population checks after `cgroup.kill`.
+const KILL_POLL: Duration = Duration::from_millis(10);
 const ENTER_SCRIPT: &str = "printf '%s\\n' \"$$\" > \"$1\" || exit 125; shift; exec \"$@\"";
 /// Fixed executable used to enter a cgroup before the requested command.
 pub const PROCESS_BOUNDARY_LAUNCHER: &str = "/bin/sh";
@@ -45,8 +53,7 @@ impl ProcessOwnership {
             return Ok(Self::fallback("sandbox.mode is off"));
         }
         if let Some(paths) = inherited {
-            let boundary = ProcessBoundary::enter(paths)?;
-            return Ok(Self::enforced(boundary, None));
+            return Ok(Self::enforced(ProcessBoundary::enter(paths)?, None));
         }
         Ok(Self::from_root(ProcessBoundary::root(episode_id)))
     }
@@ -59,27 +66,21 @@ impl ProcessOwnership {
     }
 
     fn enforced(boundary: ProcessBoundary, root: Option<RootCleanup>) -> Self {
-        Self {
-            boundary: Some(Arc::new(boundary)),
-            info: ProcessBoundaryInfo {
-                kind: ProcessBoundaryKind::CgroupV2,
-                subtree_cleanup: SubtreeCleanup::Enforced,
-                reason: None,
-            },
-            root,
-        }
+        let info = ProcessBoundaryInfo {
+            kind: ProcessBoundaryKind::CgroupV2,
+            subtree_cleanup: SubtreeCleanup::Enforced,
+            reason: None,
+        };
+        Self { boundary: Some(Arc::new(boundary)), info, root }
     }
 
     fn fallback(reason: &str) -> Self {
-        Self {
-            boundary: None,
-            info: ProcessBoundaryInfo {
-                kind: ProcessBoundaryKind::ProcessGroup,
-                subtree_cleanup: SubtreeCleanup::Observational,
-                reason: Some(reason.to_string()),
-            },
-            root: None,
-        }
+        let info = ProcessBoundaryInfo {
+            kind: ProcessBoundaryKind::ProcessGroup,
+            subtree_cleanup: SubtreeCleanup::Observational,
+            reason: Some(reason.to_string()),
+        };
+        Self { boundary: None, info, root: None }
     }
 
     pub fn boundary(&self) -> Option<Arc<ProcessBoundary>> {
@@ -243,13 +244,10 @@ fn safe_name(name: &str) -> String {
 }
 
 fn require_boundary_files(path: &Path) -> Result<(), RuntimeError> {
-    for file in ["cgroup.kill", "cgroup.events", "cgroup.procs"] {
-        let control = path.join(file);
-        if !control.is_file() {
-            return Err(RuntimeError::Sandbox(format!("cgroup v2: {} is unavailable", control.display())));
-        }
+    match ["cgroup.kill", "cgroup.events", "cgroup.procs"].iter().map(|f| path.join(f)).find(|c| !c.is_file()) {
+        Some(missing) => Err(RuntimeError::Sandbox(format!("cgroup v2: {} is unavailable", missing.display()))),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 fn join(path: &Path) -> Result<(), RuntimeError> {
@@ -267,11 +265,26 @@ fn kill_and_remove(path: &Path) -> Result<(), RuntimeError> {
     if populated(path)? {
         let kill = path.join("cgroup.kill");
         std::fs::write(&kill, "1").map_err(|e| cgroup_error("kill", &kill, e))?;
-        while populated(path)? {
-            std::thread::yield_now();
-        }
+        await_reaped(path, KILL_WAIT)?;
     }
     remove_tree(path)
+}
+
+/// Polls `cgroup.events` until the killed subtree is empty. One write to
+/// `cgroup.kill` suffices because the kernel kills processes forked after
+/// it; what can remain is a process the kernel cannot reap, such as one in
+/// uninterruptible sleep on a dead mount, so an exhausted bound fails the
+/// cleanup naming the populated cgroup instead of waiting forever.
+fn await_reaped(path: &Path, bound: Duration) -> Result<(), RuntimeError> {
+    let deadline = std::time::Instant::now() + bound;
+    while populated(path)? {
+        if std::time::Instant::now() >= deadline {
+            let after = format!("still populated {bound:?} after cgroup.kill");
+            return Err(cgroup_error("reap", path, std::io::Error::other(after)));
+        }
+        std::thread::sleep(KILL_POLL);
+    }
+    Ok(())
 }
 
 fn remove_tree(path: &Path) -> Result<(), RuntimeError> {
@@ -304,7 +317,9 @@ impl RootCleanup {
         if join(&self.origin).is_err() {
             return;
         }
-        let _ = kill_and_remove(&self.invocation.join("episode"));
+        if let Err(error) = kill_and_remove(&self.invocation.join("episode")) {
+            eprintln!("foe: invocation cgroup cleanup: {error}");
+        }
         let task = self.invocation.join("task");
         if populated(&task).is_ok_and(|is_populated| !is_populated) {
             let _ = remove_tree(&task);

@@ -252,8 +252,13 @@ impl Policy {
         }
     }
 
+    /// Records the captured image whose retained copy the compiled rule
+    /// binds. The row names the image by digest because no pathname is the
+    /// granted object; the construction-time source is provenance in the
+    /// reason and receives no execute rule of its own.
     fn add_image(&mut self, source: &Path, sha256: &str, image: &[u8], reason: String) -> Result<(), String> {
-        self.record_execute(source.to_path_buf(), &reason, Some(sha256.to_string()));
+        let reason = format!("{reason}; captured from {}", source.display());
+        self.record_execute(PathBuf::from(format!("captured:{sha256}")), &reason, Some(sha256.to_string()));
         self.add_support(image, &reason, &mut BTreeSet::new())
     }
 
@@ -297,9 +302,7 @@ impl Policy {
     }
 
     pub fn add_bind_port(&mut self, port: u16) {
-        if !self.bind_tcp.contains(&port) {
-            self.bind_tcp.push(port);
-        }
+        push_unique(&mut self.bind_tcp, port);
         self.permissions.bind_tcp = self.bind_tcp.clone();
     }
 
@@ -346,8 +349,13 @@ impl Policy {
         self.record_read_write(path, "cgroup process-boundary ownership and cleanup", None);
     }
 
-    /// Gives the runtime or one trusted wrapper access to a cgroup file.
+    /// Gives the runtime or one trusted wrapper access to a cgroup file. A
+    /// file that cannot be opened would compile no rule, so it is dropped
+    /// here and reported as absent rather than granted.
     pub fn add_runtime_control_file(&mut self, path: PathBuf) {
+        if PathFd::new(&path).is_err() {
+            return;
+        }
         self.runtime_control_files.push(path.clone());
         self.record_write(path, "cgroup process-boundary placement", None);
     }
@@ -379,9 +387,9 @@ fn path_order(a: &ResolvedPathPermission, b: &ResolvedPathPermission) -> std::cm
     (&a.path, &a.reason, &a.sha256).cmp(&(&b.path, &b.reason, &b.sha256))
 }
 
-fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
-    if !paths.contains(&path) {
-        paths.push(path);
+fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
+    if !items.contains(&item) {
+        items.push(item);
     }
 }
 
@@ -431,10 +439,7 @@ impl Sandbox {
     /// Call from the main thread before any other thread exists, so that
     /// every thread of the episode inherits the domain.
     pub fn enforce_self(&self, policy: &Policy) -> Result<(), RuntimeError> {
-        match self.compile(policy)? {
-            Some(ruleset) => apply(ruleset).map(|_| ()),
-            None => Ok(()),
-        }
+        self.compile(policy)?.map_or(Ok(()), |ruleset| apply(ruleset).map(|_| ()))
     }
 
     /// Starts `cmd` under this sandbox narrowed to `policy`. The domain the
@@ -495,9 +500,9 @@ impl Sandbox {
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
             (policy.runtime_control.clone(), read | write),
-            (paths(LIBRARY_DIRS), read),
-            (paths(SYSTEM_READ_DIRS), read),
-            (paths(DEVICE_FILES), AccessFs::ReadFile | AccessFs::WriteFile),
+            (LIBRARY_DIRS.iter().map(PathBuf::from).collect(), read),
+            (SYSTEM_READ_DIRS.iter().map(PathBuf::from).collect(), read),
+            (DEVICE_FILES.iter().map(PathBuf::from).collect(), AccessFs::ReadFile | AccessFs::WriteFile),
         ];
         for (paths, access) in rules {
             for path in paths {
@@ -541,10 +546,6 @@ fn apply(ruleset: RulesetCreated) -> Result<RulesetStatus, RuntimeError> {
     Ok(status.ruleset)
 }
 
-fn paths(list: &[&str]) -> Vec<PathBuf> {
-    list.iter().map(PathBuf::from).collect()
-}
-
 /// The Landlock ABI of the running kernel, or 0 when Landlock is absent or
 /// disabled. A throwaway thread enforces a minimal ruleset on itself and
 /// reports what it obtained; the calling thread stays unrestricted.
@@ -558,12 +559,8 @@ pub fn probe_abi() -> u32 {
             .ok()?
             .restrict_self()
             .ok()?;
-        match status.landlock {
-            LandlockStatus::Available { effective_abi, kernel_abi } => {
-                Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32))
-            }
-            _ => Some(0),
-        }
+        let LandlockStatus::Available { effective_abi, kernel_abi } = status.landlock else { return Some(0) };
+        Some(kernel_abi.map(|k| k as u32).unwrap_or(effective_abi as u32))
     })
     .join()
     .ok()

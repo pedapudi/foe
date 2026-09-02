@@ -342,6 +342,48 @@ fn episode_policy_follows_grants_and_tool_defs() {
     assert_eq!(online.bind_tcp, vec![8080], "the episode's bind ports survive executable narrowing");
 }
 
+/// docs/sandbox.md "Resolved permissions and enforcement": a captured
+/// executable's row names the captured image by digest, because the
+/// compiled rule binds the retained copy rather than any pathname; the
+/// construction-time source appears only as provenance in the reason.
+#[test]
+fn a_captured_executable_row_names_the_image_not_its_source() {
+    let dir = temp_dir("captured-row");
+    let tool = dir.join("ruff");
+    std::fs::copy("/bin/true", &tool).unwrap();
+    let config: ContractDocument = serde_json::from_value(serde_json::json!({
+        "version": 4, "name": "p", "instructions": {"r": "x"}, "tools": ["ruff"],
+        "tool_defs": {"ruff": {"exec": tool, "description": "d"}},
+        "grants": {"read": [dir]}, "budget": {"model_calls": 1}, "task": "t"
+    }))
+    .unwrap();
+    let access = policy(&config, Path::new("/logs/ep")).resolved_permissions();
+    let source = std::fs::canonicalize(&tool).unwrap();
+    let row = access.execute.iter().find(|entry| entry.sha256.is_some()).unwrap();
+    let digest = row.sha256.as_ref().unwrap();
+    assert_eq!(row.path, format!("captured:{digest}"), "the row names the image the rule binds");
+    assert!(row.reason.contains("tool_defs.ruff"), "{}", row.reason);
+    assert!(row.reason.contains(&source.display().to_string()), "the source is provenance: {}", row.reason);
+    assert!(access.execute.iter().all(|entry| Path::new(&entry.path) != source), "the source path is not executable");
+}
+
+/// A runtime control file that cannot be opened compiles no rule, so it is
+/// reported as absent rather than granted; an openable one keeps its row.
+#[test]
+fn an_unopenable_runtime_control_file_is_reported_as_absent() {
+    let dir = temp_dir("control-file");
+    let mut policy = Policy::default();
+    policy.add_runtime_control_file(dir.join("gone").join("cgroup.procs"));
+    assert!(policy.runtime_control_files.is_empty());
+    assert!(policy.resolved_permissions().write.is_empty());
+    let procs = dir.join("cgroup.procs");
+    std::fs::write(&procs, "").unwrap();
+    policy.add_runtime_control_file(procs.clone());
+    assert_eq!(policy.runtime_control_files, vec![procs.clone()]);
+    let rows = policy.resolved_permissions();
+    assert!(rows.write.iter().any(|entry| Path::new(&entry.path) == procs));
+}
+
 /// docs/sandbox.md "What is compiled": a ruleset only narrows, so an episode
 /// reserves execute on the configured executable of every contract below it.
 /// Without the reservation a child, a grandchild, or a workflow model node
@@ -443,6 +485,7 @@ fn an_ancestor_reserves_only_reachable_descendant_execute_and_network_access() {
     let root = foe_contract::document::resolve(&config).unwrap();
     let access = Policy::for_plan(&root).unwrap().resolved_permissions();
     let executes = |path: &Path| access.execute.iter().any(|entry| Path::new(&entry.path) == path);
+    assert!(executes(&dir.canonicalize().unwrap()), "a directory execute grant is reported as the directory");
     assert!(executes(&child_exec.canonicalize().unwrap()));
     assert!(executes(&workflow_exec.canonicalize().unwrap()));
     assert!(!access.execute.iter().any(|entry| entry.reason.contains("unreachable")));
