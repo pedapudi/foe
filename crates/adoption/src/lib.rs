@@ -92,18 +92,32 @@ pub fn check_manifest(bytes: &[u8]) -> Result<Manifest, AdoptionError> {
     Ok(manifest)
 }
 
-pub fn verify_bundle(dir: &Path) -> Result<(Manifest, String), AdoptionError> {
+/// A bundle whose files all matched the manifest. `files` holds the
+/// digest-verified bytes of every listed file, keyed by manifest path.
+/// Facts are established from these bytes, never from a re-read, so the
+/// directory changing after the digest pass cannot alter them.
+#[derive(Debug)]
+pub struct VerifiedBundle {
+    pub manifest: Manifest,
+    /// Digest of the canonical manifest bytes: the bundle address.
+    pub address: String,
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+
+pub fn verify_bundle(dir: &Path) -> Result<VerifiedBundle, AdoptionError> {
     let bytes = std::fs::read(dir.join(MANIFEST_FILE))
         .map_err(|error| invalid("adoption.manifest", format!("is readable: {}: {error}", dir.display())))?;
     let manifest = check_manifest(&bytes)?;
+    let mut files = BTreeMap::new();
     for file in &manifest.files {
         let content = std::fs::read(dir.join(&file.path))
             .map_err(|error| invalid(format!("adoption file {}", file.path), format!("is readable: {error}")))?;
         if content.len() as u64 != file.bytes || digest_of(&content) != file.sha256 {
             return Err(invalid(format!("adoption file {}", file.path), "matches its manifest length and digest"));
         }
+        files.insert(file.path.clone(), content);
     }
-    Ok((manifest, digest_of(&bytes)))
+    Ok(VerifiedBundle { manifest, address: digest_of(&bytes), files })
 }
 
 pub fn build_manifest(dir: &Path, proposal_log: &str, adoption_record: &str) -> Result<Manifest, AdoptionError> {
@@ -191,10 +205,11 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
     if let Some(expected) = expected_predecessor {
         require_digest("expected_predecessor", expected)?;
     }
-    let (manifest, bundle_address) = verify_bundle(dir)?;
-    let record_content = std::fs::read(dir.join(&manifest.adoption_record))?;
-    let record: AdoptionRecord = serde_json::from_slice(&record_content)?;
-    if record_bytes(&record)? != record_content {
+    let bundle = verify_bundle(dir)?;
+    let manifest = &bundle.manifest;
+    let record_content = &bundle.files[&manifest.adoption_record];
+    let record: AdoptionRecord = serde_json::from_slice(record_content)?;
+    if &record_bytes(&record)? != record_content {
         return Err(invalid("adoption_record", "is the canonical serialization of its object"));
     }
     if record.schema_version != 2 {
@@ -223,19 +238,19 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
     if listed(&record.artifact_manifest_sha256).is_none() {
         return Err(invalid("adoption_record.artifact_manifest_sha256", "equals the digest of a retained file"));
     }
-    let fingerprint_content = std::fs::read(dir.join(&fingerprint_file.path))?;
-    let fingerprint_document: Value = serde_json::from_slice(&fingerprint_content)?;
-    if canonical(&fingerprint_document).as_bytes() != fingerprint_content {
+    let fingerprint_content = &bundle.files[&fingerprint_file.path];
+    let fingerprint_document: Value = serde_json::from_slice(fingerprint_content)?;
+    if canonical(&fingerprint_document).as_bytes() != fingerprint_content.as_slice() {
         return Err(invalid("fingerprint_document", "is canonical JSON"));
     }
-    if digest_of(&fingerprint_content) != record.contract_fingerprint {
+    if digest_of(fingerprint_content) != record.contract_fingerprint {
         return Err(invalid(
             "adoption_record.contract_fingerprint",
             "equals the digest of the canonical fingerprint document",
         ));
     }
 
-    let logs = read_logs(dir, &manifest)?;
+    let logs = read_logs(&bundle)?;
     let (verification_events, _) = logs
         .get(&record.verification_log)
         .ok_or_else(|| invalid("adoption_record.verification_log", "names an episode log in the bundle"))?;
@@ -257,10 +272,10 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
             let file = listed(attested).ok_or_else(|| {
                 invalid("verification/result.candidate_sha256", "equals the digest of a retained candidate file")
             })?;
-            let content = std::fs::read(dir.join(&file.path))?;
-            let value: Value = serde_json::from_slice(&content)
+            let content = &bundle.files[&file.path];
+            let value: Value = serde_json::from_slice(content)
                 .map_err(|error| invalid(format!("adoption file {}", file.path), format!("is JSON: {error}")))?;
-            if canonical(&value).as_bytes() != content {
+            if canonical(&value).as_bytes() != content.as_slice() {
                 return Err(invalid(format!("adoption file {}", file.path), "is canonical JSON"));
             }
             Some(file.path.clone())
@@ -283,7 +298,7 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
     verify_provenance(&manifest.proposal_log, &record.verification_log, &logs)?;
 
     Ok(VerifiedAdoption {
-        bundle_address,
+        bundle_address: bundle.address,
         contract_fingerprint: record.contract_fingerprint,
         predecessor_contract_fingerprint: record.predecessor_contract_fingerprint,
         verifier_fingerprint: result.verifier_fingerprint.clone(),
@@ -294,15 +309,16 @@ pub fn verify_adoption(dir: &Path, expected_predecessor: Option<&str>) -> Result
     })
 }
 
-fn read_logs(dir: &Path, manifest: &Manifest) -> Result<BTreeMap<String, (Vec<Event>, State)>, AdoptionError> {
+fn read_logs(bundle: &VerifiedBundle) -> Result<BTreeMap<String, (Vec<Event>, State)>, AdoptionError> {
     let mut logs = BTreeMap::new();
-    for file in
-        manifest.files.iter().filter(|file| file.path == "episode.jsonl" || file.path.ends_with("/episode.jsonl"))
+    for file in bundle
+        .manifest
+        .files
+        .iter()
+        .filter(|file| file.path == "episode.jsonl" || file.path.ends_with("/episode.jsonl"))
     {
-        let log_path = dir.join(&file.path);
-        let log_dir = log_path.parent().expect("a log path has a parent");
-        let events = fold::read_all(log_dir)
-            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is readable: {error}")))?;
+        let (events, _) = fold::parse_lines(&bundle.files[&file.path])
+            .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
         let state = fold::fold(&events)
             .map_err(|error| invalid(format!("adoption log {}", file.path), format!("is valid: {error}")))?;
         logs.insert(file.path.clone(), (events, state));

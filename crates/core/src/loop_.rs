@@ -34,10 +34,14 @@ use tokio::task::JoinSet;
 /// and replaced by a locator. The rendering beside it needs no such rule:
 /// the turn budget has already bounded it.
 pub const SPILL_LIMIT: usize = 64 * 1024;
-/// Attempts per step before the episode is blocked as `recovery-exhausted`.
+/// Non-outage failed attempts per step before the episode is blocked as
+/// `recovery-exhausted`. A provider-reported outage is bounded by the
+/// budget instead: waiting costs only time and model calls, which the
+/// budget already meters.
 pub const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF_BASE_MS: u64 = 500;
 const BACKOFF_CAP_MS: u64 = 8_000;
+const OUTAGE_BACKOFF_CAP_MS: u64 = 60_000;
 /// How long the teardown waits for children it asked to end before it
 /// records their settlement itself.
 const SETTLE_GRACE: Duration = Duration::from_secs(10);
@@ -467,6 +471,7 @@ impl Episode {
     async fn request(&mut self, kind: Request) -> Result<Answer, RuntimeError> {
         let summary = matches!(kind, Request::Summary(_));
         let mut attempt = 0;
+        let mut faults = 0u32;
         // The cause and the delay of the failure that the next attempt
         // retries. The `request/retry` is written from it immediately
         // before that attempt, because the event states that a request is
@@ -566,14 +571,31 @@ impl Episode {
             if summary {
                 return Ok(Answer::Failed(error));
             }
-            // The ceiling is tested before the delay is computed, so the
-            // episode never waits out a delay for an attempt it will not
-            // make. The message counts the attempts that were made.
-            if attempt >= MAX_ATTEMPTS {
-                let message = format!("{MAX_ATTEMPTS} attempts at step {} failed", self.step);
+            // A provider-reported outage is explicitly retryable and
+            // repeating fixes it; its bound is the budget. Every other
+            // cause keeps the attempt ceiling, tested before the delay is
+            // computed so the episode never waits out a delay for an
+            // attempt it will not make.
+            let outage = matches!(cause, RetryCause::Provider | RetryCause::RateLimit);
+            if !outage {
+                faults += 1;
+                if faults >= MAX_ATTEMPTS {
+                    let message = format!("{MAX_ATTEMPTS} attempts at step {} failed", self.step);
+                    return Ok(Answer::Ended(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
+                }
+            }
+            let cap = if outage { OUTAGE_BACKOFF_CAP_MS } else { BACKOFF_CAP_MS };
+            let delay_ms = (BACKOFF_BASE_MS << (attempt - 1).min(7)).min(cap);
+            let funds = |d: &Instant| {
+                tokio::time::Instant::now() + Duration::from_millis(delay_ms) < tokio::time::Instant::from_std(*d)
+            };
+            if outage && !self.deadline().as_ref().is_none_or(funds) {
+                let message = format!(
+                    "provider unavailable through {attempt} attempts at step {}; the remaining seconds budget cannot fund another",
+                    self.step
+                );
                 return Ok(Answer::Ended(Outcome::Blocked { code: BlockedCode::RecoveryExhausted, message }));
             }
-            let delay_ms = (BACKOFF_BASE_MS << (attempt - 1).min(4)).min(BACKOFF_CAP_MS);
             retried = Some((cause, delay_ms));
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
