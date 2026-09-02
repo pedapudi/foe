@@ -1,6 +1,6 @@
 use super::{run, RECORD_FILE};
-use foe_adoption::{digest_of, verify_bundle, AdoptionRecord, MANIFEST_FILE};
 use foe_contract::fingerprint::canonical;
+use foe_evidence::{digest_of, verify_bundle, AdoptionRecord, MANIFEST_FILE};
 use std::ops::Deref;
 use std::path::Path;
 
@@ -35,7 +35,7 @@ impl Drop for ScratchDir {
 
 fn tmp(name: &str) -> ScratchDir {
     assert_eq!(Path::new(name).file_name(), Some(name.as_ref()), "scratch name must be one path component");
-    ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-build-adoption-bundle-{name}-")).tempdir().unwrap()))
+    ScratchDir(Some(tempfile::Builder::new().prefix(&format!("foe-build-evidence-bundle-{name}-")).tempdir().unwrap()))
 }
 
 /// A bundle directory holding a proposal log, a candidate fingerprint

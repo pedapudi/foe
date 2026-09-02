@@ -113,8 +113,8 @@ candidate. A candidate passes only when every check passes:
 - `task-artifact` — the artifact matches an expectation computed here from
   the frozen fixture data, independently of anything the episode wrote or
   reported.
-- `bundle-verified` — `verify-adoption-bundle` accepts the retained
-  adoption bundle, the verifier fingerprint is the frozen proposal
+- `bundle-verified` — `verify-evidence-bundle` accepts the retained
+  evidence bundle, the verifier fingerprint is the frozen proposal
   verifier's digest, and the attested `candidate.json` is this candidate's
   canonical JSON.
 
@@ -127,7 +127,7 @@ those rejection paths.
 
 `run_repair_loop.py FIXTURE_DIR --output DIR` runs the whole loop and
 writes `attempt-baseline/`, `attempt-repair/`, `attempt-rerun/`, the
-digest, the adoption bundle, and `pipeline-report.json` under the output
+digest, the evidence bundle, and `pipeline-report.json` under the output
 directory. It exits 0 when the evaluator passes the candidate, 1 when the
 evaluator rejects it, and 2 when a pipeline step fails.
 
@@ -150,10 +150,10 @@ corrected document through the synthesized `return` tool, and a frozen
 structural verifier (`candidate_check.py`) accepts the document shape in
 its own episode, which attests the judged value's digest. The runner then
 confirms with `foe plan` that the warning is gone, records the resolved
-execute permissions, builds the adoption bundle with
-`build-adoption-bundle`, verifies it standalone, reruns the task, and
+execute permissions, builds the evidence bundle with
+`build-evidence-bundle`, verifies it standalone, reruns the task, and
 hands everything to the evaluator.
 
-The `foe`, `build-adoption-bundle`, and `verify-adoption-bundle` binaries
+The `foe`, `build-evidence-bundle`, and `verify-evidence-bundle` binaries
 default to `target/release/` in this repository; `cargo build --release`
 produces them.

@@ -9,6 +9,7 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
+use foe_code::team::{self, Team};
 use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract};
 use foe_contract::fingerprint::{compute, Fingerprint};
 use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
@@ -26,7 +27,6 @@ use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::session::LocalSessions;
 use foe_core::spawn::{ChildLaunch, ProcessConnections, ProcessSpawner, Router, Uplink};
-use foe_core::team::{self, Team};
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedContract, SeedHeader};

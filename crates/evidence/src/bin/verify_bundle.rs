@@ -1,10 +1,10 @@
-//! Verifies an adoption bundle using only the files in its directory.
+//! Verifies an evidence bundle using only the files in its directory.
 
-use foe_adoption::verify_adoption;
+use foe_evidence::verify_adoption;
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: verify-adoption-bundle DIR [EXPECTED_PREDECESSOR_CONTRACT_FINGERPRINT]";
+const USAGE: &str = "usage: verify-evidence-bundle DIR [EXPECTED_PREDECESSOR_CONTRACT_FINGERPRINT]";
 
 fn run(args: &[String]) -> Result<String, String> {
     let (dir, predecessor) = match args {
@@ -23,7 +23,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("verify-adoption-bundle: {error}");
+            eprintln!("verify-evidence-bundle: {error}");
             ExitCode::FAILURE
         }
     }

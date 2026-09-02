@@ -192,7 +192,7 @@ def check_bundle(
     bundle_result: dict[str, Any],
     retained_candidate_bytes: bytes,
 ) -> tuple[bool, str]:
-    """The verified adoption bundle attests this exact candidate, judged by
+    """The verified evidence bundle attests this exact candidate, judged by
     the frozen proposal verifier."""
     expected_fingerprint = "sha256:" + fixture["candidate_check_sha256"]
     if bundle_result.get("verification_tool") != VERIFICATION_TOOL:
@@ -263,7 +263,7 @@ def verify_bundle(bundle_verifier: Path, bundle_dir: Path, expected_predecessor:
     result = subprocess.run(command, text=True, capture_output=True, timeout=600, check=False)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
-        raise ValueError(f"adoption bundle verification failed: {detail}")
+        raise ValueError(f"evidence bundle verification failed: {detail}")
     return json.loads(result.stdout)
 
 
@@ -274,8 +274,8 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--candidate", type=Path, required=True)
     answer.add_argument("--rerun-episode", type=Path, required=True)
     answer.add_argument("--project", type=Path, required=True, help="the rerun's materialized repository")
-    answer.add_argument("--bundle", type=Path, required=True, help="completed adoption bundle directory")
-    answer.add_argument("--bundle-verifier", type=Path, required=True, help="absolute path to verify-adoption-bundle")
+    answer.add_argument("--bundle", type=Path, required=True, help="completed evidence bundle directory")
+    answer.add_argument("--bundle-verifier", type=Path, required=True, help="absolute path to verify-evidence-bundle")
     answer.add_argument("--expected-predecessor", help="expected predecessor contract fingerprint")
     return answer
 

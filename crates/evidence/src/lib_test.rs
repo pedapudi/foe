@@ -91,7 +91,7 @@ fn standalone_verification_returns_the_verifier_fingerprint() {
     assert_eq!(standalone.predecessor_contract_fingerprint, Some(predecessor));
 }
 
-/// docs/adoption.md "Verification result": when the accepted event attests
+/// docs/evidence.md "Verification result": when the accepted event attests
 /// `candidate_sha256`, verification requires a retained canonical-JSON
 /// file with that digest and names it in `candidate_file`.
 #[test]

@@ -46,7 +46,7 @@ const OUTAGE_BACKOFF_CAP_MS: u64 = 60_000;
 /// records their settlement itself.
 const SETTLE_GRACE: Duration = Duration::from_secs(10);
 /// How often a wait on children or on arrivals rereads its evidence.
-pub(crate) const SETTLE_POLL: Duration = Duration::from_millis(20);
+pub const SETTLE_POLL: Duration = Duration::from_millis(20);
 
 pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())

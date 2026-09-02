@@ -1,5 +1,5 @@
-//! Built-in coding tools: `read`, `grep`, `edit`, `bash`, `session`, and
-//! `python`.
+//! Built-in coding tools — `read`, `grep`, `edit`, `bash`, `session`, and
+//! `python` — and the team coordination tools in [`team`].
 //!
 //! Each tool implements `foe_core::Tool` and reaches files and processes
 //! only through the capability handles in `CallCtx`. docs/tools.md states
@@ -28,6 +28,7 @@ mod read;
 mod runtime_tests;
 #[cfg(feature = "exec")]
 mod session;
+pub mod team;
 #[cfg(test)]
 #[path = "handles_test.rs"]
 mod testing;

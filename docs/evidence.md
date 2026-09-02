@@ -1,12 +1,12 @@
-# Adoption bundles
+# Evidence bundles
 
-An adoption bundle is portable evidence for accepting a proposed execution
+An evidence bundle is portable evidence for accepting a proposed execution
 contract. It retains the proposal episode tree, the candidate contract
 fingerprint document, an artifact manifest, and the accepted verifier result.
 Verification reads only the bundle directory. It starts no process, exercises
 no permission, opens no network connection, and writes no log.
 
-The `foe-adoption` crate owns the bundle format and its standalone verifier.
+The `foe-evidence` crate owns the bundle format and its standalone verifier.
 The runtime configuration contains no field for adoption history. A system
 that adopts a candidate stores the bundle externally and applies its own
 adoption policy.
@@ -223,7 +223,7 @@ rule involved.
 The bundle builder completes a directory whose caller has already populated:
 
 ```text
-build-adoption-bundle DIR PROPOSAL_LOG FINGERPRINT_DOCUMENT ARTIFACT_MANIFEST \
+build-evidence-bundle DIR PROPOSAL_LOG FINGERPRINT_DOCUMENT ARTIFACT_MANIFEST \
   VERIFICATION_LOG VERIFICATION_SEQ [PREDECESSOR_CONTRACT_FINGERPRINT]
 ```
 
@@ -233,7 +233,7 @@ address.
 The standalone verifier reads a completed bundle:
 
 ```text
-verify-adoption-bundle DIR [EXPECTED_PREDECESSOR_CONTRACT_FINGERPRINT]
+verify-evidence-bundle DIR [EXPECTED_PREDECESSOR_CONTRACT_FINGERPRINT]
 ```
 
 It prints the verified result as one JSON object.
@@ -241,7 +241,7 @@ It prints the verified result as one JSON object.
 ## Self-improvement storage
 
 The self-improvement runner writes completed bundles under
-`adoption/bundles/<manifest-digest>`. Each bundle retains the complete
+`evidence/bundles/<manifest-digest>`. Each bundle retains the complete
 proposal episode tree, the resolved candidate fingerprint document, the
 candidate artifact manifest, the value the cited verification judged as
 `candidate.json` in canonical JSON, and candidate files selected by the

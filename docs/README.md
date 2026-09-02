@@ -9,7 +9,7 @@ to find the relevant specification, report, or guide.
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
-| [adoption.md](adoption.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
+| [evidence.md](evidence.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
 | [code-mode.md](code-mode.md) | how the `python` tool composes ordinary tools while keeping intermediate results out of the model context |
 | [config.md](config.md) | what an execution-contract document may contain and what each key means |
 | [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a transport executable answers model requests |

@@ -16,26 +16,19 @@
 //! the roster. When the target records the peer item, the lead sees it and
 //! writes `team/delivered`. See docs/protocol.md "Children".
 
-use crate::budget::Pool;
-use crate::loop_::{settled_children, SETTLE_POLL};
-use crate::protocol::{Host, InboxSink};
-use crate::spawn::{ChildObserver, Router};
-use crate::{CallCtx, CapError, SpawnHandle, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
 use foe_contract::{Effect, ToolSpec};
-use foe_log::{
+use foe_core::budget::Pool;
+use foe_core::log::{
     BudgetAmount, ContentBlock, Event, EventData, InboxItem, InboxSource, MemberPhase, Outcome, SpawnContext,
 };
+use foe_core::loop_::{settled_children, SETTLE_POLL};
+use foe_core::protocol::{Host, InboxSink};
+use foe_core::spawn::{ChildObserver, Router};
+use foe_core::{CallCtx, CapError, LeadLog, SpawnHandle, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-/// This episode's own log, as the lead of its team: appends team events and
-/// reads everything written so far.
-pub trait LeadLog: Send + Sync {
-    fn append(&self, event: EventData);
-    fn events(&self) -> Vec<Event>;
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Member {

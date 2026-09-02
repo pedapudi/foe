@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/log",
     "crates/contract",
-    "crates/adoption",
+    "crates/evidence",
     "crates/core",
     "crates/code",
     "crates/transport",
