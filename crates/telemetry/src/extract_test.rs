@@ -372,6 +372,7 @@ fn verification(seq: u64, status: foe_log::VerificationStatus, findings: &[&str]
             status,
             findings: findings.iter().map(|f| f.to_string()).collect(),
             error: None,
+            candidate_sha256: None,
             duration_ms: 5,
         }),
     )

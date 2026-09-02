@@ -366,17 +366,23 @@ def record_adoption(
     builder_cwd: Path | None = None,
     builder_env: dict[str, str] | None = None,
     artifacts: list[dict[str, str]] | None = None,
+    candidate_value: Any | None = None,
 ) -> dict[str, Any]:
     """Build and verify portable evidence for one accepted candidate.
 
     The resulting content-addressed directory is self-contained. The
     external adoption policy permits explicit verifier fingerprints and
     may require the proposal contract as the candidate's predecessor.
+    `candidate_value` is the value the cited verification judged; it is
+    retained as canonical JSON in `candidate.json`, so standalone
+    verification can match it against the digest the event attests.
     """
     build = root / "adoption" / "bundle-build"
     shutil.copytree(episode, build / "episode")
     fingerprint_bytes = canonical_json(fingerprint_document)
     (build / "fingerprint-document.json").write_bytes(fingerprint_bytes)
+    if candidate_value is not None:
+        (build / "candidate.json").write_bytes(canonical_json(candidate_value))
     for name, content in sorted(retained.items()):
         destination = build / name
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1177,8 +1183,12 @@ def measure_episode(root: Path, pricing: dict[str, Pricing]) -> dict[str, Any]:
     }
 
 
-def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
-    """Return the last object value produced by one workflow node."""
+def workflow_node_value(root: Path, node: str, typed: bool = True) -> Any:
+    """Return the last value produced by one workflow node.
+
+    `typed` restricts the result to object values, the shape a typed
+    handoff produces; a completion verifier can judge any JSON value.
+    """
     path = root / "episode.jsonl"
     if not path.is_file():
         return None
@@ -1189,9 +1199,9 @@ def workflow_node_value(root: Path, node: str) -> dict[str, Any] | None:
         if (
             event.get("type") == "workflow/node-end"
             and data.get("node") == node
-            and isinstance(data.get("value"), dict)
+            and (not typed or isinstance(data.get("value"), dict))
         ):
-            value = data["value"]
+            value = data.get("value")
     return value
 
 
@@ -1593,6 +1603,7 @@ def main(argv: list[str] | None = None) -> int:
         retained: dict[str, bytes] = {}
         artifacts = None
         verification_tool = DIAGNOSIS_VALIDATOR_TOOL
+        judged_value = outcome_value
         if candidate_kind == "workflow-configuration":
             retained["workflow-candidate.json"] = workflow_candidate_path.read_bytes()
         elif candidate_kind == "instruction-revision":
@@ -1602,6 +1613,7 @@ def main(argv: list[str] | None = None) -> int:
             retained["tool-candidate-executable"] = tool_executable_path.read_bytes()
         else:
             verification_tool = "check"
+            judged_value = workflow_node_value(episode, "implement-runtime-improvement", typed=False)
             artifacts = [
                 {"path": name, "sha256": value}
                 for name, value in sorted(candidate_artifact["files"].items())
@@ -1688,6 +1700,7 @@ def main(argv: list[str] | None = None) -> int:
                 builder_cwd=candidate,
                 builder_env=toolchain_environment,
                 artifacts=artifacts,
+                candidate_value=judged_value,
             )
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             adoption = {"error": str(error)}

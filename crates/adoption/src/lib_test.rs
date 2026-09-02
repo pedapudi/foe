@@ -11,7 +11,7 @@ fn digest(fill: char) -> String {
     format!("sha256:{}", fill.to_string().repeat(64))
 }
 
-fn write_log(dir: &Path, contract_fingerprint: &str, verifier_fingerprint: &str) {
+fn write_log(dir: &Path, contract_fingerprint: &str, verifier_fingerprint: &str, candidate_sha256: Option<String>) {
     std::fs::create_dir_all(dir).unwrap();
     let mut writer = Writer::create(dir, None).unwrap();
     writer
@@ -41,17 +41,18 @@ fn write_log(dir: &Path, contract_fingerprint: &str, verifier_fingerprint: &str)
             status: VerificationStatus::Accepted,
             findings: Vec::new(),
             error: None,
+            candidate_sha256,
             duration_ms: 1,
         }))
         .unwrap();
     writer.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: json!({}) } }).unwrap();
 }
 
-fn bundle(root: &Path, predecessor: Option<String>) -> (String, String) {
+fn bundle(root: &Path, predecessor: Option<String>, candidate_sha256: Option<String>) -> (String, String) {
     let proposal_log = "episode/episode.jsonl";
     let predecessor_for_log = predecessor.clone().unwrap_or_else(|| digest('a'));
     let verifier = digest('b');
-    write_log(&root.join("episode"), &predecessor_for_log, &verifier);
+    write_log(&root.join("episode"), &predecessor_for_log, &verifier, candidate_sha256);
     let fingerprint_document = canonical(&json!({"name": "candidate", "runtime": {"version": "0.2.0"}}));
     std::fs::write(root.join("fingerprint-document.json"), &fingerprint_document).unwrap();
     let artifact_manifest = canonical(&json!([{"path": "candidate.patch", "sha256": digest('c')} ]));
@@ -75,26 +76,59 @@ fn bundle(root: &Path, predecessor: Option<String>) -> (String, String) {
 fn standalone_verification_returns_the_verifier_fingerprint() {
     let root = tempfile::tempdir().unwrap();
     let predecessor = digest('a');
-    let (contract, verifier) = bundle(root.path(), Some(predecessor.clone()));
+    let (contract, verifier) = bundle(root.path(), Some(predecessor.clone()), None);
     let verified = verify_adoption(root.path(), Some(&predecessor)).unwrap();
     assert_eq!(verified.contract_fingerprint, contract);
     assert_eq!(verified.predecessor_contract_fingerprint, Some(predecessor.clone()));
     assert_eq!(verified.verifier_fingerprint, verifier);
     assert_eq!(verified.verification_tool, "check");
+    assert_eq!(verified.candidate_file, None, "an event without candidate_sha256 verifies with no association");
 
     let standalone = verify_adoption(root.path(), None).unwrap();
     assert_eq!(standalone.predecessor_contract_fingerprint, Some(predecessor));
 }
 
+/// docs/adoption.md "Verification result": when the accepted event attests
+/// `candidate_sha256`, verification requires a retained canonical-JSON
+/// file with that digest and names it in `candidate_file`.
+#[test]
+fn an_attested_candidate_must_be_retained_as_canonical_json() {
+    let judged = canonical(&json!({"branch": "configure-workflow"}));
+
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("candidate.json"), &judged).unwrap();
+    bundle(root.path(), None, Some(digest_of(judged.as_bytes())));
+    let verified = verify_adoption(root.path(), None).unwrap();
+    assert_eq!(verified.candidate_file.as_deref(), Some("candidate.json"));
+
+    let root = tempfile::tempdir().unwrap();
+    bundle(root.path(), None, Some(digest_of(judged.as_bytes())));
+    let error = verify_adoption(root.path(), None).unwrap_err().to_string();
+    assert!(error.contains("candidate_sha256"), "an absent candidate file fails: {error}");
+
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("candidate.json"), canonical(&json!({"branch": "define-tool"}))).unwrap();
+    bundle(root.path(), None, Some(digest_of(judged.as_bytes())));
+    let error = verify_adoption(root.path(), None).unwrap_err().to_string();
+    assert!(error.contains("candidate_sha256"), "a differing digest fails: {error}");
+
+    let pretty = serde_json::to_string_pretty(&json!({"branch": "configure-workflow"})).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("candidate.json"), &pretty).unwrap();
+    bundle(root.path(), None, Some(digest_of(pretty.as_bytes())));
+    let error = verify_adoption(root.path(), None).unwrap_err().to_string();
+    assert!(error.contains("canonical JSON"), "a non-canonical candidate fails: {error}");
+}
+
 #[test]
 fn policy_predecessor_must_match_the_record_and_proposal_root() {
     let root = tempfile::tempdir().unwrap();
-    bundle(root.path(), Some(digest('a')));
+    bundle(root.path(), Some(digest('a')), None);
     let error = verify_adoption(root.path(), Some(&digest('d'))).unwrap_err().to_string();
     assert!(error.contains("predecessor_contract_fingerprint"), "{error}");
 
     let root = tempfile::tempdir().unwrap();
-    bundle(root.path(), None);
+    bundle(root.path(), None, None);
     let error = verify_adoption(root.path(), Some(&digest('a'))).unwrap_err().to_string();
     assert!(error.contains("predecessor_contract_fingerprint"), "{error}");
 }
@@ -102,7 +136,7 @@ fn policy_predecessor_must_match_the_record_and_proposal_root() {
 #[test]
 fn modified_files_are_rejected_before_their_contents_are_trusted() {
     let root = tempfile::tempdir().unwrap();
-    bundle(root.path(), None);
+    bundle(root.path(), None, None);
     std::fs::write(root.path().join("artifact-manifest.json"), "tampered").unwrap();
     let error = verify_adoption(root.path(), None).unwrap_err().to_string();
     assert!(error.contains("artifact-manifest.json"), "{error}");
@@ -111,7 +145,7 @@ fn modified_files_are_rejected_before_their_contents_are_trusted() {
 #[test]
 fn canonical_record_and_fingerprint_document_are_required() {
     let root = tempfile::tempdir().unwrap();
-    bundle(root.path(), None);
+    bundle(root.path(), None, None);
     let record_path = root.path().join("adoption-record.json");
     let record: serde_json::Value = serde_json::from_slice(&std::fs::read(&record_path).unwrap()).unwrap();
     std::fs::write(&record_path, serde_json::to_string_pretty(&record).unwrap()).unwrap();

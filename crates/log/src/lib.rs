@@ -650,6 +650,11 @@ pub struct VerificationResult {
     /// Present only for `failed`: why the verifier could not judge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// `sha256:<hex>` over the canonical JSON of the exact candidate value
+    /// handed to the verifier. Logs written before the field existed omit
+    /// it; absence makes no claim about what was judged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate_sha256: Option<String>,
     pub duration_ms: u64,
 }
 

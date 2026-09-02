@@ -420,6 +420,7 @@ messages; the model sees findings only through the `verify` inbox item.
   "verifier_fingerprint": "sha256:…",
   "status": "findings",
   "findings": ["tests/parser_test.py::test_nested_brackets fails"],
+  "candidate_sha256": "sha256:…",
   "duration_ms": 412
 }
 ```
@@ -432,6 +433,14 @@ states why the verifier could not judge; the episode then ends as
 executable it is the SHA-256 digest committed during contract construction.
 Every invocation uses those committed bytes. For a built-in or host tool it
 is the runtime build hash from `episode/start.runtime.build`.
+
+`candidate_sha256` records what was judged: `sha256:` followed by the
+SHA-256 digest of the canonical JSON — compact, object keys sorted, raw
+UTF-8 — of the exact candidate value handed to the verifier. The runtime writes
+it on every verification it records. The field is additive to the frozen
+format: a log written before it existed omits it, a reader treats
+absence as no claim about what was judged, and serialization omits an
+absent field, so no frozen version 3 payload changed.
 
 ### Inbox
 
