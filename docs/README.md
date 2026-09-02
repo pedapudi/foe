@@ -34,9 +34,9 @@ diastil editor or any text editor.
 
 | deck | subject |
 |---|---|
-| [presentations/what-is-foe.html](presentations/what-is-foe.html) | an introduction: the problem foe solves and the concepts it prioritizes |
-| [presentations/foe-overview.html](presentations/foe-overview.html) | the architecture and the feature set, one pass over the whole machine |
-| [presentations/foe-isolation-and-permissions.html](presentations/foe-isolation-and-permissions.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
+| [presentations/what-is-foe.dia.html](presentations/what-is-foe.dia.html) | an introduction: the problem foe solves and the concepts it prioritizes |
+| [presentations/foe-overview.dia.html](presentations/foe-overview.dia.html) | the architecture and the feature set, one pass over the whole machine |
+| [presentations/foe-isolation-and-permissions.dia.html](presentations/foe-isolation-and-permissions.dia.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
 rules for changing the repository. `examples/` holds fourteen runnable

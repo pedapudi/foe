@@ -15,6 +15,7 @@
   --dia-scale-1: 12px; --dia-scale-2: 15px; --dia-scale-3: 18px;
   --dia-scale-4: 22px; --dia-scale-5: 30px; --dia-scale-6: 38px;
   --dia-scale-7: 48px; --dia-gap: 24px; --dia-pad: 52px;
+  --dia-page-w: 1080px;
 }
 section.dia-slide {
   aspect-ratio: 16 / 9; box-sizing: border-box; overflow: hidden;
@@ -44,6 +45,9 @@ section.dia-slide {
 .dia-body ul, .dia-body ol { margin: 0; padding-left: 1.1em; }
 .dia-body li { margin-bottom: 9px; line-height: 1.5; }
 li::before { content: var(--dia-marker, none); color: var(--dia-marker-ink, var(--dia-accent)); margin-right: 0.55em; }
+li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: auto 1fr; column-gap: 0.6em; align-items: start; }
+.dia-marker { color: var(--dia-ink-faint); }
+.dia-marker > svg { width: 1.25em; height: 1.25em; display: block; margin-top: 0.15em; }
 .foot { display: flex; justify-content: space-between; align-items: baseline;
   border-top: 1px solid var(--dia-rule); padding-top: 10px; margin-top: auto;
   font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
@@ -89,6 +93,18 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
     </div>
     <figure class="dia-figure">
       <svg viewBox="0 0 340 220" role="img" aria-label="ambient authority as a flood plain versus granted authority as a walled channel">
+      <defs>
+        <symbol id="m-shield" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2 l8 3 v7 c0 5 -4 8 -8 10 c-4 -2 -8 -5 -8 -10 v-7 z"/></g>
+          <circle cx="12" cy="11" r="1.4" fill="currentColor"/></symbol>
+        <symbol id="m-key" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="8" cy="8" r="4.5"/><path d="M11 11 L20 20"/><path d="M16 16 L19 13"/></g></symbol>
+        <symbol id="m-cube" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 z"/><path d="M3 7 L12 12"/><path d="M12 12 L21 7"/><path d="M12 12 L12 22"/></g></symbol>
+      </defs>
         <g fill="none" stroke="var(--dia-ink-faint)" stroke-width="0.9">
           <path d="M24,64 C70,50 120,74 168,58 C220,42 270,66 316,54" opacity=".4"/>
           <path d="M24,80 C70,68 124,92 172,76 C222,60 272,84 316,72" opacity=".3"/>
@@ -103,7 +119,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <text x="28" y="140" font-size="9" fill="var(--dia-ink-soft)">granted: the run flows only inside declared walls</text>
         <text x="170" y="210" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the walls are readable before the water moves</text>
       </svg>
-      <figcaption class="dia-caption">An allow list can be reviewed, reported, and enforced. Ambient authority can only be regretted.</figcaption>
+      <figcaption class="dia-caption">An allow list can be reviewed before the run, reported during it, and enforced throughout; ambient authority offers none of the three.</figcaption>
     </figure>
   </div>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
@@ -114,14 +130,19 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
   <h2 class="dia-title">Six kinds of grant</h2>
   <div class="dia-columns">
     <div class="dia-body">
-      <ul style="--dia-marker: '▸'; list-style: none;">
-        <li><code>read</code> / <code>write</code> — filesystem roots; a directory grants its
-        whole subtree.</li>
-        <li><code>execute</code> — files or directories a subprocess may run.</li>
-        <li><code>spawn</code> — which declared child contracts may start.</li>
-        <li><code>bind</code> — TCP ports a process may listen on.</li>
-        <li><code>task_session</code> — whether a process may outlive the episode
-        into the surrounding task.</li>
+      <ul>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-key"/></svg></span>
+        <span><code>read</code> / <code>write</code> — filesystem roots; a directory grants its
+        whole subtree.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-cube"/></svg></span>
+        <span><code>execute</code> — files or directories a subprocess may run.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-shield"/></svg></span>
+        <span><code>spawn</code> — which declared child contracts may start.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-key"/></svg></span>
+        <span><code>bind</code> — TCP ports a process may listen on.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-shield"/></svg></span>
+        <span><code>task_session</code> — whether a process may outlive the episode
+        into the surrounding task.</span></li>
       </ul>
       <p>Declared paths resolve to canonical form — symlinks followed,
       duplicates collapsed — so the enforced list is a <em>set</em> of real
@@ -202,7 +223,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <text x="200" y="152" font-size="8.5" fill="var(--dia-ink-faint)">open("/etc/shadow") → denied in the kernel</text>
         <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the model is never asked to behave — the syscall is refused</text>
       </svg>
-      <figcaption class="dia-caption">Policy is data compiled to enforcement, not prose hoping for compliance.</figcaption>
+      <figcaption class="dia-caption">The declaration and the enforcement are one computation; no prose asks the code to comply.</figcaption>
     </figure>
   </div>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
@@ -210,7 +231,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
 
 <section class="dia-slide" data-dia-part="exactness">
   <div class="dia-kicker">how · exactness</div>
-  <h2 class="dia-title">Execute means <em>these files</em>, not "binaries"</h2>
+  <h2 class="dia-title">Execute names <em>exact files</em></h2>
   <div class="dia-columns">
     <div class="dia-body">
       <p>The lazy version of execute permission grants whole system
@@ -220,8 +241,8 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <li>the <strong>interpreter</strong> its shebang line names — followed
         recursively if that is itself a script,</li>
         <li>the <strong>dynamic loader</strong> its ELF header names,</li>
-        <li>shared-library directories as <em>read-only</em> — a library is
-        loaded, not executed.</li>
+        <li>shared-library directories as <em>read-only</em>, because a library
+        is loaded rather than executed.</li>
       </ul>
       <p>A directory in <code>grants.execute</code> is honored as a declared
       subtree grant — a usable starting breadth — but the vocabulary can
@@ -317,8 +338,8 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       <ul style="--dia-marker: '▸'; list-style: none;">
         <li>when a child episode settles, its subtree is <strong>killed
         recursively</strong> — nothing survives by daemonizing,</li>
-        <li>the reap wait is <strong>bounded</strong>, and an unreapable subtree is a
-        named error, not a hang,</li>
+        <li>the reap wait is <strong>bounded</strong>, and an unreapable subtree
+        surfaces as a named error rather than a hang,</li>
         <li>a process may outlive the episode only through an explicit
         <code>task_session</code> grant — and without that grant the episode holds
         no kernel authority over the task boundary at all.</li>
@@ -345,7 +366,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <text x="300" y="100" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">the one gate out —</text>
         <text x="300" y="111" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">granted, recorded</text>
       </svg>
-      <figcaption class="dia-caption">The boundary is a kernel object, and leaving it is a grant — not an accident.</figcaption>
+      <figcaption class="dia-caption">The boundary is a kernel object; a process leaves it only through the declared grant.</figcaption>
     </figure>
   </div>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
@@ -426,7 +447,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <text x="170" y="146" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">read + remove, in full</text>
         <text x="170" y="176" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">on the parent: remove-directory alone — the one right cleanup needs</text>
       </svg>
-      <figcaption class="dia-caption">Where a convenience grant would have covered every sibling, the narrow right covers only the duty.</figcaption>
+      <figcaption class="dia-caption">The narrow right covers exactly the cleanup duty; a read-write grant on the parent would have covered every sibling.</figcaption>
     </figure>
   </div>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
@@ -468,7 +489,7 @@ warnings    <b>none</b></pre>
   <div class="dia-columns">
     <div class="dia-body">
       <ul style="--dia-marker: '—'; list-style: none;">
-        <li><strong>It is a backstop, not a container.</strong> For hostile workloads
+        <li><strong>The sandbox is a backstop rather than a container.</strong> For hostile workloads
         at scale, run foe inside a container or VM and set the mode
         accordingly; the grants then document intent while the outer
         boundary enforces it.</li>
@@ -479,8 +500,8 @@ warnings    <b>none</b></pre>
         make a run "work harder" — capability grows through better
         contracts, never looser walls.</li>
       </ul>
-      <p>Stating the limits is part of the model: a wall you overestimate
-      is worse than a wall you know the height of.</p>
+      <p>Stating the limits is part of the model: an overestimated wall
+      fails exactly when it matters, and a measured one does not surprise.</p>
     </div>
     <figure class="dia-figure">
       <svg viewBox="0 0 340 200" role="img" aria-label="a surveyor's elevation of the wall: measured height marked, the unmeasured part left honest">
@@ -496,7 +517,7 @@ warnings    <b>none</b></pre>
         <text x="240" y="122" font-size="8.5" fill="var(--dia-ink-soft)">measured height —</text>
         <text x="240" y="134" font-size="8.5" fill="var(--dia-ink-soft)">what the mode says</text>
         <path d="M80,76 C116,54 168,52 210,76" fill="none" stroke="var(--dia-rule)" stroke-width="1" stroke-dasharray="3 4"/>
-        <text x="96" y="48" font-size="8.5" fill="var(--dia-ink-faint)">what a container adds — declared, not pretended</text>
+        <text x="96" y="48" font-size="8.5" fill="var(--dia-ink-faint)">what a container adds — declared in the log</text>
         <text x="170" y="188" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the log states the walls each run actually had</text>
       </svg>
       <figcaption class="dia-caption">Every run records mode, kernel level, and fallbacks — auditable, never assumed.</figcaption>
@@ -522,5 +543,136 @@ warnings    <b>none</b></pre>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
 </section>
 
+<script id="dia-runtime">
+/* dia runtime v1 — embedded in every saved deck.
+ * Present-mode navigation + build steps + slide transitions.
+ * No dependencies, no network.
+ * In the editor this script is inert (the editor strips/reinjects on save). */
+(function () {
+  'use strict';
+  if (window.__diaRuntime) return;
+  window.__diaRuntime = 1;
+
+  var slides = Array.prototype.slice.call(
+    document.querySelectorAll('section.dia-slide')
+  );
+  if (!slides.length) return;
+
+  var current = 0;
+
+  /* present-only styles: transitions + step reveals. Injected at runtime,
+   * never part of the saved document content. Motion respects
+   * prefers-reduced-motion; the scale from fit() rides along via --dia-fit
+   * so entrance transforms compose with it instead of clobbering it. */
+  var style = document.createElement('style');
+  style.id = 'dia-runtime-style';
+  style.textContent =
+    /* the page behind the deck wears the deck's paper — otherwise every
+     * entrance animation (opacity 0 start) and letterbox strip flashes
+     * the browser's white */
+    'html, body { margin: 0; background: var(--dia-paper, #111); }' +
+    /* the DESIGN BOX: slides are authored against a fixed-width canvas and
+     * fit() scales that box to the screen — without it, a widthless slide
+     * tracks the viewport and fixed-px type reads tiny on large displays.
+     * :where() keeps specificity at zero so a theme's own width wins. */
+    ':where(section.dia-slide) { width: var(--dia-page-w, 1280px); }' +
+    /* connectors NEVER fill — svg's default black fill turns a curved edge
+     * into a lens on decks whose theme predates the scene rules */
+    ':where(svg.dia-scene [data-dia-edge] path) { fill: none; }' +
+    '@media (prefers-reduced-motion: no-preference) {' +
+    'section.dia-slide[data-dia-anim="fade"] { animation: diaFade .3s ease both; }' +
+    'section.dia-slide[data-dia-anim="slide"] { animation: diaSlide .36s cubic-bezier(.2,.7,.2,1) both; }' +
+    'section.dia-slide[data-dia-anim="rise"] { animation: diaRise .36s cubic-bezier(.2,.7,.2,1) both; }' +
+    '[data-dia-step] { transition: opacity .28s ease, translate .28s ease; }' +
+    '}' +
+    '@keyframes diaFade { from { opacity: 0; } }' +
+    '@keyframes diaSlide { from { opacity: 0; transform: var(--dia-fit, none) translateX(3%); } to { transform: var(--dia-fit, none); } }' +
+    '@keyframes diaRise { from { opacity: 0; transform: var(--dia-fit, none) translateY(2.5%); } to { transform: var(--dia-fit, none); } }';
+  document.head.appendChild(style);
+
+  function fromHash() {
+    var m = /^#(\d+)$/.exec(location.hash);
+    if (m) current = Math.min(slides.length - 1, Math.max(0, +m[1] - 1));
+  }
+
+  function steps(slide) {
+    return Array.prototype.slice.call(slide.querySelectorAll('[data-dia-step]'))
+      .sort(function (a, b) { return (+a.getAttribute('data-dia-step')) - (+b.getAttribute('data-dia-step')); });
+  }
+
+  function transitionOf(slide) {
+    var t = slide.getAttribute('data-dia-transition') ||
+      document.documentElement.getAttribute('data-dia-transition') || 'none';
+    return t === 'fade' || t === 'slide' || t === 'rise' ? t : 'none';
+  }
+
+  function show(i, animate) {
+    current = Math.min(slides.length - 1, Math.max(0, i));
+    slides.forEach(function (s, j) {
+      s.style.display = j === current ? '' : 'none';
+      s.removeAttribute('data-dia-anim');
+    });
+    var t = transitionOf(slides[current]);
+    if (animate && t !== 'none') {
+      // restart the entrance animation even on repeated visits
+      void slides[current].offsetWidth;
+      slides[current].setAttribute('data-dia-anim', t);
+    }
+    steps(slides[current]).forEach(function (el) {
+      el.style.opacity = '0';
+      el.style.translate = '0 6px';
+      el.removeAttribute('data-dia-step-shown');
+    });
+    if (location.hash !== '#' + (current + 1)) history.replaceState(null, '', '#' + (current + 1));
+  }
+
+  function advance(dir) {
+    var pend = steps(slides[current]).filter(function (el) { return !el.hasAttribute('data-dia-step-shown'); });
+    if (dir > 0 && pend.length) {
+      pend[0].style.opacity = '';
+      pend[0].style.translate = '';
+      pend[0].setAttribute('data-dia-step-shown', '1');
+      return;
+    }
+    show(current + dir, true);
+  }
+
+  function fit() {
+    var s = slides[current];
+    if (!s) return;
+    var scale = Math.min(innerWidth / s.offsetWidth, innerHeight / s.offsetHeight);
+    // center the letterbox: the fitted slide floats mid-screen instead of
+    // hugging top-left with a bare strip on the other side
+    var tx = Math.max(0, (innerWidth - s.offsetWidth * scale) / 2);
+    var ty = Math.max(0, (innerHeight - s.offsetHeight * scale) / 2);
+    slides.forEach(function (sl) {
+      sl.style.transformOrigin = 'top left';
+      sl.style.setProperty('--dia-fit', 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')');
+      sl.style.transform = 'var(--dia-fit)';
+    });
+    document.body.style.overflow = 'hidden';
+    document.body.style.margin = '0';
+    // the strip color must match even for decks whose theme paints slides
+    // directly (no --dia-paper token)
+    var bg = getComputedStyle(s).backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      document.body.style.background = bg;
+    }
+  }
+
+  addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { advance(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { advance(-1); e.preventDefault(); }
+    else if (e.key === 'Home') show(0, true);
+    else if (e.key === 'End') show(slides.length - 1, true);
+  });
+  addEventListener('hashchange', function () { fromHash(); show(current, true); });
+  addEventListener('resize', fit);
+
+  fromHash();
+  show(current, false);
+  fit();
+})();
+</script>
 </body>
 </html>
