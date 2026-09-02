@@ -31,6 +31,11 @@ pub const LOG_VERSION: u32 = 3;
 pub struct Event {
     pub seq: u64,
     pub time: i64,
+    /// The format version of the log, stated on the first event and absent
+    /// after. A log whose first event states none is version 3, the last
+    /// version whose writers stated none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
     #[serde(flatten)]
     pub data: EventData,
 }
@@ -915,6 +920,8 @@ pub enum LogError {
     Invalid { seq: u64, rule: &'static str },
     #[error("log is empty")]
     Empty,
+    #[error("log states format version {found}; this reader reads version {supported}")]
+    UnsupportedVersion { found: u64, supported: u32 },
     #[error("rendering archive event {seq} at {path}: {rule}")]
     Archive { seq: u64, path: String, rule: String },
 }

@@ -64,7 +64,11 @@ fn result(step: u32, call_id: &str, rendered: &str, is_error: bool) -> EventData
 }
 
 fn number(datas: Vec<EventData>) -> Vec<Event> {
-    datas.into_iter().enumerate().map(|(i, data)| Event { seq: i as u64, time: i as i64, data }).collect()
+    datas
+        .into_iter()
+        .enumerate()
+        .map(|(i, data)| Event { seq: i as u64, time: i as i64, version: None, data })
+        .collect()
 }
 
 /// Three steps: a read of `a` (48 bytes rendered), a failed read of `b`
@@ -128,15 +132,16 @@ fn the_projection_follows_the_last_ordinary_response() {
     assert_eq!(projected(&events, 500, 100), Some(3000 + 20 + tokens(120 + 8) + 500 + 100));
     let mut events = events;
     let seq = events.len() as u64;
-    events.push(Event { seq, time: 0, data: assistant(4, "cmp_0004", "a summary", vec![], 9_999) });
+    events.push(Event { seq, time: 0, version: None, data: assistant(4, "cmp_0004", "a summary", vec![], 9_999) });
     assert_eq!(projected(&events, 0, 0), Some(3000 + 20 + tokens(128)), "a cmp_ response is skipped");
     events.push(Event {
         seq: seq + 1,
         time: 0,
+        version: None,
         data: EventData::CompactionEnd { step: 4, ok: true, usage: Usage::default(), active_estimate: 1, error: None },
     });
     assert_eq!(projected(&events, 0, 0), None, "nothing projects until the compacted request is answered");
-    events.push(Event { seq: seq + 2, time: 0, data: assistant(4, "rq_0005", "next", vec![], 400) });
+    events.push(Event { seq: seq + 2, time: 0, version: None, data: assistant(4, "rq_0005", "next", vec![], 400) });
     assert_eq!(projected(&events, 0, 0), Some(420));
 }
 
@@ -316,7 +321,7 @@ async fn a_second_compaction_iterates_on_the_first() {
         first_kept_seq: 5,
         summary_request_seq: 4,
     };
-    events.push(Event { seq, time: 0, data: EventData::CompactionSummary(prior) });
+    events.push(Event { seq, time: 0, version: None, data: EventData::CompactionSummary(prior) });
     let policy = Policy::new(config(Some(4_000), 500, 34), 4_000, 100, None);
     let cut = Cut {
         first_kept_seq: 9,

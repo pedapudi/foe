@@ -5,7 +5,7 @@ use foe_log::{
 };
 
 fn event(seq: u64, time: i64, data: EventData) -> Event {
-    Event { seq, time, data }
+    Event { seq, time, version: None, data }
 }
 
 fn start(contract: serde_json::Value) -> EventData {

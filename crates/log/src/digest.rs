@@ -21,14 +21,12 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut padded = bytes.to_vec();
     let bit_len = (padded.len() as u64).wrapping_mul(8);
     padded.push(0x80);
-    while padded.len() % 64 != 56 {
-        padded.push(0);
-    }
+    // Zero-pad to the smallest length that leaves eight bytes for `bit_len`
+    // at a 64-byte block boundary.
+    padded.resize((padded.len() + 8).div_ceil(64) * 64 - 8, 0);
     padded.extend_from_slice(&bit_len.to_be_bytes());
     let mut state = INITIAL;
-    for block in padded.chunks_exact(64) {
-        compress(&mut state, block);
-    }
+    padded.chunks_exact(64).for_each(|block| compress(&mut state, block));
     state.iter().flat_map(|word| word.to_be_bytes()).map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -42,8 +40,7 @@ pub fn rendering_file(digest: &str) -> Option<String> {
 fn compress(state: &mut [u32; 8], block: &[u8]) {
     let mut words = [0u32; 64];
     for (i, word) in words[..16].iter_mut().enumerate() {
-        let at = i * 4;
-        *word = u32::from_be_bytes(block[at..at + 4].try_into().expect("four bytes"));
+        *word = u32::from_be_bytes(block[i * 4..i * 4 + 4].try_into().expect("four bytes"));
     }
     for i in 16..64 {
         let s0 = words[i - 15].rotate_right(7) ^ words[i - 15].rotate_right(18) ^ (words[i - 15] >> 3);
@@ -52,17 +49,14 @@ fn compress(state: &mut [u32; 8], block: &[u8]) {
     }
     let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = *state;
     for i in 0..64 {
-        let choose = (e & f) ^ (!e & g);
-        let majority = (a & b) ^ (a & c) ^ (b & c);
         let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
         let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-        let first = h.wrapping_add(s1).wrapping_add(choose).wrapping_add(K[i]).wrapping_add(words[i]);
-        let second = s0.wrapping_add(majority);
+        // `first` adds the choose term, `second` the majority term.
+        let first = h.wrapping_add(s1).wrapping_add((e & f) ^ (!e & g)).wrapping_add(K[i]).wrapping_add(words[i]);
+        let second = s0.wrapping_add((a & b) ^ (a & c) ^ (b & c));
         (h, g, f, e, d, c, b, a) = (g, f, e, d.wrapping_add(first), c, b, a, first.wrapping_add(second));
     }
-    for (slot, value) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
-        *slot = slot.wrapping_add(value);
-    }
+    state.iter_mut().zip([a, b, c, d, e, f, g, h]).for_each(|(slot, value)| *slot = slot.wrapping_add(value));
 }
 
 #[cfg(test)]

@@ -57,11 +57,22 @@ One JSON object per line.
 |---|---|---|
 | `seq` | integer | position in the log, starting at 0, contiguous |
 | `time` | integer | milliseconds since the Unix epoch |
+| `version` | integer | the log format version; stated on the first event, absent after |
 | `type` | string | event type, from the list below |
 | `data` | object | the event payload |
 
 Every `data` value is JSON that round-trips byte-for-byte. A writer validates
 this before appending.
+
+The first event states `version`, the format version of the log; later
+events state none. A log whose first event states no version is a version 3
+log: version 3 writers are the first to state the version, so absence
+identifies a version 3 log written before they did. A reader that finds a
+stated version it does not read refuses the log with an error naming both
+versions. It reads the version from the first line before parsing events,
+so the refusal does not depend on knowing the shapes a later version
+writes. The field is optional with a reader default, which the stability
+rule above admits into the frozen version 3 envelope.
 
 ## Event types
 
@@ -796,7 +807,9 @@ replay both use this.
 Given a source log and a boundary `seq` N:
 
 1. Write a fresh `episode/start` at `seq` 0 with a new `id` and `fork_origin`
-   set to the source episode and N. An ordinary fork copies the other fields.
+   set to the source episode and N. As the first event of a new log, it
+   states the seeding writer's format version, whatever the source stated.
+   An ordinary fork copies the other fields.
    A spawned fork records the spawned child's declared contract, contract
    fingerprint, and effective runtime allowance. It copies the remaining fields.
 2. Copy source events with `seq` in `[1, N)`, renumbering `seq` to be

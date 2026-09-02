@@ -179,3 +179,16 @@ fn seed_rejects_a_changed_rendering_archive() {
     let error = seed(&src, 7, &dst, header()).unwrap_err().to_string();
     assert!(error.contains("event 5") && error.contains(&first.digest), "{error}");
 }
+
+/// docs/log-format.md "Seeding": a seeded log states the format version of
+/// the writer that seeded it, on the fresh episode/start it writes first.
+#[test]
+fn a_seeded_log_states_the_format_version_on_its_first_event() {
+    let src = tmp("version-src");
+    let dst = tmp("version-dst");
+    let events = source(&src);
+    let written = seed(&src, events.len() as u64, &dst, header()).unwrap();
+    assert_eq!(written[0].version, Some(LOG_VERSION));
+    assert!(written[1..].iter().all(|event| event.version.is_none()));
+    assert_eq!(written, read_all(&dst).unwrap());
+}

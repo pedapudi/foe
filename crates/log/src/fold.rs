@@ -7,7 +7,7 @@
 
 use crate::{
     CompactionSummary, ContentBlock, Event, EventData, InboxSource, LogError, Message, Obligation, Outcome, State,
-    SUMMARY_REQUEST_PREFIX,
+    LOG_VERSION, SUMMARY_REQUEST_PREFIX,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Seek, SeekFrom};
@@ -31,8 +31,25 @@ pub fn read_from(dir: &Path, from: u64) -> Result<(Vec<Event>, u64), LogError> {
     file.seek(SeekFrom::Start(from))?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes)?;
+    version_check(from, &bytes)?;
     let (events, consumed) = parse_lines(&bytes)?;
     Ok((events, from + consumed))
+}
+
+/// Fails when the log's first line states a format version other than
+/// [`LOG_VERSION`]. Only a read from offset 0 sees that line; the version
+/// is read from it untyped, before event parsing, so that a log this
+/// reader cannot parse still names its version instead of failing on the
+/// first shape the reader does not know. A first line stating no version
+/// belongs to a version 3 log, the last version whose writers stated none,
+/// and passes.
+fn version_check(from: u64, bytes: &[u8]) -> Result<(), LogError> {
+    let first = (from == 0).then(|| bytes.split(|b| *b == b'\n').next()).flatten().unwrap_or_default();
+    let stated = serde_json::from_slice::<serde_json::Value>(first).ok().and_then(|v| v["version"].as_u64());
+    match stated.filter(|v| *v != u64::from(LOG_VERSION)) {
+        Some(found) => Err(LogError::UnsupportedVersion { found, supported: LOG_VERSION }),
+        None => Ok(()),
+    }
 }
 
 /// Parses complete lines of `bytes`; returns the events and the byte count
@@ -95,10 +112,8 @@ pub fn open_obligations(events: &[Event]) -> BTreeSet<(Obligation, String)> {
 /// Advances `state` by one event. Performs no validation.
 pub fn apply(state: &mut State, event: &Event) {
     for (kind, key, opens) in crate::obligations(&event.data) {
-        let (from, to) = match opens {
-            true => (&mut state.closed, &mut state.open),
-            false => (&mut state.open, &mut state.closed),
-        };
+        let (open, closed) = (&mut state.open, &mut state.closed);
+        let (from, to) = if opens { (closed, open) } else { (open, closed) };
         from.remove(&(kind, key.clone()));
         to.insert((kind, key));
     }
@@ -113,9 +128,7 @@ pub fn apply(state: &mut State, event: &Event) {
         EventData::ModelRequest(request) => {
             state.model_calls += 1;
             for seq in &request.consumed {
-                if let Some(entry) = state.inbox.get_mut(seq) {
-                    entry.1 = true;
-                }
+                state.inbox.entry(*seq).and_modify(|entry| entry.1 = true);
             }
         }
         EventData::AssistantMessage(message) => {

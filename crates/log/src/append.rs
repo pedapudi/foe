@@ -5,7 +5,7 @@
 //! optional mirror (standard output, for the host protocol).
 
 use crate::fold::{self, LOG_FILE};
-use crate::{Event, EventData, LogError, State};
+use crate::{Event, EventData, LogError, State, LOG_VERSION};
 use std::io::Write;
 use std::path::Path;
 
@@ -47,7 +47,7 @@ impl Writer {
     /// Appends one event carrying a caller-supplied time. Seeding uses this
     /// to keep the timestamps of copied events.
     pub fn append_at(&mut self, data: EventData, time: i64) -> Result<Event, LogError> {
-        let event = Event { seq: self.next_seq, time, data };
+        let event = Event { seq: self.next_seq, time, version: (self.next_seq == 0).then_some(LOG_VERSION), data };
         let mut line = serde_json::to_vec(&event)
             .map_err(|e| LogError::Invalid { seq: event.seq, rule: leak(format!("data serializes: {e}")) })?;
         let back: Event = serde_json::from_slice(&line)

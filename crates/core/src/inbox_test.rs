@@ -11,7 +11,7 @@ fn item(source: InboxSource, id: Option<&str>) -> InboxItem {
 }
 
 fn event(seq: u64, data: EventData) -> Event {
-    Event { seq, time: 0, data }
+    Event { seq, time: 0, version: None, data }
 }
 
 #[test]

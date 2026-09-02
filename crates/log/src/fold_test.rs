@@ -181,7 +181,11 @@ pub fn inner_call(outer: &str, index: u32) -> EventData {
 }
 
 pub fn number(datas: Vec<EventData>) -> Vec<Event> {
-    datas.into_iter().enumerate().map(|(i, data)| Event { seq: i as u64, time: 1000 + i as i64, data }).collect()
+    datas
+        .into_iter()
+        .enumerate()
+        .map(|(i, data)| Event { seq: i as u64, time: 1000 + i as i64, version: None, data })
+        .collect()
 }
 
 /// A summarization request and its response, as the loop records them.
@@ -398,9 +402,9 @@ fn unconsumed_inbox_items_are_excluded() {
 #[test]
 fn consumed_names_earlier_unconsumed_items_only() {
     let state = fold(&fixture()[..5]).unwrap();
-    let forward = Event { seq: 5, time: 0, data: request(2, 2, vec![5], vec![]) };
+    let forward = Event { seq: 5, time: 0, version: None, data: request(2, 2, vec![5], vec![]) };
     assert!(validate_next(&state, &forward).is_err());
-    let fresh = Event { seq: 5, time: 0, data: request(2, 2, vec![4], vec![]) };
+    let fresh = Event { seq: 5, time: 0, version: None, data: request(2, 2, vec![4], vec![]) };
     assert!(validate_next(&state, &fresh).is_ok());
 }
 
@@ -435,9 +439,9 @@ fn episode_start_is_first_and_only_at_seq_zero() {
 fn episode_end_is_last() {
     let end = EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } };
     let mut events = fixture();
-    events.push(Event { seq: 11, time: 0, data: end.clone() });
+    events.push(Event { seq: 11, time: 0, version: None, data: end.clone() });
     fold(&events).unwrap();
-    events.push(Event { seq: 12, time: 0, data: inbox(InboxSource::Parent, "late") });
+    events.push(Event { seq: 12, time: 0, version: None, data: inbox(InboxSource::Parent, "late") });
     assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 12, rule }) if rule.contains("episode/end")));
     let state = fold(&events[..11]).unwrap();
     assert!(validate_next(&state, &events[11]).is_ok());
@@ -492,21 +496,21 @@ fn pairings() -> Vec<(EventData, EventData)> {
 
 fn ended(seq: u64) -> Event {
     let outcome = Outcome::Failed { error: "x".into() };
-    Event { seq, time: 0, data: EventData::EpisodeEnd { outcome } }
+    Event { seq, time: 0, version: None, data: EventData::EpisodeEnd { outcome } }
 }
 
 #[test]
 fn every_obligation_the_log_opened_is_closed_before_episode_end() {
     for (opening, closing) in pairings() {
         let mut events = fixture();
-        events.push(Event { seq: 11, time: 0, data: opening.clone() });
+        events.push(Event { seq: 11, time: 0, version: None, data: opening.clone() });
         events.push(ended(12));
         let opened = opening.type_name();
         assert!(
             matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed before episode/end")),
             "an episode/end after {opened} with nothing closing it is invalid"
         );
-        events[12] = Event { seq: 12, time: 0, data: closing };
+        events[12] = Event { seq: 12, time: 0, version: None, data: closing };
         events.push(ended(13));
         fold(&events).unwrap_or_else(|e| panic!("{opened} closed before episode/end is valid: {e}"));
     }
@@ -516,15 +520,15 @@ fn every_obligation_the_log_opened_is_closed_before_episode_end() {
 fn an_obligation_is_closed_once_and_only_after_it_was_opened() {
     for (opening, closing) in pairings() {
         let mut events = fixture();
-        events.push(Event { seq: 11, time: 0, data: closing.clone() });
+        events.push(Event { seq: 11, time: 0, version: None, data: closing.clone() });
         let opened = opening.type_name();
         assert!(
             matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("an earlier event opened")),
             "closing what no {opened} opened is invalid"
         );
-        events[11] = Event { seq: 11, time: 0, data: opening };
-        events.push(Event { seq: 12, time: 0, data: closing.clone() });
-        events.push(Event { seq: 13, time: 0, data: closing });
+        events[11] = Event { seq: 11, time: 0, version: None, data: opening };
+        events.push(Event { seq: 12, time: 0, version: None, data: closing.clone() });
+        events.push(Event { seq: 13, time: 0, version: None, data: closing });
         assert!(
             matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed once")),
             "closing what {opened} opened twice is invalid"
@@ -547,12 +551,12 @@ fn a_synthetic_result_for_no_call_is_the_runtimes_own_account() {
         EventData::ToolResult(r)
     };
     let mut events = fixture();
-    events.push(Event { seq: 11, time: 0, data: settle(false) });
+    events.push(Event { seq: 11, time: 0, version: None, data: settle(false) });
     assert!(
         matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("an earlier event opened")),
         "a result closing no call is invalid unless it is synthetic"
     );
-    events[11] = Event { seq: 11, time: 0, data: settle(true) };
+    events[11] = Event { seq: 11, time: 0, version: None, data: settle(true) };
     events.push(ended(12));
     fold(&events).expect("a synthetic result closing no call is valid");
 }
@@ -564,7 +568,7 @@ fn a_synthetic_result_cannot_close_a_call_twice() {
     let EventData::ToolResult(mut r) = result(1, "tc_1", "again") else { unreachable!() };
     r.synthetic = true;
     let mut events = fixture();
-    events.push(Event { seq: 11, time: 0, data: EventData::ToolResult(r) });
+    events.push(Event { seq: 11, time: 0, version: None, data: EventData::ToolResult(r) });
     assert!(
         matches!(fold(&events), Err(LogError::Invalid { rule, .. }) if rule.contains("closed once")),
         "a synthetic result naming a closed call is invalid"
@@ -576,7 +580,7 @@ fn a_team_message_may_stand_undelivered_at_episode_end() {
     let mut events = fixture();
     let message =
         EventData::TeamMessage { message_id: "tm_01".into(), from: "ep_a".into(), to: "ep_b".into(), content: vec![] };
-    events.push(Event { seq: 11, time: 0, data: message });
+    events.push(Event { seq: 11, time: 0, version: None, data: message });
     events.push(ended(12));
     fold(&events).expect("the lead requeues an undelivered message when the target restarts");
 }
@@ -584,7 +588,7 @@ fn a_team_message_may_stand_undelivered_at_episode_end() {
 #[test]
 fn tool_result_needs_a_call_and_only_one() {
     let mut events = fixture();
-    events.push(Event { seq: 11, time: 0, data: result(2, "tc_2", "again") });
+    events.push(Event { seq: 11, time: 0, version: None, data: result(2, "tc_2", "again") });
     assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 11, .. })));
     events[11].data = result(2, "tc_9", "orphan");
     assert!(matches!(fold(&events), Err(LogError::Invalid { seq: 11, .. })));
@@ -593,9 +597,9 @@ fn tool_result_needs_a_call_and_only_one() {
 #[test]
 fn request_must_name_current_header_and_fresh_inbox() {
     let state = fold(&fixture()[..4]).unwrap();
-    let stale = Event { seq: 4, time: 0, data: request(2, 0, vec![], vec![]) };
+    let stale = Event { seq: 4, time: 0, version: None, data: request(2, 0, vec![], vec![]) };
     assert!(validate_next(&state, &stale).is_err());
-    let reused = Event { seq: 4, time: 0, data: request(2, 2, vec![1], vec![]) };
+    let reused = Event { seq: 4, time: 0, version: None, data: request(2, 2, vec![1], vec![]) };
     assert!(validate_next(&state, &reused).is_err());
 }
 
@@ -819,7 +823,7 @@ fn every_event_variant_round_trips() {
     for data in variants {
         let name = data.type_name();
         seen.insert(name.clone());
-        let event = Event { seq: 0, time: 1, data };
+        let event = Event { seq: 0, time: 1, version: None, data };
         let line = serde_json::to_string(&event).unwrap();
         assert!(line.contains(&format!("\"type\":\"{name}\"")), "{line}");
         let back: Event = serde_json::from_str(&line).unwrap();
@@ -862,8 +866,12 @@ fn tool_failure_is_additive_and_round_trips() {
         retryable: false,
         details: serde_json::json!({ "path": "/private" }),
     };
-    let event =
-        Event { seq: 0, time: 1, data: EventData::ToolResult(ToolResult { failure: Some(failure.clone()), ..result }) };
+    let event = Event {
+        seq: 0,
+        time: 1,
+        version: None,
+        data: EventData::ToolResult(ToolResult { failure: Some(failure.clone()), ..result }),
+    };
     let back: Event = serde_json::from_str(&serde_json::to_string(&event).unwrap()).unwrap();
     let EventData::ToolResult(result) = back.data else { panic!() };
     assert_eq!(result.failure, Some(failure));
@@ -899,4 +907,33 @@ fn sandbox_process_boundary_and_permissions_round_trip() {
     let json = serde_json::to_value(&info).unwrap();
     assert_eq!(json["process_boundary"]["kind"], "cgroup-v2");
     assert_eq!(serde_json::from_value::<SandboxInfo>(json).unwrap(), info);
+}
+
+/// docs/log-format.md "Envelope": a log whose first event states no
+/// version is read as version 3, the last version whose writers stated
+/// none.
+#[test]
+fn a_log_stating_no_version_reads_as_version_3() {
+    let dir = tmp("unversioned");
+    let lines: String = number(vec![EventData::EpisodeStart(start("ep")), inbox(InboxSource::Task, "t")])
+        .iter()
+        .map(|event| serde_json::to_string(event).unwrap() + "\n")
+        .collect();
+    std::fs::write(dir.join("episode.jsonl"), lines).unwrap();
+    let events = read_all(&dir).unwrap();
+    assert!(events.iter().all(|event| event.version.is_none()));
+    fold(&events).unwrap();
+}
+
+/// docs/log-format.md "Envelope": a stated version this reader does not
+/// read is refused with both versions named, before event parsing, so the
+/// refusal does not depend on the reader knowing the log's event shapes.
+#[test]
+fn an_unsupported_stated_version_is_refused_naming_both_versions() {
+    let dir = tmp("unsupported-version");
+    let line = r#"{"seq":0,"time":0,"version":4,"type":"future/event","data":{}}"#;
+    std::fs::write(dir.join("episode.jsonl"), format!("{line}\n")).unwrap();
+    let error = read_all(&dir).unwrap_err();
+    assert!(matches!(error, LogError::UnsupportedVersion { found: 4, supported: LOG_VERSION }), "{error}");
+    assert_eq!(error.to_string(), "log states format version 4; this reader reads version 3");
 }

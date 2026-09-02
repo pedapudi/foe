@@ -110,3 +110,21 @@ fn writer_enforces_the_rendering_archive_pair() {
     };
     assert!(matches!(wrong.append(EventData::ToolRenderingArchive(invalid)), Err(LogError::Invalid { seq: 3, .. })));
 }
+
+/// docs/log-format.md "Envelope": the first event states the log format
+/// version and no later event does.
+#[test]
+fn writer_states_the_format_version_on_the_first_event_only() {
+    let dir = tmp("version");
+    let mut writer = Writer::create(&dir, None).unwrap();
+    writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+    writer.append(fx::inbox(InboxSource::Task, "t")).unwrap();
+    let events = read_all(&dir).unwrap();
+    assert_eq!(events[0].version, Some(LOG_VERSION));
+    assert_eq!(events[1].version, None);
+    let text = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
+    let mut lines = text.lines();
+    let (first, second) = (lines.next().unwrap(), lines.next().unwrap());
+    assert!(first.contains("\"version\":3"), "{first}");
+    assert!(!second.contains("version"), "{second}");
+}

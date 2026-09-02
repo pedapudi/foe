@@ -9,7 +9,7 @@ impl LeadLog for MemLog {
     fn append(&self, data: EventData) {
         let mut events = self.0.lock().unwrap();
         let seq = events.len() as u64;
-        events.push(Event { seq, time: 0, data });
+        events.push(Event { seq, time: 0, version: None, data });
     }
     fn events(&self) -> Vec<Event> {
         self.0.lock().unwrap().clone()
@@ -26,7 +26,7 @@ impl InboxSink for MemInbox {
 }
 
 fn event(seq: u64, data: EventData) -> Event {
-    Event { seq, time: 0, data }
+    Event { seq, time: 0, version: None, data }
 }
 
 fn roster(seq: u64, id: &str, name: &str, phase: MemberPhase) -> Event {
