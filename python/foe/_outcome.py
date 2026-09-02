@@ -81,7 +81,8 @@ class Event:
     """One log event as foe wrote it to standard output.
 
     `episode_id` is set when the event was forwarded from a child episode
-    and is None for the root episode.
+    and is None for the root episode. `version` is the log format version,
+    stated on the first event of a log and absent on every event after it.
     """
 
     seq: int
@@ -89,14 +90,17 @@ class Event:
     type: str
     data: dict[str, Any] = field(default_factory=dict)
     episode_id: str | None = None
+    version: int | None = None
 
     @classmethod
     def from_json(cls, obj: Mapping[str, Any]) -> Event:
         episode_id = obj.get("episode_id")
+        version = obj.get("version")
         return cls(
             seq=int(obj["seq"]),
             time=int(obj["time"]),
             type=str(obj["type"]),
             data=dict(obj.get("data") or {}),
             episode_id=None if episode_id is None else str(episode_id),
+            version=None if version is None else int(version),
         )

@@ -21,6 +21,7 @@ from ._host import EventCallback, Handle, Transport, start_config
 from ._outcome import Outcome
 from ._schema import JsonSchema, schema_for
 from ._tools import HostTool
+from ._versions import CONFIG_VERSION
 
 BUILTIN_TOOLS: frozenset[str] = frozenset(
     {
@@ -312,7 +313,7 @@ class ExecutionContract:
         """
         doc: dict[str, Any] = {}
         if not child:
-            doc["version"] = 4
+            doc["version"] = CONFIG_VERSION
         doc["name"] = self.name
         doc["instructions"] = {k: self.instructions[k] for k in sorted(self.instructions)}
         doc["tools"] = list(self.tools)

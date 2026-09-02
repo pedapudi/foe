@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Iterable, Mapping
 
 from ._capabilities import PathLike
-from ._errors import BinaryError, ProtocolError
+from ._errors import BinaryError, CompatibilityError, ProtocolError
 from ._outcome import Event, Failed, Outcome, Runtime, outcome_from_json
 from ._tools import Capabilities, HostTool, ToolResult
+from ._versions import LOG_FORMAT_VERSION, PROTOCOL_VERSION, UNSTATED_LOG_FORMAT_VERSION, protocol_agrees
 
 Transport = Callable[[dict[str, Any]], AsyncIterator[dict[str, Any]]]
 EventCallback = Callable[[Event], None]
@@ -59,6 +60,26 @@ def _child_contracts_with_a_model_block(doc: Mapping[str, Any], prefix: str = ""
             found.append(name)
         found.extend(_child_contracts_with_a_model_block(child, f"{name}."))
     return found
+
+
+def _pairing_error(first: Event) -> str | None:
+    """Why the binary that wrote `first` does not pair with this package, or None.
+
+    docs/protocol.md "Versioning" gives the host this duty: recognize the
+    version the binary states, and cancel the episode when it does not.
+    """
+    if first.type != "episode/start":
+        return f"protocol: the first line is {first.type!r}, and docs/protocol.md makes it episode/start"
+    stated = UNSTATED_LOG_FORMAT_VERSION if first.version is None else first.version
+    if stated != LOG_FORMAT_VERSION:
+        return f"log format: the binary writes version {stated} and this package reads version {LOG_FORMAT_VERSION}"
+    version = str((first.data.get("runtime") or {}).get("version", ""))
+    if not protocol_agrees(version):
+        return (
+            f"protocol: the binary states runtime version {version!r} and this package speaks "
+            f"the protocol of runtime {PROTOCOL_VERSION}"
+        )
+    return None
 
 
 class Handle:
@@ -98,6 +119,7 @@ class Handle:
         self._pending: set[asyncio.Task[None]] = set()
         self._write_lock = asyncio.Lock()
         self._outcome: Outcome | None = None
+        self._pairing_error: str | None = None
         # Set when `episode/start` has been read, and again when the reader
         # stops, so that a wait for the start cannot outlive the process.
         self._start_known = asyncio.Event()
@@ -125,9 +147,17 @@ class Handle:
         assert self._outcome is not None
         return self._outcome
 
-    async def _await_start(self) -> None:
-        """Wait until `episode_id` and `runtime` hold what the binary stated."""
+    async def _await_start(self) -> str | None:
+        """Wait for `episode/start`, and report why the binary does not pair.
+
+        Returns None once `episode_id` and `runtime` hold what the binary
+        stated, and otherwise the reason the two versions disagree, after
+        the cancelled episode has settled.
+        """
         await self._start_known.wait()
+        if self._pairing_error is not None:
+            await self.wait()
+        return self._pairing_error
 
     async def steer(self, text: str) -> None:
         """Append a message with source `parent`; it enters the next request."""
@@ -178,6 +208,12 @@ class Handle:
                     self._outcome = Failed(f"protocol: line {line_number} from foe is not a log event: {exc}")
                     await self._write({"type": "cancel"})
                     break
+                if line_number == 1:
+                    self._pairing_error = _pairing_error(event)
+                    if self._pairing_error is not None:
+                        self._outcome = Failed(self._pairing_error)
+                        await self._write({"type": "cancel"})
+                        break
                 if self._on_event is not None:
                     self._on_event(event)
                 if self._dispatch(event):
@@ -334,6 +370,8 @@ async def start_config(
 
     Returns once the binary has written `episode/start`, so the handle
     carries the process id and the runtime build before the first request.
+    Raises `CompatibilityError` when the binary does not pair with this
+    package.
     """
     doc = _load_config(config)
     if "task" not in doc:
@@ -385,7 +423,9 @@ async def start_config(
         on_event=on_event,
         max_output_tokens=max_output_tokens,
     )
-    await handle._await_start()
+    pairing_error = await handle._await_start()
+    if pairing_error is not None:
+        raise CompatibilityError(pairing_error)
     return handle
 
 

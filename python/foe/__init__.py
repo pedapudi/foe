@@ -11,20 +11,25 @@ variable.
 """
 
 from ._capabilities import Exec, ExecResult, ReadFS, WriteFS
-from ._errors import BinaryError, CapabilityError, ConfigError, ProtocolError
+from ._errors import BinaryError, CapabilityError, CompatibilityError, ConfigError, ProtocolError
 from ._host import EventCallback, Handle, Transport, Viewer, run_config, serve, start_config
 from ._outcome import Blocked, Completed, Event, Exhausted, Failed, Outcome, Runtime
 from ._contract import BUILTIN_TOOLS, Budget, DoneWhen, Grants, ExecutionContract, Model, Returns, ToolDef, Verified
 from ._schema import schema_for
 from ._tools import Capabilities, Effect, HostTool, ToolResult, ToolSpec, tool
+from ._versions import CONFIG_VERSION, LOG_FORMAT_VERSION, PROTOCOL_VERSION
 
 __all__ = [
     "BUILTIN_TOOLS",
+    "CONFIG_VERSION",
+    "LOG_FORMAT_VERSION",
+    "PROTOCOL_VERSION",
     "BinaryError",
     "Blocked",
     "Budget",
     "Capabilities",
     "CapabilityError",
+    "CompatibilityError",
     "Completed",
     "ConfigError",
     "DoneWhen",

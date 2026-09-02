@@ -6,6 +6,12 @@ The script accepts the three command lines the package issues:
     fake_foe plan --json --config FILE             print the contract fingerprint
     fake_foe view DIR --serve                      print a URL and wait
 
+Two options may precede any of them, so that a test can build a binary the
+package refuses. `--log-version VALUE` states VALUE as the log format
+version on the first event, and states none for the word `none`.
+`--runtime-version VALUE` states VALUE as the runtime version in
+`episode/start`.
+
 The episode loop is the smallest one that exercises every host-side path:
 it writes `episode/start`, the task `inbox/item`, `request/header`, and
 `model/request`; obtains the response from the host over `model/chunk`
@@ -34,6 +40,12 @@ import time
 from pathlib import Path
 from typing import Any, Iterator, TextIO
 
+# What the built binary states, unless a leading option replaces it. The log
+# format version is `LOG_VERSION` in crates/log; the runtime version is the
+# workspace version in Cargo.toml.
+LOG_VERSION = 3
+RUNTIME_VERSION = "0.2.0"
+
 BUILTIN_SCHEMAS: dict[str, dict[str, Any]] = {
     name: {"name": name, "description": f"built-in {name}", "parameters": {"type": "object"}}
     for name in ("read", "grep", "edit", "bash", "block", "spawn", "wait", "steer", "notify", "send", "team")
@@ -41,14 +53,21 @@ BUILTIN_SCHEMAS: dict[str, dict[str, Any]] = {
 
 
 class Log:
-    def __init__(self, log_dir: Path) -> None:
+    def __init__(self, log_dir: Path, log_version: int | None) -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
         self.file: TextIO = (log_dir / "episode.jsonl").open("w", encoding="utf-8")
         self.seq = 0
+        self.log_version = log_version
         self.events: list[dict[str, Any]] = []
 
     def emit(self, type_: str, data: dict[str, Any]) -> int:
-        event = {"seq": self.seq, "time": int(time.time() * 1000), "type": type_, "data": data}
+        # The log format version is stated on the first event and absent
+        # after; docs/log-format.md "The envelope".
+        event: dict[str, Any] = {"seq": self.seq, "time": int(time.time() * 1000)}
+        if self.seq == 0 and self.log_version is not None:
+            event["version"] = self.log_version
+        event["type"] = type_
+        event["data"] = data
         line = json.dumps(event, ensure_ascii=False)
         self.file.write(line + "\n")
         self.file.flush()
@@ -63,10 +82,23 @@ class Cancelled(Exception):
     pass
 
 
+class Versions:
+    """The versions this run states: the log format, and the runtime.
+
+    `log` is None when the first event is to state no version at all, the
+    form docs/log-format.md reads as version 3.
+    """
+
+    def __init__(self, log: int | None, runtime: str) -> None:
+        self.log = log
+        self.runtime = runtime
+
+
 class Episode:
-    def __init__(self, config: dict[str, Any], log_dir: Path) -> None:
+    def __init__(self, config: dict[str, Any], log_dir: Path, versions: Versions) -> None:
         self.config = config
-        self.log = Log(log_dir)
+        self.versions = versions
+        self.log = Log(log_dir, versions.log)
         self.model: dict[str, Any] | None = config.get("model")
         self.host_tools: dict[str, Any] = config.get("host_tools") or {}
         # Items received over the protocol are held until the next step
@@ -151,7 +183,7 @@ class Episode:
                 "contract": contract,
                 "contract_fingerprint": contract_fingerprint_of(contract),
                 "task": config["task"],
-                "runtime": {"version": "0.2.0", "build": "sha256:" + "0" * 64},
+                "runtime": {"version": self.versions.runtime, "build": "sha256:" + "0" * 64},
                 "sandbox": {"mode": (config.get("sandbox") or {}).get("mode", "best-effort"), "landlock_abi": 0},
             },
         )
@@ -409,7 +441,21 @@ def contract_fingerprint_of(contract: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical).hexdigest()
 
 
+def take_versions(argv: list[str]) -> tuple[list[str], Versions]:
+    """Reads the leading `--log-version` and `--runtime-version` options."""
+    log: int | None = LOG_VERSION
+    runtime = RUNTIME_VERSION
+    while argv[:1] in (["--log-version"], ["--runtime-version"]):
+        flag, value, argv = argv[0], argv[1], argv[2:]
+        if flag == "--log-version":
+            log = None if value == "none" else int(value)
+        else:
+            runtime = value
+    return argv, Versions(log, runtime)
+
+
 def main(argv: list[str]) -> int:
+    argv, versions = take_versions(argv)
     if argv[:1] == ["plan"]:
         config = json.loads(Path(argv[argv.index("--config") + 1]).read_text(encoding="utf-8"))
         contract = {k: v for k, v in config.items() if k != "task"}
@@ -428,7 +474,7 @@ def main(argv: list[str]) -> int:
     if "task" not in config:
         print("task: required", file=sys.stderr)
         return 1
-    return Episode(config, log_dir).run()
+    return Episode(config, log_dir, versions).run()
 
 
 if __name__ == "__main__":

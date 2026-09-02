@@ -19,5 +19,15 @@ class ProtocolError(RuntimeError):
     """A line from the binary did not conform to docs/protocol.md."""
 
 
+class CompatibilityError(RuntimeError):
+    """The binary does not pair with this package.
+
+    The message names the version that disagrees: the log format the binary
+    writes, or the runtime version whose protocol it speaks. The episode is
+    cancelled before its first request, as docs/protocol.md "Versioning"
+    requires of a host that does not recognize the version.
+    """
+
+
 class CapabilityError(PermissionError):
     """A path or executable lies outside every granted root."""

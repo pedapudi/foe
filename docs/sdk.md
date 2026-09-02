@@ -106,6 +106,7 @@ when the binary asks.
 | `foe.Completed`, `foe.Blocked`, `foe.Exhausted`, `foe.Failed` | the outcome union |
 | `foe.Event` | one log event, as delivered to `on_event` |
 | `foe.Runtime` | the version and build hash the binary states |
+| `foe.CONFIG_VERSION`, `foe.LOG_FORMAT_VERSION`, `foe.PROTOCOL_VERSION` | the versions this package speaks |
 | `foe.adapters.litellm.litellm_transport` | the reference transport adapter |
 
 ### `ExecutionContract`
@@ -206,8 +207,8 @@ The package writes the document to a temporary file, creates `log_dir`
 when it does not exist, and launches
 `foe --config FILE --host --log-dir DIR`. The temporary file is removed
 when the binary exits. `on_event` receives every line the binary writes,
-parsed into a `foe.Event` with `seq`, `time`, `type`, `data`, and
-`episode_id`; the callback runs on the event loop and should return
+parsed into a `foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`,
+and `version`; the callback runs on the event loop and should return
 quickly. `max_output_tokens` is passed through to the transport on every
 request; the package has no opinion about its value.
 
@@ -545,6 +546,31 @@ one produced by the binary alone.
 An application that needs the binary's other commands invokes them directly;
 the schema and tool listings of `foe plan` have no wrapper in the package.
 
+## The versions a pair must agree on
+
+A binary and this package run an episode together only when three versions
+agree. The package holds each as a constant.
+
+| constant | value | what it fixes |
+|---|---|---|
+| `foe.CONFIG_VERSION` | 4 | the `version` written into every document, which config.md specifies |
+| `foe.LOG_FORMAT_VERSION` | 3 | the log format the package parses, which log-format.md specifies |
+| `foe.PROTOCOL_VERSION` | `0.2` | the runtime releases whose protocol the package speaks |
+
+The binary states the log format version on the first event of the log and
+the runtime version in `episode/start.runtime.version`, which
+protocol.md "Versioning" makes the version of the protocol the two speak.
+The package reads both from that first line, before it answers anything.
+When either disagrees it writes `cancel`, and `start`, `run`,
+`start_config`, and `run_config` raise `foe.CompatibilityError` naming the
+two versions, so a mismatched pair stops at the start of an episode rather
+than partway through one. A first event that states no log format version
+is a version 3 log, which log-format.md states.
+
+The configuration format version needs no check by the package: a binary
+that does not accept the version the document states refuses the document,
+exits without writing `episode/start`, and leaves a `Failed` outcome.
+
 ## Testing without the binary
 
 `python/tests/fake_foe.py` is a stand-in for the binary that speaks the
@@ -555,10 +581,13 @@ a text turn, a host tool call, a built-in tool call, a `block` call, a
 transport error, and a spent `model_calls` budget. It also answers a
 document with a `model` block from a built-in transport of its own, for
 which it implements the `exec` provider, so the built-in and host seams
-are exercised against the same host tools. `uv run pytest` from `python/`
-runs the package's tests against it.
+are exercised against the same host tools. Two options make it state a log
+format version or a runtime version the package does not read, which is how
+"The versions a pair must agree on" is tested. `uv run pytest` from
+`python/` runs the package's tests against it.
 
 The tests that need the real binary are in `python/tests/test_binary.py`
 and are skipped when `target/debug/foe` has not been built. They run one
-episode with a `model` block and a Python host tool, and read the process
-id and the build identity from the handle.
+episode with a `model` block and a Python host tool, read the process id
+and the build identity from the handle, and pin the versions the built
+binary states against the constants above.

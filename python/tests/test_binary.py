@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -141,3 +142,17 @@ def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_ca
 
     assert asyncio.run(scenario()) == foe.Completed(SUMMARY)
     assert at_call == [(started[0].pid, started[0].runtime)]
+
+
+@pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
+def test_the_built_binary_states_the_versions_the_package_pins(tmp_path: Path) -> None:
+    """The supported pair: the package runs a document the binary accepts, and reads what it writes."""
+    contract = contract_calling_its_model(tmp_path)
+    log_dir = tmp_path / "episode"
+    # The binary accepted a document stating this configuration format version.
+    assert contract.to_dict("Count the references.")["version"] == foe.CONFIG_VERSION
+    outcome = asyncio.run(contract.run(task="Count the references.", binary=BINARY, log_dir=log_dir))
+    assert outcome == foe.Completed(SUMMARY)
+    first = json.loads((log_dir / "episode.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert first["version"] == foe.LOG_FORMAT_VERSION
+    assert first["data"]["runtime"]["version"].startswith(f"{foe.PROTOCOL_VERSION}.")
