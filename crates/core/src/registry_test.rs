@@ -1,4 +1,4 @@
-use super::{resolve_specs, Handles, Registry, Source};
+use super::{bind_candidate, resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::test_util::{contract_with, registry_for, spec, tmp, FakeExecutor, Probe, Verifier};
 use crate::{CapError, ExecRequest, ExecResult, Executor, Tool, ToolCall, ToolFailureCode};
@@ -366,4 +366,49 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
         .await
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn a_candidate_binds_to_the_verifier_s_one_declared_parameter() {
+    // The object-shaped case this exists for: an episode returns a document
+    // and the verifier declares one parameter. Unbound, the document's own
+    // keys become the argument map and the tool is called with parameters it
+    // never declared.
+    let params = json!({
+        "type": "object",
+        "properties": { "candidate": { "type": "object" } },
+        "required": ["candidate"],
+    });
+    let candidate = json!({ "core_idea": "shorten it", "risks": "none" });
+    assert_eq!(bind_candidate(&params, &candidate), json!({ "candidate": candidate }));
+}
+
+#[test]
+fn a_scalar_candidate_binds_the_same_way() {
+    let params = json!({ "type": "object", "properties": { "value": { "type": "string" } } });
+    assert_eq!(bind_candidate(&params, &json!("c")), json!({ "value": "c" }));
+}
+
+#[test]
+fn an_argument_map_that_already_names_the_parameter_is_not_double_wrapped() {
+    let params = json!({ "type": "object", "properties": { "candidate": {} } });
+    let args = json!({ "candidate": "c" });
+    assert_eq!(bind_candidate(&params, &args), args);
+}
+
+#[test]
+fn a_verifier_declaring_several_parameters_is_left_alone() {
+    // Such a verifier IS asking for the candidate's fields; binding would
+    // break it.
+    let params = json!({
+        "type": "object",
+        "properties": { "core_idea": {}, "risks": {} },
+    });
+    let candidate = json!({ "core_idea": "shorten it", "risks": "none" });
+    assert_eq!(bind_candidate(&params, &candidate), candidate);
+}
+
+#[test]
+fn a_schema_with_no_properties_is_left_alone() {
+    assert_eq!(bind_candidate(&json!({}), &json!("c")), json!("c"));
 }

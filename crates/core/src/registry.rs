@@ -228,7 +228,7 @@ impl Registry {
                 .map(str::to_string)
                 .collect());
         }
-        let value = entry.tool.call(candidate.clone(), &ctx).await;
+        let value = entry.tool.call(bind_candidate(&entry.spec.params, candidate), &ctx).await;
         if value.is_error {
             return Err(format!("verifier `{name}` failed: {}", value.rendered.unwrap_or_default()));
         }
@@ -248,6 +248,47 @@ impl Registry {
             None => runtime_build.to_string(),
         }
     }
+}
+
+/// Binds a verifier's candidate to the single parameter its schema declares.
+///
+/// A tool call's arguments are an OBJECT KEYED BY PARAMETER NAME -- that is
+/// what [`Registry::dispatch`] validates against `spec.params`, and what a
+/// host tool spreads over its function's parameters. A verifier's candidate
+/// is a value, not an argument map, so passing it straight through silently
+/// reinterprets the candidate's own fields as parameter names.
+///
+/// With an object-shaped `done_when.returns` that is never right. The
+/// verifier is called with the returned document's keys, and a host tool
+/// whose signature is the documented single parameter fails with an
+/// unexpected-keyword error naming one of the document's fields -- a
+/// different field each run, depending on which the model emitted first.
+///
+/// docs/sdk.md, "Verifiers": the runtime calls the verifier "with the
+/// candidate result as its single argument", and the SDK writes the tool in
+/// with "a one-parameter schema". So bind it: wrap the candidate under that
+/// one declared parameter's name.
+///
+/// Left alone when the schema does not declare exactly one property. A
+/// `tool_defs` executable takes the candidate on stdin and never reaches
+/// here, and a verifier that really does declare the candidate's fields as
+/// its own parameters keeps working.
+fn bind_candidate(params: &Value, candidate: &Value) -> Value {
+    let Some(properties) = params.get("properties").and_then(Value::as_object) else {
+        return candidate.clone();
+    };
+    let mut names = properties.keys();
+    let (Some(only), None) = (names.next(), names.next()) else {
+        return candidate.clone();
+    };
+    // Already an argument map naming that parameter: pass it through, so a
+    // caller that binds for itself is not double-wrapped.
+    if candidate.get(only).is_some() {
+        return candidate.clone();
+    }
+    let mut args = serde_json::Map::new();
+    args.insert(only.clone(), candidate.clone());
+    Value::Object(args)
 }
 
 /// A tool declared in `tool_defs`: the model's `args` become the argument
