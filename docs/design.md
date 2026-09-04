@@ -952,7 +952,7 @@ not finished.
 ```
    crates/log ◄─── crates/contract ◄─── crates/core ◄──┬── crates/code
     every event      the document,      loop,        │    read grep edit bash
-    type,            resolution,        registry,    ├── crates/transport (feature)
+    type,            resolution,        registry,    ├── crates/transport
     serde,           tool specs,        grants,      │    model clients, credentials
     serde_json       schema subset,     budget,      │
                      harness text,      spawn,       ├── crates/workflow

@@ -75,9 +75,8 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
         list(session)?;
         return Ok(ExitCode::SUCCESS);
     };
-    let provider = foe_transport::provider_info(&name).ok_or_else(|| {
-        format!("provider `{name}` is unknown to this build; run `foe login` to list the known providers")
-    })?;
+    let provider = foe_transport::provider_info(&name)
+        .ok_or_else(|| format!("provider `{name}` is unknown; run `foe login` to list the known providers"))?;
     let extra = configure(session, provider)?;
     let path = paths::default_model_path(&session.home);
     if options.model.is_some() || !path.is_file() {

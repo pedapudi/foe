@@ -4,15 +4,6 @@ load("@rules_rust//rust:defs.bzl", "rust_library")
 rust_library(
     name = "foe_transport",
     srcs = glob(["src/**/*.rs"]),
-    crate_features = [
-        "api-key",
-        "chat",
-        "gemini",
-        "google",
-        "messages",
-        "responses",
-        "token-file",
-    ],
     crate_name = "foe_transport",
     crate_root = "src/lib.rs",
     edition = crate_edition(),

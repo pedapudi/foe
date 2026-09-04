@@ -515,14 +515,14 @@ host process must answer model requests over the [protocol](protocol.md).
 
 | field | type | required | meaning |
 |---|---|---|---|
-| `provider` | string | yes | a provider name the build knows; [models.md](models.md) lists them |
+| `provider` | string | yes | a provider name; [models.md](models.md) lists them |
 | `model` | string | yes | the model identifier the provider expects |
 | `max_output_tokens` | integer | no | per-request output limit; default is the provider's |
 | any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, or `location` |
 
-The provider name is opaque to the configuration format. Whether a build
-knows it is decided where the transport is composed; `foe plan` reports the
-resolved transport, or says the name is unknown and lists the known ones.
+The provider name is opaque to the configuration format. The model client
+resolves it; `foe plan` reports the selected client, or says the name is
+unknown and lists the known ones.
 
 A child contract may declare its own `model` block. A child that omits the
 block inherits the nearest ancestor's block. The same rule applies to model

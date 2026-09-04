@@ -252,7 +252,7 @@ fn an_unknown_provider_is_refused_with_directions() {
     let mut output = Vec::new();
     let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
     let err = run(&mut session, Options { provider: Some("bedrock".into()), ..Default::default() }).unwrap_err();
-    assert!(err.starts_with("provider `bedrock` is unknown to this build"), "{err}");
+    assert!(err.starts_with("provider `bedrock` is unknown"), "{err}");
 }
 
 fn base64url(bytes: &[u8]) -> String {

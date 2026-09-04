@@ -1,43 +1,33 @@
 //! The provider table: every name a `model` block may give, with the wire
 //! format, the credential source, and the defaults that name implies.
 //!
-//! A row exists only when the features of both its format and its
-//! credential source are enabled, so `known_providers()` describes the
-//! build that is running. Adding a provider that speaks an existing format
-//! with an existing credential source is one row here and nothing else.
+//! The binary includes every row. Adding a provider that speaks an existing
+//! format with an existing credential source is one row here and nothing
+//! else.
 
 use crate::auth::AuthKind;
-#[cfg(feature = "api-key")]
 use crate::auth::KeyHeader;
 
 /// The wire format a row speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireFormat {
     /// Anthropic Messages API.
-    #[cfg(feature = "messages")]
     Messages,
     /// OpenAI Chat Completions API, and the servers and proxies that imitate it.
-    #[cfg(feature = "chat")]
     Chat,
     /// OpenAI Responses API.
-    #[cfg(feature = "responses")]
     Responses,
     /// Vertex AI: Messages for model names starting with `claude`, Gemini
     /// otherwise.
-    #[cfg(feature = "google")]
     VertexByModel,
 }
 
 impl WireFormat {
     pub fn name(&self) -> &'static str {
         match *self {
-            #[cfg(feature = "messages")]
             WireFormat::Messages => "messages",
-            #[cfg(feature = "chat")]
             WireFormat::Chat => "chat",
-            #[cfg(feature = "responses")]
             WireFormat::Responses => "responses",
-            #[cfg(feature = "google")]
             WireFormat::VertexByModel => "messages or gemini, by model name",
         }
     }
@@ -100,7 +90,6 @@ const GPT5: u64 = 400_000;
 const GEMINI_25: u64 = 1_048_576;
 
 pub static PROVIDERS: &[Provider] = &[
-    #[cfg(all(feature = "messages", feature = "api-key"))]
     Provider {
         name: "anthropic",
         title: "Anthropic",
@@ -115,7 +104,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("anthropic-version", "2023-06-01")],
         verify: Verify::GetJson("/v1/models"),
     },
-    #[cfg(all(feature = "responses", feature = "api-key"))]
     Provider {
         name: "openai",
         title: "OpenAI",
@@ -130,7 +118,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
-    #[cfg(all(feature = "chat", feature = "api-key"))]
     Provider {
         name: "compatible-http",
         title: "Compatible HTTP endpoint",
@@ -145,7 +132,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
-    #[cfg(all(feature = "chat", feature = "api-key"))]
     Provider {
         name: "openrouter",
         title: "OpenRouter",
@@ -161,7 +147,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("HTTP-Referer", "https://github.com/pedapudi/foe"), ("X-Title", "foe")],
         verify: Verify::GetJson("/key"),
     },
-    #[cfg(all(feature = "responses", feature = "token-file"))]
     Provider {
         name: "openai-codex",
         title: "OpenAI Codex",
@@ -180,7 +165,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
         verify: Verify::None,
     },
-    #[cfg(all(feature = "google", any(feature = "messages", feature = "gemini")))]
     Provider {
         name: "vertex",
         title: "Vertex AI",

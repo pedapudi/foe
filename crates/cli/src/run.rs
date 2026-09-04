@@ -137,7 +137,6 @@ pub fn add_builtin_runtime_access(policy: &mut Policy, contract: &ResolvedContra
 /// Adds credential-file access for every reachable built-in model
 /// transport. A descendant inherits the enclosing Landlock domain before
 /// it opens its own credential.
-#[cfg(feature = "transport")]
 pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
     for (contract_key, descendant) in
         contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
@@ -148,11 +147,6 @@ pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedCont
             policy.add_read_file(path, format!("credential for model transport in {contract_key}"));
         }
     }
-    Ok(())
-}
-
-#[cfg(not(feature = "transport"))]
-pub fn add_transport_runtime_access(_policy: &mut Policy, _program: &ResolvedContract) -> Result<(), String> {
     Ok(())
 }
 
@@ -182,14 +176,8 @@ pub fn context_policy(contract: &ResolvedContract) -> Result<Option<foe_context:
     Ok(Some(foe_context::Policy::new(cfg, window, max_output, contract.done_when.as_ref())))
 }
 
-#[cfg(feature = "transport")]
 fn known_window(model: &ModelConfig) -> Option<u64> {
     foe_transport::context_window(model)
-}
-
-#[cfg(not(feature = "transport"))]
-fn known_window(_model: &ModelConfig) -> Option<u64> {
-    None
 }
 
 /// Who this episode is. A child reads the launch metadata its parent wrote;
@@ -365,14 +353,8 @@ const USAGE_BARE: &str = "a task or --config FILE is required";
 const NO_DEFAULT_MODEL: &str =
     "no model: run `foe login <provider>` once to set a default, or give --model PROVIDER/MODEL";
 
-#[cfg(feature = "transport")]
 pub(crate) fn default_model() -> Result<Option<ModelConfig>, String> {
     foe_transport::auth::login::default_model()
-}
-
-#[cfg(not(feature = "transport"))]
-pub(crate) fn default_model() -> Result<Option<ModelConfig>, String> {
-    Ok(None)
 }
 
 /// What the model is told about the `--verify` executable, which it may
@@ -480,14 +462,8 @@ pub(crate) fn coding_contract_document(
     serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
 }
 
-#[cfg(feature = "transport")]
 fn credential_option(provider: &str) -> &'static str {
     foe_transport::provider_info(provider).and_then(|value| value.auth.option_key()).unwrap_or("api_key_file")
-}
-
-#[cfg(not(feature = "transport"))]
-fn credential_option(_provider: &str) -> &'static str {
-    "api_key_file"
 }
 
 #[cfg(test)]
@@ -495,21 +471,13 @@ fn credential_option(_provider: &str) -> &'static str {
 mod tests;
 
 /// One line naming the transport a `model` block resolves to, for `foe plan`.
-#[cfg(feature = "transport")]
 pub fn describe_transport(contract: &ResolvedContract) -> String {
     let Some(model) = &contract.model else { return "no model".into() };
     foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
 }
 
-#[cfg(not(feature = "transport"))]
-pub fn describe_transport(contract: &ResolvedContract) -> String {
-    let model = contract.model.as_ref().expect("called only for a model");
-    format!("{}/{}: this binary was built without the transport feature", model.provider, model.model)
-}
-
 /// Fills provider defaults before contract construction, including the
 /// credential path that `episode/start.contract` records.
-#[cfg(feature = "transport")]
 fn prepare_model(config: &mut ContractDocument) -> Result<(), String> {
     if let Some(model) = &mut config.model {
         *model = foe_transport::plan(model).map_err(|e| e.to_string())?.model;
@@ -517,22 +485,11 @@ fn prepare_model(config: &mut ContractDocument) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(feature = "transport"))]
-fn prepare_model(_config: &mut ContractDocument) -> Result<(), String> {
-    Ok(())
-}
-
 /// Resolves the constructed `model` block into a client before the process
 /// restricts itself. The credential path joins the sandbox policy as a
 /// readable file.
-#[cfg(feature = "transport")]
 fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
     foe_transport::build(model).map_err(|e| e.to_string())
-}
-
-#[cfg(not(feature = "transport"))]
-fn built_in_transport(_model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
-    Err("this binary was built without the transport feature; remove `model` and run under a host".into())
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {

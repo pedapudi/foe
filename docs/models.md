@@ -19,7 +19,7 @@ configuration against the current directory with that default model and
 prints the outcome as one JSON line. No flag names a model or a key file,
 because both were settled by the login.
 
-`foe login` alone lists every provider this build knows and whether each is
+`foe login` alone lists every provider and whether each is
 configured. `foe login --status` shows the default model and every
 credential path.
 
@@ -222,30 +222,27 @@ the effective reasoning effort.
 
 ## Formats and credential sources
 
-The transport crate is organized as a table of wire formats times credential
-sources. A provider is one row of twelve fields: the name a configuration
+The transport crate pairs wire formats with credential sources through one
+provider table. A provider is one row of twelve fields: the name a configuration
 writes, the title and one-line description `foe login` prints, the wire
 format, the credential source, the default base URL, the path appended to
 it, the options the `model` block must carry, the models `foe login`
 offers, the context windows by model-name prefix, any fixed headers, and
-how `foe login` proves a credential works. Each format and each source sits
-behind a Cargo
-feature of the `foe-transport` crate, and the default feature set enables
-all of them. A row exists only when both of its features are enabled, so
-`foe login` and `foe plan` describe the build that is running.
+how `foe login` proves a credential works. The binary includes every format,
+credential source, and provider row.
 
-| wire format | module | providers | feature |
-|---|---|---|---|
-| Anthropic Messages | `format/messages.rs` | `anthropic`, `vertex` for `claude*` models | `messages` |
-| streaming chat completions | `format/chat.rs` | every provider row using `chat` | `chat` |
-| OpenAI Responses | `format/responses.rs` | `openai`, `openai-codex` | `responses` |
-| Gemini on Vertex AI | `format/gemini.rs` | `vertex` for other models | `gemini` |
+| wire format | module | providers |
+|---|---|---|
+| Anthropic Messages | `format/messages.rs` | `anthropic`, `vertex` for `claude*` models |
+| streaming chat completions | `format/chat.rs` | every provider row using `chat` |
+| OpenAI Responses | `format/responses.rs` | `openai`, `openai-codex` |
+| Gemini on Vertex AI | `format/gemini.rs` | `vertex` for other models |
 
-| credential source | module | what it reads | feature |
-|---|---|---|---|
-| API key | `auth/api_key.rs` | a key file | `api-key` |
-| OAuth token file | `auth/token_file.rs` | a token file, refreshed at the provider's token endpoint | `token-file` |
-| Google credentials | `auth/google.rs` | application default credentials or a service account key, exchanged for an access token | `google` |
+| credential source | module | what it reads |
+|---|---|---|
+| API key | `auth/api_key.rs` | a key file |
+| OAuth token file | `auth/token_file.rs` | a token file, refreshed at the provider's token endpoint |
+| Google credentials | `auth/google.rs` | application default credentials or a service account key, exchanged for an access token |
 
 Adding a provider that speaks an existing format with an existing source is
 one row in `crates/transport/src/providers.rs`. A provider that serves the
@@ -254,7 +251,6 @@ offers two models with a 128,000-token window, and answers `GET /models`
 would be:
 
 ```rust
-#[cfg(all(feature = "chat", feature = "api-key"))]
 Provider {
     name: "example",
     title: "Example",
@@ -275,7 +271,7 @@ After that row exists, `foe login example` works, `{ "provider": "example",
 "model": "example-large" }` runs, and the credential lives at
 `~/.config/foe/credentials/example.json`. A provider with a new wire format
 or a new credential source needs a module implementing the `Format` or
-`Auth` trait beside the existing ones, and a feature gating it.
+`Auth` trait beside the existing ones.
 
 ## What each provider cannot express
 

@@ -50,14 +50,13 @@ mod testserver;
 use auth::{Auth, AuthKind};
 use format::{Decoder, Format};
 use http::Url;
-#[allow(unused_imports)]
 use providers::{Provider, Verify, WireFormat};
 
 /// Why a `model` block could not become a transport. Every variant names the
 /// configuration key involved and says what to do.
 #[derive(Debug, thiserror::Error)]
 pub enum TransportError {
-    #[error("model.provider: `{name}` is unknown to this build; known providers: {}", known.join(", "))]
+    #[error("model.provider: `{name}` is unknown; known providers: {}", known.join(", "))]
     UnknownProvider { name: String, known: Vec<&'static str> },
     #[error("model.{key}: required by provider {provider}; {hint}")]
     MissingOption { provider: &'static str, key: &'static str, hint: String },
@@ -95,7 +94,6 @@ impl Plan {
     /// The wire format this plan speaks, with Vertex resolved by model name.
     pub fn format_name(&self) -> &'static str {
         match self.provider.format {
-            #[cfg(feature = "google")]
             WireFormat::VertexByModel => {
                 if self.model.model.starts_with("claude") {
                     "messages"
@@ -109,7 +107,7 @@ impl Plan {
     }
 }
 
-/// Every provider name this build knows, in table order.
+/// Every provider name, in table order.
 pub fn known_providers() -> Vec<&'static str> {
     providers::names()
 }
@@ -144,7 +142,6 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
     let mut credential_path = None;
     if let Some(key) = provider.auth.option_key() {
         let default = paths::credentials_path(home, provider.name);
-        #[cfg(feature = "google")]
         if provider.auth == AuthKind::Google && model.option(key).is_none() {
             // The Vertex convention file names the Google credentials file and
             // the project and location, which the block may still override.
@@ -200,15 +197,8 @@ pub fn build_planned(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> 
     build_http(plan)
 }
 
-/// The table holds only `exec` rows in a build without a wire format.
-#[cfg(not(any(feature = "messages", feature = "chat", feature = "responses", feature = "google")))]
-fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
-    unreachable!("provider {} has no wire format in this build", plan.provider.name)
-}
-
 /// Builds the HTTP client of a plan: the credential source, the wire
 /// format, and the URL the provider row implies.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     let provider = plan.provider;
     let model = &plan.model;
@@ -219,17 +209,14 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     };
     let max = model.max_output_tokens;
     let (format, url): (Box<dyn Format>, Url) = match provider.format {
-        #[cfg(feature = "messages")]
         WireFormat::Messages => (
             Box::new(format::messages::Messages::new(provider.name, Some(model.model.clone()), max, None)),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "chat")]
         WireFormat::Chat => (
             Box::new(format::chat::Chat::new(provider.name, model.model.clone(), max)),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "responses")]
         WireFormat::Responses => (
             Box::new(format::responses::Responses::new(
                 provider.name,
@@ -240,7 +227,6 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "google")]
         WireFormat::VertexByModel => vertex_route(provider, model, &base)?,
     };
     let headers = provider.headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
@@ -258,7 +244,6 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
 /// Google models behind the Gemini format, under one project and location.
 /// https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
 /// https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
-#[cfg(feature = "google")]
 fn vertex_route(
     provider: &'static Provider,
     model: &ModelConfig,
@@ -274,42 +259,19 @@ fn vertex_route(
     let prefix = format!("/v1/projects/{project}/locations/{location}/publishers");
     let name = &model.model;
     if name.starts_with("claude") {
-        #[cfg(feature = "messages")]
-        {
-            let format = format::messages::Messages::new(
-                provider.name,
-                None,
-                model.max_output_tokens,
-                Some("vertex-2023-10-16"),
-            );
-            let url = base(Some(&origin))?.join(&format!("{prefix}/anthropic/models/{name}:streamRawPredict"));
-            return Ok((Box::new(format), url));
-        }
-        #[cfg(not(feature = "messages"))]
-        return Err(TransportError::MissingOption {
-            provider: provider.name,
-            key: "model",
-            hint: "names starting with `claude` need the messages feature, which this build lacks".into(),
-        });
+        let format =
+            format::messages::Messages::new(provider.name, None, model.max_output_tokens, Some("vertex-2023-10-16"));
+        let url = base(Some(&origin))?.join(&format!("{prefix}/anthropic/models/{name}:streamRawPredict"));
+        return Ok((Box::new(format), url));
     }
-    #[cfg(feature = "gemini")]
-    {
-        let include_thoughts = model.option("include_thoughts") != Some("false");
-        let format = format::gemini::Gemini::new(provider.name, model.max_output_tokens, include_thoughts);
-        let url = base(Some(&origin))?.join(&format!("{prefix}/google/models/{name}:streamGenerateContent?alt=sse"));
-        Ok((Box::new(format), url))
-    }
-    #[cfg(not(feature = "gemini"))]
-    Err(TransportError::MissingOption {
-        provider: provider.name,
-        key: "model",
-        hint: "names other than `claude*` need the gemini feature, which this build lacks".into(),
-    })
+    let include_thoughts = model.option("include_thoughts") != Some("false");
+    let format = format::gemini::Gemini::new(provider.name, model.max_output_tokens, include_thoughts);
+    let url = base(Some(&origin))?.join(&format!("{prefix}/google/models/{name}:streamGenerateContent?alt=sse"));
+    Ok((Box::new(format), url))
 }
 
 /// Opens the credential source a plan names. The only place a secret is
 /// read.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
     let provider = plan.provider;
     let Some(key) = provider.auth.option_key() else {
@@ -326,14 +288,11 @@ fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
         },
     };
     Ok(match provider.auth {
-        #[cfg(feature = "api-key")]
         AuthKind::ApiKey { header } => Arc::new(auth::api_key::ApiKey::from_file(header, &path).map_err(fail)?),
-        #[cfg(feature = "token-file")]
         AuthKind::TokenFile { account_header, token_url, client_id } => {
             let client = auth::token_file::OAuthClient { token_url: token_url.into(), client_id: client_id.into() };
             Arc::new(auth::token_file::TokenFile::open(&path, client, account_header).map_err(fail)?)
         }
-        #[cfg(feature = "google")]
         AuthKind::Google => Arc::new(auth::google::Google::open(&path).map_err(fail)?),
         AuthKind::None => Arc::new(auth::NoAuth),
     })
@@ -722,7 +681,6 @@ mod tests {
         assert!(err.starts_with("model.project: required by provider vertex; "), "{err}");
     }
 
-    #[cfg(feature = "google")]
     #[test]
     fn the_vertex_convention_file_supplies_project_location_and_credentials() {
         let home = fake_home("vertex");
@@ -784,7 +742,6 @@ mod tests {
         assert_eq!(err, "model.base_url: localhost:11434: scheme must be http or https");
     }
 
-    #[cfg(feature = "google")]
     #[test]
     fn vertex_urls_name_the_publisher_by_model_name() {
         let home = fake_home("vertex-urls");
@@ -822,7 +779,6 @@ mod tests {
             Url::parse(text).map_err(|reason| TransportError::BaseUrl { url: text.to_string(), reason })
         };
         let (format, url): (Box<dyn Format>, Url) = match provider.format {
-            #[cfg(feature = "google")]
             WireFormat::VertexByModel => vertex_route(provider, model, &base).unwrap(),
             _ => (
                 Box::new(format::chat::Chat::new(provider.name, model.model.clone(), None)),
