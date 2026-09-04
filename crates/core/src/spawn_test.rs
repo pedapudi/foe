@@ -115,19 +115,19 @@ fn inherited_executable_name_preserves_child_contract_fingerprint() {
     assert_eq!(actual.hash, expected.hash);
 }
 
-/// A stand-in child: writes a start event, a request, waits for one
-/// routed answer, calls the host tool `notify`, waits for its result,
-/// then ends with both answers as its value. A first pre-tagged request
-/// stands for one forwarded from a grandchild.
+/// A stand-in child that forwards a descendant request, writes its own
+/// header and request, accepts routed answers, and calls the host tool
+/// `notify`. It completes with both answers as its value.
 pub(crate) const FAKE_CHILD: &str = r#"#!/bin/sh
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 echo '{"seq":9,"time":1,"type":"model/request","episode_id":"ep_grand","data":{"step":1,"attempt":1,"request_id":"rq_g","header_seq":0,"consumed":[],"messages":[]}}'
-echo '{"seq":1,"time":1,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_1","header_seq":0,"consumed":[1],"messages":[]}}'
+echo '{"seq":1,"time":1,"type":"request/header","data":{"reason":"initial","system":"survey the module","tools":[],"model":{"provider":"exec","model":"m"}}}'
+echo '{"seq":2,"time":1,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_1","header_seq":1,"consumed":[],"messages":[]}}'
 read -r answer
-echo '{"seq":2,"time":1,"type":"assistant/message","data":{"step":1,"request_id":"rq_1","text":"","tool_calls":[{"id":"tc_1","name":"notify","args":{"content":"progress"}}],"stop":"tool","usage":{"input":10,"output":5,"cache_read":0},"interrupted":false}}'
-echo '{"seq":3,"time":1,"type":"host/tool-call","data":{"step":1,"call_id":"tc_1","name":"notify","args":{"content":"progress"}}}'
+echo '{"seq":3,"time":1,"type":"assistant/message","data":{"step":1,"request_id":"rq_1","text":"","tool_calls":[{"id":"tc_1","name":"notify","args":{"content":"progress"}}],"stop":"tool","usage":{"input":10,"output":5,"cache_read":0},"interrupted":false}}'
+echo '{"seq":4,"time":1,"type":"host/tool-call","data":{"step":1,"call_id":"tc_1","name":"notify","args":{"content":"progress"}}}'
 read -r result
-echo "{\"seq\":4,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":[$answer,$result]}}}"
+echo "{\"seq\":5,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":[$answer,$result]}}}"
 "#;
 
 /// A stand-in child that runs until the parent writes it a line. The
@@ -434,7 +434,7 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
 }
 
 #[tokio::test]
-async fn child_requests_are_forwarded_and_answers_routed() {
+async fn child_headers_and_requests_are_forwarded_and_answers_are_routed() {
     let dir = scratch("spawn", "roundtrip");
     let uplink = Arc::new(Lines::default());
     let router = Arc::new(Router::new());
@@ -472,21 +472,26 @@ async fn child_requests_are_forwarded_and_answers_routed() {
 
     let forwarded = wait_for(|| {
         let lines = uplink.0.lock().unwrap();
-        (lines.len() == 2).then(|| lines.clone())
+        (lines.len() == 3).then(|| lines.clone())
     });
     let grand: serde_json::Value = serde_json::from_str(&forwarded[0]).unwrap();
     assert_eq!(grand["episode_id"], "ep_grand", "a pre-tagged line is forwarded unchanged");
-    let own: serde_json::Value = serde_json::from_str(&forwarded[1]).unwrap();
-    assert_eq!(own["episode_id"], handle.child_id.as_str(), "the child's own request is tagged with its id");
-    assert_eq!(own["type"], "model/request");
+    let header: serde_json::Value = serde_json::from_str(&forwarded[1]).unwrap();
+    assert_eq!(header["type"], "request/header", "the header precedes the request");
+    assert_eq!(header["episode_id"], handle.child_id.as_str(), "the forwarded header carries the child id");
+    assert_eq!(header["data"]["system"], "survey the module");
+    let request: serde_json::Value = serde_json::from_str(&forwarded[2]).unwrap();
+    assert_eq!(request["episode_id"], handle.child_id.as_str(), "the forwarded request carries the child id");
+    assert_eq!(request["type"], "model/request");
+    assert_eq!(request["data"]["header_seq"], header["seq"], "the request cites the preceding header");
 
     let answer = r#"{"type":"model/chunk","request_id":"rq_1","episode_id":"ep_grand","chunk":{"kind":"done"}}"#;
     router.route("ep_grand", answer).unwrap();
     let forwarded = wait_for(|| {
         let lines = uplink.0.lock().unwrap();
-        (lines.len() == 3).then(|| lines.clone())
+        (lines.len() == 4).then(|| lines.clone())
     });
-    let call: serde_json::Value = serde_json::from_str(&forwarded[2]).unwrap();
+    let call: serde_json::Value = serde_json::from_str(&forwarded[3]).unwrap();
     assert_eq!(call["type"], "host/tool-call", "a host call the observer does not answer is forwarded");
     assert_eq!(call["episode_id"], handle.child_id.as_str());
     let result = format!(r#"{{"type":"tool/result","call_id":"tc_1","episode_id":"{}","value":1}}"#, handle.child_id);
@@ -496,14 +501,17 @@ async fn child_requests_are_forwarded_and_answers_routed() {
     assert_eq!(value[0], serde_json::from_str::<serde_json::Value>(answer).unwrap(), "routed by descendant id");
     assert_eq!(value[1], serde_json::from_str::<serde_json::Value>(&result).unwrap(), "routed by child id");
     assert_eq!(settled.usage, Usage { input: 10, output: 5, cache_read: 0 });
-    assert_eq!(settled.spent.model_calls, Some(1));
+    assert_eq!(settled.spent.model_calls, Some(1), "the header does not consume a model call");
     assert_eq!(settled.spent.input_tokens, Some(10));
     assert_eq!(settled.spent.output_tokens, Some(5));
     let (outcome, _) = handle.run.wait().await;
     assert!(matches!(outcome, Outcome::Completed { .. }));
     assert!(!router.has_child(&handle.child_id));
     let kinds: Vec<String> = seen.0.lock().unwrap().iter().map(|(_, e)| e.data.type_name()).collect();
-    assert_eq!(kinds, ["episode/start", "model/request", "assistant/message", "host/tool-call", "episode/end"]);
+    assert_eq!(
+        kinds,
+        ["episode/start", "request/header", "model/request", "assistant/message", "host/tool-call", "episode/end"]
+    );
 }
 
 #[test]
