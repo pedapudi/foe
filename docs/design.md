@@ -1039,7 +1039,7 @@ it.
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 6,700 lines,
+sandbox, and spawning — and its Rust source stays under 6,250 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a contract is lives in `crates/contract`, which is budgeted
@@ -1048,7 +1048,7 @@ document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 1,825 lines on
+The tool surface in `crates/code` is budgeted apart, under 2,350 lines on
 the same terms. It is separate because it grows a tool at a time: a new
 tool adds capability without touching the kernel, so room for tools must
 not become room for the loop. The workflow executor in `crates/workflow`
@@ -1067,16 +1067,15 @@ that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
 
-The ceilings reserve 500 kernel lines, 75 contract lines, and 75 command-line
-lines for captured executables and their headroom. The execution-contract
-crate reads each reachable configured executable during construction.
+The execution-contract crate reads each reachable configured executable
+during construction.
 The kernel materializes, confines, invokes, checks, and transfers those
 snapshots across child process boundaries. The command line constructs the
 root captured-executable tree before confinement. This mechanism adds no contract-document
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,425 lines. It is separate because it serves a person at a terminal
+under 1,650 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
@@ -1095,9 +1094,9 @@ Evidence is budgeted apart on the same terms: `crates/evidence` stays under
 check that gains a rule must not buy room in the runtime or execution-contract
 crates. See [evidence.md](evidence.md).
 
-Rust outside every line budget, in the built-in transport, is bounded by the
-size of the binary it compiles into. Continuous integration enforces every
-budget as a test.
+The model clients in `crates/transport` stay under 2,700 lines. They own the
+HTTP formats, credential sources, endpoint table, and request loop.
+Continuous integration enforces every budget as a test.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it

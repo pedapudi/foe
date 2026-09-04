@@ -44,8 +44,6 @@ mod http;
 pub mod paths;
 pub mod providers;
 mod sse;
-#[cfg(test)]
-mod testserver;
 
 use auth::{Auth, AuthKind};
 use format::{Decoder, Format};
@@ -535,6 +533,10 @@ pub(crate) fn describe_error_body(text: &str) -> String {
         snippet
     }
 }
+
+#[cfg(test)]
+#[path = "testserver_test.rs"]
+mod testserver;
 
 /// Shared helpers for the tests of this crate.
 #[cfg(test)]

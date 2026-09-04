@@ -54,9 +54,9 @@ sentence on first reading.
   comment-only lines. `log` and `core` form the kernel and stay under 6,250
   lines together. `contract` stays under 1,575, `code` under 2,350, `workflow`
   under 1,050, `context` under 500, `view` under 600, `cli` under 1,650,
-  `telemetry` under 1,000, and `evidence` under 500. The viewer HTML,
-  TypeScript, and CSS use the compressed bundle limit in `docs/design.md`.
-  `scripts/loc.sh` enforces every Rust line budget.
+  `transport` under 2,700, `telemetry` under 1,000, and `evidence` under 500.
+  The viewer HTML, TypeScript, and CSS use the compressed bundle limit in
+  `docs/design.md`. `scripts/loc.sh` enforces every Rust line budget.
 
 ## Commits
 

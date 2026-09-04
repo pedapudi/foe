@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Nine budgets: 6,250 over the kernel, which is log and core together; 1,575
-# over contract, which defines execution-contract documents, resolution, and
-# fingerprints; 2,350 over tools, which is code and the team coordinator; 1,050 over workflow; 500 over
-# context; 600 over view; 1,650 over cli; 1,000 over telemetry; and 500 over
-# evidence, which verifies portable bundles. The kernel is budgeted apart
-# from contract because the kernel measures the machine and contract measures
-# the data model. A document that gains a key must not buy room in the loop.
+# Ten budgets: 6,250 over the kernel; 1,575 over contract; 2,350 over tools;
+# 1,050 over workflow; 500 over context; 600 over view; 1,650 over cli;
+# 2,700 over transport; 1,000 over telemetry; and 500 over evidence.
+# The kernel combines log and core. Contract defines execution-contract
+# documents, resolution, and fingerprints. Evidence verifies portable bundles.
+# The kernel is budgeted apart from contract because it measures the machine.
+# Contract measures the data model. A document that gains a key must not buy
+# room in the loop.
 # The viewer is budgeted apart because it delivers a record of a run rather
 # than running one, and its browser bundle is bounded by size instead, in view/.
 # The command line is budgeted apart because it serves a person at a terminal
@@ -17,7 +18,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 count() {
   find "crates/$1/src" -name '*.rs' ! -path '*/tests/*' ! -name '*_test.rs' ! -name 'generated*' \
-      -exec cat {} + | grep -cvE '^\s*$|^\s*//' || true
+      -exec awk '
+          FNR == 1 { test_only = 0; test_attribute = 0 }
+          test_only { next }
+          /^#\[cfg\(test\)\]$/ { test_attribute = 1; next }
+          test_attribute && /^mod tests \{$/ { test_only = 1; next }
+          {
+            if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*\/\//) lines++
+            test_attribute = 0
+          }
+          END { print lines + 0 }' {} +
 }
 kernel=0
 for c in log core; do
@@ -37,9 +47,12 @@ view=$(count view)
 printf '%-8s %6d  (budget 600)\n' view "$view"
 cli=$(count cli)
 printf '%-8s %6d  (budget 1650)\n' cli "$cli"
+transport=$(count transport)
+printf '%-8s %6d  (budget 2700)\n' transport "$transport"
 telemetry=$(count telemetry)
 printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
 evidence=$(count evidence)
 printf '%-8s %6d  (budget 500)\n' evidence "$evidence"
 [ "$kernel" -le 6250 ] && [ "$contract" -le 1575 ] && [ "$tools" -le 2350 ] && [ "$workflow" -le 1050 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1650 ] && [ "$telemetry" -le 1000 ] && [ "$evidence" -le 500 ]
+  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1650 ] && [ "$transport" -le 2700 ] \
+  && [ "$telemetry" -le 1000 ] && [ "$evidence" -le 500 ]
