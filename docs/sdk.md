@@ -485,9 +485,15 @@ reported the same way.
 
 The package calls the transport once per `model/request`, and the runtime
 has at most one outstanding request at a time, so the transport never runs
-concurrently with itself within one episode. When the document has child
-contracts, requests from child episodes carry an `episode_id` on the event;
-the package echoes it on every answer, as protocol.md requires.
+concurrently with itself within one episode. The host invokes a transport
+on the protocol loop. Request setup and streamed-response iteration must
+yield control so sibling episodes and other host work can proceed.
+Asynchronous I/O satisfies this requirement. An adapter around a synchronous
+streaming client must move both operations off the protocol loop.
+
+When the document has child contracts, requests from child episodes carry
+an `episode_id` on the event; the package echoes it on every answer, as
+protocol.md requires.
 
 ### The reference adapter
 
