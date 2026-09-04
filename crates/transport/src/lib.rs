@@ -730,7 +730,7 @@ mod tests {
         for name in known_providers() {
             let mut config = model(name);
             match name {
-                "openai-compatible" => {
+                "compatible-http" => {
                     config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
                 }
                 "vertex" => {
@@ -789,8 +789,8 @@ mod tests {
 
     #[test]
     fn a_missing_required_option_names_the_key_and_the_hint() {
-        let err = plan_with_home(&model("openai-compatible"), &fake_home("required")).unwrap_err().to_string();
-        assert!(err.starts_with("model.base_url: required by provider openai-compatible; "), "{err}");
+        let err = plan_with_home(&model("compatible-http"), &fake_home("required")).unwrap_err().to_string();
+        assert!(err.starts_with("model.base_url: required by provider compatible-http; "), "{err}");
         let err = plan_with_home(&model("vertex"), &fake_home("required")).unwrap_err().to_string();
         assert!(err.starts_with("model.project: required by provider vertex; "), "{err}");
     }
@@ -835,12 +835,12 @@ mod tests {
             ("anthropic", "api.anthropic.com", "/v1/messages"),
             ("openai", "api.openai.com", "/v1/responses"),
             ("openrouter", "openrouter.ai", "/api/v1/chat/completions"),
-            ("openai-compatible", "127.0.0.1", "/v1/chat/completions"),
+            ("compatible-http", "127.0.0.1", "/v1/chat/completions"),
         ];
         for (name, host, path) in cases {
             let mut config = model(name);
             config.options.insert("api_key_file".into(), key.to_string_lossy().into_owned());
-            if name == "openai-compatible" {
+            if name == "compatible-http" {
                 config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
             }
             let transport = build(&config, None).unwrap_or_else(|e| panic!("{name}: {e}"));

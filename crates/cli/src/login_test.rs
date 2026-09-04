@@ -175,10 +175,10 @@ fn listing_shows_every_provider_with_its_state() {
     run(&mut session, Options::default()).unwrap();
     let text = String::from_utf8(output).unwrap();
     for provider in PROVIDERS {
-        assert!(text.contains(provider.name), "{text}");
+        let row = text.lines().find(|line| line.starts_with(provider.name)).unwrap_or_else(|| panic!("{text}"));
+        let state = if provider.auth == AuthKind::None { "no login" } else { "not configured" };
+        assert!(row.contains(state), "{row}");
     }
-    assert!(text.contains("anthropic          not configured"), "{text}");
-    assert!(text.contains("exec               no login"), "{text}");
 }
 
 /// docs/models.md "foe login": the Codex flow opens an authorization URL

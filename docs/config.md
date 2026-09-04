@@ -540,7 +540,7 @@ One block per provider:
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
 { "provider": "openai", "model": "gpt-5.6-sol", "reasoning_effort": "medium" }
-{ "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/ollama.key" }
+{ "provider": "compatible-http", "model": "fixture-model", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/compatible-http.key" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
 { "provider": "openai-codex", "model": "gpt-5.6-sol" }
 { "provider": "vertex", "model": "gemini-2.5-pro", "project": "my-project", "location": "us-east5" }

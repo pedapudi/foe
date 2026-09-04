@@ -40,7 +40,7 @@ decides the wire format, the kind of credential, and the default endpoint.
 |---|---|---|---|
 | `anthropic` | Anthropic's API | API key | the key |
 | `openai` | OpenAI's API, over the Responses API | API key | the key |
-| `openai-compatible` | any server speaking the Chat Completions API: Ollama, vLLM, llama.cpp, LiteLLM, and others | API key | the server's base URL, then the key |
+| `compatible-http` | any server speaking the streaming chat-completion format | API key | the server's base URL, then the key |
 | `openrouter` | OpenRouter, one key for many models | API key | the key |
 | `openai-codex` | a ChatGPT subscription through the Codex backend | OAuth token, obtained in the browser | nothing typed; a browser sign-in |
 | `vertex` | Google Cloud Vertex AI: Gemini models, and Claude models by name | Google credentials | the credentials file, the project, the location |
@@ -52,7 +52,7 @@ One `model` block per provider, each the smallest that runs after
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
 { "provider": "openai", "model": "gpt-5.6-sol" }
-{ "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1" }
+{ "provider": "compatible-http", "model": "fixture-model", "base_url": "http://127.0.0.1:11434/v1" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
 { "provider": "openai-codex", "model": "gpt-5.6-sol" }
 { "provider": "vertex", "model": "gemini-2.5-pro" }
@@ -82,12 +82,12 @@ Every provider-specific option is a flat string. The options by provider:
 
 | option | providers | meaning |
 |---|---|---|
-| `api_key_file` | `anthropic`, `openai`, `openai-compatible`, `openrouter` | absolute path of the key file; see the next section for the default |
+| `api_key_file` | every API-key provider | absolute path of the key file; see the next section for the default |
 | `token_file` | `openai-codex` | absolute path of the OAuth token file; see the next section for the default |
 | `credentials_file` | `vertex` | absolute path of a Google application-default-credentials file or service account key |
 | `project` | `vertex` | the Google Cloud project id; required |
 | `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
-| `base_url` | every HTTP provider | replaces the default endpoint; required for `openai-compatible` |
+| `base_url` | every HTTP provider | replaces the default endpoint; required for `compatible-http` |
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
 | `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
@@ -132,7 +132,7 @@ used.
 | `vertex` | `gemini-2.5` | 1048576 |
 | `vertex` | `claude-` | 200000 |
 
-`openai-compatible` and `exec` know no windows, because the model behind
+`compatible-http` and `exec` know no windows, because the model behind
 them is whatever the server or contract answers for.
 
 ## Where credentials live
@@ -196,7 +196,7 @@ API key:` and sends one authenticated request that lists the provider's
 models; OpenRouter answers a key-information request instead. The
 credentials file is written with mode 0600 only when the provider accepted
 the key. A rejected key ends with the provider's message and the
-instruction to run the command again. `openai-compatible` asks for the
+instruction to run the command again. `compatible-http` asks for the
 server's base URL first, because it has no default, and stores that URL in
 the default model block.
 
@@ -296,7 +296,7 @@ all of them. A row exists only when both of its features are enabled, so
 | wire format | module | providers | feature |
 |---|---|---|---|
 | Anthropic Messages | `format/messages.rs` | `anthropic`, `vertex` for `claude*` models | `messages` |
-| OpenAI Chat Completions | `format/chat.rs` | `openai-compatible`, `openrouter` | `chat` |
+| streaming chat completions | `format/chat.rs` | every provider row using `chat` | `chat` |
 | OpenAI Responses | `format/responses.rs` | `openai`, `openai-codex` | `responses` |
 | Gemini on Vertex AI | `format/gemini.rs` | `vertex` for other models | `gemini` |
 
@@ -345,7 +345,7 @@ and no notion of a refusal. Each provider maps onto it with these losses.
 |---|---|
 | `anthropic` | a `refusal` stop reason and any unknown stop reason become a non-retryable error |
 | `openai`, `openai-codex` | a `content_filter` incompletion and a refusal part become non-retryable errors; failed responses for server errors, unavailable service, rate limits, or an absent code are retried; reasoning is replayed only for items that arrived with `encrypted_content`, which every request asks for with `store: false` |
-| `openai-compatible`, `openrouter` | a `content_filter` finish becomes a non-retryable error; a failed tool result has no field and travels as text; reasoning blocks are never replayed, because the API has no item for them; the reasoning stream fields are a convention of DeepSeek, vLLM, and llama.cpp rather than part of the specification |
+| providers using `chat` | a `content_filter` finish becomes a non-retryable error; a failed tool result has no field and travels as text; reasoning blocks are never replayed because the format has no item for them |
 | `vertex` with Gemini | `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`, and a blocked prompt become non-retryable errors; function calls have no ids, so the transport numbers them per response and results are matched by function name; a thought signature is replayed on a part of the kind it arrived on, and a signature whose part has no counterpart in the replayed turn is dropped; schema keywords the API rejects, `additionalProperties` and every `$`-prefixed keyword, are removed from tool declarations |
 | `vertex` with Claude | as `anthropic` |
 | `exec` | chunks arrive after the transport process exits rather than as it writes them |

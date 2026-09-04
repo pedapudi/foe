@@ -137,9 +137,9 @@ pub static PROVIDERS: &[Provider] = &[
     },
     #[cfg(all(feature = "chat", feature = "api-key"))]
     Provider {
-        name: "openai-compatible",
-        title: "OpenAI-compatible server",
-        description: "any server speaking the Chat Completions API, such as Ollama, vLLM, llama.cpp, or LiteLLM",
+        name: "compatible-http",
+        title: "Compatible HTTP endpoint",
+        description: "any server speaking the streaming chat-completion format",
         format: WireFormat::Chat,
         auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
         default_base_url: None,
