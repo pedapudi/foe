@@ -1390,7 +1390,7 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     }
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
-    // Materialization installs only example-owned executable files. Configs,
+    // Materialization installs only example-owned tools and checks. Configs,
     // prose, runners, build files, and host responses stay outside the episode.
     const NON_EXECUTABLE_FILES: [&str; 9] = [
         "BUILD.bazel",
@@ -1610,9 +1610,8 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// uses its fingerprint to identify the execution contract that produced it.
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
-const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
+const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("budget-exhausted", "sha256:9fbbc1d6124705e0fe6670ac3a2a9354942b75ac7ef6aae38b3a81b07fe7fa93"),
-    ("exec-transport", "sha256:e831dbc44bbe1f6d666e3033a70049b3b44e5fb9e61e39425cb33d6f6098ae45"),
     ("host-transport", "sha256:6edc5655961a1532619a5cd9317905a4eff8d611907b9175b69874c8f77fab19"),
     ("minimal", "sha256:b8872d36e26f43f0d7607aeef035dead64c53064f374aebd91489bc75a9be15a"),
     ("recovery-exhausted", "sha256:ff1f692d7d998087fb8f822d1910cfd05ab67caa6d145690ce07f72a881bca93"),

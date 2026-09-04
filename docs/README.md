@@ -39,6 +39,6 @@ diastil editor or any text editor.
 | [presentations/foe-isolation-and-permissions.dia.html](presentations/foe-isolation-and-permissions.dia.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds fourteen runnable
-programs, one per mechanism. Each answers the model from a script
-and checks its own result; `examples/README.md` indexes them.
+rules for changing the repository. `examples/` holds thirteen runnable
+programs, one per mechanism. Each uses deterministic responses and checks its
+own result; `examples/README.md` indexes them.

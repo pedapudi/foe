@@ -272,13 +272,6 @@ executor captures output whole. A process that exits without a final `done` or
 `error` chunk produces an error quoting its standard error; a non-zero exit
 is not retried, an exit of zero without a final chunk is.
 
-[`examples/exec-transport/`](../examples/exec-transport/) holds two such
-transport executables and the configuration that runs them: `litellm-transport`, of
-about fifty lines, which answers through `litellm`, and
-`scripted-transport.py`, which answers with fixed chunks so that the
-example runs without a credential. Its README states which lines to
-change to reach a provider.
-
 ## Formats and credential sources
 
 The transport crate is organized as a table of wire formats times credential

@@ -1,5 +1,4 @@
 exports_files([
-    "chunks.py",
     "loopback_http.py",
     "materialize.py",
     "response_chunks.py",

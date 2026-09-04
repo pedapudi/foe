@@ -1,12 +1,11 @@
 # Example support
 
-Six helpers support the end-to-end examples.
+Five helpers support the end-to-end examples.
 
 | file | job |
 |---|---|
 | `loopback_http.py` | serves deterministic streaming responses over loopback HTTP and records every request |
 | `materialize.py` | replaces absolute path markers with directories created by a runner |
-| `chunks.py` | writes protocol lines for the executable-transport example |
 | `response_chunks.py` | builds chunks for deterministic host responses |
 | `responses.py` | defines shared responses selected by request state |
 | `run_with_host.py` | runs a configuration against the built binary while the host supplies responses |
