@@ -279,6 +279,14 @@ class ExecutionContract:
 
         if isinstance(done_when, Verified) and done_when.verify_name not in self.tools:
             raise ConfigError(f"done_when.verify: {done_when.verify_name!r} is not a tool in tools")
+        if isinstance(done_when, Verified) and (verifier := self.host_tools.get(done_when.verify_name)) is not None:
+            parameters = verifier.spec.params.get("properties")
+            count = len(parameters) if isinstance(parameters, Mapping) else 0
+            if count != 1:
+                raise ConfigError(
+                    f"done_when.verify: {done_when.verify_name!r} is a host verifier whose schema must declare "
+                    f"one parameter; found {count}"
+                )
         for child in grants.spawn:
             if child not in self.child_contracts:
                 raise ConfigError(f"grants.spawn: {child!r} is not a key of child_contracts")

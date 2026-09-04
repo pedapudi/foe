@@ -390,7 +390,9 @@ the candidate result as its single argument, and the function returns a
 list of finding strings, where an empty list means no findings. The
 package writes the tool into `host_tools` with effect `pure` and a
 one-parameter schema, appends it to `tools` when it is not already listed,
-and writes `done_when.verify` as its name. `Verified(verify="check")`
+and writes `done_when.verify` as its name. The function declares exactly one
+parameter other than capability handles. Contract construction rejects any
+other parameter count. `Verified(verify="check")`
 names a tool already in `tools`, such as a `tool_defs` entry. `Verified`
 also accepts `returns=` so that the verifier checks a typed return.
 

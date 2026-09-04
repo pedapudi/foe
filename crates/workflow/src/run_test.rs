@@ -235,7 +235,12 @@ impl Fixture {
 
     /// Registers a scripted tool under `name` with the given results.
     fn tool(mut self, name: &str, results: Vec<ToolValue>, delay_ms: u64) -> Self {
-        self.add_tool(name, results, delay_ms, Effect::Pure);
+        self.add_tool(name, results, delay_ms, Effect::Pure, json!({ "type": "object" }));
+        self
+    }
+
+    fn verifier(mut self, name: &str, results: Vec<ToolValue>) -> Self {
+        self.add_tool(name, results, 0, Effect::Pure, json!({ "type": "object", "properties": { "candidate": {} } }));
         self
     }
 
@@ -243,20 +248,15 @@ impl Fixture {
     /// the write root such an effect needs.
     fn effectful_tool(mut self, name: &str, delay_ms: u64, effect: Effect) -> Self {
         self.config["grants"]["write"] = json!([self.dir]);
-        self.add_tool(name, Vec::new(), delay_ms, effect);
+        self.add_tool(name, Vec::new(), delay_ms, effect, json!({ "type": "object" }));
         self
     }
 
-    fn add_tool(&mut self, name: &str, results: Vec<ToolValue>, delay_ms: u64, effect: Effect) {
+    fn add_tool(&mut self, name: &str, results: Vec<ToolValue>, delay_ms: u64, effect: Effect, params: Value) {
         let calls = Arc::new(Mutex::new(Vec::new()));
         self.calls.insert(name.to_string(), calls.clone());
-        let spec = ToolSpec {
-            name: name.into(),
-            description: format!("scripted {name}"),
-            instruction: None,
-            params: json!({ "type": "object" }),
-            effect,
-        };
+        let spec =
+            ToolSpec { name: name.into(), description: format!("scripted {name}"), instruction: None, params, effect };
         self.tools.push(Box::new(Scripted {
             spec,
             results: Mutex::new(results.into()),
@@ -1016,7 +1016,7 @@ async fn verify_retries_then_recovers_and_nested_workflows_produce_their_termina
         } }),
     )
     .tool("t", vec![], 0)
-    .tool("check", vec![ToolValue::ok(json!(["too short"]), "1"), ToolValue::ok(json!(["still short"]), "1")], 0)
+    .verifier("check", vec![ToolValue::ok(json!(["too short"]), "1"), ToolValue::ok(json!(["still short"]), "1")])
     .respond(recover(json!({ "action": "abort", "code": "goal-unreachable", "message": "cannot satisfy check" })));
     let (outcome, events) = fx.run().await;
     assert_eq!(

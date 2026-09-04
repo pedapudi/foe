@@ -67,10 +67,17 @@ the route the runtime saw.
 
 ### `host/tool-call`
 
-Emitted when the model calls a tool that the host registered. The host runs
-the tool and answers with one `tool/result` line. The runtime has already
-checked the arguments against the tool's declared `params` schema, so a call
-that reaches the host conforms to the schema the host declared.
+Emitted when the runtime calls a tool that the host registered. The call may
+come from a model response or from an authoritative verifier invocation. The
+host runs the tool and answers with one `tool/result` line. The runtime has
+already checked model-supplied arguments against the tool's declared `params`
+schema.
+
+An authoritative verifier call binds the complete candidate under the
+verifier's sole declared parameter. Construction rejects a host or built-in
+verifier unless its schema declares one parameter. The candidate itself may
+be a scalar, an object, or an object containing a field with the parameter's
+name.
 
 ```json
 {"seq": 9, "time": 1724200000456, "type": "host/tool-call", "data": {

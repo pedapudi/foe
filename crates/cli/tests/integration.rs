@@ -1398,7 +1398,7 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
     ("budget-exhausted", "sha256:46fefc2dcaf73d8b9b258e068a2ef9621d9eabbbe1963eb1d32170a974f1faba"),
     ("exec-transport", "sha256:e831dbc44bbe1f6d666e3033a70049b3b44e5fb9e61e39425cb33d6f6098ae45"),
-    ("host-transport", "sha256:f88ee6fbf62bf4c0f992df784d356b517c26730f71475734a1c629f9a0a6ae01"),
+    ("host-transport", "sha256:6edc5655961a1532619a5cd9317905a4eff8d611907b9175b69874c8f77fab19"),
     ("minimal", "sha256:3749aba577f9a7014716d95b61d965b89b9f8c1c96fa185c9dc0ba114836ac0c"),
     ("recovery-exhausted", "sha256:f6e34210be5007468b1f9c67fa3f0acb104e5c4257a666fe18db976571866305"),
     ("sandbox", "sha256:d782d818af096573c8df312bace6be8ef32e0b80f781793e51bd6c13fef1bc91"),

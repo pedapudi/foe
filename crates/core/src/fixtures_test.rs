@@ -219,6 +219,10 @@ pub fn spec(name: &str, effect: Effect) -> ToolSpec {
     }
 }
 
+pub fn verifier_spec(name: &str, effect: Effect) -> ToolSpec {
+    ToolSpec { params: json!({ "type": "object", "properties": { "candidate": {} } }), ..spec(name, effect) }
+}
+
 /// Reports which handles it received and when it ran, and sleeps for
 /// `delay` so that concurrency is observable.
 pub struct Probe {

@@ -428,20 +428,24 @@ episode completes when the model produces a turn with no tool calls.
 `verify` and `returns` may both be present. The verifier then checks the
 returned value.
 
-A verifier is invoked once per candidate, with the candidate as its input and
-an empty argument list. For a tool in `tool_defs`, the candidate is passed
-as JSON on standard input. The executable accepts the candidate by exiting
-with status zero and printing nothing. It reports findings by exiting with
-status zero and printing one finding per line on standard output. Any other
-exit status, an end by signal, or a timeout is a failure of the verifier
-rather than a judgment of the candidate: the episode ends as `failed` with
-the exit code and both output streams as its error. For a host tool or a
-built-in tool, the candidate is the single argument and the returned value
-is a list of finding strings; an error result is likewise a failure of the
-verifier. A verifier is therefore a contract written to this contract; a
-general-purpose linter is wrapped by a short script that reads the
-candidate, runs the linter, prints its findings, and exits with status zero
-whether or not it found any.
+A verifier is invoked once per candidate. A tool in `tool_defs` receives the
+complete candidate as JSON on standard input and an empty argument list. The
+executable accepts the candidate by exiting with status zero and printing
+nothing. It reports findings by exiting with status zero and printing one
+finding per line on standard output.
+
+A host or built-in verifier declares exactly one parameter in its parameter
+schema. Contract construction rejects any other parameter count. The runtime
+calls the tool with an argument object that binds the complete candidate to
+that parameter. The tool returns a list of finding strings. An error result
+means that the verifier failed to judge the candidate.
+
+A nonzero exit status, an end by signal, or a timeout means that the
+executable verifier failed to judge the candidate. The episode ends as
+`failed` with the exit code and both output streams as its error. A
+general-purpose linter therefore needs a wrapper that reads the candidate,
+runs the linter, prints its findings, and exits with status zero whether it
+accepts the candidate or reports findings.
 
 A `returns` schema may declare a `learned` member. The member is an array of
 objects. Each object pairs a one-sentence `claim` string with an integer

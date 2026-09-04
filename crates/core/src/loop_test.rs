@@ -3,8 +3,8 @@ use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
 use crate::test_util::{
-    call, contract_with, done, registry_for, text as text_chunk, tmp, turn, Probe, ScratchDir, ScriptedTransport,
-    Verifier,
+    call, contract_with, done, registry_for, text as text_chunk, tmp, turn, verifier_spec, Probe, ScratchDir,
+    ScriptedTransport, Verifier,
 };
 use crate::{Tool, Transport};
 use foe_contract::document::ResolvedContract;
@@ -591,7 +591,7 @@ async fn a_parent_can_end_with_child_blocked() {
 #[tokio::test]
 async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_spent() {
     let verifier = || Verifier {
-        spec: crate::test_util::spec("check", Effect::Pure),
+        spec: verifier_spec("check", Effect::Pure),
         findings: Mutex::new(vec![vec!["missing test".into()], vec![]].into()),
     };
     let edit = |v: &mut serde_json::Value| {
@@ -615,7 +615,7 @@ async fn verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_s
     assert!(matches!(second.messages.last(), Some(foe_log::Message::User { .. })), "findings enter the next request");
 
     let stubborn = Verifier {
-        spec: crate::test_util::spec("check", Effect::Pure),
+        spec: verifier_spec("check", Effect::Pure),
         findings: Mutex::new(vec![vec!["a".into()], vec!["b".into()]].into()),
     };
     let fx = Fixture::new("loop-verify-spent", edit, vec![turn("1", vec![]), turn("2", vec![])]);
@@ -640,7 +640,7 @@ fn verifications(events: &[Event]) -> Vec<&foe_log::VerificationResult> {
 #[tokio::test]
 async fn every_authoritative_verification_is_recorded_as_one_event() {
     let verifier = Verifier {
-        spec: crate::test_util::spec("check", Effect::Pure),
+        spec: verifier_spec("check", Effect::Pure),
         findings: Mutex::new(vec![vec!["missing test".into()], vec![]].into()),
     };
     let fx = Fixture::new(
@@ -677,6 +677,8 @@ async fn every_authoritative_verification_is_recorded_as_one_event() {
 /// the error, before the episode ends as failed.
 #[tokio::test]
 async fn a_failed_verifier_records_a_failed_verification() {
+    let mut failed = Probe::new("p", Effect::Pure);
+    failed.spec.params = json!({ "type": "object", "properties": { "candidate": {} } });
     let fx = Fixture::new(
         "loop-verify-failed",
         |v| {
@@ -685,7 +687,7 @@ async fn a_failed_verifier_records_a_failed_verification() {
         },
         vec![turn("candidate", vec![])],
     );
-    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    let (outcome, events) = fx.tool(failed).run().await;
     assert!(matches!(outcome, Outcome::Failed { error } if error.contains("not a list of strings")));
     let recorded = verifications(&events);
     assert_eq!(recorded.len(), 1);
@@ -698,10 +700,8 @@ async fn a_failed_verifier_records_a_failed_verification() {
 /// completion signal, so a verified artifact completes on the last call.
 #[tokio::test]
 async fn a_declared_verifier_call_can_complete_on_the_last_model_call() {
-    let verifier = Verifier {
-        spec: crate::test_util::spec("check", Effect::Pure),
-        findings: Mutex::new(vec![vec![], vec![]].into()),
-    };
+    let verifier =
+        Verifier { spec: verifier_spec("check", Effect::Pure), findings: Mutex::new(vec![vec![], vec![]].into()) };
     let fx = Fixture::new(
         "loop-verify-last-call",
         |v| {
@@ -721,7 +721,7 @@ async fn a_declared_verifier_call_can_complete_on_the_last_model_call() {
 #[tokio::test]
 async fn verifier_findings_on_the_last_model_call_leave_the_episode_exhausted() {
     let verifier = Verifier {
-        spec: crate::test_util::spec("check", Effect::Pure),
+        spec: verifier_spec("check", Effect::Pure),
         findings: Mutex::new(vec![vec!["missing".into()], vec!["missing".into()]].into()),
     };
     let fx = Fixture::new(
@@ -788,8 +788,7 @@ impl Tool for LargeError {
 /// successful results in this episode before the semantic verifier judges it.
 #[tokio::test]
 async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verifier() {
-    let verifier =
-        Verifier { spec: crate::test_util::spec("check", Effect::Pure), findings: Mutex::new(vec![vec![]].into()) };
+    let verifier = Verifier { spec: verifier_spec("check", Effect::Pure), findings: Mutex::new(vec![vec![]].into()) };
     let fx = Fixture::new(
         "loop-learned-completion",
         |v| {

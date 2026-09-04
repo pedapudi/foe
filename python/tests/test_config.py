@@ -145,6 +145,29 @@ def test_verified_callable_generates_a_pure_one_parameter_host_tool() -> None:
     assert doc["done_when"] == {"verify": "validate_patches", "retries": 2}
 
 
+def test_host_verifier_requires_one_data_parameter() -> None:
+    @foe.tool
+    def no_candidate() -> list[str]:
+        """Check without receiving a candidate."""
+        return []
+
+    @foe.tool
+    def split_candidate(summary: str, risks: list[str]) -> list[str]:
+        """Check separate candidate fields."""
+        return []
+
+    for verifier, count in [(no_candidate, 0), (split_candidate, 2)]:
+        with pytest.raises(foe.ConfigError, match=rf"done_when.verify: .*one parameter; found {count}"):
+            foe.ExecutionContract(
+                name="p",
+                instructions={"role": "r"},
+                tools=[verifier],
+                grants=foe.Grants(read=["/src"]),
+                budget=foe.Budget(model_calls=1),
+                done_when=foe.Verified(verify=verifier),
+            )
+
+
 def test_to_json_with_task_appends_task_and_omits_model() -> None:
     doc = json.loads(make_contract().to_json("Propose the next experiment."))
     assert doc["task"] == "Propose the next experiment."

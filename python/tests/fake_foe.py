@@ -426,7 +426,8 @@ class Episode:
         if spec is None:
             return []
         properties = list((spec["params"].get("properties") or {}).keys())
-        arg_name = properties[0] if properties else "candidate"
+        assert len(properties) == 1, "host verifier schemas declare one parameter"
+        arg_name = properties[0]
         call = {"id": f"tc_verify_{step}", "name": verifier, "args": {arg_name: candidate}}
         line = self.host_call(step, call)
         value = line["value"]
