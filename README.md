@@ -151,25 +151,26 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Eleven numbers bound the source. Nine are line budgets over Rust, excluding
-tests and generated code. The kernel stays under 6,700 lines. The contract
-crate stays under 1,575, tools under 1,825, workflow under 1,050, context
-under 500, view under 600, the command line under 1,425, telemetry under 1,000,
-and evidence under 500. The separate tool budget allows capability growth while
-keeping the kernel ceiling fixed. The kernel measures the machine. The contract
-crate defines the execution-contract data model. Their separate budgets keep a
-document key from enlarging the loop budget.
-The viewer is budgeted apart from the runtime because it delivers a record of a
-run rather than running one; its HTML, TypeScript, and CSS count toward no line
-budget at all. The command line is budgeted apart from the runtime because it
-serves a person at a terminal rather than an episode. Telemetry is budgeted
-apart because it reads a finished log rather than producing one, and no part of
-the runtime depends on it. `scripts/loc.sh` counts the nine Rust budgets, and
-continuous integration fails a build over any of them. Another bound limits
-the browser bundle to 150 KB compressed. The last bound is the stripped release
-binary with that bundle embedded. It measured 6,097,480 bytes on 2026-09-01.
-Continuous integration builds the bundle before measuring and fails a build
-over 8 MiB.
+Ten line budgets bound the Rust source, excluding tests and generated code.
+
+| surface | line ceiling |
+|---|---:|
+| kernel (`log` and `core`) | 6,250 |
+| execution contracts | 1,575 |
+| tools | 2,350 |
+| workflows | 1,050 |
+| compaction | 500 |
+| viewer server | 600 |
+| command line | 1,650 |
+| model transports | 2,700 |
+| telemetry | 1,000 |
+| evidence | 500 |
+
+The separate budgets keep growth in one surface from enlarging another.
+`scripts/loc.sh` enforces all ten. Continuous integration also limits the
+compressed browser bundle to 150 KB and the stripped release binary with that
+bundle embedded to 8 MiB. [docs/design.md](docs/design.md#size) explains what
+each boundary protects.
 
 ## Documents
 
