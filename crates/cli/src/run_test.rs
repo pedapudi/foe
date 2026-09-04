@@ -266,6 +266,44 @@ fn builtin_coding_can_retrieve_shortened_tool_results() {
     assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
 }
 
+/// docs/config.md `done_when`: an invalid host verifier is rejected before
+/// the episode records its start event.
+#[test]
+fn invalid_host_verifier_schema_starts_no_episode() {
+    let dir = crate::tests::scratch("foe-cli-run", "invalid-verifier");
+    let config_path = dir.join("config.json");
+    std::fs::write(
+        &config_path,
+        serde_json::to_vec(&serde_json::json!({
+            "version": 4,
+            "name": "invalid-verifier",
+            "instructions": {"role": "test"},
+            "tools": ["check"],
+            "host_tools": {"check": {
+                "description": "check", "effect": "pure",
+                "params": {"type": "object", "properties": {}}
+            }},
+            "grants": {"read": [dir.to_path_buf()]},
+            "budget": {"model_calls": 1},
+            "done_when": {"verify": "check"},
+            "sandbox": {"mode": "off"},
+            "task": "test"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let error = run(Options {
+        config: Some(config_path),
+        log_dir: Some(dir.to_path_buf()),
+        host: true,
+        headless: true,
+        ..Options::default()
+    })
+    .unwrap_err();
+    assert!(error.contains("done_when.verify") && error.contains("found 0"), "{error}");
+    assert!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
+}
+
 /// docs/design.md "Contract construction": a child resumed without its
 /// inherited executable descriptors validates the recorded fingerprint.
 #[test]

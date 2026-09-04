@@ -94,7 +94,9 @@ impl Registry {
             };
             entries.push(Entry { spec, tool, source, exec });
         }
-        Ok(Self { entries })
+        let registry = Self { entries };
+        registry.check_verifiers(contract)?;
+        Ok(registry)
     }
 
     /// Specifications in the order the model sees them.
@@ -124,6 +126,51 @@ impl Registry {
 
     fn entry(&self, name: &str) -> Option<&Entry> {
         self.entries.iter().find(|e| e.spec.name == name)
+    }
+
+    /// Every verifier implemented as a tool receives one candidate through
+    /// one declared parameter. Configured executables use standard input.
+    fn check_verifiers(&self, contract: &ResolvedContract) -> Result<(), ContractError> {
+        if let Some(name) = contract.done_when.as_ref().and_then(|done| done.verify.as_deref()) {
+            self.check_verifier("done_when.verify", name)?;
+        }
+        fn walk(
+            registry: &Registry,
+            prefix: &str,
+            workflow: &foe_contract::workflow::WorkflowConfig,
+        ) -> Result<(), ContractError> {
+            for (name, node) in &workflow.nodes {
+                let key = format!("{prefix}.nodes.{name}");
+                if let Some(verifier) = &node.verify {
+                    registry.check_verifier(&format!("{key}.verify"), verifier)?;
+                }
+                if let Some(inner) = &node.workflow {
+                    walk(registry, &format!("{key}.workflow"), inner)?;
+                }
+            }
+            Ok(())
+        }
+        if let Some(workflow) = &contract.workflow {
+            walk(self, "workflow", workflow)?;
+        }
+        Ok(())
+    }
+
+    fn check_verifier(&self, key: &str, name: &str) -> Result<(), ContractError> {
+        let entry = self.entry(name).expect("the verifier name resolved during contract validation");
+        if entry.exec.is_some() {
+            return Ok(());
+        }
+        let parameters = entry.spec.params.get("properties").and_then(Value::as_object).map_or(0, serde_json::Map::len);
+        if parameters == 1 {
+            return Ok(());
+        }
+        Err(ContractError::Invalid {
+            key: key.into(),
+            rule: format!(
+                "names non-executable verifier `{name}`, whose schema must declare one parameter; found {parameters}"
+            ),
+        })
     }
 
     /// The system prompt: instruction sections in key order, then the
@@ -250,42 +297,11 @@ impl Registry {
     }
 }
 
-/// Binds a verifier's candidate to the single parameter its schema declares.
-///
-/// A tool call's arguments are an OBJECT KEYED BY PARAMETER NAME -- that is
-/// what [`Registry::dispatch`] validates against `spec.params`, and what a
-/// host tool spreads over its function's parameters. A verifier's candidate
-/// is a value, not an argument map, so passing it straight through silently
-/// reinterprets the candidate's own fields as parameter names.
-///
-/// With an object-shaped `done_when.returns` that is never right. The
-/// verifier is called with the returned document's keys, and a host tool
-/// whose signature is the documented single parameter fails with an
-/// unexpected-keyword error naming one of the document's fields -- a
-/// different field each run, depending on which the model emitted first.
-///
-/// docs/sdk.md, "Verifiers": the runtime calls the verifier "with the
-/// candidate result as its single argument", and the SDK writes the tool in
-/// with "a one-parameter schema". So bind it: wrap the candidate under that
-/// one declared parameter's name.
-///
-/// Left alone when the schema does not declare exactly one property. A
-/// `tool_defs` executable takes the candidate on stdin and never reaches
-/// here, and a verifier that really does declare the candidate's fields as
-/// its own parameters keeps working.
+/// Binds the complete candidate to the verifier's sole declared parameter.
 fn bind_candidate(params: &Value, candidate: &Value) -> Value {
-    let Some(properties) = params.get("properties").and_then(Value::as_object) else {
-        return candidate.clone();
-    };
-    let mut names = properties.keys();
-    let (Some(only), None) = (names.next(), names.next()) else {
-        return candidate.clone();
-    };
-    // Already an argument map naming that parameter: pass it through, so a
-    // caller that binds for itself is not double-wrapped.
-    if candidate.get(only).is_some() {
-        return candidate.clone();
-    }
+    let properties =
+        params.get("properties").and_then(Value::as_object).expect("verifier schema checked at construction");
+    let only = properties.keys().next().expect("verifier parameter checked at construction");
     let mut args = serde_json::Map::new();
     args.insert(only.clone(), candidate.clone());
     Value::Object(args)

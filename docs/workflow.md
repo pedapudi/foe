@@ -115,7 +115,7 @@ The eight remaining fields apply to a node of any kind.
 | field | type | meaning |
 |---|---|---|
 | `follows` | list of node names | the nodes whose outputs this node receives, and `task` for the invocation task; default empty |
-| `verify` | tool name | a verifier run on the node's output; non-empty findings re-fire the node with the findings attached |
+| `verify` | tool name | a verifier run on the node's output under the `done_when.verify` interface; non-empty findings re-fire the node with the findings attached |
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
 | `branches` | object | a choice point; see below |
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
@@ -154,6 +154,11 @@ a timeout as `timed-out`. A model loop receives those process outcomes as
 data because its model can judge them. A workflow tool node has no model to
 make that judgment. The exit code and both output streams are the error
 recovery sees.
+
+A node verifier follows the parameter rule in
+[config.md](config.md#done_when). A host or built-in verifier declares one
+parameter and receives the complete node output through that parameter. A
+configured executable receives the complete output on standard input.
 
 ### Model nodes
 

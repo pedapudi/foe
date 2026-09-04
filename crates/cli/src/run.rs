@@ -716,25 +716,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let log = Arc::new(
         Log::create_or_open(&log_dir, host.then(stdout_mirror)).map_err(|e| format!("{}: {e}", log_dir.display()))?,
     );
-    // A parent may have input queued already. The task must retain seq 1
-    // before the protocol reader can append that input.
-    loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     let router = Arc::new(Router::new());
     let (protocol, stop) = Host::new(id.clone(), log.clone(), Some(router.clone()));
-    if host {
-        protocol.spawn_reader(tokio::io::stdin());
-    }
     let cancel = Arc::new(AtomicBool::new(false));
-    {
-        let (protocol, router, cancel) = (protocol.clone(), router.clone(), cancel.clone());
-        tokio::spawn(async move {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                cancel.store(true, Ordering::SeqCst);
-                router.cancel_all();
-                protocol.stop("interrupted by SIGINT");
-            }
-        });
-    }
     let transport = transport.unwrap_or_else(|| protocol.transport());
     let pool = Arc::new(Mutex::new(Pool::new(limits.clone())));
     let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone(), pool.clone()));
@@ -753,7 +737,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     .with_boundary(process.boundary());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
-    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel);
+    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel.clone());
     let sessions = Arc::new(
         LocalSessions::new(
             sandbox.clone(),
@@ -790,6 +774,22 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let workflow = contract.workflow.clone();
     let registry = Arc::new(registry);
     let children = Some(router.clone());
+    {
+        let (protocol, router, cancel) = (protocol.clone(), router.clone(), cancel.clone());
+        tokio::spawn(async move {
+            if tokio::signal::ctrl_c().await.is_ok() {
+                cancel.store(true, Ordering::SeqCst);
+                router.cancel_all();
+                protocol.stop("interrupted by SIGINT");
+            }
+        });
+    }
+    // A parent may have input queued already. Construction finishes before
+    // the task takes seq 1, and the reader starts only after that append.
+    loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    if host {
+        protocol.spawn_reader(tokio::io::stdin());
+    }
     let params = Params {
         log,
         start,
