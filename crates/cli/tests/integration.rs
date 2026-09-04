@@ -8,6 +8,13 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use foe_transport::auth::AuthKind;
+use foe_transport::providers::{Provider, WireFormat, PROVIDERS};
+
+#[path = "support/loopback.rs"]
+mod loopback;
+use loopback::{Reply, Server};
+
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
 use foe_contract::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
@@ -384,6 +391,206 @@ fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
     let mut logs = Vec::new();
     read(&log_dir, &mut logs);
     (logs, code)
+}
+
+fn sole_provider(predicate: impl Fn(&Provider) -> bool) -> &'static Provider {
+    let mut matching = PROVIDERS.iter().filter(|provider| predicate(provider));
+    let provider = matching.next().expect("one provider matches the endpoint properties");
+    assert!(matching.next().is_none(), "endpoint properties select one provider");
+    provider
+}
+
+fn response_event_stream(text: &str, input: u64, output: u64, cache_read: u64) -> String {
+    let events = [
+        json!({ "type": "response.output_text.delta", "delta": text }),
+        json!({
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "usage": {
+                    "input_tokens": input,
+                    "input_tokens_details": { "cached_tokens": cache_read },
+                    "output_tokens": output
+                }
+            }
+        }),
+    ];
+    events.iter().map(|event| format!("event: {}\ndata: {event}\n\n", event["type"].as_str().unwrap())).collect()
+}
+
+fn managed_event_stream(text: &str, input: u64, output: u64, cache_read: u64) -> String {
+    format!(
+        "data: {}\n\n",
+        json!({
+            "candidates": [{
+                "content": { "role": "model", "parts": [{ "text": text }] },
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": {
+                "promptTokenCount": input,
+                "candidatesTokenCount": output,
+                "cachedContentTokenCount": cache_read,
+                "totalTokenCount": input + output
+            }
+        })
+    )
+}
+
+fn managed_tool_event_stream(path: &str) -> String {
+    format!(
+        "data: {}\n\n",
+        json!({
+            "candidates": [{
+                "content": {
+                    "role": "model",
+                    "parts": [{ "functionCall": { "name": "read", "args": { "path": path } } }]
+                },
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": { "promptTokenCount": 7, "candidatesTokenCount": 2, "totalTokenCount": 9 }
+        })
+    )
+}
+
+fn assert_http_completion(logs: &[Vec<Value>], code: i32, text: &str, usage: Value) {
+    assert_eq!(code, 0, "{:?}", logs.first().and_then(|events| events.last()));
+    assert_eq!(logs.len(), 1);
+    let events = &logs[0];
+    let chunks: Vec<&Value> =
+        events.iter().filter(|event| event["type"] == "assistant/chunk").map(|event| &event["data"]["chunk"]).collect();
+    assert_eq!(chunks.iter().find(|chunk| chunk["kind"] == "text").unwrap()["delta"], text);
+    assert_eq!(chunks.iter().rev().find(|chunk| chunk["kind"] == "done").unwrap()["usage"], usage);
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": text }));
+}
+
+/// docs/models.md "Providers" and "The `model` block": an OAuth-backed
+/// endpoint reads a fresh stored token and completes through the built binary.
+#[test]
+fn an_oauth_backed_endpoint_completes_through_the_built_binary() {
+    let provider = sole_provider(|provider| {
+        matches!(provider.auth, AuthKind::TokenFile { account_header: Some(_), .. })
+            && provider.format == WireFormat::Responses
+            && provider.default_base_url.is_some()
+            && !provider.presets.is_empty()
+    });
+    let AuthKind::TokenFile { account_header: Some(account_header), .. } = provider.auth else {
+        unreachable!("provider selection requires an account header")
+    };
+    let completion = "OAuth endpoint completion.";
+    let server = Server::start(vec![Reply::event_stream(&response_event_stream(completion, 11, 4, 3))]);
+    let dir = scratch("oauth-endpoint");
+    let token_file = dir.join("token.json");
+    std::fs::write(
+        &token_file,
+        json!({ "access": "stored-access", "expires": 4_102_444_800_000_u64, "account_id": "account-7" }).to_string(),
+    )
+    .unwrap();
+    let model = provider.presets[0];
+    let config = config(&dir, |config| {
+        config["model"] = json!({
+            "provider": provider.name,
+            "model": model,
+            "base_url": server.origin(),
+            "token_file": token_file
+        });
+    });
+
+    let (logs, code) = headless_run(&dir, &config);
+    assert_http_completion(&logs, code, completion, json!({ "input": 11, "output": 4, "cache_read": 3 }));
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "a fresh token needs no exchange");
+    let request = &requests[0];
+    assert_eq!((request.method.as_str(), request.path.as_str()), ("POST", provider.path));
+    assert_eq!(request.header("authorization"), Some("Bearer stored-access"));
+    assert_eq!(request.header(account_header), Some("account-7"));
+    for (name, value) in provider.headers {
+        assert_eq!(request.header(name), Some(*value));
+    }
+    assert_eq!(request.json()["model"], model);
+}
+
+/// docs/models.md "Providers" and "The `model` block": a managed-cloud
+/// endpoint mints a token and routes a native stream through the built binary.
+#[test]
+fn a_managed_cloud_endpoint_completes_through_the_built_binary() {
+    let provider = sole_provider(|provider| {
+        provider.auth.option_key() == Some("credentials_file")
+            && provider.default_base_url.is_none()
+            && provider.path.is_empty()
+            && ["project", "location"].iter().all(|key| provider.required_keys().any(|required| required == *key))
+            && !provider.presets.is_empty()
+    });
+    let completion = "Managed endpoint completion.";
+    let server = Server::start(vec![
+        Reply::json(json!({ "access_token": "minted-access", "expires_in": 3600 })),
+        Reply::event_stream(&managed_tool_event_stream("fixture.txt")),
+        Reply::event_stream(&managed_event_stream(completion, 12, 4, 2)),
+    ]);
+    let dir = scratch("managed-endpoint");
+    std::fs::write(dir.join("fixture.txt"), "fixture contents\n").unwrap();
+    let credentials_file = dir.join("credentials.json");
+    std::fs::write(
+        &credentials_file,
+        json!({
+            "type": "authorized_user",
+            "client_id": "fixture-client",
+            "client_secret": "fixture-secret",
+            "refresh_token": "fixture-refresh",
+            "token_uri": format!("{}/token", server.origin())
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let model = provider.presets[0];
+    let project = "fixture-project";
+    let location = "fixture-location";
+    let config = config(&dir, |config| {
+        config["model"] = json!({
+            "provider": provider.name,
+            "model": model,
+            "base_url": server.origin(),
+            "credentials_file": credentials_file,
+            "project": project,
+            "location": location
+        });
+    });
+
+    let (logs, code) = headless_run(&dir, &config);
+    assert_http_completion(&logs, code, completion, json!({ "input": 12, "output": 4, "cache_read": 2 }));
+    let events = &logs[0];
+    let result = events.iter().find(|event| event["type"] == "tool/result").unwrap();
+    assert_eq!(result["data"]["name"], "read");
+    assert_eq!(result["data"]["is_error"], false);
+    let rendered = result["data"]["rendered"].as_str().unwrap();
+    assert!(rendered.ends_with("1\tfixture contents\n"));
+    let requests = server.requests();
+    assert_eq!(requests.len(), 3);
+    assert_eq!((requests[0].method.as_str(), requests[0].path.as_str()), ("POST", "/token"));
+    assert_eq!(
+        requests[0].body,
+        "grant_type=refresh_token&client_id=fixture-client&client_secret=fixture-secret&refresh_token=fixture-refresh"
+    );
+    for request in &requests[1..] {
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.header("authorization"), Some("Bearer minted-access"));
+        let parts: Vec<&str> = request.path.split('/').collect();
+        assert_eq!(parts.len(), 10);
+        assert_eq!(&parts[..7], ["", "v1", "projects", project, "locations", location, "publishers"]);
+        assert!(!parts[7].is_empty(), "the route names its endpoint publisher");
+        assert_eq!(parts[8], "models");
+        assert_eq!(parts[9], format!("{model}:streamGenerateContent?alt=sse"));
+        assert!(request.json()["contents"].is_array(), "the native request carries conversation contents");
+    }
+    let second_body = requests[2].json();
+    let function_response = second_body["contents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|content| content["parts"].as_array().unwrap())
+        .find_map(|part| part.get("functionResponse"))
+        .unwrap();
+    assert_eq!(function_response["name"], "read");
+    assert_eq!(function_response["response"]["output"], rendered);
 }
 
 /// Writes `body` to `dir/name` as an executable script and returns its path.

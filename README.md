@@ -70,9 +70,9 @@ foe "describe what this repository does"
 The first command asks for an API key, checks it, stores it under
 `~/.config/foe/`, and sets the default model. The second runs the built-in
 coding configuration against the current directory. The runtime supports
-hosted endpoints, compatible HTTP endpoints, managed-cloud endpoints, and a
-transport executable of your own. [docs/models.md](docs/models.md) describes
-each provider.
+API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
+managed-cloud endpoints, and a transport executable of your own.
+[docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
 `foe <command> --help` prints one command's options, each with the value it
