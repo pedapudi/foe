@@ -1,12 +1,12 @@
 use super::{resolve_specs, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
-use crate::test_util::{contract_with, registry_for, spec, tmp, FakeExecutor, Probe, Verifier};
+use crate::test_util::{contract_with, registry_for, spec, tmp, verifier_spec, FakeExecutor, Probe, Verifier};
 use crate::{CapError, ExecRequest, ExecResult, Executor, Tool, ToolCall, ToolFailureCode};
 use foe_contract::harness_text as text;
 use foe_contract::{ContractError, Effect};
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 struct StartFailure;
 
@@ -353,7 +353,7 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     })
     .unwrap();
     let verifier = Verifier {
-        spec: spec("check", Effect::Pure),
+        spec: verifier_spec("check", Effect::Pure),
         findings: std::sync::Mutex::new(vec![vec!["f1".into()], vec![]].into()),
     };
     let registry = registry_for(&contract, vec![], vec![Box::new(verifier)]).unwrap();
@@ -366,4 +366,81 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
         .await
         .unwrap()
         .is_empty());
+}
+
+struct RecordingVerifier {
+    spec: foe_contract::ToolSpec,
+    calls: Arc<Mutex<Vec<Value>>>,
+}
+
+#[async_trait::async_trait]
+impl Tool for RecordingVerifier {
+    fn spec(&self) -> &foe_contract::ToolSpec {
+        &self.spec
+    }
+
+    async fn call(&self, args: Value, _ctx: &crate::CallCtx) -> crate::ToolValue {
+        self.calls.lock().unwrap().push(args);
+        crate::ToolValue::ok(json!([]), "accepted")
+    }
+}
+
+/// docs/config.md `done_when`: a tool verifier receives the complete
+/// candidate under its sole declared parameter for every candidate shape.
+#[tokio::test]
+async fn a_tool_verifier_receives_the_complete_candidate_under_its_parameter() {
+    let root = tmp("registry-verifier-binding");
+    let contract = contract_with(&root, |value| {
+        value["tools"] = json!(["check"]);
+        value["host_tools"] = json!({ "check": {
+            "description": "check", "effect": "pure",
+            "params": { "type": "object", "properties": { "candidate": {} } }
+        }});
+        value["done_when"] = json!({ "verify": "check" });
+    })
+    .unwrap();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let verifier = RecordingVerifier { spec: verifier_spec("check", Effect::Pure), calls: calls.clone() };
+    let registry = registry_for(&contract, vec![Box::new(verifier)], vec![]).unwrap();
+    let candidate = json!({ "candidate": "a field inside the candidate", "risks": ["none"] });
+    registry.verify_with("check", &Handles::default(), &candidate, 1, root.to_path_buf(), None).await.unwrap();
+    registry.verify_with("check", &Handles::default(), &json!("scalar"), 2, root.to_path_buf(), None).await.unwrap();
+    assert_eq!(*calls.lock().unwrap(), vec![json!({ "candidate": candidate }), json!({ "candidate": "scalar" })]);
+}
+
+/// docs/config.md `done_when`: each non-executable verifier declares one
+/// parameter, and construction rejects every other parameter count.
+#[test]
+fn invalid_episode_and_workflow_verifier_schemas_are_refused_before_execution() {
+    let root = tmp("registry-verifier-schema");
+    let invalid_contract = |properties: Value, workflow: bool| {
+        contract_with(&root, |value| {
+            value["tools"] = json!(["check"]);
+            value["host_tools"] = json!({ "check": {
+                "description": "check", "effect": "pure",
+                "params": { "type": "object", "properties": properties }
+            }});
+            if workflow {
+                value["workflow"] = json!({ "nodes": {
+                    "judge": { "tool": "check", "verify": "check", "terminal": true }
+                }});
+            } else {
+                value["done_when"] = json!({ "verify": "check" });
+            }
+        })
+        .unwrap()
+    };
+    for (properties, workflow, key, count) in [
+        (json!({}), false, "done_when.verify", 0),
+        (json!({ "candidate": {}, "context": {} }), true, "workflow.nodes.judge.verify", 2),
+    ] {
+        let contract = invalid_contract(properties, workflow);
+        let error = match registry_for(&contract, vec![probe("check", Effect::Pure)], vec![]) {
+            Err(error) => error,
+            Ok(_) => panic!("expected invalid verifier schema"),
+        };
+        let ContractError::Invalid { key: actual, rule } = error else { panic!("{error}") };
+        assert_eq!(actual, key);
+        assert!(rule.contains("one parameter") && rule.contains(&format!("found {count}")), "{rule}");
+    }
 }
