@@ -117,7 +117,7 @@ class Model:
     A contract that declares one leaves the model to the binary's built-in
     transport, and the host that runs it supplies no transport of its own.
     `options` carries the provider-specific keys, whose values config.md
-    makes flat strings: `api_key_file`, `base_url`, `exec`, and the rest
+    makes flat strings: `api_key_file`, `base_url`, `project`, and the rest
     docs/models.md lists per provider.
     """
 

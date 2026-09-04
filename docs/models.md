@@ -257,7 +257,7 @@ Provider {
     title: "Example",
     description: "Example's hosted models, over the Chat Completions API",
     format: WireFormat::Chat,
-    auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+    auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
     default_base_url: Some("https://api.example.com/v1"),
     path: "/chat/completions",
     required: &[],
@@ -286,8 +286,6 @@ and no notion of a refusal. Each provider maps onto it with these losses.
 | providers using `chat` | a `content_filter` finish becomes a non-retryable error; a failed tool result has no field and travels as text; reasoning blocks are never replayed because the format has no item for them |
 | `vertex` with Gemini | `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`, and a blocked prompt become non-retryable errors; function calls have no ids, so the transport numbers them per response and results are matched by function name; a thought signature is replayed on a part of the kind it arrived on, and a signature whose part has no counterpart in the replayed turn is dropped; schema keywords the API rejects, `additionalProperties` and every `$`-prefixed keyword, are removed from tool declarations |
 | `vertex` with Claude | as `anthropic` |
-| `exec` | chunks arrive after the transport process exits rather than as it writes them |
-
 Every provider replays reasoning only to the route that produced it. The
 runtime fixes the model for the whole episode, so every block in a log came
 from the route that will read it.
