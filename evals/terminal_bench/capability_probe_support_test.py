@@ -9,10 +9,9 @@ from capability_probe_support import build_probe_contract, evaluate_probe_episod
 
 
 class CapabilityProbeTest(unittest.TestCase):
-    def test_probe_contract_has_no_provider_credential_or_token_limit(self):
-        contract = build_probe_contract("/tmp/capability_transport.sh", "/workspace")
-        self.assertEqual(contract["model"]["provider"], "exec")
-        self.assertNotIn("token_file", contract["model"])
+    def test_probe_contract_uses_host_owned_responses(self):
+        contract = build_probe_contract("/workspace")
+        self.assertNotIn("model", contract)
         self.assertEqual(contract["budget"], {"model_calls": 6, "seconds": 300})
 
     def test_episode_assessment_reports_supported_and_absent_capabilities(self):

@@ -2,6 +2,7 @@
 set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$script_dir"
+sh -n host_capability_probe.sh
 python3 -m py_compile \
   capability_probe_agent.py \
   capability_probe_support.py \

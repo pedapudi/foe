@@ -19,7 +19,7 @@ def parser() -> argparse.ArgumentParser:
     answer.add_argument("--foe", type=Path, required=True)
     answer.add_argument("--source-root", type=Path, required=True)
     answer.add_argument("--agent-module", type=Path, required=True)
-    answer.add_argument("--transport", type=Path, required=True)
+    answer.add_argument("--host-driver", type=Path, required=True)
     answer.add_argument("--cases", type=Path, required=True)
     answer.add_argument("--task", default="fix-git")
     answer.add_argument("--harbor", type=Path, default=default_harbor())
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
         foe = args.foe.resolve(strict=True)
         workspace = args.source_root.resolve(strict=True).parent
         agent_module = args.agent_module.resolve(strict=True)
-        transport = args.transport.resolve(strict=True)
+        host_driver = args.host_driver.resolve(strict=True)
         harbor = args.harbor.resolve(strict=True)
         dataset, _, tasks, _ = read_cases(args.cases.resolve(strict=True))
         if args.task not in tasks:
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         "--agent-kwarg",
         f"foe_binary={foe}",
         "--agent-kwarg",
-        f"transport_file={transport}",
+        f"host_driver_file={host_driver}",
         "--agent-kwarg",
         f"version=sha256:{digest(foe)}",
     ]
