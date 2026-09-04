@@ -1,16 +1,8 @@
-"""Model responses for tests, and the host tool the scripted ones call.
-
-A response reaches an episode one of two ways. `scripted` builds a
-transport the host serves over the protocol. `scripted_model` builds the
-`model` block that leaves the model to the binary's own transport, whose
-`exec` provider runs `exec_transport.py`. Both drive the same host tool,
-`reference_count`, so a test can compare the two seams.
-"""
+"""Model responses for tests, and the host tool the responses call."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Sequence
 
 import foe
@@ -19,15 +11,16 @@ Chunks = list[dict[str, Any]]
 
 USAGE = {"input": 10, "output": 5, "cache_read": 0}
 
-EXEC_TRANSPORT = Path(__file__).with_name("exec_transport.py")
-
-# What `exec_transport.py` answers with once the host tool has been called.
 SUMMARY = "Done: 3 references."
 
 
-def scripted_model() -> foe.Model:
-    """A `model` block the built-in transport answers without a credential."""
-    return foe.Model(provider="exec", model="host-tool-then-text", options={"exec": str(EXEC_TRANSPORT)})
+def configured_model() -> foe.Model:
+    """A runtime-owned model block for tests that reject it before execution."""
+    return foe.Model(
+        provider="compatible-http",
+        model="fixture-model",
+        options={"base_url": "http://127.0.0.1:1/v1", "api_key_file": "/tmp/fixture.key"},
+    )
 
 
 @foe.tool

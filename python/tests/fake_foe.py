@@ -12,29 +12,18 @@ version on the first event, and states none for the word `none`.
 `--runtime-version VALUE` states VALUE as the runtime version in
 `episode/start`.
 
-The episode loop is the smallest one that exercises every host-side path:
-it writes `episode/start`, the task `inbox/item`, `request/header`, and
-`model/request`; obtains the response from the host over `model/chunk`
-lines, or from the built-in transport described below; holds `inbox/item`
-lines until the next step assembles, as the runtime does; writes
-`assistant/chunk` events and the `assistant/message`; routes `host_tools`
-names through `host/tool-call` and waits for `tool/result`; answers built-in
-tools with a fixed value; honors `inbox/item` and `cancel` at any time; and
-ends with `episode/end`. Budget accounting covers `model_calls` alone.
-
-A configuration with a `model` block is answered by the built-in transport
-rather than by the host, which is what the runtime does. The one provider
-the stand-in implements is `exec`, whose block names a command that reads
-one request object and writes `model/chunk` lines; docs/models.md specifies
-it. The route in `request/header` then names that provider and model rather
-than `host`.
+The episode loop exercises every host-side path. It writes `episode/start`,
+the task `inbox/item`, `request/header`, and `model/request`. It obtains the
+response from the host over `model/chunk` lines and holds new inbox items
+until the next step. It records assistant events, routes host tools through
+`host/tool-call`, honors `cancel`, and ends with `episode/end`. Budget
+accounting covers `model_calls` alone.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -99,7 +88,6 @@ class Episode:
         self.config = config
         self.versions = versions
         self.log = Log(log_dir, versions.log)
-        self.model: dict[str, Any] | None = config.get("model")
         self.host_tools: dict[str, Any] = config.get("host_tools") or {}
         # Items received over the protocol are held until the next step
         # assembles, so that their `seq` follows the previous step's results.
@@ -219,11 +207,7 @@ class Episode:
             # advertises the bare schema teaches callers the wrong call.
             wrapped = {"type": "object", "properties": {"value": done_when["returns"]}, "required": ["value"]}
             tool_schemas.append({"name": "return", "description": "Return the result.", "parameters": wrapped})
-        # The route names `host` only when the host answers; with a `model`
-        # block it names the provider and model the built-in transport uses.
         route = {"provider": "host", "model": "host"}
-        if self.model is not None:
-            route = {"provider": self.model["provider"], "model": self.model["model"]}
         header = {"reason": "initial", "system": instructions, "tools": tool_schemas, "model": route}
         header_seq = self.log.emit("request/header", header)
 
@@ -255,10 +239,7 @@ class Episode:
                         "max_output_tokens": max_output_tokens,
                     },
                 )
-                if self.model is None:
-                    chunks = self.host_chunks(request_id)
-                else:
-                    chunks = iter(self.built_in_chunks(request_id, header, messages, max_output_tokens))
+                chunks = self.host_chunks(request_id)
                 text, calls_made, stop, usage, error = self.collect_response(step, request_id, chunks)
                 if error is not None:
                     self.end({"kind": "failed", "error": error})
@@ -329,38 +310,6 @@ class Episode:
                 self.end({"kind": "failed", "error": "protocol: chunk for an unknown request"})
                 sys.exit(1)
             yield line["chunk"]
-
-    def built_in_chunks(
-        self, request_id: str, header: dict[str, Any], messages: list[dict[str, Any]], max_output_tokens: int | None
-    ) -> list[dict[str, Any]]:
-        """The chunks the `exec` provider's command writes for one request."""
-        model = self.model or {}
-        if model.get("provider") != "exec":
-            named = model.get("provider")
-            message = f"model.provider: this stand-in implements exec alone, and the block names {named!r}"
-            return [{"kind": "error", "message": message, "retryable": False}]
-        fixed = ("provider", "model", "max_output_tokens", "exec")
-        request = {
-            "type": "model/request",
-            "request_id": request_id,
-            "model": model["model"],
-            "system": header["system"],
-            "tools": header["tools"],
-            "messages": messages,
-            "max_output_tokens": max_output_tokens,
-            "options": {k: v for k, v in model.items() if k not in fixed},
-        }
-        completed = subprocess.run(
-            [model["exec"], model["model"]],
-            input=json.dumps(request) + "\n",
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            message = f"model.exec: {model['exec']} exited with code {completed.returncode}: {completed.stderr.strip()}"
-            return [{"kind": "error", "message": message, "retryable": False}]
-        return [json.loads(line)["chunk"] for line in completed.stdout.splitlines() if line.strip()]
 
     def collect_response(
         self, step: int, request_id: str, chunks: Iterator[dict[str, Any]]

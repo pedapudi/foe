@@ -23,7 +23,7 @@ import pytest
 
 import foe
 
-from scripted import SUMMARY, reference_count, scripted_model
+from scripted import SUMMARY, reference_count, scripted, text_response, tool_response
 from test_run import contract_with
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -58,9 +58,10 @@ def test_the_package_speaks_the_protocol_of_the_runtime_it_ships_with() -> None:
 
 def run_one(binary: Path, log_dir: Path) -> foe.Outcome:
     """One episode of the smallest contract that reaches a host tool."""
+    responses = [tool_response(("reference_count", {"symbol": "add"})), text_response(SUMMARY)]
     return asyncio.run(
-        contract_with(["read", reference_count], model=scripted_model()).run(
-            task="Count the references.", binary=binary, log_dir=log_dir
+        contract_with(["read", reference_count]).run(
+            task="Count the references.", transport=scripted(responses), binary=binary, log_dir=log_dir
         )
     )
 
