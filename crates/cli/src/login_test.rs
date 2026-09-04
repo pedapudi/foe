@@ -176,9 +176,40 @@ fn listing_shows_every_provider_with_its_state() {
     let text = String::from_utf8(output).unwrap();
     for provider in PROVIDERS {
         let row = text.lines().find(|line| line.starts_with(provider.name)).unwrap_or_else(|| panic!("{text}"));
-        let state = if provider.auth == AuthKind::None { "no login" } else { "not configured" };
+        let state = if provider.auth.credential_optional() { "no key" } else { "not configured" };
         assert!(row.contains(state), "{row}");
     }
+}
+
+#[test]
+fn compatible_http_login_accepts_an_endpoint_without_a_key() {
+    let home = home("compatible-http-no-key");
+    let mut input = Cursor::new(b"http://127.0.0.1:11434/v1\n\nfixture-model\n".to_vec());
+    let mut output = Vec::new();
+    let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
+    let options = Options { provider: Some("compatible-http".into()), ..Default::default() };
+    assert_eq!(run(&mut session, options).unwrap(), ExitCode::SUCCESS);
+    assert!(!paths::credentials_path(&home, "compatible-http").exists());
+    let model = default_model_in(&home).unwrap().unwrap();
+    assert_eq!(model.option("base_url"), Some("http://127.0.0.1:11434/v1"));
+    assert!(model.option("api_key_file").is_none());
+    let text = String::from_utf8(output).unwrap();
+    assert!(text.contains("using endpoint without authentication"), "{text}");
+}
+
+#[test]
+fn compatible_http_login_records_an_entered_key_explicitly() {
+    let home = home("compatible-http-key");
+    let mut input = Cursor::new(b"http://127.0.0.1:11434/v1\nfixture-key\nfixture-model\n".to_vec());
+    let mut output = Vec::new();
+    let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
+    let options = Options { provider: Some("compatible-http".into()), ..Default::default() };
+    assert_eq!(run(&mut session, options).unwrap(), ExitCode::SUCCESS);
+    let path = paths::credentials_path(&home, "compatible-http");
+    assert!(path.is_file());
+    let model = default_model_in(&home).unwrap().unwrap();
+    assert_eq!(model.option("api_key_file"), path.to_str());
+    assert!(!String::from_utf8(output).unwrap().contains("verifying..."));
 }
 
 /// docs/models.md "foe login": the Codex flow opens an authorization URL

@@ -20,7 +20,7 @@ pub trait Auth: Send + Sync {
     fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
 }
 
-/// A source that adds nothing, for contracts that hold their own credentials.
+/// A source that adds no authentication header.
 pub struct NoAuth;
 
 impl Auth for NoAuth {
@@ -59,6 +59,8 @@ pub enum KeyHeader {
 pub enum AuthKind {
     ApiKey {
         header: KeyHeader,
+        /// A missing `api_key_file` sends no authentication header.
+        optional: bool,
     },
     /// An OAuth token file renewed at `token_url` as `client_id`.
     /// `account_header`, when set, is sent with the token's `account_id` as
@@ -68,20 +70,22 @@ pub enum AuthKind {
         token_url: &'static str,
         client_id: &'static str,
     },
-    Google,
-    /// The contract holds its own credentials.
-    None,
+    ManagedCloud,
 }
 
 impl AuthKind {
     /// The `model` key that names the credential file explicitly.
-    pub fn option_key(&self) -> Option<&'static str> {
+    pub fn option_key(&self) -> &'static str {
         match self {
-            AuthKind::ApiKey { .. } => Some("api_key_file"),
-            AuthKind::TokenFile { .. } => Some("token_file"),
-            AuthKind::Google => Some("credentials_file"),
-            AuthKind::None => None,
+            AuthKind::ApiKey { .. } => "api_key_file",
+            AuthKind::TokenFile { .. } => "token_file",
+            AuthKind::ManagedCloud => "credentials_file",
         }
+    }
+
+    /// Whether requests may omit this credential source.
+    pub fn credential_optional(&self) -> bool {
+        matches!(self, AuthKind::ApiKey { optional: true, .. })
     }
 
     /// A short noun phrase for `foe plan` and `foe login`.
@@ -89,8 +93,7 @@ impl AuthKind {
         match self {
             AuthKind::ApiKey { .. } => "api key",
             AuthKind::TokenFile { .. } => "token file",
-            AuthKind::Google => "google credentials",
-            AuthKind::None => "none",
+            AuthKind::ManagedCloud => "managed-cloud credentials",
         }
     }
 }

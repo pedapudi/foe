@@ -39,7 +39,7 @@ decides the wire format, the kind of credential, and the default endpoint.
 |---|---|---|---|
 | `anthropic` | Anthropic's API | API key | the key |
 | `openai` | OpenAI's API, over the Responses API | API key | the key |
-| `compatible-http` | any server speaking the streaming chat-completion format | API key | the server's base URL, then the key |
+| `compatible-http` | any server speaking the streaming chat-completion format | optional API key | the server's base URL, then an optional key |
 | `openrouter` | OpenRouter, one key for many models | API key | the key |
 | `openai-codex` | a ChatGPT subscription through the Codex backend | OAuth token, obtained in the browser | nothing typed; a browser sign-in |
 | `vertex` | Google Cloud Vertex AI: Gemini models, and Claude models by name | Google credentials | the credentials file, the project, the location |
@@ -73,7 +73,7 @@ Every provider-specific option is a flat string. The options by provider:
 
 | option | providers | meaning |
 |---|---|---|
-| `api_key_file` | every API-key provider | absolute path of the key file; see the next section for the default |
+| `api_key_file` | API-key providers | absolute path of the key file; optional for `compatible-http` |
 | `token_file` | `openai-codex` | absolute path of the OAuth token file; see the next section for the default |
 | `credentials_file` | `vertex` | absolute path of a Google application-default-credentials file or service account key |
 | `project` | `vertex` | the Google Cloud project id; required |
@@ -135,11 +135,12 @@ running it, and nothing else is found by convention.
 The home directory is the one the passwd database records for the process's
 user id. No environment variable is read, including `HOME`.
 
-A `model` block may omit its credential field. The transport then reads the
-provider's convention file. An explicit `api_key_file`, `token_file`, or
-`credentials_file` in the block replaces it. Whichever file is used, its
-path is written into the `model` block that `episode/start.contract`
-records, so the log says which credential ran.
+A `model` block may omit its credential field. A provider that requires a
+credential then reads its convention file. `compatible-http` reads only an
+explicitly named key file and sends no authentication header when the option
+is absent. An explicit `api_key_file`, `token_file`, or `credentials_file`
+replaces a convention path. The resolved file path is written into the
+`model` block that `episode/start.contract` records.
 
 The convention file's shape depends on the credential kind.
 
@@ -160,10 +161,9 @@ sending the model request. A Google access token is minted from the credentials
 file and cached in memory until sixty seconds before it expires; nothing is
 written back.
 
-The credential file is the one file outside the grants that an episode may
-read. The sandbox adds it as a readable file so that a child episode, which
-inherits the parent's restrictions, can read it too. Tools never receive
-it.
+A resolved credential file lies outside the grants that an episode may read.
+The sandbox adds it as a readable file so that a child episode can read it
+under the inherited restrictions. Tools never receive it.
 
 ## `foe login`
 
@@ -184,8 +184,9 @@ models; OpenRouter answers a key-information request instead. The
 credentials file is written with mode 0600 only when the provider accepted
 the key. A rejected key ends with the provider's message and the
 instruction to run the command again. `compatible-http` asks for the
-server's base URL first, because it has no default, and stores that URL in
-the default model block.
+server's base URL first, then accepts a key or an empty answer. It stores
+the URL in the default model block and writes a credential file only when
+a key was entered. The default model block names that file explicitly.
 
 For `openai-codex`, the command starts a listener on `127.0.0.1:1455`, the
 callback address registered for the Codex client, prints an authorization

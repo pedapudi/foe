@@ -19,7 +19,7 @@ pub enum WireFormat {
     Responses,
     /// Vertex AI: Messages for model names starting with `claude`, Gemini
     /// otherwise.
-    VertexByModel,
+    ManagedCloudByModel,
 }
 
 impl WireFormat {
@@ -28,7 +28,7 @@ impl WireFormat {
             WireFormat::Messages => "messages",
             WireFormat::Chat => "chat",
             WireFormat::Responses => "responses",
-            WireFormat::VertexByModel => "messages or gemini, by model name",
+            WireFormat::ManagedCloudByModel => "messages or gemini, by model name",
         }
     }
 }
@@ -40,6 +40,7 @@ pub enum Verify {
     GetJson(&'static str),
     /// Minting an access token is the proof.
     MintToken,
+    /// The endpoint defines no separate verification request.
     None,
 }
 
@@ -95,7 +96,7 @@ pub static PROVIDERS: &[Provider] = &[
         title: "Anthropic",
         description: "Anthropic's API with an API key",
         format: WireFormat::Messages,
-        auth: AuthKind::ApiKey { header: KeyHeader::XApiKey },
+        auth: AuthKind::ApiKey { header: KeyHeader::XApiKey, optional: false },
         default_base_url: Some("https://api.anthropic.com"),
         path: "/v1/messages",
         required: &[],
@@ -109,7 +110,7 @@ pub static PROVIDERS: &[Provider] = &[
         title: "OpenAI",
         description: "OpenAI's API with an API key, over the Responses API",
         format: WireFormat::Responses,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
         default_base_url: Some("https://api.openai.com/v1"),
         path: "/responses",
         required: &[],
@@ -123,21 +124,21 @@ pub static PROVIDERS: &[Provider] = &[
         title: "Compatible HTTP endpoint",
         description: "any server speaking the streaming chat-completion format",
         format: WireFormat::Chat,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: true },
         default_base_url: None,
         path: "/chat/completions",
         required: &[("base_url", "the server's origin and version prefix, for example http://127.0.0.1:11434/v1")],
         presets: &[],
         windows: &[],
         headers: &[],
-        verify: Verify::GetJson("/models"),
+        verify: Verify::None,
     },
     Provider {
         name: "openrouter",
         title: "OpenRouter",
         description: "OpenRouter, one key for many models, over the Chat Completions API",
         format: WireFormat::Chat,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
         default_base_url: Some("https://openrouter.ai/api/v1"),
         path: "/chat/completions",
         required: &[],
@@ -169,8 +170,8 @@ pub static PROVIDERS: &[Provider] = &[
         name: "vertex",
         title: "Vertex AI",
         description: "Google Cloud Vertex AI with Google credentials: Gemini models, and Claude models by name",
-        format: WireFormat::VertexByModel,
-        auth: AuthKind::Google,
+        format: WireFormat::ManagedCloudByModel,
+        auth: AuthKind::ManagedCloud,
         default_base_url: None,
         path: "",
         required: &[
@@ -207,7 +208,7 @@ mod tests {
             for key in provider.required_keys() {
                 assert!(!provider.hint(key).is_empty(), "{}.{key}", provider.name);
             }
-            if provider.auth.option_key().is_some() && provider.format != WireFormat::VertexByModel {
+            if provider.format != WireFormat::ManagedCloudByModel {
                 assert!(provider.default_base_url.is_some() || provider.required_keys().any(|k| k == "base_url"));
             }
         }

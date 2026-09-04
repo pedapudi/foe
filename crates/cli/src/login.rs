@@ -26,7 +26,7 @@ use foe_contract::ModelConfig;
 use foe_transport::auth::login::{self, default_model_in, write_default_model, BrowserLogin, Endpoints};
 use foe_transport::auth::AuthKind;
 use foe_transport::paths;
-use foe_transport::providers::{Provider, PROVIDERS};
+use foe_transport::providers::{Provider, Verify, PROVIDERS};
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
@@ -101,10 +101,10 @@ fn list(session: &mut Session) -> Result<(), String> {
     let width = PROVIDERS.iter().map(|p| p.name.len()).max().unwrap_or(0);
     for provider in PROVIDERS {
         let configured = paths::credentials_path(&session.home, provider.name).is_file();
-        let state = match (provider.auth == AuthKind::None, configured) {
-            (true, _) => "no login",
+        let state = match (provider.auth.credential_optional(), configured) {
             (_, true) => "configured",
-            _ => "not configured",
+            (true, false) => "no key",
+            (false, false) => "not configured",
         };
         say(session, &format!("{:<width$}  {:<14}  {}", provider.name, state, provider.description))?;
     }
@@ -144,7 +144,7 @@ fn status(session: &mut Session) -> Result<(), String> {
 fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTreeMap<String, String>, String> {
     let mut extra = BTreeMap::new();
     let (path, note) = match provider.auth {
-        AuthKind::ApiKey { .. } => {
+        AuthKind::ApiKey { optional, .. } => {
             let base_url = match provider.default_base_url {
                 Some(_) => session.endpoints.base_url.clone(),
                 None => {
@@ -154,14 +154,25 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
                     Some(url)
                 }
             };
-            let key = ask_secret(session, &format!("Paste your {} API key:", provider.title))?;
+            let suffix = if optional { " (leave empty for none)" } else { "" };
+            let key = ask_secret(session, &format!("Paste your {} API key{suffix}:", provider.title))?;
             if key.is_empty() {
+                if optional {
+                    say(session, "using endpoint without authentication")?;
+                    return Ok(extra);
+                }
                 return Err("no key was entered; paste the key and press return".into());
             }
-            say(session, "verifying...")?;
+            if provider.verify != Verify::None {
+                say(session, "verifying...")?;
+            }
             login::verify_api_key(provider, base_url.as_deref(), &key)
                 .map_err(|e| format!("{e}; check the key and run `foe login {}` again", provider.name))?;
-            (login::save_api_key(&session.home, provider, &key)?, String::new())
+            let path = login::save_api_key(&session.home, provider, &key)?;
+            if optional {
+                extra.insert("api_key_file".into(), path.to_string_lossy().into_owned());
+            }
+            (path, String::new())
         }
         AuthKind::TokenFile { .. } => {
             let token = browser_login(session)?;
@@ -169,7 +180,7 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
             let note = format!(" (account ...{last4})");
             (login::save_token(&session.home, provider, &token)?, note)
         }
-        AuthKind::Google => {
+        AuthKind::ManagedCloud => {
             let default = session.home.join(login::GCLOUD_DEFAULT);
             let answer = ask(session, &format!("Google credentials file [{}]:", default.display()))?;
             let file = if answer.is_empty() { default } else { PathBuf::from(answer) };
@@ -186,12 +197,6 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
             google.token().map_err(|e| format!("could not mint an access token: {e}"))?;
             let note = format!(" ({} credentials)", google.credentials().kind());
             (login::save_google(&session.home, provider, &file, &project, &location)?, note)
-        }
-        AuthKind::None => {
-            return Err(format!(
-                "{} needs no login; put `\"provider\": \"{}\"` and its options in the model block, see docs/models.md",
-                provider.name, provider.name
-            ));
         }
     };
     say(session, &format!("wrote {}{note}", path.display()))?;

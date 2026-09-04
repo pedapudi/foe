@@ -44,7 +44,7 @@ def _(value: dict) -> str:
     return f"recorded; {value['recorded']} findings so far"
 
 
-def review_contract(project_dir: Path, base_url: str, key_file: Path) -> foe.ExecutionContract:
+def review_contract(project_dir: Path, base_url: str) -> foe.ExecutionContract:
     """The contract: foe calls the model, the application serves the tool."""
     return foe.ExecutionContract(
         name="readme-review",
@@ -55,7 +55,7 @@ def review_contract(project_dir: Path, base_url: str, key_file: Path) -> foe.Exe
         model=foe.Model(
             provider="compatible-http",
             model="fixture-model",
-            options={"base_url": base_url, "api_key_file": str(key_file)},
+            options={"base_url": base_url},
         ),
     )
 
@@ -87,7 +87,7 @@ def check(log_dir: Path, outcome: foe.Outcome, requests: list[Request]) -> None:
     assert data_of("episode/end")[0]["outcome"] == {"kind": "completed", "value": SUMMARY}
     assert len(requests) == 3
     assert all(request.path == "/v1/chat/completions" for request in requests)
-    assert all(request.headers["authorization"] == "Bearer fixture-key" for request in requests)
+    assert all("authorization" not in request.headers for request in requests)
     assert all(request.body["model"] == "fixture-model" for request in requests)
     tool_result_counts = [
         sum(message["role"] == "tool" for message in request.body["messages"]) for request in requests
@@ -102,8 +102,6 @@ async def main() -> None:
     run_dir = Path(tempfile.mkdtemp(prefix="foe-model-block-demo.", dir=output_dir))
     project_dir = prepare(run_dir)
     log_dir = run_dir / "episode"
-    key_file = run_dir / "endpoint.key"
-    key_file.write_text("fixture-key\n", encoding="utf-8")
     responses = [
         tool_response("read-readme", "read", {"path": str(project_dir / "README.md")}),
         tool_response(
@@ -116,7 +114,7 @@ async def main() -> None:
 
     print(f"Running the model block demo in {run_dir}")
     with ScriptedHttpEndpoint(responses) as endpoint:
-        handle = await review_contract(project_dir, endpoint.base_url, key_file).start(
+        handle = await review_contract(project_dir, endpoint.base_url).start(
             task="Review the README.", binary=binary, log_dir=log_dir
         )
         assert handle.runtime is not None

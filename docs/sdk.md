@@ -308,9 +308,11 @@ outcome = await contract.run(task="Propose the next experiment.", binary=binary,
 block. `options` carries the provider-specific keys, whose values
 config.md makes flat strings: `api_key_file`, `base_url`, `project`,
 `location`, and the rest [models.md](models.md) lists per provider. A block
-that names no credential file leaves the binary to read the one
-`foe login` wrote. The block does not participate in the contract
-fingerprint, so two contracts that differ only in their model hash alike.
+that names no credential file leaves the binary to read the convention file
+when the route requires one. `compatible-http` reads only an explicitly
+named key file and sends no authentication header when that option is absent.
+The block does not participate in the contract fingerprint, so two contracts
+that differ only in their model hash alike.
 
 One document is refused before launch: one that leaves the model to the
 host while a contract under `child_contracts` declares a `model` block of

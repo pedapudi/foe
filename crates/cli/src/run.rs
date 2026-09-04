@@ -463,7 +463,7 @@ pub(crate) fn coding_contract_document(
 }
 
 fn credential_option(provider: &str) -> &'static str {
-    foe_transport::provider_info(provider).and_then(|value| value.auth.option_key()).unwrap_or("api_key_file")
+    foe_transport::provider_info(provider).map(|value| value.auth.option_key()).unwrap_or("api_key_file")
 }
 
 #[cfg(test)]

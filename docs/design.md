@@ -883,15 +883,17 @@ default model file's value remains in effect. Otherwise the provider applies
 its own default.
 
 `--key-file` names the provider credential file explicitly. It supplies an API
-key file, OAuth token state, or Google credential according to the selected
-provider. Without it, the provider's credential file under
-`~/.config/foe/credentials/` is read. The home directory comes from the passwd
-database, never from the environment.
+key file, OAuth token state, or managed-cloud credential according to the
+selected provider. Without it, a required convention file under
+`~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
+an explicitly named file and sends no authentication header when none is
+named. The home directory comes from the passwd database, never from the
+environment.
 
-`foe login` configures one provider: it asks for the credential, proves it
-with one request, writes it under `~/.config/foe/credentials/` with mode
-0600, and sets the default model when none is set. [models.md](models.md)
-specifies the providers and the flows.
+`foe login` configures one provider. It asks for the endpoint-specific values
+and writes any supplied credential under `~/.config/foe/credentials/` with
+mode 0600. It sets the default model when none is set. [models.md](models.md)
+specifies the providers, validation, and flows.
 
 `foe init --repository PATH` writes a starting execution contract to
 `PATH/.foe/contract.json` and a placeholder verifier to `PATH/.foe/verify`,

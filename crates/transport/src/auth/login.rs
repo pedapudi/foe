@@ -53,7 +53,7 @@ impl Default for Endpoints {
 /// `base_url` replaces the provider's default, for a provider that has
 /// none and for tests.
 pub fn verify_api_key(provider: &Provider, base_url: Option<&str>, key: &str) -> Result<(), String> {
-    let AuthKind::ApiKey { header } = provider.auth else {
+    let AuthKind::ApiKey { header, .. } = provider.auth else {
         return Err(format!("{} does not authenticate with an API key", provider.name));
     };
     crate::verify_credential(provider, base_url, &super::api_key::ApiKey::new(header, key.to_string()))

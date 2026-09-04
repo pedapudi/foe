@@ -37,7 +37,7 @@ python3 examples/embed-with-a-model-block/run.py /absolute/path/to/foe
 The package and loopback endpoint depend on the standard library alone.
 `run.py` puts `python/` and `examples/support/` on the import path, so the
 example needs no installation step. The `model` block names the
-`compatible-http` provider and supplies the loopback endpoint with a dummy
+`compatible-http` provider and supplies the loopback endpoint without a
 key. Every request passes through foe's HTTP client without reaching an
 external network. Each run creates
 `target/foe-model-block-demo.XXXXXX/`, holding the disposable project and
@@ -45,9 +45,9 @@ the episode log. The runner prints a command that serves the viewer for it.
 
 ## Against a deployed endpoint
 
-Replace the provider, model, base URL, and credential path in the block.
-The application and its host tool remain unchanged. `docs/models.md` lists
-every provider and its options.
+Replace the provider, model, base URL, and optional credential path in the
+block. The application and its host tool remain unchanged. `docs/models.md`
+lists every provider and its options.
 
 ## What the application supplies
 
@@ -88,7 +88,7 @@ the package wrote, carrying the rendering the application produced.
 - the first `request/header` names the route
   `compatible-http`/`fixture-model`;
 - three `model/request` events were written;
-- three authenticated requests reached the loopback endpoint with the
+- three unauthenticated requests reached the loopback endpoint with the
   expected path, model, and accumulated tool results;
 - exactly one `host/tool-call`, for `record_finding`;
 - the `read` result holds the README's text, and the `record_finding`

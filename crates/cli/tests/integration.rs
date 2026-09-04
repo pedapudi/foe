@@ -473,7 +473,7 @@ fn an_oauth_backed_endpoint_completes_through_the_built_binary() {
 #[test]
 fn a_managed_cloud_endpoint_completes_through_the_built_binary() {
     let provider = sole_provider(|provider| {
-        provider.auth.option_key() == Some("credentials_file")
+        provider.auth.option_key() == "credentials_file"
             && provider.default_base_url.is_none()
             && provider.path.is_empty()
             && ["project", "location"].iter().all(|key| provider.required_keys().any(|required| required == *key))

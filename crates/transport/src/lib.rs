@@ -9,8 +9,10 @@
 //!
 //! - Credentials come from the file the `model` block names, or from the
 //!   convention path `~/.config/foe/credentials/<provider>.json` when it
-//!   names none. No environment variable is read, including `HOME` and
-//!   proxy variables; there is no proxy support.
+//!   names none. A compatible HTTP endpoint reads a key only when its block
+//!   names one, and otherwise receives no authentication header. No
+//!   environment variable is read, including `HOME` and proxy variables;
+//!   there is no proxy support.
 //! - TLS trusts a compiled-in copy of Mozilla's root certificates; the
 //!   system certificate store is never opened.
 //! - Every call to `stream` ends with exactly one `Chunk::Done` or
@@ -71,8 +73,8 @@ pub enum TransportError {
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub provider: &'static Provider,
-    /// The block with every defaulted option filled in, including the
-    /// credential path. What `episode/start.contract.model` records.
+    /// The block with every defaulted option filled in, including any
+    /// resolved credential path. What `episode/start.contract.model` records.
     pub model: ModelConfig,
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
@@ -92,7 +94,7 @@ impl Plan {
     /// The wire format this plan speaks, with Vertex resolved by model name.
     pub fn format_name(&self) -> &'static str {
         match self.provider.format {
-            WireFormat::VertexByModel => {
+            WireFormat::ManagedCloudByModel => {
                 if self.model.model.starts_with("claude") {
                     "messages"
                 } else {
@@ -122,10 +124,9 @@ pub fn context_window(config: &ModelConfig) -> Option<u64> {
     provider_info(&config.provider)?.context_window(&config.model)
 }
 
-/// Resolves a `model` block: looks the provider up, fills the credential
-/// path from the convention directory when the block names none, and
-/// checks that every required option is present. Reads the Vertex
-/// convention file when it exists; reads no secret.
+/// Resolves a `model` block: looks the provider up, fills a required or
+/// existing convention credential path, and checks every required option.
+/// Reads the managed-cloud convention file when it exists; reads no secret.
 pub fn plan(config: &ModelConfig) -> Result<Plan, TransportError> {
     let home = paths::home_dir().map_err(TransportError::Home)?;
     plan_with_home(config, &home)
@@ -138,29 +139,31 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
         .ok_or_else(|| TransportError::UnknownProvider { name: config.provider.clone(), known: providers::names() })?;
     let mut model = config.clone();
     let mut credential_path = None;
-    if let Some(key) = provider.auth.option_key() {
-        let default = paths::credentials_path(home, provider.name);
-        if provider.auth == AuthKind::Google && model.option(key).is_none() {
-            // The Vertex convention file names the Google credentials file and
-            // the project and location, which the block may still override.
-            if let Ok(text) = std::fs::read_to_string(&default) {
-                let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| TransportError::Credential {
-                    provider: provider.name,
-                    key,
-                    path: default.clone(),
-                    reason: format!("not JSON: {e}"),
-                })?;
-                for field in ["credentials_file", "project", "location"] {
-                    if let Some(text) = value[field].as_str() {
-                        model.options.entry(field.to_string()).or_insert_with(|| text.to_string());
-                    }
+    let key = provider.auth.option_key();
+    let default = paths::credentials_path(home, provider.name);
+    if provider.auth == AuthKind::ManagedCloud && model.option(key).is_none() {
+        // The managed-cloud convention file names the credentials file and
+        // the project and location, which the block may still override.
+        if let Ok(text) = std::fs::read_to_string(&default) {
+            let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| TransportError::Credential {
+                provider: provider.name,
+                key,
+                path: default.clone(),
+                reason: format!("not JSON: {e}"),
+            })?;
+            for field in ["credentials_file", "project", "location"] {
+                if let Some(text) = value[field].as_str() {
+                    model.options.entry(field.to_string()).or_insert_with(|| text.to_string());
                 }
             }
         }
-        let path = match model.option(key) {
-            Some(text) => PathBuf::from(text),
-            None => default,
-        };
+    }
+    let path = match model.option(key) {
+        Some(text) => Some(PathBuf::from(text)),
+        None if provider.auth.credential_optional() => None,
+        None => Some(default),
+    };
+    if let Some(path) = path {
         if !path.is_absolute() {
             return Err(TransportError::Credential {
                 provider: provider.name,
@@ -225,7 +228,7 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        WireFormat::VertexByModel => vertex_route(provider, model, &base)?,
+        WireFormat::ManagedCloudByModel => vertex_route(provider, model, &base)?,
     };
     let headers = provider.headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     Ok(Arc::new(Client {
@@ -272,10 +275,11 @@ fn vertex_route(
 /// read.
 fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
     let provider = plan.provider;
-    let Some(key) = provider.auth.option_key() else {
+    let key = provider.auth.option_key();
+    let Some(path) = plan.credential_path.clone() else {
+        debug_assert!(provider.auth.credential_optional());
         return Ok(Arc::new(auth::NoAuth));
     };
-    let path = plan.credential_path.clone().expect("a credentialed plan has a path");
     let fail = |e: auth::AuthError| TransportError::Credential {
         provider: provider.name,
         key,
@@ -286,13 +290,12 @@ fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
         },
     };
     Ok(match provider.auth {
-        AuthKind::ApiKey { header } => Arc::new(auth::api_key::ApiKey::from_file(header, &path).map_err(fail)?),
+        AuthKind::ApiKey { header, .. } => Arc::new(auth::api_key::ApiKey::from_file(header, &path).map_err(fail)?),
         AuthKind::TokenFile { account_header, token_url, client_id } => {
             let client = auth::token_file::OAuthClient { token_url: token_url.into(), client_id: client_id.into() };
             Arc::new(auth::token_file::TokenFile::open(&path, client, account_header).map_err(fail)?)
         }
-        AuthKind::Google => Arc::new(auth::google::Google::open(&path).map_err(fail)?),
-        AuthKind::None => Arc::new(auth::NoAuth),
+        AuthKind::ManagedCloud => Arc::new(auth::google::Google::open(&path).map_err(fail)?),
     })
 }
 
@@ -627,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn every_row_plans_and_names_its_credential_path() {
+    fn every_row_plans_with_its_credential_policy() {
         let home = fake_home("rows");
         for name in known_providers() {
             let mut config = model(name);
@@ -643,13 +646,14 @@ mod tests {
             }
             let plan = plan_with_home(&config, &home).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(plan.provider.name, name);
-            match plan.provider.auth.option_key() {
-                Some(key) => {
-                    let expected = home.join(format!(".config/foe/credentials/{name}.json"));
-                    assert_eq!(plan.credential_path.as_deref(), Some(expected.as_path()), "{name}");
-                    assert_eq!(plan.model.option(key), expected.to_str(), "{name}: the record names the path");
-                }
-                None => assert!(plan.credential_path.is_none(), "{name}"),
+            if plan.provider.auth.credential_optional() {
+                assert!(plan.credential_path.is_none(), "{name}");
+                assert!(plan.model.option(plan.provider.auth.option_key()).is_none(), "{name}");
+            } else {
+                let key = plan.provider.auth.option_key();
+                let expected = home.join(format!(".config/foe/credentials/{name}.json"));
+                assert_eq!(plan.credential_path.as_deref(), Some(expected.as_path()), "{name}");
+                assert_eq!(plan.model.option(key), expected.to_str(), "{name}: the record names the path");
             }
             assert!(plan.describe().starts_with(&format!("{name}/m: ")), "{}", plan.describe());
         }
@@ -726,9 +730,10 @@ mod tests {
         ];
         for (name, host, path) in cases {
             let mut config = model(name);
-            config.options.insert("api_key_file".into(), key.to_string_lossy().into_owned());
             if name == "compatible-http" {
                 config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
+            } else {
+                config.options.insert("api_key_file".into(), key.to_string_lossy().into_owned());
             }
             let transport = build(&config).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(transport.route().provider, name);
@@ -781,7 +786,7 @@ mod tests {
             Url::parse(text).map_err(|reason| TransportError::BaseUrl { url: text.to_string(), reason })
         };
         let (format, url): (Box<dyn Format>, Url) = match provider.format {
-            WireFormat::VertexByModel => vertex_route(provider, model, &base).unwrap(),
+            WireFormat::ManagedCloudByModel => vertex_route(provider, model, &base).unwrap(),
             _ => (
                 Box::new(format::chat::Chat::new(provider.name, model.model.clone(), None)),
                 base(provider.default_base_url).unwrap().join(provider.path),
