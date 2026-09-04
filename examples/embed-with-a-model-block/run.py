@@ -17,11 +17,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 
-# The package depends on the standard library alone, so a checkout imports
-# it without an installation step.
+# The package and example support depend on the standard library alone, so a
+# checkout imports them without an installation step.
 sys.path.insert(0, str(REPO / "python"))
+sys.path.insert(0, str(REPO / "examples" / "support"))
 
 import foe  # noqa: E402 - the import path is set above
+from loopback_http import Request, ScriptedHttpEndpoint, text_response, tool_response  # noqa: E402
 
 SUMMARY = "Recorded one finding against the calculator project."
 
@@ -42,7 +44,7 @@ def _(value: dict) -> str:
     return f"recorded; {value['recorded']} findings so far"
 
 
-def review_contract(project_dir: Path) -> foe.ExecutionContract:
+def review_contract(project_dir: Path, base_url: str, key_file: Path) -> foe.ExecutionContract:
     """The contract: foe calls the model, the application serves the tool."""
     return foe.ExecutionContract(
         name="readme-review",
@@ -51,9 +53,9 @@ def review_contract(project_dir: Path) -> foe.ExecutionContract:
         grants=foe.Grants(read=[project_dir]),
         budget=foe.Budget(model_calls=6, seconds=120),
         model=foe.Model(
-            provider="exec",
-            model="embedding-demo",
-            options={"exec": str(HERE / "transport.py"), "readme": str(project_dir / "README.md")},
+            provider="compatible-http",
+            model="fixture-model",
+            options={"base_url": base_url, "api_key_file": str(key_file)},
         ),
     )
 
@@ -67,7 +69,7 @@ def prepare(run_dir: Path) -> Path:
     return project_dir
 
 
-def check(log_dir: Path, outcome: foe.Outcome) -> None:
+def check(log_dir: Path, outcome: foe.Outcome, requests: list[Request]) -> None:
     """Checks the outcome and the log against what the README states."""
     assert outcome == foe.Completed(SUMMARY), outcome
     assert findings == [{"component": "calculator", "summary": "The README states no supported Python version."}]
@@ -76,13 +78,21 @@ def check(log_dir: Path, outcome: foe.Outcome) -> None:
     def data_of(name: str) -> list[dict]:
         return [event["data"] for event in events if event["type"] == name]
 
-    assert data_of("request/header")[0]["model"] == {"provider": "exec", "model": "embedding-demo"}
+    assert data_of("request/header")[0]["model"] == {"provider": "compatible-http", "model": "fixture-model"}
     assert len(data_of("model/request")) == 3
     assert [call["name"] for call in data_of("host/tool-call")] == ["record_finding"]
     results = {result["name"]: result for result in data_of("tool/result")}
     assert results["read"]["value"]["content"].startswith("# Calculator")
     assert results["record_finding"]["rendered"] == "recorded; 1 findings so far"
     assert data_of("episode/end")[0]["outcome"] == {"kind": "completed", "value": SUMMARY}
+    assert len(requests) == 3
+    assert all(request.path == "/v1/chat/completions" for request in requests)
+    assert all(request.headers["authorization"] == "Bearer fixture-key" for request in requests)
+    assert all(request.body["model"] == "fixture-model" for request in requests)
+    tool_result_counts = [
+        sum(message["role"] == "tool" for message in request.body["messages"]) for request in requests
+    ]
+    assert tool_result_counts == [0, 1, 2]
 
 
 async def main() -> None:
@@ -92,15 +102,30 @@ async def main() -> None:
     run_dir = Path(tempfile.mkdtemp(prefix="foe-model-block-demo.", dir=output_dir))
     project_dir = prepare(run_dir)
     log_dir = run_dir / "episode"
+    key_file = run_dir / "endpoint.key"
+    key_file.write_text("fixture-key\n", encoding="utf-8")
+    responses = [
+        tool_response("read-readme", "read", {"path": str(project_dir / "README.md")}),
+        tool_response(
+            "record",
+            "record_finding",
+            {"component": "calculator", "summary": "The README states no supported Python version."},
+        ),
+        text_response(SUMMARY),
+    ]
 
     print(f"Running the model block demo in {run_dir}")
-    handle = await review_contract(project_dir).start(task="Review the README.", binary=binary, log_dir=log_dir)
-    assert handle.runtime is not None
-    print(f"Episode {handle.episode_id} is process {handle.pid}, runtime {handle.runtime.version}")
-    print(f"Build {handle.runtime.build}")
-    outcome = await handle.wait()
+    with ScriptedHttpEndpoint(responses) as endpoint:
+        handle = await review_contract(project_dir, endpoint.base_url, key_file).start(
+            task="Review the README.", binary=binary, log_dir=log_dir
+        )
+        assert handle.runtime is not None
+        print(f"Episode {handle.episode_id} is process {handle.pid}, runtime {handle.runtime.version}")
+        print(f"Build {handle.runtime.build}")
+        outcome = await handle.wait()
+        check(log_dir, outcome, endpoint.requests)
+        assert endpoint.remaining == 0
     print(outcome)
-    check(log_dir, outcome)
     print("Model block demo passed. Inspect it with:")
     print(f"  {binary} view {log_dir} --serve")
 

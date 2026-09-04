@@ -1,4 +1,5 @@
 exports_files([
+    "loopback_http.py",
     "materialize.py",
     "scripted-transport.py",
 ])

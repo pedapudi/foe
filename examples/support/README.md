@@ -1,9 +1,10 @@
 # Example support
 
-Three helpers shared by the examples.
+Four helpers shared by the examples.
 
 | file | job |
 |---|---|
+| `loopback_http.py` | serves deterministic streaming responses over loopback HTTP and records every request |
 | `materialize.py` | replaces a configuration's absolute path markers, such as `/home/user/project`, with directories a runner just created |
 | `chunks.py` | writes model chunks, so an example's transport script holds only the responses that example demonstrates |
 | `scripted-transport.py` | the responses for the demos whose configurations select a scenario by the `model` name they set |

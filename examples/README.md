@@ -1,8 +1,8 @@
 # Examples
 
 Every example runs. Each creates a disposable project under `target/`,
-answers the model from a script rather than a provider, checks its own
-result, and leaves an episode log to read. None needs a credential, a
+uses a deterministic model response, checks its own result, and leaves an
+episode log to read. None needs a deployment credential, an external
 network, or a repository of your own.
 
 Eleven examples are started by `run.sh` and three by `run.py`:
@@ -104,10 +104,10 @@ configuration file, because the Python package builds the document in
 memory. Their contracts are the `foe.ExecutionContract` that
 `triage_contract` and `review_contract` return in each `run.py`.
 
-Every example that runs without a provider names the `exec` provider and
-points it at a transport script. [`support/README.md`](support/) explains
-where such a script may run and what it may read, which is narrower than it
-looks.
+Examples that name the `exec` provider point it at a transport script.
+[`support/README.md`](support/) explains where such a script may run and
+what it may read. The model-block embedding example uses a loopback HTTP
+endpoint to exercise foe's client without reaching an external network.
 
 ## Against a real model
 
