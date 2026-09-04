@@ -316,9 +316,9 @@ that differ only in their model hash alike.
 
 A document that leaves the model to the host must leave every descendant
 to the host. The package checks child contracts and model nodes at every
-level of nested workflows before launch. A descendant's `model/request`
-reaches the root host whichever process answers it, so the host cannot tell
-a request it owes from one already recorded.
+level of nested workflows before launch. It rejects an explicit
+runtime-owned model block below a host-owned root so one owner serves model
+calls throughout the contract tree.
 
 ## Host tools
 

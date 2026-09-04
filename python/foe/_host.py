@@ -407,8 +407,7 @@ async def start_config(
     if nested:
         raise ValueError(
             f"model: {', '.join(nested)} declares a `model` block while the document leaves the "
-            "model to this host; a descendant's recorded request reaches the host indistinguishable from one "
-            "the host must answer"
+            "model to this host; one owner must serve model calls throughout the contract tree"
         )
     by_name = {t.name: t for t in tools}
     missing = sorted(_collect_host_tool_names(doc) - set(by_name))

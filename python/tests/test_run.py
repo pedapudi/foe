@@ -306,7 +306,7 @@ def test_a_model_block_and_a_host_transport_are_exclusive(fake_binary: Path, tmp
 
 
 def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
-    """A descendant's recorded request is not distinguishable from one the host owes."""
+    """docs/sdk.md "Who calls the model": one owner serves the contract tree."""
     doc = contract_with(["read"]).to_dict("t")
     doc["child_contracts"] = {"survey": contract_with(["read"], model=configured_model()).to_dict(child=True)}
     with pytest.raises(ValueError, match=r"model: child_contracts\.survey declares a `model` block"):
@@ -314,7 +314,7 @@ def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path
 
 
 def test_a_workflow_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
-    """docs/workflow.md "Model nodes": a model node may select its own model."""
+    """docs/sdk.md "Who calls the model": model nodes share the root owner."""
     doc = contract_with(["read"]).to_dict("t")
     node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
     doc["workflow"] = {"nodes": {"survey": {"model": node_contract, "terminal": True}}}
@@ -325,7 +325,7 @@ def test_a_workflow_model_block_under_a_host_transport_is_refused(fake_binary: P
 def test_a_model_block_in_a_nested_workflow_under_a_host_transport_is_refused(
     fake_binary: Path, tmp_path: Path
 ) -> None:
-    """docs/workflow.md "Relationship to the rest of foe": the rule applies at every level."""
+    """docs/sdk.md "Who calls the model": the ownership rule applies at every level."""
     doc = contract_with(["read"]).to_dict("t")
     node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
     doc["workflow"] = {
