@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Built-in model clients: wire formats times credential sources, behind feature flags"
 
 [features]
-default = ["messages", "chat", "responses", "gemini", "api-key", "token-file", "google", "exec"]
+default = ["messages", "chat", "responses", "gemini", "api-key", "token-file", "google"]
 # Wire formats. A provider row needs its format's feature.
 messages = []
 chat = []
@@ -17,8 +17,6 @@ gemini = []
 api-key = []
 token-file = ["dep:base64"]
 google = ["dep:ring", "dep:base64"]
-# The out-of-tree seam: a contract spoken to over standard input and output.
-exec = []
 
 [dependencies]
 foe-core = { path = "../core" }

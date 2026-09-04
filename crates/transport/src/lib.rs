@@ -1,13 +1,9 @@
 //! Built-in model clients, used when a configuration has a `model` block.
 //!
 //! A client is a wire format paired with a credential source and a URL.
-//! The wire formats live in [`format`]: Anthropic Messages, OpenAI Chat
-//! Completions, OpenAI Responses, and Gemini. The credential sources live
-//! in [`auth`]: an API key file, an OAuth token file, and Google
-//! credentials. The provider table in [`providers`] names each pairing and
-//! its defaults; [`build`] resolves a `model` block against the table. A
-//! `model` block whose provider is `exec` names a contract instead, which
-//! [`exec`] drives over standard input and output.
+//! The wire formats live in [`format`], and the credential sources live in
+//! [`auth`]. The provider table in [`providers`] names each pairing and its
+//! defaults. [`build`] resolves a `model` block against the table.
 //!
 //! What every client guarantees:
 //!
@@ -40,11 +36,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use foe_contract::ModelConfig;
-use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
+use foe_core::{Chunk, ModelRequestBody, Transport};
 
 pub mod auth;
-#[cfg(feature = "exec")]
-pub mod exec;
 pub mod format;
 mod http;
 pub mod paths;
@@ -71,12 +65,8 @@ pub enum TransportError {
     Credential { provider: &'static str, key: &'static str, path: PathBuf, reason: String },
     #[error("model.base_url: {url}: {reason}")]
     BaseUrl { url: String, reason: String },
-    #[error("model.exec: {path}: {reason}")]
-    Exec { path: PathBuf, reason: String },
     #[error("home directory: {0}; name the credential file in the model block instead")]
     Home(String),
-    #[error("model.provider: exec needs an executor, which only the foe binary supplies")]
-    NoExecutor,
 }
 
 /// A `model` block resolved against the provider table, before any
@@ -89,27 +79,15 @@ pub struct Plan {
     pub model: ModelConfig,
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
-    /// The contract an `exec` provider runs.
-    pub exec: Option<PathBuf>,
 }
 
 impl Plan {
     /// One line for `foe plan`.
     pub fn describe(&self) -> String {
-        self.describe_with_exec_sha256(None)
-    }
-
-    pub fn describe_with_exec_sha256(&self, sha256: Option<&str>) -> String {
         let mut text = format!("{}/{}: {} format", self.provider.name, self.model.model, self.format_name());
         match &self.credential_path {
             Some(path) => text.push_str(&format!(", {} from {}", self.provider.auth.name(), path.display())),
             None => text.push_str(", no credential read by foe"),
-        }
-        if let Some(exec) = &self.exec {
-            text.push_str(&format!(", contract {}", exec.display()));
-            if let Some(sha256) = sha256 {
-                text.push_str(&format!(", sha256 {sha256}"));
-            }
         }
         text
     }
@@ -204,56 +182,21 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
             return Err(TransportError::MissingOption { provider: provider.name, key, hint: hint.to_string() });
         }
     }
-    let exec = match provider.format {
-        #[cfg(feature = "exec")]
-        WireFormat::Exec => {
-            let path = PathBuf::from(model.option("exec").unwrap_or_default());
-            if !path.is_absolute() {
-                return Err(TransportError::Exec { path, reason: "is not an absolute path".into() });
-            }
-            Some(path)
-        }
-        #[allow(unreachable_patterns)]
-        _ => None,
-    };
     if let Some(url) = model.option("base_url") {
         Url::parse(url).map_err(|reason| TransportError::BaseUrl { url: url.to_string(), reason })?;
     }
-    Ok(Plan { provider, model, credential_path, exec })
+    Ok(Plan { provider, model, credential_path })
 }
 
 /// Builds the transport a `model` block names. Reads the credential file
 /// once, here, so that a construction error is reported before any
-/// request. `executor` is needed only by the `exec` provider.
-pub fn build(config: &ModelConfig, executor: Option<Arc<dyn Executor>>) -> Result<Arc<dyn Transport>, TransportError> {
-    build_planned(&plan(config)?, executor)
-}
-
-/// [`build`] without the `exec` provider.
-pub fn from_config(config: &ModelConfig) -> Result<Arc<dyn Transport>, TransportError> {
-    build(config, None)
+/// request.
+pub fn build(config: &ModelConfig) -> Result<Arc<dyn Transport>, TransportError> {
+    build_planned(&plan(config)?)
 }
 
 /// Builds the transport of a resolved plan.
-pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result<Arc<dyn Transport>, TransportError> {
-    build_planned_with_executable(plan, executor, None)
-}
-
-pub fn build_planned_with_executable(
-    plan: &Plan,
-    executor: Option<Arc<dyn Executor>>,
-    executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
-) -> Result<Arc<dyn Transport>, TransportError> {
-    #[cfg(feature = "exec")]
-    if plan.provider.format == WireFormat::Exec {
-        let executor = executor.ok_or(TransportError::NoExecutor)?;
-        let transport = match executable {
-            Some(executable) => exec::ExecTransport::new_with_executable(&plan.model, executor, executable)?,
-            None => exec::ExecTransport::new(&plan.model, executor)?,
-        };
-        return Ok(Arc::new(transport));
-    }
-    let _ = &executor;
+pub fn build_planned(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     build_http(plan)
 }
 
@@ -299,8 +242,6 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
         ),
         #[cfg(feature = "google")]
         WireFormat::VertexByModel => vertex_route(provider, model, &base)?,
-        #[cfg(feature = "exec")]
-        WireFormat::Exec => unreachable!("handled by build_planned"),
     };
     let headers = provider.headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     Ok(Arc::new(Client {
@@ -737,9 +678,6 @@ mod tests {
                     config.options.insert("project".into(), "p".into());
                     config.options.insert("location".into(), "us-east5".into());
                 }
-                "exec" => {
-                    config.options.insert("exec".into(), "/usr/bin/true".into());
-                }
                 _ => {}
             }
             let plan = plan_with_home(&config, &home).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -754,17 +692,6 @@ mod tests {
             }
             assert!(plan.describe().starts_with(&format!("{name}/m: ")), "{}", plan.describe());
         }
-    }
-
-    #[test]
-    fn exec_plan_reports_the_construction_digest() {
-        let mut config = model("exec");
-        config.options.insert("exec".into(), "/usr/bin/true".into());
-        let planned = plan_with_home(&config, &fake_home("exec-digest")).unwrap();
-        let digest = "0123456789abcdef";
-        let description = planned.describe_with_exec_sha256(Some(digest));
-        assert!(description.contains("contract /usr/bin/true"), "{description}");
-        assert!(description.contains(&format!("sha256 {digest}")), "{description}");
     }
 
     #[test]
@@ -818,7 +745,7 @@ mod tests {
 
     #[test]
     fn a_missing_credential_file_says_how_to_log_in() {
-        let err = build_planned(&plan_with_home(&model("anthropic"), &fake_home("missing")).unwrap(), None)
+        let err = build_planned(&plan_with_home(&model("anthropic"), &fake_home("missing")).unwrap())
             .err()
             .expect("a missing key file fails")
             .to_string();
@@ -843,7 +770,7 @@ mod tests {
             if name == "compatible-http" {
                 config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
             }
-            let transport = build(&config, None).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let transport = build(&config).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(transport.route().provider, name);
             assert_eq!(transport.route().model, "m");
             let plan = plan_with_home(&config, &home).unwrap();

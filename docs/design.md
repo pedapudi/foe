@@ -15,7 +15,7 @@ piece.
 | [log-format.md](log-format.md) | every event type, the request snapshot, and the replay guarantee |
 | [protocol.md](protocol.md) | the line protocol between foe and a host process |
 | [config.md](config.md) | every configuration key and the domain of its values |
-| [models.md](models.md) | the model providers, their credentials, `foe login`, and the exec transport |
+| [models.md](models.md) | model endpoints, their credentials, and `foe login` |
 | [sdk.md](sdk.md) | the Python package |
 | [tools.md](tools.md) | built-in tools, configured executables, and host tools |
 | [sandbox.md](sandbox.md) | how grants compile into kernel restrictions |
@@ -444,8 +444,7 @@ source cannot change the run.
 - every model-visible string the runtime itself contributes, such as the
   description of the synthesized `return` tool and the text that frames
   verification findings;
-- the runtime's version and build hash, plus the executable transport's
-  content digest and invocation name when the model provider is `exec`.
+- the runtime's version and build hash.
 
 The task, model route, sandbox mode, and paths in the resolved permission set
 are excluded.

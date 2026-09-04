@@ -498,13 +498,7 @@ mod tests;
 #[cfg(feature = "transport")]
 pub fn describe_transport(contract: &ResolvedContract) -> String {
     let Some(model) = &contract.model else { return "no model".into() };
-    foe_transport::plan(model)
-        .map(|plan| {
-            plan.describe_with_exec_sha256(
-                contract.captured_transport.as_ref().map(|captured| captured.sha256.as_str()),
-            )
-        })
-        .unwrap_or_else(|e| e.to_string())
+    foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
@@ -528,34 +522,16 @@ fn prepare_model(_config: &mut ContractDocument) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolves the constructed `model` block into a transport before the
-/// process restricts itself. The credential path joins the sandbox policy
-/// as a readable file. An `exec` provider's contract joins it as an
-/// executable, run through the episode's own executor.
+/// Resolves the constructed `model` block into a client before the process
+/// restricts itself. The credential path joins the sandbox policy as a
+/// readable file.
 #[cfg(feature = "transport")]
-fn built_in_transport(
-    model: &ModelConfig,
-    executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
-    unconfined: &mut Unconfined,
-    log_dir: &Path,
-) -> Result<Arc<dyn Transport>, String> {
-    let plan = foe_transport::plan(model).map_err(|e| e.to_string())?;
-    let executor: Option<Arc<dyn foe_core::Executor>> = plan.exec.as_ref().map(|_| {
-        let (sandbox, policy) = unconfined.parts();
-        let cancel = Arc::new(AtomicBool::new(false));
-        Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel))
-            as Arc<dyn foe_core::Executor>
-    });
-    foe_transport::build_planned_with_executable(&plan, executor, executable).map_err(|e| e.to_string())
+fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
+    foe_transport::build(model).map_err(|e| e.to_string())
 }
 
 #[cfg(not(feature = "transport"))]
-fn built_in_transport(
-    _model: &ModelConfig,
-    _executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
-    _unconfined: &mut Unconfined,
-    _log_dir: &Path,
-) -> Result<Arc<dyn Transport>, String> {
+fn built_in_transport(_model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
     Err("this binary was built without the transport feature; remove `model` and run under a host".into())
 }
 
@@ -646,7 +622,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let context = context_policy(&contract)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
     let transport = match &contract.model {
-        Some(model) => Some(built_in_transport(model, executables.transport.clone(), &mut unconfined, &log_dir)?),
+        Some(model) => Some(built_in_transport(model)?),
         None if options.host => None,
         None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
     };

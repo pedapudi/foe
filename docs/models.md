@@ -3,8 +3,7 @@
 foe calls a model through one of its built-in clients or leaves the call to
 the process that launched it. This document covers the built-in clients:
 which providers exist, where their credentials live, how `foe login` sets
-them up, how a transport executable becomes a provider, and what each
-provider cannot express.
+them up, and what each provider cannot express.
 
 ## Quick start
 
@@ -44,7 +43,6 @@ decides the wire format, the kind of credential, and the default endpoint.
 | `openrouter` | OpenRouter, one key for many models | API key | the key |
 | `openai-codex` | a ChatGPT subscription through the Codex backend | OAuth token, obtained in the browser | nothing typed; a browser sign-in |
 | `vertex` | Google Cloud Vertex AI: Gemini models, and Claude models by name | Google credentials | the credentials file, the project, the location |
-| `exec` | a transport executable | none; the process holds its own | nothing; there is no login |
 
 One `model` block per provider, each the smallest that runs after
 `foe login`:
@@ -56,18 +54,11 @@ One `model` block per provider, each the smallest that runs after
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
 { "provider": "openai-codex", "model": "gpt-5.6-sol" }
 { "provider": "vertex", "model": "gemini-2.5-pro" }
-{ "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport" }
 ```
 
-During execution-contract construction, Foe captures each configured
-executable's bytes, digest, source path, and invocation name. Every later
-invocation uses the captured executable. Replacing, modifying, or deleting the
-source cannot change the run.
-
 `foe plan --config FILE` prints a `model` line naming the resolved wire
-format and credential path. For the `exec` provider it also prints the
-absolute source path and the SHA-256 digest of the captured executable
-bytes. An unknown provider produces an error that lists the known names.
+format and credential path. An unknown provider produces an error that lists
+the known names.
 
 ## The `model` block
 
@@ -91,7 +82,6 @@ Every provider-specific option is a flat string. The options by provider:
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
 | `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
-| `exec` | `exec` | absolute source path of the transport executable; required |
 
 The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
 Codex backend used by `openai-codex` rejects that field, so foe omits it on
@@ -106,11 +96,8 @@ OpenAI-shaped providers it includes the version prefix,
 `https://chatgpt.com/backend-api` and `/codex/responses` is appended. For
 `vertex` it is the regional origin, derived from `location` when absent.
 
-Model selection does not participate in the contract fingerprint. A system that needs to
-record which model ran reads it from the log. The executable bytes of an
-`exec` transport are an exception because they implement runtime behavior.
-Their digest and configured basename participate in the runtime portion of
-the contract fingerprint.
+Model selection does not participate in the contract fingerprint. A system
+that needs to record which model ran reads it from the log.
 
 ### Context windows
 
@@ -132,8 +119,8 @@ used.
 | `vertex` | `gemini-2.5` | 1048576 |
 | `vertex` | `claude-` | 200000 |
 
-`compatible-http` and `exec` know no windows, because the model behind
-them is whatever the server or contract answers for.
+`compatible-http` knows no windows because the endpoint decides which model
+answers.
 
 ## Where credentials live
 
@@ -232,45 +219,6 @@ When the selected model is `gpt-5.6-sol` through `openai` or
 model file. A pre-existing default model file receives the same effective
 setting in memory when it omits the option. `foe login --status` reports
 the effective reasoning effort.
-
-## The `exec` transport
-
-A `model` block whose provider is `exec` names a transport executable. This
-is the seam for a provider that foe does not know. A process implemented in
-any language answers each model request and holds whatever credential it needs.
-
-```json
-"model": { "provider": "exec", "exec": "/home/user/project/tools/litellm-transport", "model": "openai/gpt-5", "api_key_file": "/home/user/project/.secrets/openai.key" }
-```
-
-For every model request the transport process is started once, through the same
-executor that runs configured tools, with the network allowed and the model
-name as its single argument. It reads one JSON object from standard input
-and writes `model/chunk` lines to standard output in the shape
-[protocol.md](protocol.md) defines:
-
-```
-stdin:  {"type":"model/request","request_id":"rq_01","model":"openai/gpt-5","system":"...","tools":[...],"messages":[...],"max_output_tokens":null,"options":{"api_key_file":"..."}}
-stdout: {"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"text","delta":"Hello"}}
-        {"type":"model/chunk","request_id":"rq_01","chunk":{"kind":"done","stop":"end","usage":{"input":12,"output":2,"cache_read":0}}}
-```
-
-`tools` and `messages` have the shapes of the log's `request/header.tools`
-and `model/request.messages`. `options` carries every key of the `model`
-block other than `provider`, `model`, `max_output_tokens`, and `exec`, which
-is how the process learns where its own credential lives. The process runs
-under the episode's sandbox narrowed as for a configured tool: it reads the
-read roots and the loader directories, it may open TCP connections, it
-reads the resolver configuration that turns a host name into an address,
-and it starts with an empty environment. A credential file it reads must
-therefore lie under a read root.
-
-Every request uses the captured transport executable.
-
-The chunks reach the episode when the transport process exits because the
-executor captures output whole. A process that exits without a final `done` or
-`error` chunk produces an error quoting its standard error; a non-zero exit
-is not retried, an exit of zero without a final chunk is.
 
 ## Formats and credential sources
 

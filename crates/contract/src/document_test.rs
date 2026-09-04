@@ -60,6 +60,22 @@ fn an_inherited_invocation_name_must_be_utf8() {
 }
 
 #[test]
+fn a_configured_executable_requires_an_execute_bit() {
+    let root = tmp("config-executable-bit");
+    let executable = root.join("tool.sh");
+    std::fs::write(&executable, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&executable, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
+    let error = contract_with(&root, |value| {
+        value["tools"] = json!(["lint"]);
+        value["tool_defs"] = json!({ "lint": { "exec": executable, "description": "lints" } });
+    })
+    .unwrap_err();
+    let ContractError::Invalid { key, rule } = error else { panic!("expected an Invalid error, got {error:?}") };
+    assert_eq!(key, "tool_defs.lint.exec");
+    assert_eq!(rule, "names an executable file");
+}
+
+#[test]
 fn unknown_keys_and_wrong_types_are_parse_errors() {
     let root = tmp("config-parse");
     let mut value = config_value(&root);

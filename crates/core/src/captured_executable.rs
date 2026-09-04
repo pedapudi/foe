@@ -1,4 +1,4 @@
-//! Captured executables for configured tools and transports.
+//! Captured executables for configured tools.
 
 use foe_contract::document::{CapturedExecutable as CapturedExecutableSource, ContractTreeSelection, ResolvedContract};
 use nix::fcntl::{fcntl, FcntlArg, SealFlag};
@@ -86,32 +86,6 @@ impl CapturedExecutable {
     fn cleanup_root(&self) -> Option<&Path> {
         self._store.as_ref().map(|root| root.0.as_path())
     }
-
-    /// Commits an executable for callers that construct an exec transport
-    /// without a complete contract document.
-    pub fn load(path: &Path) -> Result<Arc<Self>, String> {
-        use std::os::unix::fs::PermissionsExt;
-        if !path.is_absolute() {
-            return Err("is not an absolute path".into());
-        }
-        let invocation_name = path.file_name().and_then(|n| n.to_str()).ok_or("has a UTF-8 file name")?.to_owned();
-        let path = std::fs::canonicalize(path).map_err(|e| format!("names an existing path: {e}"))?;
-        let mut file = File::open(&path).map_err(|e| format!("is readable for construction: {e}"))?;
-        let metadata = file.metadata().map_err(|e| format!("has readable metadata: {e}"))?;
-        if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
-            return Err("names an executable file".into());
-        }
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes).map_err(|e| format!("is readable for construction: {e}"))?;
-        let captured = CapturedExecutableSource {
-            source_path: path,
-            invocation_name,
-            sha256: foe_contract::fingerprint::sha256_hex(&bytes),
-            bytes: Arc::from(bytes),
-        };
-        let mut store = Store::create(Path::new("/tmp/foe-standalone-executable"), &[])?;
-        Self::store(&captured, &mut store)
-    }
 }
 
 /// Committed executables reachable from one episode, arranged like its
@@ -120,7 +94,6 @@ impl CapturedExecutable {
 pub struct CapturedExecutableTree {
     path: String,
     pub tools: BTreeMap<String, Arc<CapturedExecutable>>,
-    pub transport: Option<Arc<CapturedExecutable>>,
     child_contracts: BTreeMap<String, (bool, CapturedExecutableTree)>,
     workflow: BTreeMap<String, CapturedExecutableTree>,
 }
@@ -157,11 +130,6 @@ impl CapturedExecutableTree {
         for (name, captured) in &contract.captured_executables {
             tools.insert(name.clone(), make(relative_key(&path, &format!("tool_defs.{name}.exec")), captured)?);
         }
-        let transport = contract
-            .captured_transport
-            .as_ref()
-            .map(|captured| make(relative_key(&path, "model.exec"), captured))
-            .transpose()?;
         let mut child_contracts = BTreeMap::new();
         for (name, child) in &contract.child_contracts {
             let reachable = contract.grants.spawn.contains(name);
@@ -175,7 +143,7 @@ impl CapturedExecutableTree {
             let child_path = format!("{path}.workflow.nodes.{nodes}.model");
             workflow.insert(node_path.clone(), Self::build(child, &child_path, inherited, store.as_deref_mut())?);
         }
-        Ok(Self { path, tools, transport, child_contracts, workflow })
+        Ok(Self { path, tools, child_contracts, workflow })
     }
 
     pub fn child(&self, name: &str) -> Option<&CapturedExecutableTree> {
@@ -196,9 +164,6 @@ impl CapturedExecutableTree {
     fn collect(&self, reachable: bool, out: &mut Vec<(String, Arc<CapturedExecutable>, bool)>) {
         for (name, executable) in &self.tools {
             out.push((format!("{}.tool_defs.{name}.exec", self.path), executable.clone(), reachable));
-        }
-        if let Some(executable) = &self.transport {
-            out.push((format!("{}.model.exec", self.path), executable.clone(), reachable));
         }
         for (granted, child) in self.child_contracts.values() {
             child.collect(reachable && *granted, out);
@@ -272,7 +237,7 @@ fn needs_storage(contract: &ResolvedContract) -> bool {
     contract
         .contract_tree(ContractTreeSelection::AllDeclared)
         .into_iter()
-        .any(|(_, contract)| contract.captured_transport.is_some() || !contract.captured_executables.is_empty())
+        .any(|(_, contract)| !contract.captured_executables.is_empty())
 }
 
 fn relative_key(path: &str, field: &str) -> String {

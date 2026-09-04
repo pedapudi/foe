@@ -26,9 +26,6 @@ pub enum WireFormat {
     /// otherwise.
     #[cfg(feature = "google")]
     VertexByModel,
-    /// A contract driven over standard input and output.
-    #[cfg(feature = "exec")]
-    Exec,
 }
 
 impl WireFormat {
@@ -42,8 +39,6 @@ impl WireFormat {
             WireFormat::Responses => "responses",
             #[cfg(feature = "google")]
             WireFormat::VertexByModel => "messages or gemini, by model name",
-            #[cfg(feature = "exec")]
-            WireFormat::Exec => "exec",
         }
     }
 }
@@ -202,21 +197,6 @@ pub static PROVIDERS: &[Provider] = &[
         windows: &[("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
         headers: &[],
         verify: Verify::MintToken,
-    },
-    #[cfg(feature = "exec")]
-    Provider {
-        name: "exec",
-        title: "exec",
-        description: "a contract of your own that answers model requests on its standard output",
-        format: WireFormat::Exec,
-        auth: AuthKind::None,
-        default_base_url: None,
-        path: "",
-        required: &[("exec", "the absolute path of the contract")],
-        presets: &[],
-        windows: &[],
-        headers: &[],
-        verify: Verify::None,
     },
 ];
 

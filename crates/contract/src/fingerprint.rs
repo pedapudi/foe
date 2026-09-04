@@ -3,7 +3,7 @@
 //! Implements docs/design.md (Execution contracts and fingerprints). The fingerprint
 //! document lists everything that shapes what the model sees and nothing
 //! else: resolved paths, model selection, `sandbox`, and the task are absent.
-//! Construction reads declared configured tools and executable transports.
+//! Construction reads declared configured tools.
 //! Fingerprint uses their retained digests, executes nothing, and opens no
 //! socket. The caller supplies the runtime named by the document. Reading the
 //! running binary belongs to `foe_core::fingerprint::runtime_info`.
@@ -66,11 +66,7 @@ pub fn compute(
     if contract.grants.task_session {
         grants["task_session"] = Value::Bool(true);
     }
-    let mut runtime = serde_json::to_value(runtime)?;
-    if let Some(captured) = &contract.captured_transport {
-        runtime["exec_transport_sha256"] = Value::String(captured.sha256.clone());
-        runtime["exec_transport_name"] = Value::String(captured.invocation_name.clone());
-    }
+    let runtime = serde_json::to_value(runtime)?;
     let document = json!({
         "name": contract.name,
         "instructions": contract.instructions,

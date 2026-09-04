@@ -246,15 +246,13 @@ fn codex_login_up_to_the_loopback_callback() {
 }
 
 #[test]
-fn an_unknown_provider_and_exec_are_refused_with_directions() {
+fn an_unknown_provider_is_refused_with_directions() {
     let home = home("unknown");
     let mut input = Cursor::new(Vec::new());
     let mut output = Vec::new();
     let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
     let err = run(&mut session, Options { provider: Some("bedrock".into()), ..Default::default() }).unwrap_err();
     assert!(err.starts_with("provider `bedrock` is unknown to this build"), "{err}");
-    let err = run(&mut session, Options { provider: Some("exec".into()), ..Default::default() }).unwrap_err();
-    assert!(err.starts_with("exec needs no login"), "{err}");
 }
 
 fn base64url(bytes: &[u8]) -> String {

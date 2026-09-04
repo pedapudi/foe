@@ -128,14 +128,6 @@ impl Policy {
                     policy.reserve_network(format!("{contract_key}.tool_defs.{name}.network is true"));
                 }
             }
-            if let Some(executable) = &contract.captured_transport {
-                policy.add_image(
-                    &executable.source_path,
-                    &executable.sha256,
-                    &executable.bytes,
-                    format!("executable model transport {contract_key}.model.exec"),
-                )?;
-            }
             if contract.model.is_some() {
                 policy.reserve_network(format!("model transport in {contract_key}"));
             }

@@ -292,7 +292,7 @@ resources uses its declared working directory or an absolute configured path.
 
 Captured executables exist for the lifetime of their runtime owners.
 The last owner removes the private directory. Task-lifetime sessions use the
-session launcher and do not retain a configured tool or transport executable.
+session launcher and do not retain a configured tool executable.
 
 A parent passes captured executables for the selected child's full declared
 contract tree. The sealed manifest associates every configuration key with an

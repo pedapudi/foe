@@ -71,7 +71,7 @@ The first command asks for an API key, checks it, stores it under
 `~/.config/foe/`, and sets the default model. The second runs the built-in
 coding configuration against the current directory. The runtime supports
 API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
-managed-cloud endpoints, and a transport executable of your own.
+and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
@@ -182,7 +182,7 @@ over 8 MiB.
 | [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
 | [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
-| [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
+| [docs/models.md](docs/models.md) | model endpoints, credentials, and `foe login` |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
 | [docs/telemetry.md](docs/telemetry.md) | what telemetry derives from an episode log when enabled, the schema it emits, and what it never emits |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |

@@ -12,7 +12,7 @@ to find the relevant specification, report, or guide.
 | [evidence.md](evidence.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
 | [code-mode.md](code-mode.md) | how the `python` tool composes ordinary tools while keeping intermediate results out of the model context |
 | [config.md](config.md) | what an execution-contract document may contain and what each key means |
-| [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a transport executable answers model requests |
+| [models.md](models.md) | which model endpoints exist, where their credentials live, and how `foe login` sets them up |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |
 | [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model transport |
