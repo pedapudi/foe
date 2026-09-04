@@ -219,11 +219,6 @@ else
       echo "$description: the terminal improvement node did not call its verifier" >&2
       result=1
     fi
-    if [ "$model_route" = exec/self-improvement-retry-demo ] \
-      && ! grep -Rq '"type":"inbox/item".*"source":"verify"' "$log_dir"; then
-      echo "$description: the deterministic route did not exercise verifier feedback" >&2
-      result=1
-    fi
   fi
   if ! /usr/bin/python3 "$repo_dir/evals/trace_quality.py" --pretty "$log_dir"; then
     result=1

@@ -36,7 +36,7 @@ source cannot change the run.
 | each `grants.read` directory | read files, list directories |
 | each `grants.write` directory | write, truncate, create, remove, rename, and link files and directories; no read |
 | each `grants.execute` file or directory in the contract and its reachable descendants | read and execute the file or every file below the directory, including from a tool subprocess |
-| each selected configured tool and executable model transport in the contract and its reachable descendants | execute and read the captured executable |
+| each selected configured tool in the contract and its reachable descendants | execute and read the captured executable |
 | the running `foe` binary, when a child contract is reachable | execute and read that file, so the episode can start children |
 | the shell or Python interpreter required by a selected built-in tool | execute and read that exact file |
 | a captured executable's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
@@ -72,7 +72,7 @@ path search. The error asks the contract author to name that interpreter in
 the shebang. This rule keeps the executable surface derivable before the
 episode starts.
 
-Configured tools and executable model transports run from the captured bytes.
+Configured tools run from the captured bytes.
 The runtime stores each copy outside every declared write root and keeps its
 file descriptor open. Replacing or deleting the configured source path cannot
 change the bytes that run. A permission record names the construction-time
@@ -137,8 +137,8 @@ read, write, and execute roots lie inside its parent's corresponding roots.
 Its bind ports lie among its parent's bind ports. Contract resolution checks
 that containment.
 
-The ancestor also reserves captured configured executables, executable model
-transports, built-in interpreters, and outbound TCP required by reachable
+The ancestor also reserves captured configured executables, built-in
+interpreters, credential files, and outbound TCP required by reachable
 descendants. A declaration is reachable through a `grants.spawn` entry or a
 workflow model node. Each descendant applies a narrower policy for its own
 reachable subtree.
