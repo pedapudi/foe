@@ -537,10 +537,8 @@ impl Reader {
                         None => self.answer(None, call_id, no_host(&self.child_id, name)),
                     }
                 }
-                // A `model/request` names its header by seq and carries
-                // neither the system prompt nor the tool schemas, so a host
-                // that never saw the header cannot build the request. The
-                // header has to travel with the requests it governs.
+                // A host needs the header cited by each model request.
+                // Forwarding a header does not increment model-call accounting.
                 EventData::RequestHeader(_) => self.forward(value),
                 EventData::ModelRequest(_) => {
                     calls += 1;
