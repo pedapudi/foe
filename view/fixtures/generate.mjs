@@ -4,11 +4,11 @@
 // tests can compare them with the derived-messages rule.
 //
 // The four workflow fixtures are an exception: the foe runtime writes them.
-// `workflowRun` below assembles a configuration, a scripted model contract,
-// and a scripted verification contract, runs the `foe` binary over them, and
-// copies the logs here with the machine's own paths replaced. A declared
-// graph has rules a hand-written log would satisfy only by accident, so the
-// fixtures come from the runtime that enforces them.
+// `workflowRun` below assembles a configuration and a scripted verification
+// contract. It answers model requests over the host protocol, runs the `foe`
+// binary, and copies the logs here with the machine's own paths replaced. A
+// declared graph has rules a hand-written log would satisfy only by accident,
+// so the fixtures come from the runtime that enforces them.
 //
 // Run with `pnpm fixtures` after changing this file.
 //
@@ -18,9 +18,10 @@
 // produces rather than shapes chosen to make them pass.
 
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -518,77 +519,59 @@ const BINARY = join(dir, "..", "..", "target", "release", "foe");
 const PROJECT = "/home/user/project";
 const TOOLS = "/home/user/tools";
 
-/** A scripted model contract: one model/request line in, model/chunk lines out. */
-const MODEL_SCRIPT = `#!/usr/bin/python3
-"""Answers model requests for the workflow fixture.
+/** Answers every model request over the host protocol with a fixed script. */
+function answerModel(run, event, header, counters) {
+  const request = event.data;
+  const requestId = request.request_id;
+  const tag = event.episode_id;
+  const offered = (header.data.tools ?? []).map((tool) => tool.name);
+  const messages = request.messages ?? [];
+  const bump = (name) => {
+    const value = (counters.get(name) ?? 0) + 1;
+    counters.set(name, value);
+    return value;
+  };
+  const emit = (chunk) => {
+    const line = { type: "model/chunk", request_id: requestId, chunk };
+    if (tag !== undefined) line.episode_id = tag;
+    run.stdin.write(`${JSON.stringify(line)}\n`);
+  };
+  const call = (id, name, args) => {
+    emit({ kind: "tool_call_start", id, name });
+    emit({ kind: "tool_call_delta", id, delta: JSON.stringify(args) });
+    emit({ kind: "tool_call_end", id });
+  };
+  const say = (body) => {
+    for (const word of body.split(" ")) emit({ kind: "text", delta: `${word} ` });
+  };
+  const done = (stop, input, output) => {
+    emit({ kind: "done", stop, usage: { input, output, cache_read: 0 } });
+  };
 
-The answer is chosen from the tools the request offers and from a counter
-kept beside this file, so one run of the graph gives the same answers every
-time. A request offering \`recover\` is a recovery decision; one offering
-\`return\` is the propose node; anything else is the apply node.
-"""
-
-import json
-import os
-import sys
-
-STATE = "__STATE__"
-
-
-def bump(name):
-    path = os.path.join(STATE, name)
-    n = int(open(path).read().strip()) if os.path.exists(path) else 0
-    open(path, "w").write(str(n + 1))
-    return n + 1
-
-
-def emit(rid, chunk):
-    sys.stdout.write(json.dumps({"type": "model/chunk", "request_id": rid, "chunk": chunk}) + "\\n")
-
-
-def call(rid, cid, name, args):
-    emit(rid, {"kind": "tool_call_start", "id": cid, "name": name})
-    emit(rid, {"kind": "tool_call_delta", "id": cid, "delta": json.dumps(args)})
-    emit(rid, {"kind": "tool_call_end", "id": cid})
-
-
-def say(rid, body):
-    for word in body.split(" "):
-        emit(rid, {"kind": "text", "delta": word + " "})
-
-
-def done(rid, stop, given, produced):
-    emit(rid, {"kind": "done", "stop": stop,
-               "usage": {"input": given, "output": produced, "cache_read": 0}})
-
-
-req = json.loads(sys.stdin.readline())
-rid = req["request_id"]
-offered = [t["name"] for t in req.get("tools") or []]
-messages = req.get("messages") or []
-
-if "recover" in offered:
-    n = bump("recover")
-    failed = json.dumps(messages).split("Node \`", 1)[1].split("\`", 1)[0]
-    call(rid, "tc_recover_%d" % n, "recover", {"action": "retry", "node": failed})
-    done(rid, "tool", 1180, 96)
-elif "return" in offered:
-    n = bump("propose")
-    plan = {"file": "src/collate.py",
-            "todo": "TODO: the pass over the manifest is quadratic",
-            "change": "widen the survey before choosing" if n == 1
-                      else "index the manifest by key and look each row up once",
-            "branch": "widen" if n == 1 else "apply"}
-    say(rid, "The survey names one TODO that a local change resolves.")
-    call(rid, "tc_return_%d" % n, "return", {"value": plan})
-    done(rid, "tool", 2400 + 900 * n, 180)
-elif len(messages) <= 1:
-    call(rid, "tc_read_%d" % bump("read"), "read", {"path": "src/collate.py"})
-    done(rid, "tool", 3100, 74)
-else:
-    say(rid, "Indexed the manifest by key so each row is looked up once, and removed the TODO comment.")
-    done(rid, "end", 4260, 210)
-`;
+  if (offered.includes("recover")) {
+    const n = bump("recover");
+    const failed = JSON.stringify(messages).split("Node `", 2)[1].split("`", 1)[0];
+    call(`tc_recover_${n}`, "recover", { action: "retry", node: failed });
+    done("tool", 1180, 96);
+  } else if (offered.includes("return")) {
+    const n = bump("propose");
+    const plan = {
+      file: "src/collate.py",
+      todo: "TODO: the pass over the manifest is quadratic",
+      change: n === 1 ? "widen the survey before choosing" : "index the manifest by key and look each row up once",
+      branch: n === 1 ? "widen" : "apply",
+    };
+    say("The survey names one TODO that a local change resolves.");
+    call(`tc_return_${n}`, "return", { value: plan });
+    done("tool", 2400 + 900 * n, 180);
+  } else if (messages.length <= 1) {
+    call(`tc_read_${bump("read")}`, "read", { path: "src/collate.py" });
+    done("tool", 3100, 74);
+  } else {
+    say("Indexed the manifest by key so each row is looked up once, and removed the TODO comment.");
+    done("end", 4260, 210);
+  }
+}
 
 /** A scripted verification contract: one finding on its first run, none after. */
 const CHECK_SCRIPT = `#!/usr/bin/python3
@@ -657,7 +640,6 @@ function workflowConfig(root) {
     grants: { read: [`${root}/project`], write: [`${root}/project/src`] },
     budget: { model_calls: 30, input_tokens: 240000, output_tokens: 60000, max_episodes: 6 },
     sandbox: { mode: "off" },
-    model: { provider: "exec", model: "scripted-answers", exec: `${root}/model` },
     workflow: {
       nodes: {
         manifest: { tool: "grep", args: { pattern: "^def ", glob: "*.py" } },
@@ -711,7 +693,7 @@ function workflowConfig(root) {
  * logs already here are left alone, so the rest of the fixtures regenerate
  * on a machine with no Rust toolchain.
  */
-function workflowRun() {
+async function workflowRun() {
   if (!existsSync(BINARY)) {
     console.log(`${BINARY} is absent; the workflow fixtures are left as they are`);
     console.log("build it with `cargo build --release --bin foe` to regenerate them");
@@ -722,20 +704,46 @@ function workflowRun() {
     mkdirSync(join(root, "project", "src"), { recursive: true });
     mkdirSync(join(root, "state"), { recursive: true });
     writeFileSync(join(root, "project", "src", "collate.py"), SOURCE);
-    for (const [name, body] of [["model", MODEL_SCRIPT], ["check", CHECK_SCRIPT]]) {
-      writeFileSync(join(root, name), body.replaceAll("__STATE__", join(root, "state")));
-      chmodSync(join(root, name), 0o755);
-    }
+    writeFileSync(join(root, "check"), CHECK_SCRIPT.replaceAll("__STATE__", join(root, "state")));
+    chmodSync(join(root, "check"), 0o755);
     const config = join(root, "config.json");
     writeFileSync(config, JSON.stringify(workflowConfig(root), null, 2));
     const logs = join(root, "logs");
-    const run = spawnSync(BINARY, ["--config", config, "--log-dir", logs, "--headless", "--no-open"], {
-      encoding: "utf8",
+    const run = spawn(BINARY, ["--config", config, "--log-dir", logs, "--host"], {
+      stdio: ["pipe", "pipe", "pipe"],
     });
-    if (run.status !== 0) {
-      throw new Error(`${BINARY} exited with ${run.status}: ${run.stderr}${run.stdout}`);
+    let stderr = "";
+    run.stderr.setEncoding("utf8");
+    run.stderr.on("data", (chunk) => { stderr += chunk; });
+    const exited = new Promise((resolve, reject) => {
+      run.once("error", reject);
+      run.once("close", (code, signal) => resolve({ code, signal }));
+    });
+    const headers = new Map();
+    const counters = new Map();
+    let outcome;
+    const lines = createInterface({ input: run.stdout, crlfDelay: Infinity });
+    for await (const line of lines) {
+      const event = JSON.parse(line);
+      const tag = event.episode_id ?? "";
+      if (event.type === "request/header") headers.set(`${tag}:${event.seq}`, event);
+      if (event.type === "model/request") {
+        const header = headers.get(`${tag}:${event.data.header_seq}`);
+        if (header === undefined) throw new Error(`request/header ${event.data.header_seq} was never received`);
+        answerModel(run, event, header, counters);
+      }
+      if (event.type === "episode/end" && event.episode_id === undefined) {
+        outcome = event.data.outcome;
+        run.stdin.end();
+      }
     }
-    const outcome = JSON.parse(run.stdout.trim().split("\n").pop());
+    const status = await exited;
+    if (status.code !== 0) {
+      throw new Error(`${BINARY} exited with ${status.code ?? status.signal}: ${stderr}`);
+    }
+    if (outcome === undefined) {
+      throw new Error(`the graph wrote no root episode/end event: ${stderr}`);
+    }
     if (outcome.kind !== "completed") {
       throw new Error(`the graph ended ${outcome.kind}: ${JSON.stringify(outcome)}`);
     }
@@ -786,4 +794,4 @@ compact().write("compact.jsonl");
 overlapParent().write("overlap-parent.jsonl");
 overlapChild().write("overlap-child.jsonl");
 rich().write("rich.jsonl");
-workflowRun();
+await workflowRun();
