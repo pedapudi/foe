@@ -65,11 +65,5 @@
     },
     "recovery": { "max_interventions": 2 }
   },
-  "model": {
-    "provider": "exec",
-    "model": "workflow-demo",
-    "exec": "/home/user/foe/examples/support/scripted-transport.py",
-    "project_dir": "/home/user/project"
-  },
   "task": "Implement add in src/calculator.py."
 }

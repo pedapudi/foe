@@ -34,28 +34,20 @@ A binary at another path is given as the single argument:
 python3 examples/embed-with-a-model-block/run.py /absolute/path/to/foe
 ```
 
-The package depends on the standard library alone, so `run.py` puts
-`python/` on the import path and needs no installation step. The `model`
-block names the `exec` provider and points it at `transport.py`, which
-answers with fixed chunks, so the example needs no provider credential and
-makes no network request. That script imports the standard library alone,
-so the configuration names it where it lies;
-[`../support/README.md`](../support/) states when a transport script has to
-be copied inside a read root instead. Each run creates
+The package and loopback endpoint depend on the standard library alone.
+`run.py` puts `python/` and `examples/support/` on the import path, so the
+example needs no installation step. The `model` block names the
+`compatible-http` provider and supplies the loopback endpoint without a
+key. Every request passes through foe's HTTP client without reaching an
+external network. Each run creates
 `target/foe-model-block-demo.XXXXXX/`, holding the disposable project and
 the episode log. The runner prints a command that serves the viewer for it.
 
-## Against a real model
+## Against a deployed endpoint
 
-Replace the block with the provider that holds the credential, and change
-nothing else:
-
-```python
-model=foe.Model(provider="anthropic", model="claude-opus-5")
-```
-
-The key is the file `foe login anthropic` wrote. `docs/models.md` lists
-every provider and its options.
+Replace the provider, model, base URL, and optional credential path in the
+block. The application and its host tool remain unchanged. `docs/models.md`
+lists every provider and its options.
 
 ## What the application supplies
 
@@ -80,11 +72,10 @@ of its own, or records which build produced a log, reads them there.
 
 ## What to look for
 
-The first `request/header` event names the route `exec`/`embedding-demo`,
-the provider and model the block declares, rather than the `host`/`host`
-route a host transport produces. Three `model/request` events follow, and
-the host answered none of them: the `assistant/chunk` events after each one
-are what foe's own transport received.
+The first `request/header` event names the route
+`compatible-http`/`fixture-model`. Three `model/request` events follow. The
+host answers none of them. The `assistant/chunk` events after each request
+are what foe's HTTP client received.
 
 The two tools resolve in different processes. The `read` call is a built-in
 tool, run inside the episode under its Landlock ruleset, and its
@@ -94,8 +85,11 @@ the package wrote, carrying the rendering the application produced.
 
 ## What the runner checks
 
-- the first `request/header` names the route `exec`/`embedding-demo`;
+- the first `request/header` names the route
+  `compatible-http`/`fixture-model`;
 - three `model/request` events were written;
+- three unauthenticated requests reached the loopback endpoint with the
+  expected path, model, and accumulated tool results;
 - exactly one `host/tool-call`, for `record_finding`;
 - the `read` result holds the README's text, and the `record_finding`
   result holds the text `@record_finding.render` produced, so the tool ran

@@ -1,49 +1,34 @@
 //! The provider table: every name a `model` block may give, with the wire
 //! format, the credential source, and the defaults that name implies.
 //!
-//! A row exists only when the features of both its format and its
-//! credential source are enabled, so `known_providers()` describes the
-//! build that is running. Adding a provider that speaks an existing format
-//! with an existing credential source is one row here and nothing else.
+//! The binary includes every row. Adding a provider that speaks an existing
+//! format with an existing credential source is one row here and nothing
+//! else.
 
 use crate::auth::AuthKind;
-#[cfg(feature = "api-key")]
 use crate::auth::KeyHeader;
 
 /// The wire format a row speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireFormat {
     /// Anthropic Messages API.
-    #[cfg(feature = "messages")]
     Messages,
     /// OpenAI Chat Completions API, and the servers and proxies that imitate it.
-    #[cfg(feature = "chat")]
     Chat,
     /// OpenAI Responses API.
-    #[cfg(feature = "responses")]
     Responses,
     /// Vertex AI: Messages for model names starting with `claude`, Gemini
     /// otherwise.
-    #[cfg(feature = "google")]
-    VertexByModel,
-    /// A contract driven over standard input and output.
-    #[cfg(feature = "exec")]
-    Exec,
+    ManagedCloudByModel,
 }
 
 impl WireFormat {
     pub fn name(&self) -> &'static str {
         match *self {
-            #[cfg(feature = "messages")]
             WireFormat::Messages => "messages",
-            #[cfg(feature = "chat")]
             WireFormat::Chat => "chat",
-            #[cfg(feature = "responses")]
             WireFormat::Responses => "responses",
-            #[cfg(feature = "google")]
-            WireFormat::VertexByModel => "messages or gemini, by model name",
-            #[cfg(feature = "exec")]
-            WireFormat::Exec => "exec",
+            WireFormat::ManagedCloudByModel => "messages or gemini, by model name",
         }
     }
 }
@@ -55,6 +40,7 @@ pub enum Verify {
     GetJson(&'static str),
     /// Minting an access token is the proof.
     MintToken,
+    /// The endpoint defines no separate verification request.
     None,
 }
 
@@ -105,13 +91,12 @@ const GPT5: u64 = 400_000;
 const GEMINI_25: u64 = 1_048_576;
 
 pub static PROVIDERS: &[Provider] = &[
-    #[cfg(all(feature = "messages", feature = "api-key"))]
     Provider {
         name: "anthropic",
         title: "Anthropic",
         description: "Anthropic's API with an API key",
         format: WireFormat::Messages,
-        auth: AuthKind::ApiKey { header: KeyHeader::XApiKey },
+        auth: AuthKind::ApiKey { header: KeyHeader::XApiKey, optional: false },
         default_base_url: Some("https://api.anthropic.com"),
         path: "/v1/messages",
         required: &[],
@@ -120,13 +105,12 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("anthropic-version", "2023-06-01")],
         verify: Verify::GetJson("/v1/models"),
     },
-    #[cfg(all(feature = "responses", feature = "api-key"))]
     Provider {
         name: "openai",
         title: "OpenAI",
         description: "OpenAI's API with an API key, over the Responses API",
         format: WireFormat::Responses,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
         default_base_url: Some("https://api.openai.com/v1"),
         path: "/responses",
         required: &[],
@@ -135,28 +119,26 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
-    #[cfg(all(feature = "chat", feature = "api-key"))]
     Provider {
-        name: "openai-compatible",
-        title: "OpenAI-compatible server",
-        description: "any server speaking the Chat Completions API, such as Ollama, vLLM, llama.cpp, or LiteLLM",
+        name: "compatible-http",
+        title: "Compatible HTTP endpoint",
+        description: "any server speaking the streaming chat-completion format",
         format: WireFormat::Chat,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: true },
         default_base_url: None,
         path: "/chat/completions",
         required: &[("base_url", "the server's origin and version prefix, for example http://127.0.0.1:11434/v1")],
         presets: &[],
         windows: &[],
         headers: &[],
-        verify: Verify::GetJson("/models"),
+        verify: Verify::None,
     },
-    #[cfg(all(feature = "chat", feature = "api-key"))]
     Provider {
         name: "openrouter",
         title: "OpenRouter",
         description: "OpenRouter, one key for many models, over the Chat Completions API",
         format: WireFormat::Chat,
-        auth: AuthKind::ApiKey { header: KeyHeader::Bearer },
+        auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
         default_base_url: Some("https://openrouter.ai/api/v1"),
         path: "/chat/completions",
         required: &[],
@@ -166,7 +148,6 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("HTTP-Referer", "https://github.com/pedapudi/foe"), ("X-Title", "foe")],
         verify: Verify::GetJson("/key"),
     },
-    #[cfg(all(feature = "responses", feature = "token-file"))]
     Provider {
         name: "openai-codex",
         title: "OpenAI Codex",
@@ -185,13 +166,12 @@ pub static PROVIDERS: &[Provider] = &[
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
         verify: Verify::None,
     },
-    #[cfg(all(feature = "google", any(feature = "messages", feature = "gemini")))]
     Provider {
         name: "vertex",
         title: "Vertex AI",
         description: "Google Cloud Vertex AI with Google credentials: Gemini models, and Claude models by name",
-        format: WireFormat::VertexByModel,
-        auth: AuthKind::Google,
+        format: WireFormat::ManagedCloudByModel,
+        auth: AuthKind::ManagedCloud,
         default_base_url: None,
         path: "",
         required: &[
@@ -202,21 +182,6 @@ pub static PROVIDERS: &[Provider] = &[
         windows: &[("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
         headers: &[],
         verify: Verify::MintToken,
-    },
-    #[cfg(feature = "exec")]
-    Provider {
-        name: "exec",
-        title: "exec",
-        description: "a contract of your own that answers model requests on its standard output",
-        format: WireFormat::Exec,
-        auth: AuthKind::None,
-        default_base_url: None,
-        path: "",
-        required: &[("exec", "the absolute path of the contract")],
-        presets: &[],
-        windows: &[],
-        headers: &[],
-        verify: Verify::None,
     },
 ];
 
@@ -243,7 +208,7 @@ mod tests {
             for key in provider.required_keys() {
                 assert!(!provider.hint(key).is_empty(), "{}.{key}", provider.name);
             }
-            if provider.auth.option_key().is_some() && provider.format != WireFormat::VertexByModel {
+            if provider.format != WireFormat::ManagedCloudByModel {
                 assert!(provider.default_base_url.is_some() || provider.required_keys().any(|k| k == "base_url"));
             }
         }

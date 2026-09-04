@@ -36,10 +36,12 @@ done
 config_template=$example_dir/config.json
 run_prefix=foe-self-extension-demo
 description="self-extension demo"
+response=self_extension
 if [ "$workflow" = true ]; then
   config_template=$example_dir/workflow-config.json
   run_prefix=foe-self-improvement-workflow-demo
   description="self-improvement workflow demo"
+  response=self_improvement_retry
 fi
 
 if [ ! -x "$binary" ]; then
@@ -75,7 +77,8 @@ fi
   /home/user/foe "$repo_dir"
 
 echo "Running the $description in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$repo_dir/examples/support/responses.py" "$response"
 
 findings=$(CDPATH= cd -- "$project_dir" && "$example_dir/check")
 if [ -n "$findings" ]; then

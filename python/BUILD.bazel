@@ -1,0 +1,5 @@
+filegroup(
+    name = "foe_package",
+    srcs = glob(["foe/*.py"]),
+    visibility = ["//visibility:public"],
+)

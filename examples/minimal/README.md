@@ -2,8 +2,8 @@
 
 The smallest configuration that runs an episode. It grants one directory for
 reading and writing, lists the four built-in coding tools (`read`, `grep`,
-`edit`, `bash`), sets a budget of twenty model calls, and names a provider and
-a model. `done_when` is absent, so the episode completes when the model
+`edit`, `bash`), and sets a budget of twenty model calls. The root `model`
+block is absent, so the host answers requests. `done_when` is absent, so the episode completes when the model
 produces a turn with no tool calls, and that turn's text is the outcome value.
 
 `run.sh` creates a small Python package whose `bracket_depth` function returns
@@ -11,27 +11,12 @@ the depth left at the end of the string rather than the greatest depth it
 reached, runs foe against it, and checks the episode log and the repaired
 package.
 
-## The model block
+## Host-owned responses
 
-The configuration names the `exec` provider and points it at `transport.py`
-in this directory. That script answers each model request with fixed chunks
-in the wire shape [docs/models.md](../../docs/models.md) defines, so the
-example needs no credential and opens no connection while the runtime still
-runs every tool call, log event, and completion rule.
-
-To run the same contract against a provider, replace the `model` block with:
-
-```json
-"model": { "provider": "anthropic", "model": "claude-opus-5" }
-```
-
-and run `foe login anthropic` once. That block names no key file, so the key
-is read from `~/.config/foe/credentials/anthropic.json`, which the login
-writes, and the log records the resolved path in
-`episode/start.contract.model`. A block that names `api_key_file` reads that
-file instead, which is worth doing when the key belongs to one project rather
-than to the account running foe. [docs/models.md](../../docs/models.md)
-describes both.
+`responses.py` defines six deterministic answers. `run_with_host.py` supplies
+them through the host protocol, so the example needs no credential and opens
+no network connection. The binary still runs every tool call, log event, and
+completion rule.
 
 ## Requirements
 
@@ -73,23 +58,16 @@ target/foe-minimal-demo.XXXXXX/
 ├── config.json               the configuration with /home/user/project replaced
 ├── project/
 │   ├── brackets.py           bracket_depth, returning the wrong depth
-│   ├── test_brackets.py      three tests, of which test_nested_brackets fails
-│   ├── tools/transport.py    the model answers, copied from this directory
-│   └── support/chunks.py     copied from examples/support
+│   └── test_brackets.py      three tests, of which test_nested_brackets fails
 └── episode/episode.jsonl
 ```
-
-The transport process runs under the episode's sandbox, which grants it the
-episode's read roots and the file it was started from. Both scripts are
-therefore copied under the granted project directory; a script left in the
-repository could not read the module it imports.
 
 The runner refuses to continue when `test_nested_brackets` passes before the
 episode starts, because an episode that repairs nothing proves nothing.
 
 ## What the run produces
 
-The transport answers six requests, one turn each: `grep` for the function,
+The host answers six requests, one turn each: `grep` for the function,
 `bash` to run the tests and see the failure, `read` for the function body,
 `edit` to track the greatest depth reached, `bash` to run the tests again, and
 a final turn of text with no tool call. The last turn ends the episode,

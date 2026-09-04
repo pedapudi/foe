@@ -1,20 +1,18 @@
 //! Built-in model clients, used when a configuration has a `model` block.
 //!
 //! A client is a wire format paired with a credential source and a URL.
-//! The wire formats live in [`format`]: Anthropic Messages, OpenAI Chat
-//! Completions, OpenAI Responses, and Gemini. The credential sources live
-//! in [`auth`]: an API key file, an OAuth token file, and Google
-//! credentials. The provider table in [`providers`] names each pairing and
-//! its defaults; [`build`] resolves a `model` block against the table. A
-//! `model` block whose provider is `exec` names a contract instead, which
-//! [`exec`] drives over standard input and output.
+//! The wire formats live in [`format`], and the credential sources live in
+//! [`auth`]. The provider table in [`providers`] names each pairing and its
+//! defaults. [`build`] resolves a `model` block against the table.
 //!
 //! What every client guarantees:
 //!
 //! - Credentials come from the file the `model` block names, or from the
 //!   convention path `~/.config/foe/credentials/<provider>.json` when it
-//!   names none. No environment variable is read, including `HOME` and
-//!   proxy variables; there is no proxy support.
+//!   names none. A compatible HTTP endpoint reads a key only when its block
+//!   names one, and otherwise receives no authentication header. No
+//!   environment variable is read, including `HOME` and proxy variables;
+//!   there is no proxy support.
 //! - TLS trusts a compiled-in copy of Mozilla's root certificates; the
 //!   system certificate store is never opened.
 //! - Every call to `stream` ends with exactly one `Chunk::Done` or
@@ -40,30 +38,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use foe_contract::ModelConfig;
-use foe_core::{Chunk, Executor, ModelRequestBody, Transport};
+use foe_core::{Chunk, ModelRequestBody, Transport};
 
 pub mod auth;
-#[cfg(feature = "exec")]
-pub mod exec;
 pub mod format;
 mod http;
 pub mod paths;
 pub mod providers;
 mod sse;
-#[cfg(test)]
-mod testserver;
 
 use auth::{Auth, AuthKind};
 use format::{Decoder, Format};
 use http::Url;
-#[allow(unused_imports)]
 use providers::{Provider, Verify, WireFormat};
 
 /// Why a `model` block could not become a transport. Every variant names the
 /// configuration key involved and says what to do.
 #[derive(Debug, thiserror::Error)]
 pub enum TransportError {
-    #[error("model.provider: `{name}` is unknown to this build; known providers: {}", known.join(", "))]
+    #[error("model.provider: `{name}` is unknown; known providers: {}", known.join(", "))]
     UnknownProvider { name: String, known: Vec<&'static str> },
     #[error("model.{key}: required by provider {provider}; {hint}")]
     MissingOption { provider: &'static str, key: &'static str, hint: String },
@@ -71,12 +64,8 @@ pub enum TransportError {
     Credential { provider: &'static str, key: &'static str, path: PathBuf, reason: String },
     #[error("model.base_url: {url}: {reason}")]
     BaseUrl { url: String, reason: String },
-    #[error("model.exec: {path}: {reason}")]
-    Exec { path: PathBuf, reason: String },
     #[error("home directory: {0}; name the credential file in the model block instead")]
     Home(String),
-    #[error("model.provider: exec needs an executor, which only the foe binary supplies")]
-    NoExecutor,
 }
 
 /// A `model` block resolved against the provider table, before any
@@ -84,32 +73,20 @@ pub enum TransportError {
 #[derive(Debug, Clone)]
 pub struct Plan {
     pub provider: &'static Provider,
-    /// The block with every defaulted option filled in, including the
-    /// credential path. What `episode/start.contract.model` records.
+    /// The block with every defaulted option filled in, including any
+    /// resolved credential path. What `episode/start.contract.model` records.
     pub model: ModelConfig,
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
-    /// The contract an `exec` provider runs.
-    pub exec: Option<PathBuf>,
 }
 
 impl Plan {
     /// One line for `foe plan`.
     pub fn describe(&self) -> String {
-        self.describe_with_exec_sha256(None)
-    }
-
-    pub fn describe_with_exec_sha256(&self, sha256: Option<&str>) -> String {
         let mut text = format!("{}/{}: {} format", self.provider.name, self.model.model, self.format_name());
         match &self.credential_path {
             Some(path) => text.push_str(&format!(", {} from {}", self.provider.auth.name(), path.display())),
             None => text.push_str(", no credential read by foe"),
-        }
-        if let Some(exec) = &self.exec {
-            text.push_str(&format!(", contract {}", exec.display()));
-            if let Some(sha256) = sha256 {
-                text.push_str(&format!(", sha256 {sha256}"));
-            }
         }
         text
     }
@@ -117,8 +94,7 @@ impl Plan {
     /// The wire format this plan speaks, with Vertex resolved by model name.
     pub fn format_name(&self) -> &'static str {
         match self.provider.format {
-            #[cfg(feature = "google")]
-            WireFormat::VertexByModel => {
+            WireFormat::ManagedCloudByModel => {
                 if self.model.model.starts_with("claude") {
                     "messages"
                 } else {
@@ -131,7 +107,7 @@ impl Plan {
     }
 }
 
-/// Every provider name this build knows, in table order.
+/// Every provider name, in table order.
 pub fn known_providers() -> Vec<&'static str> {
     providers::names()
 }
@@ -148,10 +124,9 @@ pub fn context_window(config: &ModelConfig) -> Option<u64> {
     provider_info(&config.provider)?.context_window(&config.model)
 }
 
-/// Resolves a `model` block: looks the provider up, fills the credential
-/// path from the convention directory when the block names none, and
-/// checks that every required option is present. Reads the Vertex
-/// convention file when it exists; reads no secret.
+/// Resolves a `model` block: looks the provider up, fills a required or
+/// existing convention credential path, and checks every required option.
+/// Reads the managed-cloud convention file when it exists; reads no secret.
 pub fn plan(config: &ModelConfig) -> Result<Plan, TransportError> {
     let home = paths::home_dir().map_err(TransportError::Home)?;
     plan_with_home(config, &home)
@@ -164,30 +139,31 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
         .ok_or_else(|| TransportError::UnknownProvider { name: config.provider.clone(), known: providers::names() })?;
     let mut model = config.clone();
     let mut credential_path = None;
-    if let Some(key) = provider.auth.option_key() {
-        let default = paths::credentials_path(home, provider.name);
-        #[cfg(feature = "google")]
-        if provider.auth == AuthKind::Google && model.option(key).is_none() {
-            // The Vertex convention file names the Google credentials file and
-            // the project and location, which the block may still override.
-            if let Ok(text) = std::fs::read_to_string(&default) {
-                let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| TransportError::Credential {
-                    provider: provider.name,
-                    key,
-                    path: default.clone(),
-                    reason: format!("not JSON: {e}"),
-                })?;
-                for field in ["credentials_file", "project", "location"] {
-                    if let Some(text) = value[field].as_str() {
-                        model.options.entry(field.to_string()).or_insert_with(|| text.to_string());
-                    }
+    let key = provider.auth.option_key();
+    let default = paths::credentials_path(home, provider.name);
+    if provider.auth == AuthKind::ManagedCloud && model.option(key).is_none() {
+        // The managed-cloud convention file names the credentials file and
+        // the project and location, which the block may still override.
+        if let Ok(text) = std::fs::read_to_string(&default) {
+            let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| TransportError::Credential {
+                provider: provider.name,
+                key,
+                path: default.clone(),
+                reason: format!("not JSON: {e}"),
+            })?;
+            for field in ["credentials_file", "project", "location"] {
+                if let Some(text) = value[field].as_str() {
+                    model.options.entry(field.to_string()).or_insert_with(|| text.to_string());
                 }
             }
         }
-        let path = match model.option(key) {
-            Some(text) => PathBuf::from(text),
-            None => default,
-        };
+    }
+    let path = match model.option(key) {
+        Some(text) => Some(PathBuf::from(text)),
+        None if provider.auth.credential_optional() => None,
+        None => Some(default),
+    };
+    if let Some(path) = path {
         if !path.is_absolute() {
             return Err(TransportError::Credential {
                 provider: provider.name,
@@ -204,68 +180,26 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
             return Err(TransportError::MissingOption { provider: provider.name, key, hint: hint.to_string() });
         }
     }
-    let exec = match provider.format {
-        #[cfg(feature = "exec")]
-        WireFormat::Exec => {
-            let path = PathBuf::from(model.option("exec").unwrap_or_default());
-            if !path.is_absolute() {
-                return Err(TransportError::Exec { path, reason: "is not an absolute path".into() });
-            }
-            Some(path)
-        }
-        #[allow(unreachable_patterns)]
-        _ => None,
-    };
     if let Some(url) = model.option("base_url") {
         Url::parse(url).map_err(|reason| TransportError::BaseUrl { url: url.to_string(), reason })?;
     }
-    Ok(Plan { provider, model, credential_path, exec })
+    Ok(Plan { provider, model, credential_path })
 }
 
 /// Builds the transport a `model` block names. Reads the credential file
 /// once, here, so that a construction error is reported before any
-/// request. `executor` is needed only by the `exec` provider.
-pub fn build(config: &ModelConfig, executor: Option<Arc<dyn Executor>>) -> Result<Arc<dyn Transport>, TransportError> {
-    build_planned(&plan(config)?, executor)
-}
-
-/// [`build`] without the `exec` provider.
-pub fn from_config(config: &ModelConfig) -> Result<Arc<dyn Transport>, TransportError> {
-    build(config, None)
+/// request.
+pub fn build(config: &ModelConfig) -> Result<Arc<dyn Transport>, TransportError> {
+    build_planned(&plan(config)?)
 }
 
 /// Builds the transport of a resolved plan.
-pub fn build_planned(plan: &Plan, executor: Option<Arc<dyn Executor>>) -> Result<Arc<dyn Transport>, TransportError> {
-    build_planned_with_executable(plan, executor, None)
-}
-
-pub fn build_planned_with_executable(
-    plan: &Plan,
-    executor: Option<Arc<dyn Executor>>,
-    executable: Option<Arc<foe_core::captured_executable::CapturedExecutable>>,
-) -> Result<Arc<dyn Transport>, TransportError> {
-    #[cfg(feature = "exec")]
-    if plan.provider.format == WireFormat::Exec {
-        let executor = executor.ok_or(TransportError::NoExecutor)?;
-        let transport = match executable {
-            Some(executable) => exec::ExecTransport::new_with_executable(&plan.model, executor, executable)?,
-            None => exec::ExecTransport::new(&plan.model, executor)?,
-        };
-        return Ok(Arc::new(transport));
-    }
-    let _ = &executor;
+pub fn build_planned(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     build_http(plan)
-}
-
-/// The table holds only `exec` rows in a build without a wire format.
-#[cfg(not(any(feature = "messages", feature = "chat", feature = "responses", feature = "google")))]
-fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
-    unreachable!("provider {} has no wire format in this build", plan.provider.name)
 }
 
 /// Builds the HTTP client of a plan: the credential source, the wire
 /// format, and the URL the provider row implies.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     let provider = plan.provider;
     let model = &plan.model;
@@ -276,17 +210,14 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
     };
     let max = model.max_output_tokens;
     let (format, url): (Box<dyn Format>, Url) = match provider.format {
-        #[cfg(feature = "messages")]
         WireFormat::Messages => (
             Box::new(format::messages::Messages::new(provider.name, Some(model.model.clone()), max, None)),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "chat")]
         WireFormat::Chat => (
             Box::new(format::chat::Chat::new(provider.name, model.model.clone(), max)),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "responses")]
         WireFormat::Responses => (
             Box::new(format::responses::Responses::new(
                 provider.name,
@@ -297,10 +228,7 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),
-        #[cfg(feature = "google")]
-        WireFormat::VertexByModel => vertex_route(provider, model, &base)?,
-        #[cfg(feature = "exec")]
-        WireFormat::Exec => unreachable!("handled by build_planned"),
+        WireFormat::ManagedCloudByModel => vertex_route(provider, model, &base)?,
     };
     let headers = provider.headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     Ok(Arc::new(Client {
@@ -317,7 +245,6 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
 /// Google models behind the Gemini format, under one project and location.
 /// https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/use-claude
 /// https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/inference
-#[cfg(feature = "google")]
 fn vertex_route(
     provider: &'static Provider,
     model: &ModelConfig,
@@ -333,48 +260,26 @@ fn vertex_route(
     let prefix = format!("/v1/projects/{project}/locations/{location}/publishers");
     let name = &model.model;
     if name.starts_with("claude") {
-        #[cfg(feature = "messages")]
-        {
-            let format = format::messages::Messages::new(
-                provider.name,
-                None,
-                model.max_output_tokens,
-                Some("vertex-2023-10-16"),
-            );
-            let url = base(Some(&origin))?.join(&format!("{prefix}/anthropic/models/{name}:streamRawPredict"));
-            return Ok((Box::new(format), url));
-        }
-        #[cfg(not(feature = "messages"))]
-        return Err(TransportError::MissingOption {
-            provider: provider.name,
-            key: "model",
-            hint: "names starting with `claude` need the messages feature, which this build lacks".into(),
-        });
+        let format =
+            format::messages::Messages::new(provider.name, None, model.max_output_tokens, Some("vertex-2023-10-16"));
+        let url = base(Some(&origin))?.join(&format!("{prefix}/anthropic/models/{name}:streamRawPredict"));
+        return Ok((Box::new(format), url));
     }
-    #[cfg(feature = "gemini")]
-    {
-        let include_thoughts = model.option("include_thoughts") != Some("false");
-        let format = format::gemini::Gemini::new(provider.name, model.max_output_tokens, include_thoughts);
-        let url = base(Some(&origin))?.join(&format!("{prefix}/google/models/{name}:streamGenerateContent?alt=sse"));
-        Ok((Box::new(format), url))
-    }
-    #[cfg(not(feature = "gemini"))]
-    Err(TransportError::MissingOption {
-        provider: provider.name,
-        key: "model",
-        hint: "names other than `claude*` need the gemini feature, which this build lacks".into(),
-    })
+    let include_thoughts = model.option("include_thoughts") != Some("false");
+    let format = format::gemini::Gemini::new(provider.name, model.max_output_tokens, include_thoughts);
+    let url = base(Some(&origin))?.join(&format!("{prefix}/google/models/{name}:streamGenerateContent?alt=sse"));
+    Ok((Box::new(format), url))
 }
 
 /// Opens the credential source a plan names. The only place a secret is
 /// read.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "google"))]
 fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
     let provider = plan.provider;
-    let Some(key) = provider.auth.option_key() else {
+    let key = provider.auth.option_key();
+    let Some(path) = plan.credential_path.clone() else {
+        debug_assert!(provider.auth.credential_optional());
         return Ok(Arc::new(auth::NoAuth));
     };
-    let path = plan.credential_path.clone().expect("a credentialed plan has a path");
     let fail = |e: auth::AuthError| TransportError::Credential {
         provider: provider.name,
         key,
@@ -385,16 +290,12 @@ fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
         },
     };
     Ok(match provider.auth {
-        #[cfg(feature = "api-key")]
-        AuthKind::ApiKey { header } => Arc::new(auth::api_key::ApiKey::from_file(header, &path).map_err(fail)?),
-        #[cfg(feature = "token-file")]
+        AuthKind::ApiKey { header, .. } => Arc::new(auth::api_key::ApiKey::from_file(header, &path).map_err(fail)?),
         AuthKind::TokenFile { account_header, token_url, client_id } => {
             let client = auth::token_file::OAuthClient { token_url: token_url.into(), client_id: client_id.into() };
             Arc::new(auth::token_file::TokenFile::open(&path, client, account_header).map_err(fail)?)
         }
-        #[cfg(feature = "google")]
-        AuthKind::Google => Arc::new(auth::google::Google::open(&path).map_err(fail)?),
-        AuthKind::None => Arc::new(auth::NoAuth),
+        AuthKind::ManagedCloud => Arc::new(auth::google::Google::open(&path).map_err(fail)?),
     })
 }
 
@@ -636,6 +537,10 @@ pub(crate) fn describe_error_body(text: &str) -> String {
     }
 }
 
+#[cfg(test)]
+#[path = "testserver_test.rs"]
+mod testserver;
+
 /// Shared helpers for the tests of this crate.
 #[cfg(test)]
 pub(crate) mod test_support {
@@ -725,46 +630,33 @@ mod tests {
     }
 
     #[test]
-    fn every_row_plans_and_names_its_credential_path() {
+    fn every_row_plans_with_its_credential_policy() {
         let home = fake_home("rows");
         for name in known_providers() {
             let mut config = model(name);
             match name {
-                "openai-compatible" => {
+                "compatible-http" => {
                     config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
                 }
                 "vertex" => {
                     config.options.insert("project".into(), "p".into());
                     config.options.insert("location".into(), "us-east5".into());
                 }
-                "exec" => {
-                    config.options.insert("exec".into(), "/usr/bin/true".into());
-                }
                 _ => {}
             }
             let plan = plan_with_home(&config, &home).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(plan.provider.name, name);
-            match plan.provider.auth.option_key() {
-                Some(key) => {
-                    let expected = home.join(format!(".config/foe/credentials/{name}.json"));
-                    assert_eq!(plan.credential_path.as_deref(), Some(expected.as_path()), "{name}");
-                    assert_eq!(plan.model.option(key), expected.to_str(), "{name}: the record names the path");
-                }
-                None => assert!(plan.credential_path.is_none(), "{name}"),
+            if plan.provider.auth.credential_optional() {
+                assert!(plan.credential_path.is_none(), "{name}");
+                assert!(plan.model.option(plan.provider.auth.option_key()).is_none(), "{name}");
+            } else {
+                let key = plan.provider.auth.option_key();
+                let expected = home.join(format!(".config/foe/credentials/{name}.json"));
+                assert_eq!(plan.credential_path.as_deref(), Some(expected.as_path()), "{name}");
+                assert_eq!(plan.model.option(key), expected.to_str(), "{name}: the record names the path");
             }
             assert!(plan.describe().starts_with(&format!("{name}/m: ")), "{}", plan.describe());
         }
-    }
-
-    #[test]
-    fn exec_plan_reports_the_construction_digest() {
-        let mut config = model("exec");
-        config.options.insert("exec".into(), "/usr/bin/true".into());
-        let planned = plan_with_home(&config, &fake_home("exec-digest")).unwrap();
-        let digest = "0123456789abcdef";
-        let description = planned.describe_with_exec_sha256(Some(digest));
-        assert!(description.contains("contract /usr/bin/true"), "{description}");
-        assert!(description.contains(&format!("sha256 {digest}")), "{description}");
     }
 
     #[test]
@@ -789,13 +681,12 @@ mod tests {
 
     #[test]
     fn a_missing_required_option_names_the_key_and_the_hint() {
-        let err = plan_with_home(&model("openai-compatible"), &fake_home("required")).unwrap_err().to_string();
-        assert!(err.starts_with("model.base_url: required by provider openai-compatible; "), "{err}");
+        let err = plan_with_home(&model("compatible-http"), &fake_home("required")).unwrap_err().to_string();
+        assert!(err.starts_with("model.base_url: required by provider compatible-http; "), "{err}");
         let err = plan_with_home(&model("vertex"), &fake_home("required")).unwrap_err().to_string();
         assert!(err.starts_with("model.project: required by provider vertex; "), "{err}");
     }
 
-    #[cfg(feature = "google")]
     #[test]
     fn the_vertex_convention_file_supplies_project_location_and_credentials() {
         let home = fake_home("vertex");
@@ -818,7 +709,7 @@ mod tests {
 
     #[test]
     fn a_missing_credential_file_says_how_to_log_in() {
-        let err = build_planned(&plan_with_home(&model("anthropic"), &fake_home("missing")).unwrap(), None)
+        let err = build_planned(&plan_with_home(&model("anthropic"), &fake_home("missing")).unwrap())
             .err()
             .expect("a missing key file fails")
             .to_string();
@@ -835,15 +726,16 @@ mod tests {
             ("anthropic", "api.anthropic.com", "/v1/messages"),
             ("openai", "api.openai.com", "/v1/responses"),
             ("openrouter", "openrouter.ai", "/api/v1/chat/completions"),
-            ("openai-compatible", "127.0.0.1", "/v1/chat/completions"),
+            ("compatible-http", "127.0.0.1", "/v1/chat/completions"),
         ];
         for (name, host, path) in cases {
             let mut config = model(name);
-            config.options.insert("api_key_file".into(), key.to_string_lossy().into_owned());
-            if name == "openai-compatible" {
+            if name == "compatible-http" {
                 config.options.insert("base_url".into(), "http://127.0.0.1:11434/v1".into());
+            } else {
+                config.options.insert("api_key_file".into(), key.to_string_lossy().into_owned());
             }
-            let transport = build(&config, None).unwrap_or_else(|e| panic!("{name}: {e}"));
+            let transport = build(&config).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(transport.route().provider, name);
             assert_eq!(transport.route().model, "m");
             let plan = plan_with_home(&config, &home).unwrap();
@@ -857,7 +749,6 @@ mod tests {
         assert_eq!(err, "model.base_url: localhost:11434: scheme must be http or https");
     }
 
-    #[cfg(feature = "google")]
     #[test]
     fn vertex_urls_name_the_publisher_by_model_name() {
         let home = fake_home("vertex-urls");
@@ -895,8 +786,7 @@ mod tests {
             Url::parse(text).map_err(|reason| TransportError::BaseUrl { url: text.to_string(), reason })
         };
         let (format, url): (Box<dyn Format>, Url) = match provider.format {
-            #[cfg(feature = "google")]
-            WireFormat::VertexByModel => vertex_route(provider, model, &base).unwrap(),
+            WireFormat::ManagedCloudByModel => vertex_route(provider, model, &base).unwrap(),
             _ => (
                 Box::new(format::chat::Chat::new(provider.name, model.model.clone(), None)),
                 base(provider.default_base_url).unwrap().join(provider.path),

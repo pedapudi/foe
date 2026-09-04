@@ -43,23 +43,17 @@ pub struct Endpoints {
 
 impl Default for Endpoints {
     fn default() -> Self {
-        #[cfg(feature = "token-file")]
-        {
-            use super::token_file::codex;
-            let (authorize_url, token_url) = (codex::AUTHORIZE_URL.to_string(), codex::TOKEN_URL.to_string());
-            Endpoints { base_url: None, authorize_url, token_url, callback_port: codex::REDIRECT_PORT }
-        }
-        #[cfg(not(feature = "token-file"))]
-        Endpoints { base_url: None, authorize_url: String::new(), token_url: String::new(), callback_port: 0 }
+        use super::token_file::codex;
+        let (authorize_url, token_url) = (codex::AUTHORIZE_URL.to_string(), codex::TOKEN_URL.to_string());
+        Endpoints { base_url: None, authorize_url, token_url, callback_port: codex::REDIRECT_PORT }
     }
 }
 
 /// Verifies an API key by making one request to the provider with it.
 /// `base_url` replaces the provider's default, for a provider that has
 /// none and for tests.
-#[cfg(feature = "api-key")]
 pub fn verify_api_key(provider: &Provider, base_url: Option<&str>, key: &str) -> Result<(), String> {
-    let AuthKind::ApiKey { header } = provider.auth else {
+    let AuthKind::ApiKey { header, .. } = provider.auth else {
         return Err(format!("{} does not authenticate with an API key", provider.name));
     };
     crate::verify_credential(provider, base_url, &super::api_key::ApiKey::new(header, key.to_string()))
@@ -67,7 +61,6 @@ pub fn verify_api_key(provider: &Provider, base_url: Option<&str>, key: &str) ->
 
 /// Writes an API key as the provider's credential file and returns where it
 /// went.
-#[cfg(feature = "api-key")]
 pub fn save_api_key(home: &Path, provider: &Provider, key: &str) -> Result<PathBuf, String> {
     let path = paths::credentials_path(home, provider.name);
     super::api_key::write_api_key(&path, key).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -76,7 +69,6 @@ pub fn save_api_key(home: &Path, provider: &Provider, key: &str) -> Result<PathB
 
 /// Writes an OAuth token as the provider's credential file and returns
 /// where it went.
-#[cfg(feature = "token-file")]
 pub fn save_token(home: &Path, provider: &Provider, token: &super::token_file::Token) -> Result<PathBuf, String> {
     let path = paths::credentials_path(home, provider.name);
     super::token_file::write_token(&path, token).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -86,7 +78,6 @@ pub fn save_token(home: &Path, provider: &Provider, token: &super::token_file::T
 /// Writes the Vertex convention file: the Google credentials file to use
 /// with the project and location to send requests to. `plan_with_home`
 /// reads exactly these three fields back into the `model` block.
-#[cfg(feature = "google")]
 pub fn save_google(
     home: &Path,
     provider: &Provider,
@@ -107,7 +98,6 @@ pub fn save_google(
 /// [`finish`](BrowserLogin::finish) waits for the browser to come back and
 /// exchanges the code it carries. The caller shows the URL and opens a
 /// browser between the two, in whatever way suits it.
-#[cfg(feature = "token-file")]
 pub struct BrowserLogin {
     /// The URL the person opens to sign in.
     pub url: String,
@@ -119,7 +109,6 @@ pub struct BrowserLogin {
     token_url: String,
 }
 
-#[cfg(feature = "token-file")]
 impl BrowserLogin {
     pub fn begin(endpoints: &Endpoints) -> Result<BrowserLogin, String> {
         use super::token_file::codex;
@@ -158,7 +147,6 @@ impl BrowserLogin {
 
 /// Serves callback requests until one carries a code with the expected
 /// state. Any other request receives an error page and the wait goes on.
-#[cfg(feature = "token-file")]
 fn wait_for_code(listener: &TcpListener, state: &str) -> Result<String, String> {
     loop {
         let (mut stream, _) = listener.accept().map_err(|e| format!("callback listener: {e}"))?;
@@ -251,7 +239,6 @@ mod tests {
     /// The reason the Vertex convention file is written here: `save_google`
     /// and `plan_with_home` are the two halves of one format, and a change
     /// to either that the other does not follow breaks a configured login.
-    #[cfg(feature = "google")]
     #[test]
     fn the_vertex_convention_file_is_read_back_into_the_model_block() {
         let home = crate::test_support::scratch_dir("login-google");

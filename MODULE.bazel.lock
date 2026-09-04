@@ -506,11 +506,11 @@
           "FILE:@@//crates/evidence/Cargo.toml 7c114ae786986abaaa43dc9af6ed2dd913976f82c8f4783056e02c9ed1875467",
           "FILE:@@//crates/core/Cargo.toml d581b83dbd8b9d9b276fbb6a395b38f33c0975540670430cecaa8c5244a8e52e",
           "FILE:@@//crates/code/Cargo.toml 5128a1bc07192d1cbb3fe2b09b4877e920acf257b740acccf276c6b14cecd5d9",
-          "FILE:@@//crates/transport/Cargo.toml 402f14d16ae5bbc6dfdbb8c9d81e64a9f56dd33b94d16bfdcbe2f329738fe34d",
+          "FILE:@@//crates/transport/Cargo.toml 2b3149cb9f615e004ba3492c3e4341b8230e2ce314284e0bf7ca05a7084b4202",
           "FILE:@@//crates/workflow/Cargo.toml 694abe6f7e51b06da5020b533d26d8fb3103e543ac71c771e7f4de5c5b088267",
           "FILE:@@//crates/context/Cargo.toml f1bd85c6063e33d0d5ddfbd8be9af07ac79b47c40716c86032b7d7d38599043c",
           "FILE:@@//crates/view/Cargo.toml 0c6cc7c29e15569d190582e9c2b3704125a477ca60e0e07b04d5ea87e8da2402",
-          "FILE:@@//crates/cli/Cargo.toml 19af8b7cbbb69c759b82abc02c2f08916db7c1277e6a202d614fa5e25795f133",
+          "FILE:@@//crates/cli/Cargo.toml 2cb31b14e6486a7b6ffbeca6ff6c7c23ba24bb9c60c996b631645eb4ca4912fd",
           "FILE:@@//crates/telemetry/Cargo.toml 1fb61a89ed60c8dab884abe1164ef583e6f218a4f347750c7d7492f821ad4686"
         ],
         "generatedRepoSpecs": {

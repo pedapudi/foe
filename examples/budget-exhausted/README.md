@@ -17,11 +17,9 @@ calls. The limits that end an episode this way are `model_calls`,
 `episodes`, and `concurrency`;
 [docs/log-format.md](../../docs/log-format.md) lists them.
 
-The example needs no provider credential and no network. Its model is the
-`exec` provider pointed at `never-finishing-transport` in this directory, a
-transport executable that answers every request with one more `read` call.
-[docs/models.md](../../docs/models.md) specifies that provider and the chunk
-lines the transport process writes. Each answer reads a different module. A call that
+The example needs no endpoint credential and no network. The host answers
+every request with one more `read` call from `responses.py`. Each answer reads
+a different module. A call that
 returns an identical result in `budget.loop_threshold` consecutive steps ends
 the episode as `blocked` with the code `looping-tool-call`, and this example
 is about the declared limit rather than the loop detector.
@@ -29,25 +27,13 @@ is about the declared limit rather than the loop detector.
 ## Paths to replace
 
 - `/home/user/project`: a directory with a `src` directory holding more
-  modules than the budget allows turns, a `tools` directory, and a `support`
-  directory.
-- `/home/user/project/tools/never-finishing-transport`: a copy of this
-  directory's `never-finishing-transport`, marked executable.
-- `/home/user/project/support/chunks.py`: a copy of
-  `examples/support/chunks.py`, which the transport imports.
-
-Both copies lie inside the read root the configuration grants. An executable
-the episode starts runs under the episode's sandbox with an empty
-environment. It reads no path outside the read roots and executes no file
-other than its own, so a transport left in this directory could not import
-the helper it shares with the other examples. `support` sits beside `tools` in the project as it
-does in `examples`, so the import path is the same in both places.
+  modules than the budget allows turns.
 
 ## Run
 
-`run.sh` creates the project in a temporary directory, replaces the path
-markers in `config.json`, runs the episode headless, and checks the log it
-wrote.
+`run.sh` creates the project in a temporary directory and replaces the path
+marker in `config.json`. The host runner supplies deterministic responses and
+checks the log the binary wrote.
 
 ```
 cargo build --release --bin foe
@@ -70,7 +56,7 @@ The runner asserts what this example claims.
 `contract.budget.model_calls` is the 4 that ends the run. The log then holds
 four steps. Each step is a `model/request` with `step` counting from 1 and
 `attempt` 1, four `assistant/chunk` events, three of them the tool call and
-the fourth the stop the transport reported, one `assistant/message` whose
+the fourth the stop the host reported, one `assistant/message` whose
 `stop` is `tool`, and one `tool/result` for the file that was read. The path in each result differs from the one before it.
 
 No fifth `model/request` appears. The runtime checks the budget before it
@@ -80,7 +66,7 @@ between steps and no request is started that the budget cannot cover.
 The last event is `episode/end` with `{"kind": "exhausted", "limit":
 "model_calls"}`. The four steps before it look exactly like the steps of a
 run that completed; the ending is the whole difference. The `usage` in every
-`assistant/message` is zero because the transport reports no token counts.
+`assistant/message` is zero because the host responses report no token counts.
 This configuration declares no input-token or output-token limit.
 
 In the viewer, the details region counts four model calls against four, and

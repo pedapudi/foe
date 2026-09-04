@@ -169,10 +169,7 @@ import sys
 path = Path(sys.argv[1])
 provider, model = sys.argv[2:4]
 config = json.loads(path.read_text(encoding="utf-8"))
-if provider == "exec":
-    config["model"]["model"] = model
-else:
-    config["model"] = {"provider": provider, "model": model}
+config["model"] = {"provider": provider, "model": model}
 config["budget"]["input_tokens"] = int(sys.argv[4])
 config["budget"]["output_tokens"] = int(sys.argv[5])
 config["budget"]["model_calls"] = int(sys.argv[6])
@@ -220,11 +217,6 @@ else
     fi
     if ! grep -Rq '"type":"tool/result".*"name":"check"' "$log_dir"; then
       echo "$description: the terminal improvement node did not call its verifier" >&2
-      result=1
-    fi
-    if [ "$model_route" = exec/self-improvement-retry-demo ] \
-      && ! grep -Rq '"type":"inbox/item".*"source":"verify"' "$log_dir"; then
-      echo "$description: the deterministic route did not exercise verifier feedback" >&2
       result=1
     fi
   fi

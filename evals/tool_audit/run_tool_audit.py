@@ -22,13 +22,18 @@ states nothing about the runtime.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import host_runtime  # noqa: E402
+import responses  # noqa: E402
 
 CONFORMANT = 0
 VIOLATION = 1
@@ -438,7 +443,7 @@ def substitute(message: str, values: dict[str, str]) -> str:
     return message
 
 
-def config(workspace: Path, transport: Path, calls: Path) -> dict[str, Any]:
+def config(workspace: Path) -> dict[str, Any]:
     return {
         "version": 4,
         "name": "tool-mistake-audit",
@@ -446,40 +451,33 @@ def config(workspace: Path, transport: Path, calls: Path) -> dict[str, Any]:
         "tools": ["read", "grep", "edit", "bash", "session", "python", "retrieve"],
         "grants": {"read": [str(workspace)], "write": [str(workspace)]},
         "budget": {"model_calls": 4, "input_tokens": 40000, "output_tokens": 8000, "seconds": 120},
-        "model": {
-            "provider": "exec",
-            "model": "tool-mistake-audit",
-            "exec": str(transport),
-            "calls": str(calls),
-        },
         "sandbox": {"mode": "off"},
         "task": "Submit every scripted mistake call and report completion.",
     }
 
 
-def sandbox_config(workspace: Path, transport: Path, calls: Path) -> dict[str, Any]:
-    shaped = config(workspace, transport, calls)
+def sandbox_config(workspace: Path) -> dict[str, Any]:
+    shaped = config(workspace)
     shaped["tools"] = ["bash"]
     shaped["sandbox"] = {"mode": "required"}
     return shaped
 
 
-def run_episode(binary: Path, case_dir: Path, shaped: dict[str, Any]) -> list[dict[str, Any]]:
+def run_episode(
+    binary: Path,
+    case_dir: Path,
+    shaped: dict[str, Any],
+    responder: host_runtime.Responder,
+) -> list[dict[str, Any]]:
     config_path = case_dir / "config.json"
     log_dir = case_dir / "episode"
     config_path.write_text(json.dumps(shaped, indent=2) + "\n", encoding="utf-8")
     try:
-        result = subprocess.run(
-            [str(binary), "--config", str(config_path), "--log-dir", str(log_dir), "--headless"],
-            text=True,
-            capture_output=True,
-            timeout=180,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
+        status = host_runtime.run(binary, config_path, log_dir, responder)
+    except (OSError, RuntimeError) as error:
         raise HarnessError(f"foe could not run the mistake episode: {error}") from error
-    if result.returncode != 0:
-        raise HarnessError(f"the mistake episode exited {result.returncode}: {result.stderr.strip()}")
+    if status != 0:
+        raise HarnessError(f"the mistake episode exited {status}")
     log_path = log_dir / "episode.jsonl"
     if not log_path.is_file():
         raise HarnessError(f"foe wrote no episode log under {log_dir}")
@@ -562,10 +560,6 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
     binary = args.foe.resolve()
     if not binary.is_file():
         raise HarnessError(f"foe binary does not exist: {binary}")
-    transport = Path(__file__).resolve().with_name("mistake_transport.py")
-    if not transport.is_file():
-        raise HarnessError(f"the mistake transport is absent: {transport}")
-
     workspace = run_root / "workspace"
     denied = run_root / "denied" / "secret.txt"
     try:
@@ -585,11 +579,10 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
 
     mistake_dir = run_root / "mistakes"
     mistake_dir.mkdir()
-    calls = mistake_dir / "calls.json"
     shaped = [dict(entry["call"], args=json.loads(substitute(json.dumps(entry["call"]["args"]), values)))
               for entry in CASES]
-    calls.write_text(json.dumps(shaped, indent=2) + "\n", encoding="utf-8")
-    events = run_episode(binary, mistake_dir, config(workspace, transport, calls))
+    responder = functools.partial(responses.respond, calls=shaped)
+    events = run_episode(binary, mistake_dir, config(workspace), responder)
     results = tool_results(events)
 
     findings: list[str] = []
@@ -599,14 +592,15 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
     if args.include_kernel_sandbox:
         sandbox_dir = run_root / "sandbox"
         sandbox_dir.mkdir()
-        # The sandboxed transport reads only granted roots, so the case
-        # file lives in the workspace rather than beside the episode.
-        sandbox_calls = workspace / "sandbox-calls.json"
-        sandbox_calls.write_text(
-            json.dumps([{"id": "bash-denied-executable", "name": "bash", "args": {"command": "/usr/bin/id"}}]) + "\n",
-            encoding="utf-8",
+        sandbox_calls = [
+            {"id": "bash-denied-executable", "name": "bash", "args": {"command": "/usr/bin/id"}}
+        ]
+        sandbox_events = run_episode(
+            binary,
+            sandbox_dir,
+            sandbox_config(workspace),
+            functools.partial(responses.respond, calls=sandbox_calls),
         )
-        sandbox_events = run_episode(binary, sandbox_dir, sandbox_config(workspace, transport, sandbox_calls))
         findings.extend(check_bash_denial(tool_results(sandbox_events)))
 
     report = {

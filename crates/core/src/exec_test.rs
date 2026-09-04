@@ -140,27 +140,6 @@ fn a_configured_multicall_executable_keeps_its_configured_name() {
 }
 
 #[test]
-fn construction_rejects_a_source_without_an_execute_bit() {
-    let dir = scratch("exec", "non-executable");
-    let source = dir.join("tool");
-    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644)).unwrap();
-    let error = crate::captured_executable::CapturedExecutable::load(&source).unwrap_err();
-    assert!(error.contains("executable file"), "{error}");
-}
-
-#[test]
-fn construction_rejects_a_source_with_a_non_utf8_name() {
-    use std::os::unix::ffi::OsStringExt;
-    let dir = scratch("exec", "non-utf8-name");
-    let source = dir.join(std::ffi::OsString::from_vec(vec![b't', 0xFF]));
-    std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
-    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let error = crate::captured_executable::CapturedExecutable::load(&source).unwrap_err();
-    assert!(error.contains("UTF-8"), "{error}");
-}
-
-#[test]
 fn a_declared_write_root_does_not_expose_private_executable_storage() {
     let dir = scratch("exec", "write-root-around-log");
     let source = dir.join("tool");
@@ -179,9 +158,11 @@ fn the_last_runtime_owner_removes_private_executable_storage() {
     let source = dir.join("tool");
     std::fs::write(&source, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let executable = crate::captured_executable::CapturedExecutable::load(&source).unwrap();
+    let (_, _, executables) = configured_executor("runtime-storage-cleanup", &source, SandboxMode::Off, Vec::new());
+    let executable = executables.tools["configured"].clone();
     let stored_path = executable.stored_path().to_path_buf();
     assert!(stored_path.exists());
+    drop(executables);
     drop(executable);
     assert!(!stored_path.exists());
 }

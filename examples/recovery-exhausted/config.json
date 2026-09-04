@@ -9,10 +9,5 @@
     "read": ["/home/user/project"]
   },
   "budget": { "model_calls": 20, "seconds": 10 },
-  "model": {
-    "provider": "exec",
-    "exec": "/home/user/project/tools/unreachable-provider-transport",
-    "model": "recovery-exhausted"
-  },
   "task": "Summarize what src/calculator.py does."
 }

@@ -51,14 +51,36 @@ def _collect_host_tool_names(doc: Mapping[str, Any]) -> set[str]:
     return names
 
 
-def _child_contracts_with_a_model_block(doc: Mapping[str, Any], prefix: str = "") -> list[str]:
-    """The `child_contracts` keys below `doc`, dotted, that declare a `model` block."""
+def _descendant_contracts_with_a_model_block(doc: Mapping[str, Any], prefix: str = "") -> list[str]:
+    """The contract paths below `doc` that declare a `model` block."""
     found: list[str] = []
     for key, child in sorted((doc.get("child_contracts") or {}).items()):
-        name = f"{prefix}{key}"
+        name = f"{prefix}child_contracts.{key}"
         if "model" in child:
             found.append(name)
-        found.extend(_child_contracts_with_a_model_block(child, f"{name}."))
+        found.extend(_descendant_contracts_with_a_model_block(child, f"{name}."))
+    found.extend(_workflow_contracts_with_a_model_block(doc.get("workflow"), f"{prefix}workflow."))
+    return found
+
+
+def _workflow_contracts_with_a_model_block(workflow: Any, prefix: str) -> list[str]:
+    """The model contracts in one workflow tree that select their own model."""
+    if not isinstance(workflow, Mapping):
+        return []
+    found: list[str] = []
+    nodes = workflow.get("nodes")
+    if not isinstance(nodes, Mapping):
+        return found
+    for key, node in sorted(nodes.items()):
+        if not isinstance(node, Mapping):
+            continue
+        model_contract = node.get("model")
+        if isinstance(model_contract, Mapping):
+            name = f"{prefix}nodes.{key}.model"
+            if "model" in model_contract:
+                found.append(name)
+            found.extend(_descendant_contracts_with_a_model_block(model_contract, f"{name}."))
+        found.extend(_workflow_contracts_with_a_model_block(node.get("workflow"), f"{prefix}nodes.{key}.workflow."))
     return found
 
 
@@ -381,12 +403,11 @@ async def start_config(
         raise ValueError("config: a document with no `model` block leaves the model to this host, which needs a transport")
     if not host_calls_the_model and transport is not None:
         raise ValueError("config: a document with a `model` block leaves the model to foe, which takes no transport")
-    nested = _child_contracts_with_a_model_block(doc) if host_calls_the_model else []
+    nested = _descendant_contracts_with_a_model_block(doc) if host_calls_the_model else []
     if nested:
         raise ValueError(
-            f"child_contracts: {', '.join(nested)} declares a `model` block while the document leaves the "
-            "model to this host; a descendant's recorded request reaches the host indistinguishable from one "
-            "the host must answer"
+            f"model: {', '.join(nested)} declares a `model` block while the document leaves the "
+            "model to this host; one owner must serve model calls throughout the contract tree"
         )
     by_name = {t.name: t for t in tools}
     missing = sorted(_collect_host_tool_names(doc) - set(by_name))

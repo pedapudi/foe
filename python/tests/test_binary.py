@@ -4,27 +4,56 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pytest
 
 import foe
 
-from scripted import SUMMARY, reference_count, scripted, scripted_model, text_response, tool_response
+from scripted import SUMMARY, reference_count, scripted, text_response, tool_response
 
-BINARY = Path(__file__).resolve().parents[2] / "target" / "debug" / "foe"
+REPO = Path(__file__).resolve().parents[2]
+BINARY = REPO / "target" / "debug" / "foe"
+sys.path.insert(0, str(REPO / "examples" / "support"))
+
+from loopback_http import ScriptedHttpEndpoint  # noqa: E402
+from loopback_http import text_response as endpoint_text_response  # noqa: E402
+from loopback_http import tool_response as endpoint_tool_response  # noqa: E402
 
 
-def contract_calling_its_model(tmp_path: Path) -> foe.ExecutionContract:
-    """A contract whose `model` block leaves the model to the binary itself."""
+@pytest.fixture
+def model_endpoint() -> Iterator[ScriptedHttpEndpoint]:
+    responses = [
+        endpoint_tool_response("tc_1", "reference_count", {"symbol": "add"}),
+        endpoint_text_response(SUMMARY),
+    ]
+    with ScriptedHttpEndpoint(responses) as endpoint:
+        yield endpoint
+    assert endpoint.remaining == 0
+
+
+def runtime_model(tmp_path: Path, endpoint: ScriptedHttpEndpoint) -> foe.Model:
+    """The model block for a deterministic runtime-owned HTTP endpoint."""
+    key_file = tmp_path / "endpoint.key"
+    key_file.write_text("fixture-key\n", encoding="utf-8")
+    return foe.Model(
+        provider="compatible-http",
+        model="fixture-model",
+        options={"base_url": endpoint.base_url, "api_key_file": str(key_file)},
+    )
+
+
+def contract_using_runtime_http(tmp_path: Path, endpoint: ScriptedHttpEndpoint) -> foe.ExecutionContract:
+    """A contract whose model block makes the binary own HTTP."""
     return foe.ExecutionContract(
-        name="built-in-transport",
+        name="runtime-http",
         instructions={"role": "You are under test."},
         tools=["read", reference_count],
         grants=foe.Grants(read=[tmp_path]),
         budget=foe.Budget(model_calls=4),
-        model=scripted_model(),
+        model=runtime_model(tmp_path, endpoint),
     )
 
 
@@ -93,11 +122,13 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
 
 
 @pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
-def test_the_built_binary_calls_the_model_while_the_package_serves_its_host_tools(tmp_path: Path) -> None:
+def test_the_built_binary_calls_the_model_while_the_package_serves_its_host_tools(
+    tmp_path: Path, model_endpoint: ScriptedHttpEndpoint
+) -> None:
     """A `model` block and `host_tools` in one document, run through the package."""
     events: list[foe.Event] = []
     outcome = asyncio.run(
-        contract_calling_its_model(tmp_path).run(
+        contract_using_runtime_http(tmp_path, model_endpoint).run(
             task="Count the references.",
             binary=BINARY,
             log_dir=tmp_path / "episode",
@@ -106,14 +137,20 @@ def test_the_built_binary_calls_the_model_while_the_package_serves_its_host_tool
     )
     assert outcome == foe.Completed(SUMMARY)
     header = next(e for e in events if e.type == "request/header")
-    assert header.data["model"] == {"provider": "exec", "model": "host-tool-then-text"}
+    assert header.data["model"] == {"provider": "compatible-http", "model": "fixture-model"}
     result = next(e for e in events if e.type == "tool/result")
     assert result.data["name"] == "reference_count"
     assert result.data["value"] == {"count": 3, "symbol": "add"}
+    assert len(model_endpoint.requests) == 2
+    assert all(request.path == "/v1/chat/completions" for request in model_endpoint.requests)
+    assert all(request.headers["authorization"] == "Bearer fixture-key" for request in model_endpoint.requests)
+    assert all(request.body["model"] == "fixture-model" for request in model_endpoint.requests)
 
 
 @pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
-def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_call(tmp_path: Path) -> None:
+def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_call(
+    tmp_path: Path, model_endpoint: ScriptedHttpEndpoint
+) -> None:
     at_call: list[tuple[int, foe.Runtime | None]] = []
     started: list[foe.Handle] = []
 
@@ -129,7 +166,7 @@ def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_ca
         tools=["read", record_identity],
         grants=foe.Grants(read=[tmp_path]),
         budget=foe.Budget(model_calls=4),
-        model=scripted_model(),
+        model=runtime_model(tmp_path, model_endpoint),
     )
 
     async def scenario() -> foe.Outcome:
@@ -145,9 +182,11 @@ def test_the_built_binary_reports_its_process_and_build_before_the_first_tool_ca
 
 
 @pytest.mark.skipif(not BINARY.is_file(), reason="target/debug/foe has not been built")
-def test_the_built_binary_states_the_versions_the_package_pins(tmp_path: Path) -> None:
+def test_the_built_binary_states_the_versions_the_package_pins(
+    tmp_path: Path, model_endpoint: ScriptedHttpEndpoint
+) -> None:
     """The supported pair: the package runs a document the binary accepts, and reads what it writes."""
-    contract = contract_calling_its_model(tmp_path)
+    contract = contract_using_runtime_http(tmp_path, model_endpoint)
     log_dir = tmp_path / "episode"
     # The binary accepted a document stating this configuration format version.
     assert contract.to_dict("Count the references.")["version"] == foe.CONFIG_VERSION

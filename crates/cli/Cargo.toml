@@ -19,7 +19,7 @@ foe-code = { path = "../code" }
 foe-view = { path = "../view" }
 foe-workflow = { path = "../workflow" }
 foe-context = { path = "../context" }
-foe-transport = { path = "../transport", optional = true }
+foe-transport = { path = "../transport" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -27,12 +27,6 @@ hex.workspace = true
 tokio = { workspace = true, features = ["io-std", "signal"] }
 # Turns terminal echo off while a secret is typed into `foe login`.
 nix = { version = "0.31", features = ["term", "fs"] }
-
-[features]
-default = ["transport"]
-# The built-in model clients and `foe login`. Without this feature every
-# model request must be answered by a host.
-transport = ["dep:foe-transport"]
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -25,11 +25,5 @@
   "sandbox": {
     "mode": "off"
   },
-  "model": {
-    "provider": "exec",
-    "model": "config-repair-task",
-    "exec": "/home/user/task-transport.py",
-    "command": "/usr/bin/python3 report.py"
-  },
   "task": "Run `/usr/bin/python3 report.py` in the repository so that it writes report.txt."
 }

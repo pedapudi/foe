@@ -1,18 +1,18 @@
 # Examples
 
 Every example runs. Each creates a disposable project under `target/`,
-answers the model from a script rather than a provider, checks its own
-result, and leaves an episode log to read. None needs a credential, a
+uses a deterministic model response, checks its own result, and leaves an
+episode log to read. None needs a deployment credential, an external
 network, or a repository of your own.
 
-Eleven examples are started by `run.sh` and three by `run.py`:
+Ten examples are started by `run.sh` and three by `run.py`:
 
 ```sh
 sh examples/minimal/run.sh
 python3 examples/embed-an-execution-contract/run.py
 ```
 
-`scripts/examples.sh` runs all fourteen against one binary and reports how
+`scripts/examples.sh` runs all thirteen against one binary and reports how
 long each took. Continuous integration runs it, and it is the slow tier of
 the test suite: about fifteen seconds, of which the recovery-exhausted
 example is eight, because that example waits the whole retry backoff rather
@@ -49,7 +49,7 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | drive foe from my own contract | [embed-an-execution-contract](embed-an-execution-contract/) |
 | keep my tools in Python and let foe call the model | [embed-with-a-model-block](embed-with-a-model-block/) |
 | have foe evaluate and improve its own source, test, and specification | [self-extension](self-extension/) |
-| reach a model foe has no provider for | [exec-transport](exec-transport/), [host-transport](host-transport/) |
+| supply responses from a host-owned model client | [host-transport](host-transport/) |
 
 ## When a run does not succeed
 
@@ -68,8 +68,8 @@ have seen before.
 
 | example | mechanism |
 |---|---|
-| [minimal](minimal/) | the smallest model-backed coding contract |
-| [wrap-a-binary](wrap-a-binary/) | an executable serving as both a model tool and a `done_when` verifier |
+| [minimal](minimal/) | the smallest coding contract with host-owned responses |
+| [wrap-a-binary](wrap-a-binary/) | one executable used as an episode tool and completion verifier |
 | [subagents](subagents/) | child contracts under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
@@ -77,7 +77,6 @@ have seen before.
 | [embed-an-execution-contract](embed-an-execution-contract/) | the Python SDK: a contract supplying the model, its own host tools, and acting on the outcome |
 | [embed-with-a-model-block](embed-with-a-model-block/) | the Python SDK with the model left to foe: a `model` block beside Python host tools, and the episode's process identity |
 | [self-extension](self-extension/) | a direct episode and an evaluator-to-terminal-node workflow improving a disposable copy of foe's source, test, and specification |
-| [exec-transport](exec-transport/) | an executable translating foe's requests for another model client |
 | [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
 | [budget-exhausted](budget-exhausted/) | a limit reached while the work is unfinished |
 | [recovery-exhausted](recovery-exhausted/) | the retry ceiling, its growing delay, and what the log records |
@@ -104,18 +103,15 @@ configuration file, because the Python package builds the document in
 memory. Their contracts are the `foe.ExecutionContract` that
 `triage_contract` and `review_contract` return in each `run.py`.
 
-Every example that runs without a provider names the `exec` provider and
-points it at a transport script. [`support/README.md`](support/) explains
-where such a script may run and what it may read, which is narrower than it
-looks.
+The host-transport example supplies responses over the protocol. The
+model-block embedding example uses a loopback HTTP endpoint to exercise the
+built-in client without reaching an external network.
 
 ## Against a real model
 
-Each README gives the two-line `model` block that points its example at a
-provider. A block that names no key file reads the credential
-`foe login <provider>` writes, at
-`~/.config/foe/credentials/<provider>.json`. Naming `api_key_file` is for
-deployments that dictate where a credential lives.
+[`docs/models.md`](../docs/models.md) specifies the configuration for each
+runtime-owned endpoint category. A root configuration without a `model` block
+delegates each request to its host process.
 
 ## What the build checks
 
@@ -124,5 +120,5 @@ schema, materialize its markers, and run `foe plan`, which catches a missing
 executable, a grant that cannot hold, and a workflow graph that cannot run.
 `cargo test --workspace` runs them. `bazel test //examples/...` runs the
 workflow, sandbox, and self-extension examples themselves, so each of those
-three READMEs describes a log the build produces. Running the other eleven is
+three READMEs describes a log the build produces. Running the other ten is
 what checks that their "What to look for" sections still hold.

@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-minimal-demo.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/tools" "$project_dir/support"
+mkdir -p "$project_dir"
 
 cat > "$project_dir/brackets.py" <<'EOF'
 """Square-bracket nesting."""
@@ -74,12 +74,6 @@ if __name__ == "__main__":
     unittest.main()
 EOF
 
-# The transport reads chunks.py, so both files sit under the episode's read
-# root; a file outside every read root is unreadable to the transport process.
-cp "$example_dir/transport.py" "$project_dir/tools/transport.py"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
-chmod +x "$project_dir/tools/transport.py"
-
 if (cd "$project_dir" && /usr/bin/python3 -m unittest test_brackets >/dev/null 2>&1); then
   echo "minimal demo: test_brackets passes before the episode, so the episode proves nothing" >&2
   exit 1
@@ -90,7 +84,8 @@ fi
   /home/user/project "$project_dir"
 
 echo "Running the minimal demo in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$example_dir/responses.py"
 
 (cd "$project_dir" && /usr/bin/python3 -m unittest test_brackets >/dev/null 2>&1)
 
@@ -123,8 +118,8 @@ if len(headers) != 1:
     fail(f"{len(headers)} request/header events; the prompt and the tool schemas do not change")
 if headers[0]["data"]["reason"] != "initial":
     fail(f"the only request/header has reason {headers[0]['data']['reason']}")
-if headers[0]["data"]["model"]["model"] != "minimal-demo":
-    fail("the request/header does not name the model the configuration set")
+if headers[0]["data"]["model"] != {"provider": "host", "model": "host"}:
+    fail("the request/header does not identify the host-owned route")
 
 requests = only("model/request")
 if headers[0]["seq"] > requests[0]["seq"]:
@@ -132,7 +127,7 @@ if headers[0]["seq"] > requests[0]["seq"]:
 if any(request["data"]["header_seq"] != headers[0]["seq"] for request in requests):
     fail("a model/request points at a header other than the only one written")
 if len(requests) != 6:
-    fail(f"{len(requests)} model calls; the transport answers six")
+    fail(f"{len(requests)} model calls; the host answers six")
 if len(requests) > 20:
     fail(f"{len(requests)} model calls exceeds the budget of 20")
 

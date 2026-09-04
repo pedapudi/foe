@@ -2,8 +2,8 @@
 
 A parent contract that delegates reading to child episodes and keeps editing
 for itself. The runner creates a small Python project, runs the episode
-against a scripted model transport, and checks the parent's log, both
-children's logs, and the edited files.
+with deterministic host responses, and checks the parent's log, both children's
+logs, and the edited files.
 
 The parent lists the `spawn` and `wait` tools, and `grants.spawn` names the
 one child contract it may start, `survey`. `child_contracts.survey` is a complete child
@@ -14,19 +14,10 @@ that reaches further than its parent.
 
 ## Requirements
 
-Linux, and `/usr/bin/python3` for the transport script and the runner's
-checks. The demo needs no model credential and makes no provider request:
-`model.provider` is `exec`, and the contract it names answers every request
-with fixed chunks. Both the parent and each child run that contract, one
-process per request.
-
-The contract is `transport.py` in this directory. The runner copies it to
-`tools/transport.py` inside the project it creates, together with the helper
-module it imports from `examples/support`, and the configuration names the
-copy. The copy is what makes the demo runnable: a model transport is a
-contract the episode starts, and such a contract reads only inside the
-episode's read roots, so a script left in this directory could not read its
-helper module.
+Linux, and `/usr/bin/python3` for the response functions and runner checks.
+The demo needs no credential and makes no endpoint request. `responses.py`
+selects parent or child behavior from the tools in each request. This
+selection stays deterministic when both children run concurrently.
 
 ## Run
 
@@ -79,11 +70,9 @@ read the project and holds no write grant and no spawn grant, so a child
 cannot edit and cannot start an episode of its own. The child's tool list is
 narrower for the same reason: `read`, `grep`, and `notify`.
 
-Each child receives its own kernel policy, compiled from its own grants.
-The transport the children run is the copy under the project, and their
-read grant covers the project, so it is reachable from every episode in the
-tree. A child granted a narrower root, such as one subdirectory, could not
-start the transport its inherited `model` block names.
+Each child receives its own kernel policy, compiled from its own grants. The
+host response functions run outside that policy. The child policy covers only
+the tools the child asks the binary to execute.
 
 ## The budget pool
 
@@ -140,8 +129,7 @@ spawn root, and a call budget below the parent's. It then checks that both
 modules read `timeout_seconds` and that neither still reads `timeout`.
 
 The input and output tokens each child reports spending are zero because the
-scripted transport reports no usage. A run against a provider records real
-usage here. The release returns the unused allowance.
+host responses report no usage. The release returns the unused allowance.
 
 In the viewer, the episodes region at the top of the left column shows the
 tree: the parent with both children hanging under it on a solid connector,
@@ -150,21 +138,3 @@ conversation. The details region counts the selected episode's model calls,
 input tokens, and output tokens against the limits its own
 `episode/start.contract.budget` declares. The trajectory region above the
 main region draws each child's span inside the parent's.
-
-## Against a real model
-
-Replace the `model` block with a provider block and the demo becomes an
-ordinary configuration:
-
-```json
-"model": { "provider": "anthropic", "model": "claude-opus-5" }
-```
-
-The block names no key file, so the key is read from
-`~/.config/foe/credentials/anthropic.json`, which `foe login anthropic`
-writes; `examples/minimal` teaches the same convention. A block that names
-`api_key_file` reads that file instead, which is what an operator does when
-the credential lives somewhere a deployment dictates rather than in the home
-directory. `docs/models.md` specifies both. The copied transport script is
-then unnecessary, and the model chooses for itself how many children to
-spawn and what to ask them.

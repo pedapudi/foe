@@ -69,10 +69,10 @@ foe "describe what this repository does"
 
 The first command asks for an API key, checks it, stores it under
 `~/.config/foe/`, and sets the default model. The second runs the built-in
-coding configuration against the current directory. The providers are
-`anthropic`, `openai`, `openai-compatible`, `openrouter`, `openai-codex`,
-`vertex`, and `exec`, a transport executable of your own; [docs/models.md](docs/models.md)
-describes each.
+coding configuration against the current directory. The runtime supports
+API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
+and managed-cloud endpoints.
+[docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
 `foe <command> --help` prints one command's options, each with the value it
@@ -105,10 +105,10 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
-`examples/` holds fourteen examples, each of which runs. Every one builds a
-disposable project, answers the model from a script rather than a provider,
-checks its own result, and leaves an episode to read, so none of them needs a
-credential or a network. Three of them end in the outcomes that are not
+`examples/` holds thirteen examples, each of which runs. Every one builds a
+disposable project, uses deterministic responses, checks its own result, and
+leaves an episode to read. None needs a credential or external network
+access. Three of them end in the outcomes that are not
 success, because a contract that runs unattended has to recognise those too:
 
 ```sh
@@ -151,25 +151,26 @@ host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Eleven numbers bound the source. Nine are line budgets over Rust, excluding
-tests and generated code. The kernel stays under 6,700 lines. The contract
-crate stays under 1,575, tools under 1,825, workflow under 1,050, context
-under 500, view under 600, the command line under 1,425, telemetry under 1,000,
-and evidence under 500. The separate tool budget allows capability growth while
-keeping the kernel ceiling fixed. The kernel measures the machine. The contract
-crate defines the execution-contract data model. Their separate budgets keep a
-document key from enlarging the loop budget.
-The viewer is budgeted apart from the runtime because it delivers a record of a
-run rather than running one; its HTML, TypeScript, and CSS count toward no line
-budget at all. The command line is budgeted apart from the runtime because it
-serves a person at a terminal rather than an episode. Telemetry is budgeted
-apart because it reads a finished log rather than producing one, and no part of
-the runtime depends on it. `scripts/loc.sh` counts the nine Rust budgets, and
-continuous integration fails a build over any of them. Another bound limits
-the browser bundle to 150 KB compressed. The last bound is the stripped release
-binary with that bundle embedded. It measured 6,097,480 bytes on 2026-09-01.
-Continuous integration builds the bundle before measuring and fails a build
-over 8 MiB.
+Ten line budgets bound the Rust source, excluding tests and generated code.
+
+| surface | line ceiling |
+|---|---:|
+| kernel (`log` and `core`) | 6,250 |
+| execution contracts | 1,575 |
+| tools | 2,350 |
+| workflows | 1,050 |
+| compaction | 500 |
+| viewer server | 600 |
+| command line | 1,650 |
+| model transports | 2,700 |
+| telemetry | 1,000 |
+| evidence | 500 |
+
+The separate budgets keep growth in one surface from enlarging another.
+`scripts/loc.sh` enforces all ten. Continuous integration also limits the
+compressed browser bundle to 150 KB and the stripped release binary with that
+bundle embedded to 8 MiB. [docs/design.md](docs/design.md#size) explains what
+each boundary protects.
 
 ## Documents
 
@@ -182,7 +183,7 @@ over 8 MiB.
 | [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
 | [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
-| [docs/models.md](docs/models.md) | the model providers, where credentials live, `foe login`, and the exec transport |
+| [docs/models.md](docs/models.md) | model endpoints, credentials, and `foe login` |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |
 | [docs/telemetry.md](docs/telemetry.md) | what telemetry derives from an episode log when enabled, the schema it emits, and what it never emits |
 | [docs/protocol.md](docs/protocol.md) | the line protocol between foe and the process that launched it |

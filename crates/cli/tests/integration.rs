@@ -8,6 +8,13 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use foe_transport::auth::AuthKind;
+use foe_transport::providers::{Provider, WireFormat, PROVIDERS};
+
+#[path = "support/loopback.rs"]
+mod loopback;
+use loopback::{Reply, Server};
+
 const FOE: &str = env!("CARGO_BIN_EXE_foe");
 use foe_contract::SCHEMA;
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples");
@@ -316,47 +323,6 @@ fn a_child_records_and_enforces_its_effective_budget() {
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "exhausted", "limit": "model_calls" }));
 }
 
-/// A model transport for a headless run: one shell script for the whole
-/// tree, which tells the episodes apart by the marker each contract's
-/// instructions carry. The root spawns the middle episode and waits, the
-/// middle spawns the leaf and waits, and the leaf calls the host tool
-/// `ask_host` once.
-const TREE_TRANSPORT: &str = r#"#!/bin/sh
-read -r request
-id=$(printf '%s' "$request" | sed 's/.*"request_id":"\([^"]*\)".*/\1/')
-emit() { printf '{"type":"model/chunk","request_id":"%s","chunk":%s}\n' "$id" "$1"; }
-tool_call() {
-  emit "{\"kind\":\"tool_call_start\",\"id\":\"$1\",\"name\":\"$2\"}"
-  emit "{\"kind\":\"tool_call_delta\",\"id\":\"$1\",\"delta\":\"$3\"}"
-  emit "{\"kind\":\"tool_call_end\",\"id\":\"$1\"}"
-  emit '{"kind":"done","stop":"tool","usage":{"input":1,"output":1,"cache_read":0}}'
-}
-finish() {
-  emit "{\"kind\":\"text\",\"delta\":\"$1\"}"
-  emit '{"kind":"done","stop":"end","usage":{"input":1,"output":1,"cache_read":0}}'
-}
-step=$(printf '%s' "$request" | grep -o '"role":"assistant"' | wc -l | tr -d ' ')
-marked() { printf '%s' "$request" | grep -q "$1"; }
-if marked ROLE_LEAF; then
-  case $step in
-    0) tool_call tc_leaf ask_host '{}' ;;
-    *) finish "the leaf is done" ;;
-  esac
-elif marked ROLE_MIDDLE; then
-  case $step in
-    0) tool_call tc_middle_spawn spawn '{\"contract\":\"leaf\",\"task\":\"ask the host\"}' ;;
-    1) tool_call tc_middle_wait wait '{}' ;;
-    *) finish "the middle episode is done" ;;
-  esac
-else
-  case $step in
-    0) tool_call tc_root_spawn spawn '{\"contract\":\"middle\",\"task\":\"start the leaf\"}' ;;
-    1) tool_call tc_root_wait wait '{}' ;;
-    *) finish "the root is done" ;;
-  esac
-fi
-"#;
-
 /// Runs the binary headless over the tree the configuration declares, and
 /// returns the log of the root and of every descendant, roots first.
 fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
@@ -386,6 +352,206 @@ fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
     (logs, code)
 }
 
+fn sole_provider(predicate: impl Fn(&Provider) -> bool) -> &'static Provider {
+    let mut matching = PROVIDERS.iter().filter(|provider| predicate(provider));
+    let provider = matching.next().expect("one provider matches the endpoint properties");
+    assert!(matching.next().is_none(), "endpoint properties select one provider");
+    provider
+}
+
+fn response_event_stream(text: &str, input: u64, output: u64, cache_read: u64) -> String {
+    let events = [
+        json!({ "type": "response.output_text.delta", "delta": text }),
+        json!({
+            "type": "response.completed",
+            "response": {
+                "status": "completed",
+                "usage": {
+                    "input_tokens": input,
+                    "input_tokens_details": { "cached_tokens": cache_read },
+                    "output_tokens": output
+                }
+            }
+        }),
+    ];
+    events.iter().map(|event| format!("event: {}\ndata: {event}\n\n", event["type"].as_str().unwrap())).collect()
+}
+
+fn managed_event_stream(text: &str, input: u64, output: u64, cache_read: u64) -> String {
+    format!(
+        "data: {}\n\n",
+        json!({
+            "candidates": [{
+                "content": { "role": "model", "parts": [{ "text": text }] },
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": {
+                "promptTokenCount": input,
+                "candidatesTokenCount": output,
+                "cachedContentTokenCount": cache_read,
+                "totalTokenCount": input + output
+            }
+        })
+    )
+}
+
+fn managed_tool_event_stream(path: &str) -> String {
+    format!(
+        "data: {}\n\n",
+        json!({
+            "candidates": [{
+                "content": {
+                    "role": "model",
+                    "parts": [{ "functionCall": { "name": "read", "args": { "path": path } } }]
+                },
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": { "promptTokenCount": 7, "candidatesTokenCount": 2, "totalTokenCount": 9 }
+        })
+    )
+}
+
+fn assert_http_completion(logs: &[Vec<Value>], code: i32, text: &str, usage: Value) {
+    assert_eq!(code, 0, "{:?}", logs.first().and_then(|events| events.last()));
+    assert_eq!(logs.len(), 1);
+    let events = &logs[0];
+    let chunks: Vec<&Value> =
+        events.iter().filter(|event| event["type"] == "assistant/chunk").map(|event| &event["data"]["chunk"]).collect();
+    assert_eq!(chunks.iter().find(|chunk| chunk["kind"] == "text").unwrap()["delta"], text);
+    assert_eq!(chunks.iter().rev().find(|chunk| chunk["kind"] == "done").unwrap()["usage"], usage);
+    assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": text }));
+}
+
+/// docs/models.md "Providers" and "The `model` block": an OAuth-backed
+/// endpoint reads a fresh stored token and completes through the built binary.
+#[test]
+fn an_oauth_backed_endpoint_completes_through_the_built_binary() {
+    let provider = sole_provider(|provider| {
+        matches!(provider.auth, AuthKind::TokenFile { account_header: Some(_), .. })
+            && provider.format == WireFormat::Responses
+            && provider.default_base_url.is_some()
+            && !provider.presets.is_empty()
+    });
+    let AuthKind::TokenFile { account_header: Some(account_header), .. } = provider.auth else {
+        unreachable!("provider selection requires an account header")
+    };
+    let completion = "OAuth endpoint completion.";
+    let server = Server::start(vec![Reply::event_stream(&response_event_stream(completion, 11, 4, 3))]);
+    let dir = scratch("oauth-endpoint");
+    let token_file = dir.join("token.json");
+    std::fs::write(
+        &token_file,
+        json!({ "access": "stored-access", "expires": 4_102_444_800_000_u64, "account_id": "account-7" }).to_string(),
+    )
+    .unwrap();
+    let model = provider.presets[0];
+    let config = config(&dir, |config| {
+        config["model"] = json!({
+            "provider": provider.name,
+            "model": model,
+            "base_url": server.origin(),
+            "token_file": token_file
+        });
+    });
+
+    let (logs, code) = headless_run(&dir, &config);
+    assert_http_completion(&logs, code, completion, json!({ "input": 11, "output": 4, "cache_read": 3 }));
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1, "a fresh token needs no exchange");
+    let request = &requests[0];
+    assert_eq!((request.method.as_str(), request.path.as_str()), ("POST", provider.path));
+    assert_eq!(request.header("authorization"), Some("Bearer stored-access"));
+    assert_eq!(request.header(account_header), Some("account-7"));
+    for (name, value) in provider.headers {
+        assert_eq!(request.header(name), Some(*value));
+    }
+    assert_eq!(request.json()["model"], model);
+}
+
+/// docs/models.md "Providers" and "The `model` block": a managed-cloud
+/// endpoint mints a token and routes a native stream through the built binary.
+#[test]
+fn a_managed_cloud_endpoint_completes_through_the_built_binary() {
+    let provider = sole_provider(|provider| {
+        provider.auth.option_key() == "credentials_file"
+            && provider.default_base_url.is_none()
+            && provider.path.is_empty()
+            && ["project", "location"].iter().all(|key| provider.required_keys().any(|required| required == *key))
+            && !provider.presets.is_empty()
+    });
+    let completion = "Managed endpoint completion.";
+    let server = Server::start(vec![
+        Reply::json(json!({ "access_token": "minted-access", "expires_in": 3600 })),
+        Reply::event_stream(&managed_tool_event_stream("fixture.txt")),
+        Reply::event_stream(&managed_event_stream(completion, 12, 4, 2)),
+    ]);
+    let dir = scratch("managed-endpoint");
+    std::fs::write(dir.join("fixture.txt"), "fixture contents\n").unwrap();
+    let credentials_file = dir.join("credentials.json");
+    std::fs::write(
+        &credentials_file,
+        json!({
+            "type": "authorized_user",
+            "client_id": "fixture-client",
+            "client_secret": "fixture-secret",
+            "refresh_token": "fixture-refresh",
+            "token_uri": format!("{}/token", server.origin())
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let model = provider.presets[0];
+    let project = "fixture-project";
+    let location = "fixture-location";
+    let config = config(&dir, |config| {
+        config["model"] = json!({
+            "provider": provider.name,
+            "model": model,
+            "base_url": server.origin(),
+            "credentials_file": credentials_file,
+            "project": project,
+            "location": location
+        });
+    });
+
+    let (logs, code) = headless_run(&dir, &config);
+    assert_http_completion(&logs, code, completion, json!({ "input": 12, "output": 4, "cache_read": 2 }));
+    let events = &logs[0];
+    let result = events.iter().find(|event| event["type"] == "tool/result").unwrap();
+    assert_eq!(result["data"]["name"], "read");
+    assert_eq!(result["data"]["is_error"], false);
+    let rendered = result["data"]["rendered"].as_str().unwrap();
+    assert!(rendered.ends_with("1\tfixture contents\n"));
+    let requests = server.requests();
+    assert_eq!(requests.len(), 3);
+    assert_eq!((requests[0].method.as_str(), requests[0].path.as_str()), ("POST", "/token"));
+    assert_eq!(
+        requests[0].body,
+        "grant_type=refresh_token&client_id=fixture-client&client_secret=fixture-secret&refresh_token=fixture-refresh"
+    );
+    for request in &requests[1..] {
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.header("authorization"), Some("Bearer minted-access"));
+        let parts: Vec<&str> = request.path.split('/').collect();
+        assert_eq!(parts.len(), 10);
+        assert_eq!(&parts[..7], ["", "v1", "projects", project, "locations", location, "publishers"]);
+        assert!(!parts[7].is_empty(), "the route names its endpoint publisher");
+        assert_eq!(parts[8], "models");
+        assert_eq!(parts[9], format!("{model}:streamGenerateContent?alt=sse"));
+        assert!(request.json()["contents"].is_array(), "the native request carries conversation contents");
+    }
+    let second_body = requests[2].json();
+    let function_response = second_body["contents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|content| content["parts"].as_array().unwrap())
+        .find_map(|part| part.get("functionResponse"))
+        .unwrap();
+    assert_eq!(function_response["name"], "read");
+    assert_eq!(function_response["response"]["output"], rendered);
+}
+
 /// Writes `body` to `dir/name` as an executable script and returns its path.
 fn executable(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
@@ -393,60 +559,6 @@ fn executable(dir: &Path, name: &str, body: &str) -> PathBuf {
     std::fs::write(&path, body).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
-}
-
-/// docs/protocol.md "Children": a `host/tool-call` forwarded to a process
-/// with no host is answered with an error naming the tool. The tree below
-/// declares no `seconds`, so nothing else bounds the wait; every episode in
-/// it still reaches `episode/end`.
-#[test]
-fn a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree() {
-    let dir = scratch("no-host-uplink");
-    let transport = executable(&dir, "transport.sh", TREE_TRANSPORT);
-    let transport_helpers = json!(["/usr/bin/sed", "/usr/bin/grep", "/usr/bin/wc", "/usr/bin/tr"]);
-    let leaf = json!({
-        "name": "leaf",
-        "instructions": { "role": "ROLE_LEAF: call ask_host once." },
-        "tools": ["ask_host"],
-        "host_tools": { "ask_host": {
-            "description": "Ask the host. Nothing in this tree answers it.",
-            "params": { "type": "object", "properties": {}, "additionalProperties": false },
-            "effect": "pure"
-        }},
-        "grants": { "read": [dir], "execute": transport_helpers },
-        "budget": { "model_calls": 4 }
-    });
-    let middle = json!({
-        "name": "middle",
-        "instructions": { "role": "ROLE_MIDDLE: spawn the leaf and wait." },
-        "tools": ["spawn", "wait", "notify"],
-        "grants": { "read": [dir], "execute": transport_helpers, "spawn": ["leaf"] },
-        "budget": { "model_calls": 6, "max_depth": 1, "max_episodes": 2 },
-        "child_contracts": { "leaf": leaf }
-    });
-    let config = config(&dir, |c| {
-        c["tools"] = json!(["spawn", "wait"]);
-        c["grants"] = json!({ "read": [dir], "execute": transport_helpers, "spawn": ["middle"] });
-        c["budget"] = json!({ "model_calls": 12, "max_depth": 2, "max_episodes": 4 });
-        c["model"] = json!({ "provider": "exec", "model": "tree", "exec": transport });
-        c["child_contracts"] = json!({ "middle": middle });
-    });
-    let (logs, code) = headless_run(&dir, &config);
-    assert_eq!(code, 0);
-    assert_eq!(logs.len(), 3, "the root, the middle episode, and the leaf each wrote a log");
-    for log in &logs {
-        let end = log.last().unwrap();
-        assert_eq!(end["type"], "episode/end", "every episode ends: {:?}", types(log));
-        assert_eq!(end["data"]["outcome"]["kind"], "completed");
-    }
-    let refused = logs
-        .iter()
-        .flatten()
-        .find(|e| e["type"] == "tool/result" && e["data"]["name"] == "ask_host")
-        .expect("the leaf recorded a result for its host tool call");
-    assert_eq!(refused["data"]["is_error"], true);
-    let rendered = refused["data"]["rendered"].as_str().unwrap();
-    assert!(rendered.contains("ask_host") && rendered.contains("no host"), "{rendered}");
 }
 
 /// A child contract for a workflow model node, reading `dir`.
@@ -1183,11 +1295,20 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     }
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
-    // `plan` resolves every executable an example names, so a file has to
-    // exist at each path under `project/tools`. Every file an example ships
-    // other than its configuration, its README, and its runner is such a
-    // contract, and each example's README says to install it there.
-    const NON_EXECUTABLE_FILES: [&str; 5] = ["config.json", "README.md", "run.sh", "run.py", "BUILD.bazel"];
+    // Materialization installs only example-owned tools and checks. Configs,
+    // prose, runners, build files, and host responses stay outside the episode.
+    const NON_EXECUTABLE_FILES: [&str; 10] = [
+        "BUILD.bazel",
+        "README.md",
+        "__pycache__",
+        "check_test.sh",
+        "config.json",
+        "responses.py",
+        "run-model.sh",
+        "run.py",
+        "run.sh",
+        "workflow-config.json",
+    ];
     for entry in std::fs::read_dir(Path::new(EXAMPLES).join(name)).unwrap().flatten() {
         let file = entry.file_name();
         if !NON_EXECUTABLE_FILES.contains(&file.to_string_lossy().as_ref()) {
@@ -1395,19 +1516,18 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// uses its fingerprint to identify the execution contract that produced it.
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
-const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:46fefc2dcaf73d8b9b258e068a2ef9621d9eabbbe1963eb1d32170a974f1faba"),
-    ("exec-transport", "sha256:e831dbc44bbe1f6d666e3033a70049b3b44e5fb9e61e39425cb33d6f6098ae45"),
+const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
+    ("budget-exhausted", "sha256:9fbbc1d6124705e0fe6670ac3a2a9354942b75ac7ef6aae38b3a81b07fe7fa93"),
     ("host-transport", "sha256:6edc5655961a1532619a5cd9317905a4eff8d611907b9175b69874c8f77fab19"),
-    ("minimal", "sha256:3749aba577f9a7014716d95b61d965b89b9f8c1c96fa185c9dc0ba114836ac0c"),
-    ("recovery-exhausted", "sha256:f6e34210be5007468b1f9c67fa3f0acb104e5c4257a666fe18db976571866305"),
-    ("sandbox", "sha256:d782d818af096573c8df312bace6be8ef32e0b80f781793e51bd6c13fef1bc91"),
-    ("self-extension", "sha256:786075013e433f761e4b871d36c9c6a26bd3cc36aa7772209a230d01d5974e82"),
-    ("subagents", "sha256:80d46911ef1aadc51635e89d95c1cf535b53fea15b71771414283f5015db17d3"),
-    ("team", "sha256:938a3751b7c02a69ab081a01519f882de64397cd881b7f7d10219de274dc95b4"),
-    ("verification-unsatisfiable", "sha256:6d05142cea4217d0c2a33d20f5dc7d066d42e6c6102f8a3ec2f3b7119b61fb60"),
-    ("workflow", "sha256:15dae3560e510ebc03414debdd01a64c761360718ab072bf9d1d089bb0337f4e"),
-    ("wrap-a-binary", "sha256:b006945bf76bc106eba9776e091d31685fb00d8f7ebe3f6f32c17b0a2a655fba"),
+    ("minimal", "sha256:b8872d36e26f43f0d7607aeef035dead64c53064f374aebd91489bc75a9be15a"),
+    ("recovery-exhausted", "sha256:ff1f692d7d998087fb8f822d1910cfd05ab67caa6d145690ce07f72a881bca93"),
+    ("sandbox", "sha256:932fe9b17c07577ccb41b72a52badca207846c308002679365e7a5265140392c"),
+    ("self-extension", "sha256:abced697a9b437a93f40c17e26e837d81759a4968a6f446fadf6754a8446ee87"),
+    ("subagents", "sha256:4a825e30490e8b5c64796ace7cf58ea06ec785b90abc06c8d6bf2b1c78111d20"),
+    ("team", "sha256:ae1978eb29d9db78a771479db3526b0dff9a2586cac6f1c034088aacf1075446"),
+    ("verification-unsatisfiable", "sha256:c2207889e5ead88e8a5150136a8efc64d040e066a3401de66636fe9b8e9d3294"),
+    ("workflow", "sha256:66b30392a9f8bac98b2592865d3b8eba0c3afa9d6f26d16c8989a58ac79fa1b0"),
+    ("wrap-a-binary", "sha256:9a2672e91bb2fda28724ca1bb56adb70f04f8b1ced92b551a3e0bd856ae7a7b3"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one

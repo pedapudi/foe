@@ -12,7 +12,7 @@ to find the relevant specification, report, or guide.
 | [evidence.md](evidence.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
 | [code-mode.md](code-mode.md) | how the `python` tool composes ordinary tools while keeping intermediate results out of the model context |
 | [config.md](config.md) | what an execution-contract document may contain and what each key means |
-| [models.md](models.md) | which model providers exist, where their credentials live, how `foe login` sets them up, and how a transport executable answers model requests |
+| [models.md](models.md) | which model endpoints exist, where their credentials live, and how `foe login` sets them up |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |
 | [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model transport |
@@ -39,6 +39,6 @@ diastil editor or any text editor.
 | [presentations/foe-isolation-and-permissions.dia.html](presentations/foe-isolation-and-permissions.dia.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds fourteen runnable
-programs, one per mechanism. Each answers the model from a script
-and checks its own result; `examples/README.md` indexes them.
+rules for changing the repository. `examples/` holds thirteen runnable
+programs, one per mechanism. Each uses deterministic responses and checks its
+own result; `examples/README.md` indexes them.

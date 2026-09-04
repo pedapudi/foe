@@ -17,7 +17,7 @@ from foe_agent_support import schema_preflight_command
 
 
 REMOTE_BINARY = "/usr/local/bin/foe"
-REMOTE_TRANSPORT = "/tmp/foe-capability-transport.sh"
+REMOTE_HOST_DRIVER = "/tmp/foe-host-capability-probe.sh"
 REMOTE_PROGRAM = "/tmp/foe-capability-contract.json"
 
 
@@ -28,16 +28,16 @@ class CapabilityProbeAgent(BaseInstalledAgent):
         self,
         *args: Any,
         foe_binary: str,
-        transport_file: str,
+        host_driver_file: str,
         **kwargs: Any,
     ) -> None:
         self._foe_binary = Path(foe_binary)
-        self._transport_file = Path(transport_file)
+        self._host_driver_file = Path(host_driver_file)
         if not self._foe_binary.is_file():
             raise FileNotFoundError(f"Foe binary does not exist: {self._foe_binary}")
-        if not self._transport_file.is_file():
+        if not self._host_driver_file.is_file():
             raise FileNotFoundError(
-                f"capability transport does not exist: {self._transport_file}"
+                f"capability host driver does not exist: {self._host_driver_file}"
             )
         super().__init__(*args, **kwargs)
 
@@ -49,12 +49,12 @@ class CapabilityProbeAgent(BaseInstalledAgent):
     @override
     async def install(self, environment: BaseEnvironment) -> None:
         await environment.upload_file(self._foe_binary, REMOTE_BINARY)
-        await environment.upload_file(self._transport_file, REMOTE_TRANSPORT)
+        await environment.upload_file(self._host_driver_file, REMOTE_HOST_DRIVER)
         await self.exec_as_root(
             environment,
             command=(
                 f"chmod 755 {shlex.quote(REMOTE_BINARY)} "
-                f"{shlex.quote(REMOTE_TRANSPORT)} && "
+                f"{shlex.quote(REMOTE_HOST_DRIVER)} && "
                 f"{schema_preflight_command(REMOTE_BINARY)}"
             ),
         )
@@ -69,10 +69,7 @@ class CapabilityProbeAgent(BaseInstalledAgent):
         del instruction, context
         pwd = await self.exec_as_agent(environment, command="/bin/pwd")
         working_directory = (pwd.stdout or "").strip()
-        contract = build_probe_contract(
-            REMOTE_TRANSPORT,
-            working_directory,
-        )
+        contract = build_probe_contract(working_directory)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         local_contract = self.logs_dir / "foe-contract.json"
         local_contract.write_text(
@@ -85,8 +82,8 @@ class CapabilityProbeAgent(BaseInstalledAgent):
         result = await self.exec_as_agent(
             environment,
             command=(
-                f"{shlex.quote(REMOTE_BINARY)} --config {shlex.quote(REMOTE_PROGRAM)} "
-                f"--headless --log-dir {shlex.quote(episode)}"
+                f"{shlex.quote(REMOTE_HOST_DRIVER)} {shlex.quote(REMOTE_BINARY)} "
+                f"{shlex.quote(REMOTE_PROGRAM)} {shlex.quote(episode)}"
             ),
             cwd=environment.task_env_config.workdir,
         )

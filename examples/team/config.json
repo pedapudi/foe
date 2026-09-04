@@ -46,10 +46,5 @@
       "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
     }
   },
-  "model": {
-    "provider": "exec",
-    "model": "team-demo",
-    "exec": "/home/user/project/tools/transport.py"
-  },
   "task": "Add a `--dry-run` flag to src/cli.py that prints the planned actions without performing them. Run `python3 -B tests/check.py` to confirm nothing else changed."
 }

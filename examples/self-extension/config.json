@@ -19,11 +19,6 @@
   },
   "budget": { "model_calls": 5, "seconds": 120 },
   "done_when": { "verify": "check", "retries": 1 },
-  "model": {
-    "provider": "exec",
-    "model": "self-extension-demo",
-    "exec": "/home/user/foe/examples/support/scripted-transport.py"
-  },
   "sandbox": { "mode": "best-effort" },
   "task": "Extend foe's read tool in crates/code/src/read.rs so its canonical JSON result reports the source file's complete byte count as total_bytes. Add a regression assertion in crates/code/src/read_test.rs. Document the field in docs/tools.md. Keep rendered output unchanged."
 }

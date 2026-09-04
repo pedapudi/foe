@@ -10,13 +10,9 @@ use serde_json::Value;
 
 use crate::sse;
 
-#[cfg(feature = "chat")]
 pub mod chat;
-#[cfg(feature = "gemini")]
 pub mod gemini;
-#[cfg(feature = "messages")]
 pub mod messages;
-#[cfg(feature = "responses")]
 pub mod responses;
 
 /// One wire format.
@@ -40,7 +36,6 @@ pub trait Decoder: Send {
 }
 
 /// A non-retryable error chunk prefixed with the provider name.
-#[cfg(any(feature = "messages", feature = "chat", feature = "responses", feature = "gemini"))]
 pub(crate) fn fail(provider: &str, message: impl std::fmt::Display) -> Chunk {
     Chunk::Error { message: format!("{provider}: {message}"), retryable: false }
 }

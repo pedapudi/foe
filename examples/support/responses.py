@@ -1,34 +1,19 @@
 #!/usr/bin/python3
-"""Return deterministic model chunks for the end-to-end demos."""
+"""Deterministic response functions shared by end-to-end examples."""
 
 import json
-import sys
+import re
+
+from response_chunks import call, done, emit
 
 
-USAGE = {"input": 0, "output": 0, "cache_read": 0}
-
-
-def emit(request_id: str, chunk: dict) -> None:
-    print(json.dumps({"type": "model/chunk", "request_id": request_id, "chunk": chunk}))
-
-
-def call(request_id: str, call_id: str, name: str, args: dict) -> None:
-    emit(request_id, {"kind": "tool_call_start", "id": call_id, "name": name})
-    emit(request_id, {"kind": "tool_call_delta", "id": call_id, "delta": json.dumps(args)})
-    emit(request_id, {"kind": "tool_call_end", "id": call_id})
-
-
-def done(request_id: str, stop: str) -> None:
-    emit(request_id, {"kind": "done", "stop": stop, "usage": USAGE})
-
-
-def workflow(request: dict) -> None:
-    request_id = request["request_id"]
-    options = request["options"]
+def workflow(request: dict) -> list[dict]:
+    """Return the next workflow response selected by tool and message state."""
+    chunks: list[dict] = []
     tools = {tool["name"] for tool in request["tools"]}
     if "return" in tools:
         call(
-            request_id,
+            chunks,
             "plan",
             "return",
             {
@@ -40,15 +25,15 @@ def workflow(request: dict) -> None:
                 }
             },
         )
-        done(request_id, "tool")
-        return
+        done(chunks, "tool")
+        return chunks
     if "edit" in tools and not any(message["role"] == "tool" for message in request["messages"]):
         call(
-            request_id,
+            chunks,
             "apply",
             "edit",
             {
-                "path": f'{options["project_dir"]}/src/calculator.py',
+                "path": "src/calculator.py",
                 "edits": [
                     {
                         "old_text": "def add(left: int, right: int) -> int:\n    # TODO: Implement add.\n    raise NotImplementedError\n",
@@ -57,45 +42,51 @@ def workflow(request: dict) -> None:
                 ],
             },
         )
-        done(request_id, "tool")
-        return
+        done(chunks, "tool")
+        return chunks
     if "edit" in tools:
-        emit(request_id, {"kind": "text", "delta": "Implemented add and removed the TODO comment."})
-        done(request_id, "end")
-        return
-    emit(request_id, {"kind": "error", "message": "workflow demo received an unexpected request", "retryable": False})
+        emit(chunks, {"kind": "text", "delta": "Implemented add and removed the TODO comment."})
+        done(chunks, "end")
+        return chunks
+    emit(chunks, {"kind": "error", "message": "workflow demo received an unexpected request", "retryable": False})
+    return chunks
 
 
-def sandbox(request: dict) -> None:
-    request_id = request["request_id"]
-    options = request["options"]
+def sandbox(request: dict) -> list[dict]:
+    """Return two file calls followed by the sandbox result summary."""
+    chunks: list[dict] = []
     if not any(message["role"] == "tool" for message in request["messages"]):
-        call(request_id, "allowed", "cat", {"args": [options["allowed_file"]]})
-        call(request_id, "denied", "cat", {"args": [options["denied_file"]]})
-        done(request_id, "tool")
-        return
+        task = request["messages"][0]["content"][0]["text"]
+        paths = re.findall(r"/\S+\.txt", task)
+        if len(paths) != 2:
+            return [{"kind": "error", "message": "sandbox task must name two text files", "retryable": False}]
+        call(chunks, "allowed", "cat", {"args": [paths[0]]})
+        call(chunks, "denied", "cat", {"args": [paths[1]]})
+        done(chunks, "tool")
+        return chunks
     emit(
-        request_id,
+        chunks,
         {
             "kind": "text",
             "delta": "The granted file was readable. The file outside the grant was denied by the kernel.",
         },
     )
-    done(request_id, "end")
+    done(chunks, "end")
+    return chunks
 
 
-def read_self_extension_files(request_id: str) -> None:
+def read_self_extension_files(chunks: list[dict]) -> None:
     for call_id, path in [
         ("read-tool", "crates/code/src/read.rs"),
         ("read-test", "crates/code/src/read_test.rs"),
         ("read-doc", "docs/tools.md"),
     ]:
-        call(request_id, call_id, "read", {"path": path})
+        call(chunks, call_id, "read", {"path": path})
 
 
-def edit_read_tool_and_test(request_id: str) -> None:
+def edit_read_tool_and_test(chunks: list[dict]) -> None:
     call(
-        request_id,
+        chunks,
         "edit-tool",
         "edit",
         {
@@ -117,7 +108,7 @@ def edit_read_tool_and_test(request_id: str) -> None:
         },
     )
     call(
-        request_id,
+        chunks,
         "edit-test",
         "edit",
         {
@@ -135,9 +126,9 @@ def edit_read_tool_and_test(request_id: str) -> None:
     )
 
 
-def edit_read_tool_docs(request_id: str) -> None:
+def edit_read_tool_docs(chunks: list[dict]) -> None:
     call(
-        request_id,
+        chunks,
         "edit-doc",
         "edit",
         {
@@ -170,67 +161,49 @@ def edit_read_tool_docs(request_id: str) -> None:
     )
 
 
-def self_extension(request: dict) -> None:
-    request_id = request["request_id"]
+def self_extension(request: dict) -> list[dict]:
+    """Return the direct self-extension response selected by prior results."""
+    chunks: list[dict] = []
     messages = request["messages"]
     tool_results = [message for message in messages if message["role"] == "tool"]
     if not tool_results:
-        read_self_extension_files(request_id)
-        done(request_id, "tool")
-        return
+        read_self_extension_files(chunks)
+        done(chunks, "tool")
+        return chunks
     if not any(message.get("name") == "edit" for message in tool_results):
-        edit_read_tool_and_test(request_id)
-        edit_read_tool_docs(request_id)
-        done(request_id, "tool")
-        return
+        edit_read_tool_and_test(chunks)
+        edit_read_tool_docs(chunks)
+        done(chunks, "tool")
+        return chunks
     emit(
-        request_id,
+        chunks,
         {"kind": "text", "delta": "Added total_bytes to the read result, its regression test, and its specification."},
     )
-    done(request_id, "end")
+    done(chunks, "end")
+    return chunks
 
 
-def self_improvement_retry(request: dict) -> None:
-    request_id = request["request_id"]
+def self_improvement_retry(request: dict) -> list[dict]:
+    """Return the workflow response selected by results and verifier findings."""
+    chunks: list[dict] = []
     messages = request["messages"]
     tool_results = [message for message in messages if message["role"] == "tool"]
     if not tool_results:
-        read_self_extension_files(request_id)
-        done(request_id, "tool")
-        return
+        read_self_extension_files(chunks)
+        done(chunks, "tool")
+        return chunks
     if not any(message.get("name") == "edit" for message in tool_results):
-        edit_read_tool_and_test(request_id)
-        done(request_id, "tool")
-        return
+        edit_read_tool_and_test(chunks)
+        done(chunks, "tool")
+        return chunks
     if "Verification by `check` reported" in json.dumps(messages) and not any(
         message.get("call_id") == "edit-doc" for message in tool_results
     ):
-        edit_read_tool_docs(request_id)
-        done(request_id, "tool")
-        return
+        edit_read_tool_docs(chunks)
+        done(chunks, "tool")
+        return chunks
     docs_edited = any(message.get("call_id") == "edit-doc" for message in tool_results)
     call_id = "check-complete" if docs_edited else "check-before-docs"
-    call(request_id, call_id, "check", {"args": []})
-    done(request_id, "tool")
-
-
-def main() -> None:
-    request = json.loads(sys.stdin.readline())
-    scenario = request["model"]
-    if scenario == "workflow-demo":
-        workflow(request)
-    elif scenario == "sandbox-demo":
-        sandbox(request)
-    elif scenario == "self-extension-demo":
-        self_extension(request)
-    elif scenario == "self-improvement-retry-demo":
-        self_improvement_retry(request)
-    else:
-        emit(
-            request["request_id"],
-            {"kind": "error", "message": f"unknown demo scenario {scenario}", "retryable": False},
-        )
-
-
-if __name__ == "__main__":
-    main()
+    call(chunks, call_id, "check", {"args": []})
+    done(chunks, "tool")
+    return chunks

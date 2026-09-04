@@ -515,36 +515,36 @@ host process must answer model requests over the [protocol](protocol.md).
 
 | field | type | required | meaning |
 |---|---|---|---|
-| `provider` | string | yes | a provider name the build knows; [models.md](models.md) lists them |
+| `provider` | string | yes | a provider name; [models.md](models.md) lists them |
 | `model` | string | yes | the model identifier the provider expects |
 | `max_output_tokens` | integer | no | per-request output limit; default is the provider's |
-| any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, or `exec` |
+| any other key | string | per provider | a provider-specific option, such as `api_key_file`, `base_url`, `project`, or `location` |
 
-The provider name is opaque to the configuration format. Whether a build
-knows it is decided where the transport is composed; `foe plan` reports the
-resolved transport, or says the name is unknown and lists the known ones.
+The provider name is opaque to the configuration format. The model client
+resolves it; `foe plan` reports the selected client, or says the name is
+unknown and lists the known ones.
 
 A child contract may declare its own `model` block. A child that omits the
 block inherits the nearest ancestor's block. The same rule applies to model
 nodes in a workflow and to descendants of those nodes.
 
-A block may omit its credential field. The transport then reads
-`~/.config/foe/credentials/<provider>.json`, the file `foe login` writes,
-with the home directory taken from the passwd database. An explicit
-`api_key_file`, `token_file`, or `credentials_file` replaces it. The path
-that was used is written into the block that `episode/start.contract`
-records. Nothing is read from the environment.
+A block may omit its credential field. A provider that requires a
+credential then reads `~/.config/foe/credentials/<provider>.json`, the file
+`foe login` writes. `compatible-http` reads only an explicitly named key file
+and sends no authentication header when the option is absent. An explicit
+`api_key_file`, `token_file`, or `credentials_file` replaces a convention
+path. A resolved path is written into the block that
+`episode/start.contract` records. Nothing is read from the environment.
 
 One block per provider:
 
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
 { "provider": "openai", "model": "gpt-5.6-sol", "reasoning_effort": "medium" }
-{ "provider": "openai-compatible", "model": "llama3.1", "base_url": "http://127.0.0.1:11434/v1", "api_key_file": "/home/user/.config/foe/ollama.key" }
+{ "provider": "compatible-http", "model": "fixture-model", "base_url": "http://127.0.0.1:11434/v1" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
 { "provider": "openai-codex", "model": "gpt-5.6-sol" }
 { "provider": "vertex", "model": "gemini-2.5-pro", "project": "my-project", "location": "us-east5" }
-{ "provider": "exec", "model": "openai/gpt-5", "exec": "/home/user/project/tools/litellm-transport", "api_key_file": "/home/user/project/.secrets/openai.key" }
 ```
 
 [models.md](models.md) specifies every option, the credential file shapes,

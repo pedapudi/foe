@@ -2,7 +2,10 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(
-    ["foe_build.py"],
+    [
+        "foe_build.py",
+        "host_runtime.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -17,9 +20,11 @@ sh_binary(
     srcs = ["run_runtime_evals.py"],
     args = ["--foe", "$(rootpath //:foe)"],
     data = [
-        "scripted_transport.py",
+        "host_runtime.py",
+        "runtime_responses.py",
         "trace_quality.py",
         "//:foe",
+        "//python:foe_package",
     ],
 )
 
@@ -58,9 +63,11 @@ sh_test(
     srcs = ["run_runtime_evals.py"],
     args = ["--foe", "$(rootpath //:foe)"],
     data = [
-        "scripted_transport.py",
+        "host_runtime.py",
+        "runtime_responses.py",
         "trace_quality.py",
         "//:foe",
+        "//python:foe_package",
     ],
     size = "small",
 )

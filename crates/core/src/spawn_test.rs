@@ -121,7 +121,7 @@ fn inherited_executable_name_preserves_child_contract_fingerprint() {
 pub(crate) const FAKE_CHILD: &str = r#"#!/bin/sh
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 echo '{"seq":9,"time":1,"type":"model/request","episode_id":"ep_grand","data":{"step":1,"attempt":1,"request_id":"rq_g","header_seq":0,"consumed":[],"messages":[]}}'
-echo '{"seq":1,"time":1,"type":"request/header","data":{"reason":"initial","system":"survey the module","tools":[],"model":{"provider":"exec","model":"m"}}}'
+echo '{"seq":1,"time":1,"type":"request/header","data":{"reason":"initial","system":"survey the module","tools":[],"model":{"provider":"fixture","model":"m"}}}'
 echo '{"seq":2,"time":1,"type":"model/request","data":{"step":1,"attempt":1,"request_id":"rq_1","header_seq":1,"consumed":[],"messages":[]}}'
 read -r answer
 echo '{"seq":3,"time":1,"type":"assistant/message","data":{"step":1,"request_id":"rq_1","text":"","tool_calls":[{"id":"tc_1","name":"notify","args":{"content":"progress"}}],"stop":"tool","usage":{"input":10,"output":5,"cache_read":0},"interrupted":false}}'

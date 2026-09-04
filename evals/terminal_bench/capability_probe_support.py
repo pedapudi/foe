@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-def build_probe_contract(transport_path: str, working_directory: str) -> dict[str, Any]:
+def build_probe_contract(working_directory: str) -> dict[str, Any]:
     if not working_directory.startswith("/"):
         raise ValueError("working directory must be an absolute path")
     return {
@@ -18,11 +18,6 @@ def build_probe_contract(transport_path: str, working_directory: str) -> dict[st
         "tools": ["read", "grep", "bash"],
         "grants": {"read": [working_directory, "/"], "write": ["/"]},
         "budget": {"model_calls": 6, "seconds": 300},
-        "model": {
-            "provider": "exec",
-            "model": "capability-probes",
-            "exec": transport_path,
-        },
         "sandbox": {"mode": "off"},
         "task": "Measure the capabilities available to Foe in this task container.",
     }

@@ -224,7 +224,9 @@ A child episode is a further foe process. The parent foe process is the
 child's host: it launches the child, reads the child's standard output, and
 forwards the child's `request/header`, `model/request`, and
 `host/tool-call` events to its own host, tagged with the child's id. The
-root host therefore sees every request in the tree and answers each one.
+root host therefore sees every request in the tree. It answers a request
+whose governing header names the host route. A request whose header names a
+runtime-owned route is part of the record and receives no host answer.
 Answers carry the same tag so that the root parent can route them down.
 
 The header travels with the requests it governs. A `model/request` names

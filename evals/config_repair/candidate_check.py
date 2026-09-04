@@ -25,8 +25,6 @@ def findings(candidate: object) -> list[str]:
         found.append("the candidate has no tools list")
     if not isinstance(candidate.get("grants"), dict):
         found.append("the candidate has no grants object")
-    if not isinstance(candidate.get("model"), dict):
-        found.append("the candidate has no model block")
     return found
 
 

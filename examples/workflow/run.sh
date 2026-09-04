@@ -50,7 +50,8 @@ EOF
   /home/user/foe "$repo_dir"
 
 echo "Running the workflow demo in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$repo_dir/examples/support/responses.py" workflow
 
 grep -q "return left + right" "$project_dir/src/calculator.py"
 if grep -q "TODO" "$project_dir/src/calculator.py"; then

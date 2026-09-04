@@ -11,7 +11,7 @@ import pytest
 
 import foe
 
-from scripted import SUMMARY, reference_count, scripted, scripted_model, text_response, tool_response
+from scripted import SUMMARY, configured_model, reference_count, scripted, text_response, tool_response
 
 
 def contract_with(
@@ -297,7 +297,7 @@ def test_run_config_rejects_missing_tool_implementations(fake_binary: Path, tmp_
 
 def test_a_model_block_and_a_host_transport_are_exclusive(fake_binary: Path, tmp_path: Path) -> None:
     """docs/config.md `model`: the block decides who calls the model."""
-    with_block = contract_with(["read"], model=scripted_model()).to_dict("t")
+    with_block = contract_with(["read"], model=configured_model()).to_dict("t")
     with pytest.raises(ValueError, match="takes no transport"):
         asyncio.run(foe.run_config(with_block, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
     without_block = contract_with(["read"]).to_dict("t")
@@ -306,33 +306,39 @@ def test_a_model_block_and_a_host_transport_are_exclusive(fake_binary: Path, tmp
 
 
 def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
-    """A descendant's recorded request is not distinguishable from one the host owes."""
+    """docs/sdk.md "Who calls the model": one owner serves the contract tree."""
     doc = contract_with(["read"]).to_dict("t")
-    doc["child_contracts"] = {"survey": contract_with(["read"], model=scripted_model()).to_dict(child=True)}
-    with pytest.raises(ValueError, match="child_contracts: survey declares a `model` block"):
+    doc["child_contracts"] = {"survey": contract_with(["read"], model=configured_model()).to_dict(child=True)}
+    with pytest.raises(ValueError, match=r"model: child_contracts\.survey declares a `model` block"):
         asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
-def test_a_model_block_runs_through_the_host_with_its_host_tools(fake_binary: Path, tmp_path: Path) -> None:
-    """The built-in transport answers the model; the host still serves `host/tool-call`."""
-    events: list[foe.Event] = []
-    outcome = asyncio.run(
-        contract_with(["read", reference_count], model=scripted_model()).run(
-            task="Count the references.",
-            binary=fake_binary,
-            log_dir=tmp_path / "episode",
-            on_event=events.append,
-        )
-    )
-    assert outcome == foe.Completed(SUMMARY)
+def test_a_workflow_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
+    """docs/sdk.md "Who calls the model": model nodes share the root owner."""
+    doc = contract_with(["read"]).to_dict("t")
+    node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
+    doc["workflow"] = {"nodes": {"survey": {"model": node_contract, "terminal": True}}}
+    with pytest.raises(ValueError, match=r"model: workflow\.nodes\.survey\.model declares a `model` block"):
+        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
-    # The route names the configured provider, so no `model/chunk` was owed.
-    header = next(e for e in events if e.type == "request/header")
-    assert header.data["model"] == {"provider": "exec", "model": "host-tool-then-text"}
-    call = next(e for e in events if e.type == "host/tool-call")
-    assert call.data["name"] == "reference_count"
-    result = next(e for e in events if e.type == "tool/result")
-    assert result.data["value"] == {"count": 3, "symbol": "add"}
+
+def test_a_model_block_in_a_nested_workflow_under_a_host_transport_is_refused(
+    fake_binary: Path, tmp_path: Path
+) -> None:
+    """docs/sdk.md "Who calls the model": the ownership rule applies at every level."""
+    doc = contract_with(["read"]).to_dict("t")
+    node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
+    doc["workflow"] = {
+        "nodes": {
+            "outer": {
+                "workflow": {"nodes": {"survey": {"model": node_contract, "terminal": True}}},
+                "terminal": True,
+            }
+        }
+    }
+    path = r"model: workflow\.nodes\.outer\.workflow\.nodes\.survey\.model declares a `model` block"
+    with pytest.raises(ValueError, match=path):
+        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
 def test_the_handle_carries_the_process_id_and_the_runtime_build(fake_binary: Path, tmp_path: Path) -> None:
@@ -347,8 +353,12 @@ def test_the_handle_carries_the_process_id_and_the_runtime_build(fake_binary: Pa
         return {"count": 3, "symbol": symbol}
 
     async def scenario() -> foe.Outcome:
-        handle = await contract_with(["read", record_identity], model=scripted_model()).start(
-            task="Count the references.", binary=fake_binary, log_dir=tmp_path / "episode"
+        responses = [tool_response(("reference_count", {"symbol": "add"})), text_response(SUMMARY)]
+        handle = await contract_with(["read", record_identity]).start(
+            task="Count the references.",
+            transport=scripted(responses),
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
         )
         started.append(handle)
         assert handle.pid > 0

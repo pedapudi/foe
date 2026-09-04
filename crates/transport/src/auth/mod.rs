@@ -10,12 +10,9 @@
 
 use std::path::PathBuf;
 
-#[cfg(feature = "api-key")]
 pub mod api_key;
-#[cfg(feature = "google")]
 pub mod google;
 pub mod login;
-#[cfg(feature = "token-file")]
 pub mod token_file;
 
 /// Produces the headers that authenticate one request.
@@ -23,7 +20,7 @@ pub trait Auth: Send + Sync {
     fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
 }
 
-/// A source that adds nothing, for contracts that hold their own credentials.
+/// A source that adds no authentication header.
 pub struct NoAuth;
 
 impl Auth for NoAuth {
@@ -60,55 +57,53 @@ pub enum KeyHeader {
 /// The credential source a provider row names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthKind {
-    #[cfg(feature = "api-key")]
-    ApiKey { header: KeyHeader },
+    ApiKey {
+        header: KeyHeader,
+        /// A missing `api_key_file` sends no authentication header.
+        optional: bool,
+    },
     /// An OAuth token file renewed at `token_url` as `client_id`.
     /// `account_header`, when set, is sent with the token's `account_id` as
     /// its value.
-    #[cfg(feature = "token-file")]
-    TokenFile { account_header: Option<&'static str>, token_url: &'static str, client_id: &'static str },
-    #[cfg(feature = "google")]
-    Google,
-    /// The contract holds its own credentials.
-    None,
+    TokenFile {
+        account_header: Option<&'static str>,
+        token_url: &'static str,
+        client_id: &'static str,
+    },
+    ManagedCloud,
 }
 
 impl AuthKind {
     /// The `model` key that names the credential file explicitly.
-    pub fn option_key(&self) -> Option<&'static str> {
+    pub fn option_key(&self) -> &'static str {
         match self {
-            #[cfg(feature = "api-key")]
-            AuthKind::ApiKey { .. } => Some("api_key_file"),
-            #[cfg(feature = "token-file")]
-            AuthKind::TokenFile { .. } => Some("token_file"),
-            #[cfg(feature = "google")]
-            AuthKind::Google => Some("credentials_file"),
-            AuthKind::None => None,
+            AuthKind::ApiKey { .. } => "api_key_file",
+            AuthKind::TokenFile { .. } => "token_file",
+            AuthKind::ManagedCloud => "credentials_file",
         }
+    }
+
+    /// Whether requests may omit this credential source.
+    pub fn credential_optional(&self) -> bool {
+        matches!(self, AuthKind::ApiKey { optional: true, .. })
     }
 
     /// A short noun phrase for `foe plan` and `foe login`.
     pub fn name(&self) -> &'static str {
         match self {
-            #[cfg(feature = "api-key")]
             AuthKind::ApiKey { .. } => "api key",
-            #[cfg(feature = "token-file")]
             AuthKind::TokenFile { .. } => "token file",
-            #[cfg(feature = "google")]
-            AuthKind::Google => "google credentials",
-            AuthKind::None => "none",
+            AuthKind::ManagedCloud => "managed-cloud credentials",
         }
     }
 }
 
 /// Milliseconds since the Unix epoch.
-#[cfg(any(feature = "token-file", feature = "google"))]
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// `application/x-www-form-urlencoded` encoding of a field list.
-#[cfg(any(feature = "token-file", feature = "google"))]
 pub(crate) fn form_encode(fields: &[(&str, &str)]) -> String {
     fn escape(text: &str, out: &mut String) {
         for byte in text.bytes() {
@@ -134,7 +129,6 @@ pub(crate) fn form_encode(fields: &[(&str, &str)]) -> String {
 /// Posts a form to a token endpoint and returns the JSON body of a 2xx
 /// response. Any other status is an `Endpoint` error quoting the body;
 /// 429 and 5xx are retryable.
-#[cfg(any(feature = "token-file", feature = "google"))]
 pub(crate) fn post_form(endpoint: &str, fields: &[(&str, &str)]) -> Result<serde_json::Value, AuthError> {
     use std::io::Read;
     let fail =
@@ -155,7 +149,6 @@ pub(crate) fn post_form(endpoint: &str, fields: &[(&str, &str)]) -> Result<serde
 
 #[cfg(test)]
 mod tests {
-    #[cfg(any(feature = "token-file", feature = "google"))]
     #[test]
     fn form_encoding_escapes_reserved_bytes() {
         let text = super::form_encode(&[("grant_type", "refresh_token"), ("refresh_token", "a+b/c=d e&f")]);

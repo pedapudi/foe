@@ -36,14 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-subagents-demo.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
-
-# The model transport is a contract the episode starts, so it reads only
-# inside the episode's read roots. Both it and the helper module it imports
-# are copied into the project, which every episode in this tree may read.
-cp "$example_dir/transport.py" "$project_dir/tools/transport.py"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
-chmod +x "$project_dir/tools/transport.py"
+mkdir -p "$project_dir/src"
 
 cat > "$project_dir/src/config.py" <<'EOF'
 """Settings the client reads."""
@@ -80,7 +73,8 @@ EOF
   /home/user/project "$project_dir"
 
 echo "Running the subagents demo in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$example_dir/responses.py"
 
 grep -q '"timeout_seconds": 30' "$project_dir/src/config.py"
 grep -q 'settings\["timeout_seconds"\]' "$project_dir/src/config.py"

@@ -30,24 +30,12 @@ status to zero.
 The runtime hashes the file's contents into the contract fingerprint, so
 editing the checker changes the fingerprint.
 
-## The model block
+## Host-owned responses
 
-The configuration names the `exec` provider and points it at `transport.py`
-in this directory. That script answers each model request with fixed chunks
-in the wire shape [docs/models.md](../../docs/models.md) defines, so the
-example needs no credential and opens no connection while the runtime still
-runs every tool call, the verifier, and the completion rule.
-
-To run the same contract against a provider, replace the `model` block with:
-
-```json
-"model": { "provider": "anthropic", "model": "claude-opus-5" }
-```
-
-and run `foe login anthropic` once. As in
-[the minimal example](../minimal/README.md), that block names no key file, so
-the key is read from `~/.config/foe/credentials/anthropic.json`, which the
-login writes.
+`responses.py` defines five deterministic answers. `run_with_host.py` supplies
+them through the host protocol, so the example needs no credential and opens
+no network connection. The binary still runs every tool call, verifier, and
+completion rule.
 
 ## Requirements
 
@@ -88,16 +76,9 @@ target/foe-wrap-a-binary-demo.XXXXXX/
 ├── config.json                the configuration with /home/user/project replaced
 ├── project/
 │   ├── src/report.py          one unused import and one line of 164 columns
-│   ├── tools/style-check      the wrapped checker, copied from this directory
-│   ├── tools/transport.py     the model answers, copied from this directory
-│   └── support/chunks.py      copied from examples/support
+│   └── tools/style-check      the wrapped checker, copied from this directory
 └── episode/episode.jsonl
 ```
-
-The transport process runs under the episode's sandbox, which grants it the
-episode's read roots and the file it was started from. Both scripts are
-therefore copied under the granted project directory; a script left in the
-repository could not read the module it imports.
 
 Before starting the episode the runner runs the checker itself and requires
 exactly the two findings named above, so a run always begins from a source
@@ -105,13 +86,13 @@ file the checker rejects.
 
 ## What the run produces
 
-The transport answers five requests, one turn each. The model first runs the
+The host answers five requests, one turn each. The first response runs the
 checker. That tool call proposes completion because `style` is also the
 verifier. The runtime runs `style-check` again and returns both findings in
 an `inbox/item` with source `verify`.
 
-The model removes the unused import and finishes. The verifier returns the
-remaining long-line finding. The model splits the long statement and calls
+The next responses remove the unused import and finish. The verifier returns
+the remaining long-line finding. A later response splits the long statement and calls
 the checker again. The successful checker call proposes completion, and the
 separate verifier run accepts it. The episode ends without another model
 request. `retries: 2` allows two sets of findings. A third set would end the

@@ -292,15 +292,15 @@ mod tests {
     use foe_core::{ToolCall, Transport};
     use std::sync::Arc;
 
-    /// A client as the `openai-compatible` provider row builds it.
+    /// A client as the `compatible-http` provider row builds it.
     fn client(base: &str, max_tokens: Option<u32>) -> Client {
         Client::new(
-            "openai-compatible",
-            "gpt-4o",
+            "compatible-http",
+            "fixture-model",
             Url::parse(base).unwrap().join("/chat/completions"),
             Vec::new(),
             Arc::new(ApiKey::new(KeyHeader::Bearer, "sk-test".into())),
-            Box::new(Chat::new("openai-compatible", "gpt-4o".into(), max_tokens)),
+            Box::new(Chat::new("compatible-http", "fixture-model".into(), max_tokens)),
         )
     }
 
@@ -389,7 +389,7 @@ data: [DONE]
         assert_eq!(seen[0].path, "/v1/chat/completions");
         assert_eq!(seen[0].header("authorization"), Some("Bearer sk-test"));
         let body = seen[0].json();
-        assert_eq!(body["model"], "gpt-4o");
+        assert_eq!(body["model"], "fixture-model");
         assert_eq!(body["stream"], true);
         assert_eq!(body["stream_options"]["include_usage"], true);
         assert_eq!(body["max_tokens"], 2048);
@@ -433,12 +433,12 @@ data: [DONE]
 
     #[tokio::test]
     async fn rate_limited_with_retry_after() {
-        let body = r#"{"error":{"message":"Rate limit reached for gpt-4o","type":"tokens","param":null,"code":"rate_limit_exceeded"}}"#;
+        let body = r#"{"error":{"message":"Rate limit reached for fixture-model","type":"tokens","param":null,"code":"rate_limit_exceeded"}}"#;
         let (chunks, _server) = run(Reply::full(429, body).with_header("Retry-After", "20")).await;
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: HTTP 429: tokens: Rate limit reached for gpt-4o retry_after_ms=20000"
+                message: "compatible-http: HTTP 429: tokens: Rate limit reached for fixture-model retry_after_ms=20000"
                     .into(),
                 retryable: true,
             }]
@@ -460,7 +460,7 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: HTTP 502: <html>Bad Gateway</html>".into(),
+                message: "compatible-http: HTTP 502: <html>Bad Gateway</html>".into(),
                 retryable: true
             }]
         );
@@ -469,7 +469,7 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: HTTP 401: invalid_request_error: Incorrect API key provided".into(),
+                message: "compatible-http: HTTP 401: invalid_request_error: Incorrect API key provided".into(),
                 retryable: false,
             }]
         );
@@ -484,7 +484,7 @@ data: [DONE]
                 Chunk::ToolCallStart { id: "call_abc123".into(), name: "read".into() },
                 Chunk::ToolCallDelta { id: "call_abc123".into(), delta: "{\"pa".into() },
                 Chunk::Error {
-                    message: "openai-compatible: reading response body: connection closed before the body was complete"
+                    message: "compatible-http: reading response body: connection closed before the body was complete"
                         .into(),
                     retryable: true,
                 },
@@ -510,10 +510,7 @@ data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
             chunks,
             vec![
                 text("ok"),
-                Chunk::Error {
-                    message: "openai-compatible: stream ended before finish_reason".into(),
-                    retryable: true
-                }
+                Chunk::Error { message: "compatible-http: stream ended before finish_reason".into(), retryable: true }
             ]
         );
     }
@@ -550,7 +547,7 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: stream error: upstream overloaded".into(),
+                message: "compatible-http: stream error: upstream overloaded".into(),
                 retryable: true
             }]
         );
@@ -560,7 +557,7 @@ data: [DONE]
         assert_eq!(
             chunks,
             vec![Chunk::Error {
-                message: "openai-compatible: finish_reason content_filter: the output was withheld".into(),
+                message: "compatible-http: finish_reason content_filter: the output was withheld".into(),
                 retryable: false,
             }]
         );
@@ -617,6 +614,6 @@ data: [DONE]
         assert!(body.get("max_tokens").is_none());
         assert!(body.get("tools").is_none());
         req.max_output_tokens = Some(7);
-        assert_eq!(Chat::new("openai-compatible", "m".into(), Some(2048)).body(&req)["max_tokens"], 7);
+        assert_eq!(Chat::new("compatible-http", "m".into(), Some(2048)).body(&req)["max_tokens"], 7);
     }
 }

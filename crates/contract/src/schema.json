@@ -47,14 +47,13 @@
       "type": "object",
       "required": ["provider", "model"],
       "properties": {
-        "provider": { "description": "A provider name known to the build, such as anthropic, openai, openai-compatible, openrouter, openai-codex, vertex, or exec. foe plan reports an unknown name.", "type": "string", "minLength": 1 },
+        "provider": { "description": "A provider name known to the build. foe plan reports an unknown name.", "type": "string", "minLength": 1 },
         "model": { "description": "The model identifier the provider expects.", "type": "string", "minLength": 1 },
         "max_output_tokens": { "description": "Per-request output limit; the default is the provider's.", "type": "integer", "minimum": 1 },
         "api_key_file": { "description": "Absolute path to the API key file; the default is ~/.config/foe/credentials/<provider>.json.", "type": "string", "pattern": "^/" },
         "token_file": { "description": "Absolute path to the OAuth token file; the default is ~/.config/foe/credentials/<provider>.json.", "type": "string", "pattern": "^/" },
         "credentials_file": { "description": "Absolute path to Google credentials; the default is named by ~/.config/foe/credentials/vertex.json.", "type": "string", "pattern": "^/" },
-        "base_url": { "description": "Overrides the provider's default endpoint.", "type": "string" },
-        "exec": { "description": "Absolute path of the contract an exec provider runs.", "type": "string", "pattern": "^/" }
+        "base_url": { "description": "Overrides the provider's default endpoint.", "type": "string" }
       },
       "additionalProperties": { "type": "string" }
     },

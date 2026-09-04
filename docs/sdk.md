@@ -307,17 +307,18 @@ outcome = await contract.run(task="Propose the next experiment.", binary=binary,
 `foe.Model(provider, model, max_output_tokens=None, options={})` is the
 block. `options` carries the provider-specific keys, whose values
 config.md makes flat strings: `api_key_file`, `base_url`, `project`,
-`exec`, and the rest [models.md](models.md) lists per provider. A block
-that names no credential file leaves the binary to read the one
-`foe login` wrote. The block does not participate in the contract
-fingerprint, so two contracts that differ only in their model hash alike;
-the bytes of an `exec` transport are the exception models.md states.
+`location`, and the rest [models.md](models.md) lists per provider. A block
+that names no credential file leaves the binary to read the convention file
+when the route requires one. `compatible-http` reads only an explicitly
+named key file and sends no authentication header when that option is absent.
+The block does not participate in the contract fingerprint, so two contracts
+that differ only in their model hash alike.
 
-One document is refused before launch: one that leaves the model to the
-host while a contract under `child_contracts` declares a `model` block of
-its own. A descendant's `model/request` reaches the root host whichever
-process answers it, so the host would have no way to tell a request it
-owes from one already recorded.
+A document that leaves the model to the host must leave every descendant
+to the host. The package checks child contracts and model nodes at every
+level of nested workflows before launch. It rejects an explicit
+runtime-owned model block below a host-owned root so one owner serves model
+calls throughout the contract tree.
 
 ## Host tools
 
@@ -586,10 +587,7 @@ protocol over standard input and standard output and writes
 `episode.jsonl`. It covers the episode shapes the package has to handle:
 a text turn, a host tool call, a built-in tool call, a `block` call, a
 `return` call with a verifier, a steer arriving mid-request, `cancel`, a
-transport error, and a spent `model_calls` budget. It also answers a
-document with a `model` block from a built-in transport of its own, for
-which it implements the `exec` provider, so the built-in and host seams
-are exercised against the same host tools. Two options make it state a log
+model-response error, and a spent `model_calls` budget. Two options make it state a log
 format version or a runtime version the package does not read, which is how
 "The versions a pair must agree on" is tested. `uv run pytest` from
 `python/` runs the package's tests against it.

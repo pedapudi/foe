@@ -10,9 +10,10 @@ well a model and foe complete useful work together.
 
 ## Deterministic runtime conformance
 
-The dependency-free suite under `evals/` runs scripted model responses through
-the built foe binary. Each case produces an ordinary episode directory. The
-trace evaluator then checks the episode log and every child log.
+The dependency-free suite under `evals/` runs the built foe binary with
+scripted responses supplied by the host. Each case produces an ordinary
+episode directory. The trace evaluator then checks the episode log and every
+child log.
 
 | guarantee | generated case | conformance condition |
 |---|---|---|
@@ -113,10 +114,10 @@ contract from a suite that could not run.
 | 1 | the runtime violated a guarantee, and the report names it |
 | 2 | the suite could not run, so it states nothing about the runtime |
 
-Status 2 covers a missing binary, an absent scripted transport, an output
-directory that cannot be created, a case that wrote no episode log, a
-guarantee with no corruption case, and a corruption the evaluator failed to
-detect. The trace evaluator alone reports 0 or 1.
+Status 2 covers a missing binary, a host response failure, an output directory
+that cannot be created, a case that wrote no episode log, a guarantee with no
+corruption case, and a corruption the evaluator failed to detect. The trace
+evaluator alone reports 0 or 1.
 
 ## Model-backed task quality
 
@@ -186,9 +187,9 @@ bazel run //evals:micro -- --model openai/gpt-5.6-sol
 whichever one holds a credential on the machine running the suite: `foe login
 openai` writes `~/.config/foe/credentials/openai.json` and `foe login
 openai-codex` writes `openai-codex.json`, and both offer the `gpt-5.6-sol`
-preset. A route naming a provider with no credential file fails at startup,
-before any task runs. Substitute the provider you logged in to for every
-command below.
+preset. A route that requires a credential fails at startup when its file is
+missing. `compatible-http` may run without one. Substitute the provider you
+logged in to for every command below.
 
 Run one attempt per task with a configured provider credential:
 

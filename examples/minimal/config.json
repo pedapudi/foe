@@ -11,10 +11,5 @@
     "execute": ["/usr/bin/python3"]
   },
   "budget": { "model_calls": 20 },
-  "model": {
-    "provider": "exec",
-    "model": "minimal-demo",
-    "exec": "/home/user/project/tools/transport.py"
-  },
   "task": "test_brackets.py fails at test_nested_brackets. Make it pass without changing the test."
 }

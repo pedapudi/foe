@@ -67,9 +67,6 @@ pub struct ResolvedContract {
     /// Inherited by every child contract.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelConfig>,
-    /// The captured transport command when `model.provider` is `exec`.
-    #[serde(skip)]
-    pub captured_transport: Option<CapturedExecutable>,
     /// Inherited by every child contract.
     pub sandbox: SandboxConfig,
     pub child_contracts: BTreeMap<String, ResolvedContract>,
@@ -401,20 +398,6 @@ fn resolve_section(
             Ok((name.clone(), captured))
         })
         .collect::<Result<_, ContractError>>()?;
-    let captured_transport = model
-        .as_ref()
-        .filter(|model| model.provider == "exec")
-        .map(|model| {
-            let key = key("model.exec");
-            let path = PathBuf::from(model.option("exec").unwrap_or_default());
-            require_absolute(&key, &path)?;
-            let path = match inherited_executables.contains_key(&key) {
-                true => path,
-                false => canonical(key.clone(), &path)?,
-            };
-            capture(key, &path, &PathBuf::from(model.option("exec").unwrap_or_default()))
-        })
-        .transpose()?;
     let mut child_contracts = BTreeMap::new();
     for (name, child) in &s.child_contracts {
         let contract = resolve_section(
@@ -438,7 +421,6 @@ fn resolve_section(
         done_when: s.done_when.clone(),
         context: s.context.clone(),
         model,
-        captured_transport,
         sandbox: inherited.1.clone(),
         child_contracts,
         workflow_contracts: BTreeMap::new(),
