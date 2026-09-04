@@ -700,6 +700,8 @@ async function workflowRun() {
     return;
   }
   const root = mkdtempSync(join(tmpdir(), "foe-workflow-fixture-"));
+  let run;
+  let exited;
   try {
     mkdirSync(join(root, "project", "src"), { recursive: true });
     mkdirSync(join(root, "state"), { recursive: true });
@@ -709,13 +711,14 @@ async function workflowRun() {
     const config = join(root, "config.json");
     writeFileSync(config, JSON.stringify(workflowConfig(root), null, 2));
     const logs = join(root, "logs");
-    const run = spawn(BINARY, ["--config", config, "--log-dir", logs, "--host"], {
+    run = spawn(BINARY, ["--config", config, "--log-dir", logs, "--host"], {
+      detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stderr = "";
     run.stderr.setEncoding("utf8");
     run.stderr.on("data", (chunk) => { stderr += chunk; });
-    const exited = new Promise((resolve, reject) => {
+    exited = new Promise((resolve, reject) => {
       run.once("error", reject);
       run.once("close", (code, signal) => resolve({ code, signal }));
     });
@@ -782,6 +785,21 @@ async function workflowRun() {
     }
     console.log(`workflow.jsonl and ${names.join(", ")} written by ${BINARY}`);
   } finally {
+    if (run !== undefined && run.exitCode === null) {
+      run.stdin.end();
+      if (process.platform === "win32" || run.pid === undefined) {
+        run.kill();
+      } else {
+        process.kill(-run.pid);
+      }
+    }
+    if (exited !== undefined) {
+      try {
+        await exited;
+      } catch {
+        // The original spawn error carries the useful path and cause.
+      }
+    }
     rmSync(root, { recursive: true, force: true });
   }
 }

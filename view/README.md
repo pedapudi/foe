@@ -79,12 +79,12 @@ The fixtures are twelve episode logs.
 
 Seven of the twelve are literal in `generate.mjs`. The four workflow logs
 are written by the runtime. `workflowRun` assembles a configuration, a
-scripted model contract, and a scripted verification contract in a temporary
-directory, runs `target/release/foe` over them, and copies the logs here
-with that directory's path replaced by `/home/user/project` and
-`/home/user/tools`. Everything else in those four files is the bytes the
-runtime wrote, episode ids and timestamps included. Those change whenever
-the fixtures are regenerated, so no test reads either from a literal.
+scripted verifier in a temporary directory, and answers model requests over
+the host protocol. It runs `target/release/foe` and copies the logs here with
+that directory's path replaced by `/home/user/project` and `/home/user/tools`.
+Everything else in those four files is the bytes the runtime wrote, episode
+ids and timestamps included. Those change whenever the fixtures are
+regenerated, so no test reads either from a literal.
 Regenerating without the release binary present leaves the four files as
 they are and says so, so the seven literal ones regenerate on a machine
 with no Rust toolchain.
