@@ -25,11 +25,20 @@ sys.path.insert(0, str(REPO / "python"))
 import foe  # noqa: E402 - the import path is set above
 
 SUMMARY = "The README describes the project and how to build it."
+PROPOSAL = {"summary": SUMMARY, "risks": [], "candidate": "a field inside the complete candidate"}
 USAGE = {"input": 0, "output": 0, "cache_read": 0}
+verified = []
+
+
+@foe.tool
+def validate_proposal(candidate: dict) -> list[str]:
+    """Check that the complete proposal matches the expected result."""
+    verified.append(candidate)
+    return [] if candidate == PROPOSAL else ["the proposal differs from the expected result"]
 
 
 def transport_for(readme: Path):
-    """A transport that plays two responses: a `read` call, then a sentence.
+    """A transport that plays a `read` call, then returns one proposal.
 
     A transport that calls a real model has the same signature: an
     asynchronous callable that receives one request and yields chunk
@@ -43,8 +52,10 @@ def transport_for(readme: Path):
             {"kind": "done", "stop": "tool", "usage": USAGE},
         ],
         [
-            {"kind": "text", "delta": SUMMARY},
-            {"kind": "done", "stop": "end", "usage": USAGE},
+            {"kind": "tool_call_start", "id": "tc_2", "name": "return"},
+            {"kind": "tool_call_delta", "id": "tc_2", "delta": json.dumps({"value": PROPOSAL})},
+            {"kind": "tool_call_end", "id": "tc_2"},
+            {"kind": "done", "stop": "tool", "usage": USAGE},
         ],
     ]
 
@@ -80,7 +91,8 @@ def prepare(run_dir: Path) -> tuple[Path, Path]:
 
 def check(log_dir: Path, outcome: foe.Outcome) -> None:
     """Checks the outcome and the log against what the README states."""
-    assert outcome == foe.Completed(SUMMARY), outcome
+    assert outcome == foe.Completed(PROPOSAL), outcome
+    assert verified == [PROPOSAL], verified
     events = [json.loads(line) for line in (log_dir / "episode.jsonl").read_text(encoding="utf-8").splitlines()]
 
     def data_of(name: str) -> list[dict]:
@@ -92,9 +104,17 @@ def check(log_dir: Path, outcome: foe.Outcome) -> None:
     assert [m["role"] for m in requests[1]["messages"]] == ["user", "assistant", "tool"]
     messages = data_of("assistant/message")
     assert messages[0]["stop"] == "tool" and len(messages[0]["tool_calls"]) == 1
-    assert messages[1]["stop"] == "end" and messages[1]["tool_calls"] == []
-    assert data_of("tool/result")[0]["name"] == "read"
-    assert data_of("episode/end")[0]["outcome"] == {"kind": "completed", "value": SUMMARY}
+    assert messages[1]["stop"] == "tool" and messages[1]["tool_calls"][0]["name"] == "return"
+    assert [result["name"] for result in data_of("tool/result")] == ["read", "return"]
+    assert data_of("host/tool-call") == [{
+        "step": 2,
+        "call_id": "verify-2",
+        "name": "validate_proposal",
+        "args": {"candidate": PROPOSAL},
+    }]
+    verification = data_of("verification/result")
+    assert len(verification) == 1 and verification[0]["status"] == "accepted"
+    assert data_of("episode/end")[0]["outcome"] == {"kind": "completed", "value": PROPOSAL}
 
 
 async def main() -> None:
@@ -111,6 +131,7 @@ async def main() -> None:
         transport=transport_for(readme),
         binary=binary,
         log_dir=log_dir,
+        tools=[validate_proposal],
     )
     print(outcome)
     check(log_dir, outcome)

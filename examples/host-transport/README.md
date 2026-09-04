@@ -6,10 +6,11 @@ network; each model call is a `model/request` event written to standard
 output, and the process that launched foe answers it with `model/chunk`
 lines on standard input. The Python package in `python/` does that exchange.
 
-`run.py` gives it a transport that ignores the request and plays two fixed
-responses: a `read` tool call on the first step and a final sentence on the
-second. The episode that results is a complete log with every request and
-every response recorded, produced without any model.
+`run.py` gives it a transport that plays two fixed responses. The first calls
+`read`. The second returns an object that contains the summary and its risks.
+A Python host verifier receives the complete object through its `candidate`
+parameter and accepts it. The object also contains a field named `candidate`,
+which demonstrates that the runtime preserves the candidate's shape.
 
 A transport that calls a real model has the same signature: an asynchronous
 callable that receives one request and yields chunk objects in the shape
@@ -38,8 +39,8 @@ The package depends on the standard library alone, so `run.py` puts
 `python/` on the import path and needs no installation step. Each run
 creates `target/foe-host-transport-demo.XXXXXX/`, holding the materialized
 configuration, the disposable project, and the episode log. The runner
-prints the outcome, `Completed(value='The README describes the project and
-how to build it.')`, and a command that serves the viewer for that log.
+prints the completed proposal and a command that serves the viewer for that
+log.
 
 ## What to look for
 
@@ -50,8 +51,10 @@ events that follow are the transport's chunks, recorded by foe as they
 arrived; the `assistant/message` assembled from them has one tool call and
 `stop: "tool"`. A `tool/result` for the `read` call follows, and the second
 `model/request` carries three derived messages: user, assistant, tool. The
-second `assistant/message` has `stop: "end"` and no tool calls, so the
-episode ends `completed` with that text as the value.
+second `assistant/message` calls the synthesized `return` tool. The runtime
+then emits `host/tool-call` with the complete returned object under
+`candidate`. The verifier accepts it, and the episode ends with the returned
+object.
 
 In the viewer, the conversation tab shows the same sequence, and its system
 prompt row names the route `host/host`.
@@ -64,5 +67,7 @@ prompt row names the route `host/host`.
   the `tool/result` after it is the `read` call's;
 - the second `model/request` carries the three derived messages user,
   assistant, and tool;
-- the second `assistant/message` has `stop: "end"` and no tool calls;
-- the outcome is `completed` with the sentence the transport produced.
+- the second `assistant/message` calls `return`;
+- the verifier receives the complete object under its declared parameter;
+- the accepted verification is recorded once;
+- the outcome is `completed` with the returned object.

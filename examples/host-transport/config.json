@@ -4,10 +4,35 @@
   "instructions": {
     "role": "You are a coding agent. Read the file named in the task and summarize it in one sentence."
   },
-  "tools": ["read", "grep"],
+  "tools": ["read", "grep", "validate_proposal"],
+  "host_tools": {
+    "validate_proposal": {
+      "description": "Check that the complete proposal matches the expected result.",
+      "params": {
+        "type": "object",
+        "properties": { "candidate": { "type": "object" } },
+        "required": ["candidate"],
+        "additionalProperties": false
+      },
+      "effect": "pure"
+    }
+  },
   "grants": {
     "read": ["/home/user/project"]
   },
   "budget": { "model_calls": 4, "seconds": 60 },
+  "done_when": {
+    "verify": "validate_proposal",
+    "returns": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "candidate": { "type": "string" }
+      },
+      "required": ["summary", "risks", "candidate"],
+      "additionalProperties": false
+    }
+  },
   "task": "Summarize /home/user/project/README.md in one sentence."
 }
