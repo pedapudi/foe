@@ -31,7 +31,7 @@ verified = []
 
 
 @foe.tool
-def validate_patches(candidate: dict) -> list[str]:
+def validate_proposal(candidate: dict) -> list[str]:
     """Check that the complete proposal matches the expected result."""
     verified.append(candidate)
     return [] if candidate == PROPOSAL else ["the proposal differs from the expected result"]
@@ -109,7 +109,7 @@ def check(log_dir: Path, outcome: foe.Outcome) -> None:
     assert data_of("host/tool-call") == [{
         "step": 2,
         "call_id": "verify-2",
-        "name": "validate_patches",
+        "name": "validate_proposal",
         "args": {"candidate": PROPOSAL},
     }]
     verification = data_of("verification/result")
@@ -131,7 +131,7 @@ async def main() -> None:
         transport=transport_for(readme),
         binary=binary,
         log_dir=log_dir,
-        tools=[validate_patches],
+        tools=[validate_proposal],
     )
     print(outcome)
     check(log_dir, outcome)

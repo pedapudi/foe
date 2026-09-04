@@ -4,9 +4,9 @@
   "instructions": {
     "role": "You are a coding agent. Read the file named in the task and summarize it in one sentence."
   },
-  "tools": ["read", "grep", "validate_patches"],
+  "tools": ["read", "grep", "validate_proposal"],
   "host_tools": {
-    "validate_patches": {
+    "validate_proposal": {
       "description": "Check that the complete proposal matches the expected result.",
       "params": {
         "type": "object",
@@ -22,7 +22,7 @@
   },
   "budget": { "model_calls": 4, "seconds": 60 },
   "done_when": {
-    "verify": "validate_patches",
+    "verify": "validate_proposal",
     "returns": {
       "type": "object",
       "properties": {

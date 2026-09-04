@@ -74,9 +74,10 @@ already checked model-supplied arguments against the tool's declared `params`
 schema.
 
 An authoritative verifier call binds the complete candidate under the
-verifier's sole declared parameter. Construction rejects a host verifier
-unless its schema declares one parameter. The candidate itself may be a
-scalar, an object, or an object containing a field with the parameter's name.
+verifier's sole declared parameter. Construction rejects a host or built-in
+verifier unless its schema declares one parameter. The candidate itself may
+be a scalar, an object, or an object containing a field with the parameter's
+name.
 
 ```json
 {"seq": 9, "time": 1724200000456, "type": "host/tool-call", "data": {
