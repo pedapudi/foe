@@ -1,5 +1,18 @@
 exports_files([
+    "chunks.py",
     "loopback_http.py",
     "materialize.py",
-    "scripted-transport.py",
+    "response_chunks.py",
+    "responses.py",
+    "run_with_host.py",
 ])
+
+filegroup(
+    name = "host_runner",
+    srcs = [
+        "response_chunks.py",
+        "run_with_host.py",
+        "//python:foe_package",
+    ],
+    visibility = ["//visibility:public"],
+)

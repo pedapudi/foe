@@ -1,7 +1,7 @@
 # Recovery exhausted
 
-An episode that never gets an answer to its first request. The transport
-reports a retryable provider error every time — an outage, which the
+An episode that never gets an answer to its first request. The host response
+reports a retryable endpoint error every time. The
 runtime waits out with a delay that doubles from 500 milliseconds for as
 long as the seconds budget funds the next delay. The contract grants ten
 seconds, which funds five attempts; the sixth delay would not fit, so the
@@ -24,13 +24,12 @@ retries were spent and a workflow that reached a recovery bound.
 
 Three codes are the model's own report: `goal-unreachable`,
 `ambiguous-task`, and `missing-capability` reach the log because the model
-called the built-in `block` tool with that code. A scripted transport can
-emit such a call, and the outcome would then be whatever the script named,
-which demonstrates the script rather than the runtime. The runtime decides
-the remaining codes for itself.
+called the built-in `block` tool with that code. A fixed response can emit
+such a call, which demonstrates the fixture's choice. The runtime decides the
+remaining codes for itself.
 
-`recovery-exhausted` is the one of those that needs nothing from the model
-at all. The transport answers no request, and the budget bound and the
+`recovery-exhausted` needs nothing from the model. The host assembles no
+answer, and the budget bound and the
 backoff schedule that produce the outcome are the runtime's, so the log this
 example writes is the log a real unreachable provider writes. That is also
 the failure an operator meets most often when a run is handed to an
@@ -39,33 +38,21 @@ firewall, a credential the provider rejects with a retryable status.
 `examples/verification-unsatisfiable` demonstrates another code the runtime
 decides on its own.
 
-For an error a transport reports, the `retryable` flag decides between
-`blocked` and `failed`. This transport sets the flag, so the runtime retries
-until the budget cannot fund another attempt, which is `blocked`. A transport that reports the
+For a response error, the `retryable` flag decides between `blocked` and
+`failed`. This fixture sets the flag, so the runtime retries until the budget
+cannot fund another attempt, which is `blocked`. A response that reports the
 same error with `retryable` false ends the episode as `failed` at the first
 attempt, with the message as the error.
 
 ## Paths to replace
 
-- `/home/user/project`: a directory with a `src` directory, a `tools`
-  directory, and a `support` directory.
-- `/home/user/project/tools/unreachable-provider-transport`: a copy of this
-  directory's `unreachable-provider-transport`, marked executable.
-- `/home/user/project/support/chunks.py`: a copy of
-  `examples/support/chunks.py`, which the transport imports.
-
-Both copies lie inside the read root the configuration grants. An executable
-the episode starts runs under the episode's sandbox with an empty
-environment. It reads no path outside the read roots and executes no file
-other than its own, so a transport left in this directory could not import
-the helper it shares with the other examples. `support` sits beside `tools` in the project as it
-does in `examples`, so the import path is the same in both places.
+- `/home/user/project`: a directory with a `src` directory.
 
 ## Run
 
-`run.sh` creates the project in a temporary directory, replaces the path
-markers in `config.json`, runs the episode headless, and checks the log it
-wrote.
+`run.sh` creates the project in a temporary directory and replaces the path
+marker in `config.json`. The host supplies the retryable error from
+`responses.py`. The runner checks the log the binary wrote.
 
 ```
 cargo build --release --bin foe
@@ -93,7 +80,7 @@ was already taken into the request that is being retried. The `messages` of
 all five are identical, which is what makes them attempts at one step rather
 than five steps.
 
-After each request comes one `assistant/chunk` holding the transport's error
+After each request comes one `assistant/chunk` holding the host's error
 chunk. When a further attempt is permitted, the runtime waits the delay and
 then writes one `request/retry` naming the attempt that failed, the `cause`,
 and the `delay_ms` it waited, immediately before the attempt that follows.

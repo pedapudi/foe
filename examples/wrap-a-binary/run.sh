@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-wrap-a-binary-demo.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
+mkdir -p "$project_dir/src" "$project_dir/tools"
 
 cat > "$project_dir/src/report.py" <<'EOF'
 """Renders a summary of a run as JSON."""
@@ -51,12 +51,8 @@ def summarize(rows):
     return json.dumps({"rows": len(rows), "total": total, "mean": total / len(rows) if rows else 0.0, "widest": max((len(row["name"]) for row in rows), default=0)})
 EOF
 
-# The transport reads chunks.py, so both files sit under the episode's read
-# root; a file outside every read root is unreadable to the transport process.
 cp "$example_dir/style-check" "$project_dir/tools/style-check"
-cp "$example_dir/transport.py" "$project_dir/tools/transport.py"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
-chmod +x "$project_dir/tools/style-check" "$project_dir/tools/transport.py"
+chmod +x "$project_dir/tools/style-check"
 
 before=$(cd "$project_dir" && ./tools/style-check)
 echo "$before" | grep -q "src/report.py:4:1: unused-import math"
@@ -71,7 +67,8 @@ fi
   /home/user/project "$project_dir"
 
 echo "Running the wrap-a-binary demo in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$example_dir/responses.py"
 
 after=$(cd "$project_dir" && ./tools/style-check)
 if [ -n "$after" ]; then
@@ -105,19 +102,19 @@ if header["system"].index("Run style after every edit.") < header["system"].inde
 checks = [event for event in only("tool/result") if event["data"]["name"] == "style"]
 edits = [event for event in only("tool/result") if event["data"]["name"] == "edit"]
 if len(checks) != 2 or len(edits) != 2:
-    fail(f"{len(checks)} checker calls and {len(edits)} edits; the transport makes two of each")
+    fail(f"{len(checks)} checker calls and {len(edits)} edits; the host supplies two of each")
 if checks[0]["data"]["value"]["exit_code"] != 0:
     fail("the checker exited non-zero while reporting findings, which a verifier may not do")
 if "unused-import" not in checks[0]["data"]["value"]["stdout"]:
     fail("the first checker call reported no unused import")
 if checks[1]["seq"] < edits[1]["seq"]:
-    fail("the model ran the checker before its last edit rather than after it")
+    fail("the checker ran before the last edit rather than after it")
 if checks[1]["data"]["value"]["stdout"] != "":
     fail(f"the checker after the last edit printed {checks[1]['data']['value']['stdout']!r}")
 
 finished = [event for event in only("assistant/message") if event["data"]["stop"] == "end"]
 if len(finished) != 1:
-    fail(f"the model finished {len(finished)} times rather than once")
+    fail(f"the episode finished {len(finished)} times rather than once")
 verifications = [event for event in only("inbox/item") if event["data"]["source"] == "verify"]
 if len(verifications) != 2:
     fail(f"{len(verifications)} verify inbox items rather than two")
@@ -128,9 +125,9 @@ second_findings = verifications[1]["data"]["content"][0]["text"]
 if "unused-import" in second_findings or "line-too-long" not in second_findings:
     fail(f"the second fed-back findings are {second_findings!r}")
 if not checks[0]["seq"] < verifications[0]["seq"] < edits[0]["seq"]:
-    fail("the first verify item does not follow the model's checker call")
+    fail("the first verify item does not follow the checker call")
 if not edits[0]["seq"] < finished[0]["seq"] < verifications[1]["seq"] < edits[1]["seq"]:
-    fail("the second verify item does not follow the model's finish")
+    fail("the second verify item does not follow the completion candidate")
 if checks[1]["seq"] < edits[1]["seq"]:
     fail("the successful checker call precedes the last edit")
 

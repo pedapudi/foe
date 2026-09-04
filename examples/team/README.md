@@ -1,9 +1,8 @@
 # Team demo
 
 A lead contract with two child contracts that talk to each other. The runner
-creates a small Python project, runs the episode against a scripted model
-transport, and checks the lead's log, both member logs, and the changed
-file.
+creates a small Python project and runs the episode with deterministic host
+responses. It checks the lead's log, both member logs, and the changed file.
 
 A team is the set of episodes spawned by one episode, the lead. The lead
 lists `spawn` and `team`; `grants.spawn` names the two child contracts it may
@@ -15,20 +14,10 @@ members, who report back while the lead waits.
 
 ## Requirements
 
-Linux, and `/usr/bin/python3` for the transport script, the project's own
-checks, and the runner's checks. The demo needs no model credential and
-makes no provider request: `model.provider` is `exec`, and the contract it
-names answers every request with fixed chunks. The lead and both members run
-that contract, one process per request.
-
-The contract is `transport.py` in this directory. The runner copies it to
-`tools/transport.py` inside the project it creates, together with the helper
-module it imports from `examples/support`, and the configuration names the
-copy. The copy is what makes the demo runnable: a model transport is a
-contract the episode starts, and such a contract reads only inside the
-episode's read roots, so a script left in this directory could not read its
-helper module. Each member is granted the same read root as the lead, so the
-one copy serves all three episodes.
+Linux, and `/usr/bin/python3` for the response functions, project checks, and
+runner checks. The demo needs no credential and makes no endpoint request.
+`responses.py` selects the lead, reviewer, or tester from the tools in each
+request. This selection stays deterministic when both members run concurrently.
 
 ## Run
 
@@ -145,21 +134,3 @@ Selecting the lead shows the two reports in its conversation as user
 messages; selecting a member shows the peer message in the member's own
 conversation. The trajectory region draws both members' spans inside the
 lead's, which is where the two overlapping runs are visible.
-
-## Against a real model
-
-Replace the `model` block with a provider block and the demo becomes an
-ordinary configuration:
-
-```json
-"model": { "provider": "anthropic", "model": "claude-opus-5" }
-```
-
-The block names no key file, so the key is read from
-`~/.config/foe/credentials/anthropic.json`, which `foe login anthropic`
-writes; `examples/minimal` teaches the same convention. A block that names
-`api_key_file` reads that file instead, which is what an operator does when
-the credential lives somewhere a deployment dictates rather than in the home
-directory. `docs/models.md` specifies both. The copied transport script is
-then unnecessary, and the members decide for themselves what to ask each
-other.

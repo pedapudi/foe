@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-recovery-exhausted.XXXXXX")
 project_dir="$run_dir/project"
 log_dir="$run_dir/episode"
-mkdir -p "$project_dir/src" "$project_dir/tools" "$project_dir/support"
+mkdir -p "$project_dir/src"
 
 # The project the configuration points at. The episode never reads it,
 # because no request of its own is ever answered.
@@ -45,14 +45,6 @@ def add(left: int, right: int) -> int:
     return left + right
 MODULE
 
-# The transport and the chunk helpers it imports are copied into the
-# project, because an executable the episode starts may read the read roots
-# and its own file and nothing else. `support` sits beside `tools` here as
-# it does in the repository, so the import path is the same in both.
-cp "$example_dir/unreachable-provider-transport" "$project_dir/tools/unreachable-provider-transport"
-cp "$repo_dir/examples/support/chunks.py" "$project_dir/support/chunks.py"
-chmod +x "$project_dir/tools/unreachable-provider-transport"
-
 config="$run_dir/config.json"
 python3 "$repo_dir/examples/support/materialize.py" \
   "$example_dir/config.json" "$config" \
@@ -60,7 +52,8 @@ python3 "$repo_dir/examples/support/materialize.py" \
 
 echo "recovery-exhausted example: a provider outage is waited out until the seconds budget cannot fund the next delay; about 8 seconds here"
 status=0
-"$binary" --config "$config" --log-dir "$log_dir" --headless >"$run_dir/outcome.json" || status=$?
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$config" "$log_dir" "$example_dir/responses.py" >"$run_dir/outcome.json" || status=$?
 cat "$run_dir/outcome.json"
 
 python3 - "$log_dir/episode.jsonl" "$status" <<'ASSERTIONS'

@@ -15,8 +15,8 @@ The demo requires Linux with Landlock support and `/usr/bin/python3`.
 Landlock is unavailable. The process-boundary record states whether the host
 also delegates cgroup v2.
 
-The deterministic local model transport requires no model credential and
-makes no provider request.
+The host supplies deterministic responses without a credential or endpoint
+request.
 
 ## Run
 

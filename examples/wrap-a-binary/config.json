@@ -19,10 +19,5 @@
   },
   "budget": { "model_calls": 30, "input_tokens": 240000, "output_tokens": 60000, "seconds": 900 },
   "done_when": { "verify": "style", "retries": 2 },
-  "model": {
-    "provider": "exec",
-    "model": "wrap-a-binary-demo",
-    "exec": "/home/user/project/tools/transport.py"
-  },
   "task": "Resolve every style finding under src without changing behavior."
 }

@@ -5,10 +5,9 @@ change. The runner creates a disposable Python project, materializes the
 configuration with absolute paths, runs foe, and checks the resulting source
 file and episode log.
 
-The example uses a deterministic local model transport. It requires no model
-credential and makes no provider request. The transport emits the same tool
-calls that a model transport would emit, so the runtime still executes the
-model nodes, tools, branch, verifier, child episodes, and log protocol.
+The host supplies deterministic responses without a credential or endpoint
+request. The runtime still executes the model nodes, tools, branch, verifier,
+child episodes, and log protocol.
 
 The runner requires `/usr/bin/python3`.
 

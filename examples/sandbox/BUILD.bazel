@@ -5,8 +5,9 @@ SANDBOX_DATA = [
     "config.json",
     "read-file.sh",
     "//:foe",
+    "//examples/support:host_runner",
     "//examples/support:materialize.py",
-    "//examples/support:scripted-transport.py",
+    "//examples/support:responses.py",
 ]
 
 sh_binary(

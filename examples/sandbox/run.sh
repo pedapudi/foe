@@ -48,7 +48,8 @@ printf 'hidden outside the read grant\n' > "$denied_dir/denied.txt"
   /home/user/foe "$repo_dir"
 
 echo "Running the sandbox demo in $run_dir"
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+/usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
+  "$binary" "$run_dir/config.json" "$log_dir" "$repo_dir/examples/support/responses.py" sandbox
 
 grep -q "visible through the read grant" "$log_dir/episode.jsonl"
 grep -q "Permission denied" "$log_dir/episode.jsonl"

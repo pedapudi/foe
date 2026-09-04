@@ -15,13 +15,6 @@
     "read": ["/home/user/project"]
   },
   "budget": { "model_calls": 3, "seconds": 120 },
-  "model": {
-    "provider": "exec",
-    "model": "sandbox-demo",
-    "exec": "/home/user/foe/examples/support/scripted-transport.py",
-    "allowed_file": "/home/user/project/allowed.txt",
-    "denied_file": "/home/user/outside-grant/denied.txt"
-  },
   "sandbox": { "mode": "required" },
   "task": "Read /home/user/project/allowed.txt and /home/user/outside-grant/denied.txt with cat, then report both results."
 }

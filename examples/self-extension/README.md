@@ -59,19 +59,19 @@ The runner requires the fresh source to fail the checker. It then requires
 the final source to pass. It also requires recorded `read`, `edit`, and
 `check` tool results and a conformant workflow trace.
 
-Run the deterministic form without a model credential:
+Run the deterministic form with responses supplied by the host:
 
 ```sh
 bazel run //examples/self-extension:self-improvement-workflow
 bazel test //examples/self-extension:self_improvement_workflow_test
 ```
 
-## Run with a model provider
+## Run with a model endpoint
 
-The model-backed runner replaces the scripted transport with
-`openai-codex/gpt-5.6-sol`. It keeps the same disposable source, grants,
-task, and verifier. The episode has declared limits of 24,000 input tokens,
-4,000 output tokens, and eight model calls.
+The endpoint runner adds its selected route to the materialized configuration.
+It keeps the same disposable source, grants, task, and verifier. The episode
+has declared limits of 24,000 input tokens, 4,000 output tokens, and eight
+model calls.
 
 The runner prints the limits and starts no episode until the command includes
 `--confirm-spend`:
@@ -93,16 +93,9 @@ The runner checks the candidate source and episode trace after foe exits. It
 prints the artifact directory and a viewer command. The source checkout stays
 outside the episode's read and write grants.
 
-The model-backed runner has a deterministic test route that spends no model
-credit:
+## Run the workflow with a model endpoint
 
-```sh
-bazel test //examples/self-extension:self_extension_model_runner_test
-```
-
-## Run the workflow with a model provider
-
-The model-backed workflow declares 72,000 input tokens, 6,000 output tokens,
+The endpoint-backed workflow declares 72,000 input tokens, 6,000 output tokens,
 and twelve model calls per fresh attempt. The first command prints the spending
 plan. The second command runs three independent attempts:
 
@@ -118,16 +111,10 @@ Each attempt starts from a fresh source copy. The command succeeds only when
 every attempt passes the artifact checker and trace evaluator. Select another
 provider with `--model PROVIDER/MODEL` as in the direct model-backed form.
 
-The build tests two fresh workflow attempts with the deterministic transport:
-
-```sh
-bazel test //examples/self-extension:self_improvement_workflow_model_runner_test
-```
-
 ## Episode behavior
 
-The deterministic local model transport makes no provider request and needs
-no credential. The direct form follows the ordinary coding loop:
+The host supplies deterministic responses without an endpoint request or
+credential. The direct form follows the ordinary coding loop:
 
 1. The model reads the implementation, test, and specification.
 2. The model calls `edit` once for each file.

@@ -66,11 +66,6 @@
     },
     "recovery": {"max_interventions": 1}
   },
-  "model": {
-    "provider": "exec",
-    "model": "self-improvement-retry-demo",
-    "exec": "/home/user/foe/examples/support/scripted-transport.py"
-  },
   "sandbox": {"mode": "best-effort"},
   "task": "Improve Foe's read tool from the evaluator evidence. Preserve rendered output."
 }

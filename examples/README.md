@@ -68,8 +68,8 @@ have seen before.
 
 | example | mechanism |
 |---|---|
-| [minimal](minimal/) | the smallest model-backed coding contract |
-| [wrap-a-binary](wrap-a-binary/) | an executable serving as both a model tool and a `done_when` verifier |
+| [minimal](minimal/) | the smallest coding contract with host-owned responses |
+| [wrap-a-binary](wrap-a-binary/) | one executable used as an episode tool and completion verifier |
 | [subagents](subagents/) | child contracts under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
@@ -104,18 +104,16 @@ configuration file, because the Python package builds the document in
 memory. Their contracts are the `foe.ExecutionContract` that
 `triage_contract` and `review_contract` return in each `run.py`.
 
-Examples that name the `exec` provider point it at a transport script.
-[`support/README.md`](support/) explains where such a script may run and
-what it may read. The model-block embedding example uses a loopback HTTP
-endpoint to exercise foe's client without reaching an external network.
+The executable-transport example starts a response process for each request.
+The host-transport example supplies responses over the protocol. The
+model-block embedding example uses a loopback HTTP endpoint to exercise the
+built-in client without reaching an external network.
 
 ## Against a real model
 
-Each README gives the two-line `model` block that points its example at a
-provider. A block that names no key file reads the credential
-`foe login <provider>` writes, at
-`~/.config/foe/credentials/<provider>.json`. Naming `api_key_file` is for
-deployments that dictate where a credential lives.
+[`docs/models.md`](../docs/models.md) specifies the configuration for each
+runtime-owned endpoint category. A root configuration without a `model` block
+delegates each request to its host process.
 
 ## What the build checks
 

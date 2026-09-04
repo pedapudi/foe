@@ -9,11 +9,5 @@
     "read": ["/home/user/project"]
   },
   "budget": { "model_calls": 4, "seconds": 120 },
-  "model": {
-    "provider": "exec",
-    "exec": "/home/user/project/tools/never-finishing-transport",
-    "model": "budget-exhausted",
-    "project_dir": "/home/user/project"
-  },
   "task": "Read every module under src and report what each one contains."
 }

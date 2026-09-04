@@ -33,10 +33,5 @@
       "budget": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000 }
     }
   },
-  "model": {
-    "provider": "exec",
-    "model": "subagents-demo",
-    "exec": "/home/user/project/tools/transport.py"
-  },
   "task": "Rename the configuration key `timeout` to `timeout_seconds` everywhere it is read in src/config.py and src/client.py, and update the callers."
 }

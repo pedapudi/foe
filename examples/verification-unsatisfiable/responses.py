@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Answers every model request with a turn that reports the work as done.
+"""Answer every request with a turn that reports the work as done.
 
 No answer calls a tool, so each one is a candidate for the `done_when`
 verifier, and no answer changes the file the verifier looks at. The text
@@ -9,14 +9,7 @@ differs from turn to turn, because an identical assistant turn repeated
 demonstrates.
 """
 
-import sys
-from pathlib import Path
-
-# The configured working directory is `tools`; `support` is its sibling in
-# both the repository and the project created by the runner.
-sys.path.insert(0, str(Path.cwd().parent / "support"))
-
-from chunks import done, read_request, step, text  # noqa: E402
+from response_chunks import done, step, text
 
 CLAIMS = [
     "I implemented add and removed the TODO comment above it.",
@@ -26,12 +19,10 @@ CLAIMS = [
 ]
 
 
-def main() -> None:
-    request = read_request()
+def respond(request: dict) -> list[dict]:
+    """Return a distinct completion claim for the next verification attempt."""
+    chunks: list[dict] = []
     turn = step(request)
-    text(request, CLAIMS[min(turn, len(CLAIMS) - 1)])
-    done(request, "end")
-
-
-if __name__ == "__main__":
-    main()
+    text(chunks, CLAIMS[min(turn, len(CLAIMS) - 1)])
+    done(chunks, "end")
+    return chunks

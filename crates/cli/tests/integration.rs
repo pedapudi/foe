@@ -1390,11 +1390,19 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     }
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
-    // `plan` resolves every executable an example names, so a file has to
-    // exist at each path under `project/tools`. Every file an example ships
-    // other than its configuration, its README, and its runner is such a
-    // contract, and each example's README says to install it there.
-    const NON_EXECUTABLE_FILES: [&str; 5] = ["config.json", "README.md", "run.sh", "run.py", "BUILD.bazel"];
+    // Materialization installs only example-owned executable files. Configs,
+    // prose, runners, build files, and host responses stay outside the episode.
+    const NON_EXECUTABLE_FILES: [&str; 9] = [
+        "BUILD.bazel",
+        "README.md",
+        "check_test.sh",
+        "config.json",
+        "responses.py",
+        "run-model.sh",
+        "run.py",
+        "run.sh",
+        "workflow-config.json",
+    ];
     for entry in std::fs::read_dir(Path::new(EXAMPLES).join(name)).unwrap().flatten() {
         let file = entry.file_name();
         if !NON_EXECUTABLE_FILES.contains(&file.to_string_lossy().as_ref()) {
@@ -1603,18 +1611,18 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
 const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
-    ("budget-exhausted", "sha256:46fefc2dcaf73d8b9b258e068a2ef9621d9eabbbe1963eb1d32170a974f1faba"),
+    ("budget-exhausted", "sha256:9fbbc1d6124705e0fe6670ac3a2a9354942b75ac7ef6aae38b3a81b07fe7fa93"),
     ("exec-transport", "sha256:e831dbc44bbe1f6d666e3033a70049b3b44e5fb9e61e39425cb33d6f6098ae45"),
     ("host-transport", "sha256:6edc5655961a1532619a5cd9317905a4eff8d611907b9175b69874c8f77fab19"),
-    ("minimal", "sha256:3749aba577f9a7014716d95b61d965b89b9f8c1c96fa185c9dc0ba114836ac0c"),
-    ("recovery-exhausted", "sha256:f6e34210be5007468b1f9c67fa3f0acb104e5c4257a666fe18db976571866305"),
-    ("sandbox", "sha256:d782d818af096573c8df312bace6be8ef32e0b80f781793e51bd6c13fef1bc91"),
-    ("self-extension", "sha256:786075013e433f761e4b871d36c9c6a26bd3cc36aa7772209a230d01d5974e82"),
-    ("subagents", "sha256:80d46911ef1aadc51635e89d95c1cf535b53fea15b71771414283f5015db17d3"),
-    ("team", "sha256:938a3751b7c02a69ab081a01519f882de64397cd881b7f7d10219de274dc95b4"),
-    ("verification-unsatisfiable", "sha256:6d05142cea4217d0c2a33d20f5dc7d066d42e6c6102f8a3ec2f3b7119b61fb60"),
-    ("workflow", "sha256:15dae3560e510ebc03414debdd01a64c761360718ab072bf9d1d089bb0337f4e"),
-    ("wrap-a-binary", "sha256:b006945bf76bc106eba9776e091d31685fb00d8f7ebe3f6f32c17b0a2a655fba"),
+    ("minimal", "sha256:b8872d36e26f43f0d7607aeef035dead64c53064f374aebd91489bc75a9be15a"),
+    ("recovery-exhausted", "sha256:ff1f692d7d998087fb8f822d1910cfd05ab67caa6d145690ce07f72a881bca93"),
+    ("sandbox", "sha256:932fe9b17c07577ccb41b72a52badca207846c308002679365e7a5265140392c"),
+    ("self-extension", "sha256:abced697a9b437a93f40c17e26e837d81759a4968a6f446fadf6754a8446ee87"),
+    ("subagents", "sha256:4a825e30490e8b5c64796ace7cf58ea06ec785b90abc06c8d6bf2b1c78111d20"),
+    ("team", "sha256:ae1978eb29d9db78a771479db3526b0dff9a2586cac6f1c034088aacf1075446"),
+    ("verification-unsatisfiable", "sha256:c2207889e5ead88e8a5150136a8efc64d040e066a3401de66636fe9b8e9d3294"),
+    ("workflow", "sha256:66b30392a9f8bac98b2592865d3b8eba0c3afa9d6f26d16c8989a58ac79fa1b0"),
+    ("wrap-a-binary", "sha256:9a2672e91bb2fda28724ca1bb56adb70f04f8b1ced92b551a3e0bd856ae7a7b3"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one
