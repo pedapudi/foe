@@ -309,7 +309,35 @@ def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path
     """A descendant's recorded request is not distinguishable from one the host owes."""
     doc = contract_with(["read"]).to_dict("t")
     doc["child_contracts"] = {"survey": contract_with(["read"], model=configured_model()).to_dict(child=True)}
-    with pytest.raises(ValueError, match="child_contracts: survey declares a `model` block"):
+    with pytest.raises(ValueError, match=r"model: child_contracts\.survey declares a `model` block"):
+        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+
+
+def test_a_workflow_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
+    """docs/workflow.md "Model nodes": a model node may select its own model."""
+    doc = contract_with(["read"]).to_dict("t")
+    node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
+    doc["workflow"] = {"nodes": {"survey": {"model": node_contract, "terminal": True}}}
+    with pytest.raises(ValueError, match=r"model: workflow\.nodes\.survey\.model declares a `model` block"):
+        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+
+
+def test_a_model_block_in_a_nested_workflow_under_a_host_transport_is_refused(
+    fake_binary: Path, tmp_path: Path
+) -> None:
+    """docs/workflow.md "Relationship to the rest of foe": the rule applies at every level."""
+    doc = contract_with(["read"]).to_dict("t")
+    node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
+    doc["workflow"] = {
+        "nodes": {
+            "outer": {
+                "workflow": {"nodes": {"survey": {"model": node_contract, "terminal": True}}},
+                "terminal": True,
+            }
+        }
+    }
+    path = r"model: workflow\.nodes\.outer\.workflow\.nodes\.survey\.model declares a `model` block"
+    with pytest.raises(ValueError, match=path):
         asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 

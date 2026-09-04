@@ -314,11 +314,11 @@ named key file and sends no authentication header when that option is absent.
 The block does not participate in the contract fingerprint, so two contracts
 that differ only in their model hash alike.
 
-One document is refused before launch: one that leaves the model to the
-host while a contract under `child_contracts` declares a `model` block of
-its own. A descendant's `model/request` reaches the root host whichever
-process answers it, so the host would have no way to tell a request it
-owes from one already recorded.
+A document that leaves the model to the host must leave every descendant
+to the host. The package checks child contracts and model nodes at every
+level of nested workflows before launch. A descendant's `model/request`
+reaches the root host whichever process answers it, so the host cannot tell
+a request it owes from one already recorded.
 
 ## Host tools
 
