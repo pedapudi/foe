@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 
-import mistake_transport
+import responses
 import run_tool_audit
 
 # The closed failure-code vocabulary from docs/tools.md.
@@ -112,13 +112,13 @@ class Checks(unittest.TestCase):
         self.assertEqual(sum(summary["by_code"].values()), len(run_tool_audit.CASES))
 
 
-class Transport(unittest.TestCase):
+class ResponseExpansion(unittest.TestCase):
     def test_expand_replaces_byte_sentinel(self) -> None:
-        expanded = mistake_transport.expand({"source": {"$bytes": 5}, "other": 1})
+        expanded = responses.expand({"source": {"$bytes": 5}, "other": 1})
         self.assertEqual(expanded, {"source": "#####", "other": 1})
 
     def test_expand_passes_non_objects_through(self) -> None:
-        self.assertEqual(mistake_transport.expand([1, 2]), [1, 2])
+        self.assertEqual(responses.expand([1, 2]), [1, 2])
 
 
 if __name__ == "__main__":

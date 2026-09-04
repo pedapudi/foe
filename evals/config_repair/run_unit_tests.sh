@@ -6,9 +6,9 @@ python3 -m py_compile \
   candidate_check.py \
   evaluate.py \
   operational_digest.py \
-  prepared_candidate_transport.py \
+  prepared_candidate_responses.py \
   run_repair_loop.py \
-  task_transport.py
+  task_responses.py
 python3 -m unittest -v \
   evaluate_test.py \
   operational_digest_test.py \

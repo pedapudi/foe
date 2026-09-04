@@ -12,11 +12,5 @@
   },
   "budget": { "model_calls": 4, "seconds": 300 },
   "sandbox": { "mode": "required" },
-  "model": {
-    "provider": "exec",
-    "model": "config-repair-task",
-    "exec": "/home/user/task-transport.py",
-    "command": "/usr/bin/jq -r -f totals.jq inventory.json > totals.txt"
-  },
   "task": "Run `/usr/bin/jq -r -f totals.jq inventory.json > totals.txt` in the repository so that it writes totals.txt."
 }

@@ -1,13 +1,12 @@
 # Configuration repair
 
 This directory measures and closes one self-improvement loop over a
-configuration defect: an execution contract that selects a shell tool while
-leaving `grants.execute` empty, the defect class `foe plan` reports
-statically as the `external-commands-unavailable` warning. A baseline run
-of the broken contract fails, an operational-failure digest cites the
-warning and the denial evidence, a repair child returns a corrected
-contract document, and an unchanged external evaluator reruns the task and
-judges the candidate against the frozen fixture.
+configuration defect. The fixture contract selects a shell tool while leaving
+`grants.execute` empty. The `foe plan` command reports this defect as the
+`external-commands-unavailable` warning. A baseline run fails, and an
+operational-failure digest cites the warning and denial evidence. A repair
+child returns a corrected contract document. An unchanged external evaluator
+reruns the task and judges the candidate against the recorded fixture.
 
 The result establishes externally verified configuration self-repair: the
 diagnosis, candidate, verification, and transfer machinery work end to
@@ -30,9 +29,9 @@ candidate.json    the returned candidate in canonical JSON, when the
                   attempt produced one
 ```
 
-Configuration warnings exist only in plan output, never in episode logs,
-so `plan.json` is retained beside the log. Consumers receive an explicit
-list of attempt directories; nothing searches a tree for attempts.
+Configuration warnings exist only in plan output. Episode logs do not contain
+them, so `plan.json` is retained beside the log. Consumers receive an explicit
+list of attempt directories. No consumer searches a tree for attempts.
 
 ## Operational-failure digest
 
@@ -68,30 +67,25 @@ warnings, and denial totals over the declared directories.
 
 ## Fixtures
 
-`fixtures/` holds two frozen fixtures in different languages, each a small
-repository plus a deliberately broken contract whose `grants.execute` is
-empty beside the selected `bash` tool:
+`fixtures/` holds two recorded fixtures in different languages. Each fixture
+contains a small repository and a contract whose `grants.execute` is empty
+beside the selected `bash` tool:
 
 | fixture | language | required executable | artifact |
 |---|---|---|---|
 | `python-report` | Python | `/usr/bin/python3` | `report.txt` |
 | `jq-totals` | jq | `/usr/bin/jq` | `totals.txt` |
 
-Each fixture's `fixture.json` freezes the required executable, the
-approved execute grants, and the SHA-256 digests of the contract, the task
-transport, and the proposal verifier; each fixture README records the
-digests and the resolved contract fingerprint. `evaluate.load_fixture`
-refuses a fixture whose contract no longer matches its frozen digest.
-Both fixtures were frozen before any repair ran, so transfer means the
-unchanged repair workflow diagnoses and repairs the second fixture without
-receiving the first fixture's answer.
+Each fixture's `fixture.json` records the required executable, the approved
+execute grants, and the SHA-256 digests of the contract and proposal
+verifier. `evaluate.load_fixture` refuses a fixture whose contract differs
+from its recorded digest.
 
-The task episodes run a deterministic transport (`task_transport.py`): it
-issues the fixture's build command through the `bash` tool, reports
-completion when the command exits zero, and blocks on `missing-capability`
-otherwise. Its behavior never depends on the contract's grants, so a
-baseline run and a candidate rerun differ only in what the runtime
-permits.
+The host supplies each task episode with deterministic responses. It issues
+the fixture's build command through the `bash` tool, reports completion when
+the command exits zero, and blocks on `missing-capability` otherwise. The
+responses never inspect the contract's grants, so the baseline and candidate
+runs differ only in what the runtime permits.
 
 ## External evaluator
 
@@ -131,28 +125,24 @@ digest, the evidence bundle, and `pipeline-report.json` under the output
 directory. It exits 0 when the evaluator passes the candidate, 1 when the
 evaluator rejects it, and 2 when a pipeline step fails.
 
-The repair child is the only model-dependent step, selected by exactly one
-of:
+The proposal episode uses one of these response sources:
 
-- `--repair-with-file CANDIDATE.json` — a deterministic transport returns
-  the prepared candidate document, so the whole pipeline runs without a
-  model request. Fixture placeholder paths in the prepared file are
+- `--repair-with-file CANDIDATE.json` — the host returns the prepared
+  candidate document. Fixture placeholder paths in the prepared file are
   materialized like the fixture contract. `fixtures/<name>/candidates/`
-  holds a correct candidate and the three trivial repairs above; the
-  trivial ones must exit 1.
+  holds a correct candidate and the three trivial repairs above. The trivial
+  repairs must exit 1.
 - `--repair-with-model PROVIDER/MODEL` — the same proposal contract with a
-  configured model route (`--repair-api-key-file`,
+  runtime-owned model route (`--repair-api-key-file`,
   `--repair-reasoning-effort`, and `--repair-model-calls` adjust it).
 
-In both modes the repair child receives the broken contract, the plan
-warnings, and the digest as files under its read root, returns the
-corrected document through the synthesized `return` tool, and a frozen
-structural verifier (`candidate_check.py`) accepts the document shape in
-its own episode, which attests the judged value's digest. The runner then
-confirms with `foe plan` that the warning is gone, records the resolved
-execute permissions, builds the evidence bundle with
-`build-evidence-bundle`, verifies it standalone, reruns the task, and
-hands everything to the evaluator.
+In both modes the repair child receives the broken contract, plan warnings,
+and digest as files under its read root. It returns the corrected document
+through the synthesized `return` tool. A recorded structural verifier
+(`candidate_check.py`) accepts the document shape in the proposal episode and
+attests the judged value's digest. The runner checks the candidate with `foe
+plan`, records the resolved execute permissions, builds and verifies the
+evidence bundle, reruns the task, and gives the evidence to the evaluator.
 
 The `foe`, `build-evidence-bundle`, and `verify-evidence-bundle` binaries
 default to `target/release/` in this repository; `cargo build --release`

@@ -10,15 +10,16 @@ permissions show the granted executable; an unchanged rerun of the task
 under the candidate feeds the external evaluator, which alone decides
 whether the repair passes.
 
-Only the repair child depends on a model. --repair-with-file substitutes
-a prepared candidate document through a deterministic transport so the
-whole pipeline runs without a model request; --repair-with-model runs the
-same proposal contract with a configured model route.
+The host supplies deterministic responses for task episodes. The
+--repair-with-file mode also serves a prepared candidate from the host.
+The --repair-with-model mode gives the proposal contract a configured
+runtime-owned model route.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import re
@@ -28,14 +29,18 @@ import sys
 from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import evaluate
+import host_runtime
+import prepared_candidate_responses
+import task_responses
 from operational_digest import digest
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent.parent
 WARNING_CODE = "external-commands-unavailable"
 PROJECT_PLACEHOLDER = "/home/user/project"
-TRANSPORT_PLACEHOLDER = "/home/user/task-transport.py"
 
 
 class PipelineError(Exception):
@@ -64,9 +69,21 @@ def run_plan(foe: Path, contract: Path) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def run_episode(foe: Path, contract: Path, log_dir: Path) -> int:
-    """Run one headless episode; the episode outcome, not the exit status,
-    says how it ended."""
+def run_episode(
+    foe: Path,
+    contract: Path,
+    log_dir: Path,
+    responder: host_runtime.Responder | None = None,
+) -> int:
+    """Run one headless episode and return its outcome status."""
+    if responder is not None:
+        try:
+            status = host_runtime.run(foe, contract, log_dir, responder)
+        except (OSError, RuntimeError) as error:
+            raise PipelineError(f"the host-owned episode failed: {error}") from error
+        if not (log_dir / "episode.jsonl").is_file():
+            raise PipelineError("the host-owned episode wrote no log")
+        return status
     result = subprocess.run(
         [str(foe), "--config", str(contract), "--log-dir", str(log_dir), "--headless"],
         text=True,
@@ -102,22 +119,12 @@ def episode_outcome(events: list[dict[str, Any]]) -> dict[str, Any]:
     return outcome
 
 
-def materialize_fixture(fixture_dir: Path, fixture: dict[str, Any], output: Path) -> tuple[Path, Path]:
-    """Copy the fixture repository and the frozen task transport into the
-    workspace and return the materialized contract path and project dir."""
+def materialize_fixture(fixture_dir: Path, output: Path) -> tuple[Path, Path]:
+    """Copy the fixture repository and materialize its project path."""
     project = output / "project"
     shutil.copytree(fixture_dir / "repo", project)
-    transport = output / "task-transport.py"
-    shutil.copyfile(SCRIPT_DIR / "task_transport.py", transport)
-    transport.chmod(0o755)
-    observed = hashlib.sha256(transport.read_bytes()).hexdigest()
-    if observed != fixture["task_transport_sha256"]:
-        raise PipelineError(
-            f"task transport digest {observed} differs from the frozen digest "
-            f"{fixture['task_transport_sha256']}"
-        )
     text = (fixture_dir / "contract.json").read_text(encoding="utf-8")
-    text = text.replace(PROJECT_PLACEHOLDER, str(project)).replace(TRANSPORT_PLACEHOLDER, str(transport))
+    text = text.replace(PROJECT_PLACEHOLDER, str(project))
     contract = output / "baseline-contract.json"
     contract.write_text(text, encoding="utf-8")
     return contract, project
@@ -140,11 +147,14 @@ def granted_execute_paths(plan: dict[str, Any]) -> list[str]:
 
 
 def proposal_contract(
-    workspace: Path, check_exec: Path, model_block: dict[str, Any], model_calls: int
+    workspace: Path,
+    check_exec: Path,
+    model_block: dict[str, Any] | None,
+    model_calls: int,
 ) -> dict[str, Any]:
     """The repair child's execution contract. The task hands it the failure
     evidence; it never names the repair."""
-    return {
+    contract = {
         "version": 4,
         "name": "config-repair-proposal",
         "instructions": {
@@ -170,7 +180,6 @@ def proposal_contract(
         "grants": {"read": [str(workspace)]},
         "budget": {"model_calls": model_calls, "seconds": 900},
         "done_when": {"verify": "check", "returns": {"type": "object"}},
-        "model": model_block,
         "task": (
             f"The directory {workspace} holds the evidence of a failed run: "
             "broken-contract.json is the execution contract that ran, plan-warnings.json "
@@ -179,29 +188,25 @@ def proposal_contract(
             "the run failed and return the corrected contract document."
         ),
     }
+    if model_block is not None:
+        contract["model"] = model_block
+    return contract
 
 
-def repair_model_block(
+def prepare_repair(
     args: argparse.Namespace, workspace: Path, replacements: dict[str, str] | None = None
-) -> dict[str, Any]:
-    """The proposal contract's model block. A prepared candidate may name
-    the fixture's placeholder paths; they are materialized like the fixture
-    contract so one prepared file works in any output directory."""
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Return either a runtime-owned model route or a prepared candidate."""
     if args.repair_with_file:
         prepared = workspace / "prepared-candidate.json"
         text = args.repair_with_file.read_text(encoding="utf-8")
         for placeholder, actual in (replacements or {}).items():
             text = text.replace(placeholder, actual)
         prepared.write_text(text, encoding="utf-8")
-        transport = workspace / "prepared-candidate-transport.py"
-        shutil.copyfile(SCRIPT_DIR / "prepared_candidate_transport.py", transport)
-        transport.chmod(0o755)
-        return {
-            "provider": "exec",
-            "model": "prepared-candidate",
-            "exec": str(transport),
-            "candidate_file": str(prepared),
-        }
+        candidate = json.loads(text)
+        if not isinstance(candidate, dict):
+            raise PipelineError("--repair-with-file must contain one contract document object")
+        return None, candidate
     provider, slash, model = args.repair_with_model.partition("/")
     if not slash or not provider or not model:
         raise PipelineError("--repair-with-model takes the form provider/model")
@@ -210,7 +215,7 @@ def repair_model_block(
         block["api_key_file"] = str(args.repair_api_key_file)
     if args.repair_reasoning_effort:
         block["reasoning_effort"] = args.repair_reasoning_effort
-    return block
+    return block, None
 
 
 def build_bundle(
@@ -283,17 +288,15 @@ def run_loop(args: argparse.Namespace) -> int:
     # Baseline: the broken contract is planned, warned about, and fails.
     baseline = output / "attempt-baseline"
     baseline.mkdir()
-    contract_path, project = materialize_fixture(fixture_dir, fixture, output)
-    replacements = {
-        PROJECT_PLACEHOLDER: str(project),
-        TRANSPORT_PLACEHOLDER: str(output / "task-transport.py"),
-    }
+    contract_path, project = materialize_fixture(fixture_dir, output)
+    replacements = {PROJECT_PLACEHOLDER: str(project)}
+    task_responder = functools.partial(task_responses.respond, command=fixture["required_command"])
     shutil.copyfile(contract_path, baseline / "contract.json")
     baseline_plan = run_plan(args.foe, baseline / "contract.json")
     write_json(baseline / "plan.json", baseline_plan)
     if WARNING_CODE not in plan_warning_codes(baseline_plan):
         raise PipelineError(f"the fixture contract does not produce the {WARNING_CODE} warning")
-    run_episode(args.foe, baseline / "contract.json", baseline / "episode")
+    run_episode(args.foe, baseline / "contract.json", baseline / "episode", task_responder)
     baseline_events = read_events(baseline / "episode")
     baseline_outcome = episode_outcome(baseline_events)
     report["baseline_outcome"] = baseline_outcome
@@ -320,8 +323,8 @@ def run_loop(args: argparse.Namespace) -> int:
     if WARNING_CODE not in report["digest_evidence"]["configuration_warning_codes"] or denials == 0:
         raise PipelineError("the digest lacks the warning or denial evidence the diagnosis needs")
 
-    # Repair child: the only model-dependent step; the transport mode
-    # substitutes a prepared candidate.
+    # The proposal either uses a runtime-owned route or receives a prepared
+    # candidate from the host.
     workspace = output / "proposal"
     workspace.mkdir()
     shutil.copyfile(baseline / "contract.json", workspace / "broken-contract.json")
@@ -339,12 +342,18 @@ def run_loop(args: argparse.Namespace) -> int:
     repair = output / "attempt-repair"
     repair.mkdir()
     model_calls = 3 if args.repair_with_file else args.repair_model_calls
+    model_block, prepared_candidate = prepare_repair(args, workspace, replacements)
     write_json(
         repair / "contract.json",
-        proposal_contract(workspace, check_exec, repair_model_block(args, workspace, replacements), model_calls),
+        proposal_contract(workspace, check_exec, model_block, model_calls),
     )
     write_json(repair / "plan.json", run_plan(args.foe, repair / "contract.json"))
-    run_episode(args.foe, repair / "contract.json", repair / "episode")
+    repair_responder = (
+        functools.partial(prepared_candidate_responses.respond, candidate=prepared_candidate)
+        if prepared_candidate is not None
+        else None
+    )
+    run_episode(args.foe, repair / "contract.json", repair / "episode", repair_responder)
     proposal_outcome = episode_outcome(read_events(repair / "episode"))
     report["proposal_outcome_kind"] = proposal_outcome.get("kind")
     if proposal_outcome.get("kind") != "completed":
@@ -380,7 +389,7 @@ def run_loop(args: argparse.Namespace) -> int:
     artifact = project / fixture["artifact"]
     if artifact.exists():
         artifact.unlink()
-    run_episode(args.foe, rerun / "contract.json", rerun / "episode")
+    run_episode(args.foe, rerun / "contract.json", rerun / "episode", task_responder)
     rerun_events = read_events(rerun / "episode")
     report["rerun_outcome"] = episode_outcome(rerun_events)
     write_json(

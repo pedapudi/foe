@@ -5,15 +5,16 @@ from __future__ import annotations
 
 import argparse
 import copy
+import functools
 import json
-import os
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
+import host_runtime
+import runtime_responses
 from trace_quality import DIMENSIONS, evaluate
 
 Mutation = Callable[[list[dict[str, Any]]], None]
@@ -32,7 +33,7 @@ class HarnessError(Exception):
     """
 
 
-def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
+def base_config(name: str, root: Path) -> dict[str, Any]:
     return {
         "version": 4,
         "name": name,
@@ -40,18 +41,13 @@ def base_config(name: str, root: Path, transport: Path) -> dict[str, Any]:
         "tools": ["read"],
         "grants": {"read": [str(root)]},
         "budget": {"model_calls": 8, "input_tokens": 8000, "output_tokens": 2000, "seconds": 60},
-        "model": {
-            "provider": "exec",
-            "model": name,
-            "exec": str(transport),
-        },
         "sandbox": {"mode": "off"},
         "task": "Complete the deterministic evaluation task.",
     }
 
 
-def typed_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-typed-outcome", root, transport)
+def typed_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-typed-outcome", root)
     config["tools"] = ["block"]
     config["done_when"] = {
         "returns": {
@@ -66,41 +62,37 @@ def typed_config(root: Path, transport: Path) -> dict[str, Any]:
     return config
 
 
-def blocked_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-blocked-outcome", root, transport)
+def blocked_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-blocked-outcome", root)
     config["tools"] = ["block"]
     config["task"] = "Report the deterministic missing-capability condition."
     return config
 
 
-def exhausted_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-exhausted-outcome", root, transport)
+def exhausted_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-exhausted-outcome", root)
     config["budget"]["model_calls"] = 1
-    config["model"]["file"] = str(root / "allowed" / "a.txt")
     config["task"] = "Read one fixture and leave work pending at the request limit."
     return config
 
 
-def failed_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-failed-outcome", root, transport)
+def failed_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-failed-outcome", root)
     config["tools"] = ["block"]
-    config["task"] = "Receive the deterministic non-retryable transport error."
+    config["task"] = "Receive the deterministic non-retryable response error."
     return config
 
 
-def permissions_config(root: Path, transport: Path) -> dict[str, Any]:
+def permissions_config(root: Path) -> dict[str, Any]:
     allowed = root / "allowed"
     denied = root / "denied" / "secret.txt"
-    config = base_config("eval-permissions", allowed, transport)
-    config["model"].update(
-        {"allowed_file": str(allowed / "a.txt"), "denied_file": str(denied)}
-    )
+    config = base_config("eval-permissions", allowed)
     config["task"] = "Use the built-in read tool on one granted path and one path outside the grant."
     return config
 
 
-def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-workflow", root, transport)
+def workflow_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-workflow", root)
     config["tools"] = ["read", "record"]
     config["tool_defs"] = {
         "record": {
@@ -141,8 +133,8 @@ def workflow_config(root: Path, transport: Path) -> dict[str, Any]:
     return config
 
 
-def compaction_config(root: Path, transport: Path) -> dict[str, Any]:
-    config = base_config("eval-compaction", root, transport)
+def compaction_config(root: Path) -> dict[str, Any]:
+    config = base_config("eval-compaction", root)
     config["context"] = {
         "compact": True,
         "window_tokens": 2000,
@@ -150,20 +142,14 @@ def compaction_config(root: Path, transport: Path) -> dict[str, Any]:
         "keep_recent_tokens": 1,
         "margin_tokens": 0,
     }
-    config["model"].update(
-        {
-            "file_a": str(root / "allowed" / "a.txt"),
-            "file_b": str(root / "allowed" / "b.txt"),
-        }
-    )
     config["task"] = "Read both fixture files and report completion."
     return config
 
 
-def sandbox_config(root: Path, transport: Path) -> dict[str, Any]:
+def sandbox_config(root: Path) -> dict[str, Any]:
     allowed = root / "allowed"
     denied = root / "denied" / "secret.txt"
-    config = base_config("eval-sandbox", allowed, transport)
+    config = base_config("eval-sandbox", allowed)
     config["tools"] = ["cat"]
     config["tool_defs"] = {
         "cat": {
@@ -171,9 +157,6 @@ def sandbox_config(root: Path, transport: Path) -> dict[str, Any]:
             "description": "Reads the file named in args without a shell.",
         }
     }
-    config["model"].update(
-        {"allowed_file": str(allowed / "a.txt"), "denied_file": str(denied)}
-    )
     config["sandbox"] = {"mode": "required"}
     config["task"] = "Try the granted file and the file outside the read grant."
     return config
@@ -181,19 +164,6 @@ def sandbox_config(root: Path, transport: Path) -> dict[str, Any]:
 
 def write_config(path: Path, config: dict[str, Any]) -> None:
     path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-
-
-def support_file(name: str) -> Path:
-    relative = Path("evals") / name
-    candidates = [Path(__file__).resolve().with_name(name)]
-    runfiles_dir = os.environ.get("RUNFILES_DIR")
-    if runfiles_dir:
-        candidates.append(Path(runfiles_dir) / "_main" / relative)
-    candidates.append(Path(str(Path(sys.argv[0]).resolve()) + ".runfiles") / "_main" / relative)
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-    raise HarnessError(f"evaluation support file is absent: {name}")
 
 
 def probe_events(log_dir: Path) -> list[dict[str, Any]]:
@@ -210,6 +180,7 @@ def run_case(
     run_root: Path,
     name: str,
     config: dict[str, Any],
+    responder: host_runtime.Responder,
     expected_exit: int = 0,
 ) -> tuple[Path, list[str]]:
     case_dir = run_root / name
@@ -218,27 +189,12 @@ def run_case(
         case_dir.mkdir()
         config_path = case_dir / "config.json"
         write_config(config_path, config)
-        result = subprocess.run(
-            [
-                str(binary),
-                "--config",
-                str(config_path),
-                "--log-dir",
-                str(log_dir),
-                "--headless",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError as error:
+        status = host_runtime.run(binary, config_path, log_dir, responder)
+    except (OSError, RuntimeError) as error:
         raise HarnessError(f"the {name} case could not be launched: {error}") from error
     findings = []
-    if result.returncode != expected_exit:
-        findings.append(
-            f"{name} exited {result.returncode}; expected {expected_exit}"
-            f"; stderr: {result.stderr.strip()}"
-        )
+    if status != expected_exit:
+        findings.append(f"{name} exited {status}; expected {expected_exit}")
     if not (log_dir / "episode.jsonl").is_file():
         raise HarnessError(f"the {name} case wrote no episode log under {log_dir}")
     return log_dir, findings
@@ -422,8 +378,6 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
     binary = args.foe.resolve()
     if not binary.is_file():
         raise HarnessError(f"foe binary does not exist: {binary}")
-    transport = support_file("scripted_transport.py")
-
     fixtures = run_root / "fixtures"
     try:
         (fixtures / "allowed").mkdir(parents=True)
@@ -434,22 +388,33 @@ def run(args: argparse.Namespace, run_root: Path) -> int:
     except OSError as error:
         raise HarnessError(f"the case fixtures could not be created under {fixtures}: {error}") from error
 
+    response = runtime_responses.respond
+    paths = {
+        "file": str(fixtures / "allowed" / "a.txt"),
+        "allowed_file": str(fixtures / "allowed" / "a.txt"),
+        "denied_file": str(fixtures / "denied" / "secret.txt"),
+        "file_a": str(fixtures / "allowed" / "a.txt"),
+        "file_b": str(fixtures / "allowed" / "b.txt"),
+    }
     cases = {
-        "typed-outcome": (typed_config(fixtures, transport), 0),
-        "blocked-outcome": (blocked_config(fixtures, transport), 2),
-        "exhausted-outcome": (exhausted_config(fixtures, transport), 3),
-        "failed-outcome": (failed_config(fixtures, transport), 1),
-        "declared-permissions": (permissions_config(fixtures, transport), 0),
-        "workflow-provenance": (workflow_config(fixtures, transport), 0),
-        "context-compaction": (compaction_config(fixtures, transport), 0),
+        "typed-outcome": (typed_config(fixtures), 0),
+        "blocked-outcome": (blocked_config(fixtures), 2),
+        "exhausted-outcome": (exhausted_config(fixtures), 3),
+        "failed-outcome": (failed_config(fixtures), 1),
+        "declared-permissions": (permissions_config(fixtures), 0),
+        "workflow-provenance": (workflow_config(fixtures), 0),
+        "context-compaction": (compaction_config(fixtures), 0),
     }
     if args.include_kernel_sandbox:
-        cases["kernel-sandbox"] = (sandbox_config(fixtures, transport), 0)
+        cases["kernel-sandbox"] = (sandbox_config(fixtures), 0)
 
     logs: dict[str, Path] = {}
     findings: list[str] = []
     for name, (config, expected_exit) in cases.items():
-        logs[name], case_findings = run_case(binary, run_root, name, config, expected_exit)
+        responder = functools.partial(response, scenario=name, options=paths)
+        logs[name], case_findings = run_case(
+            binary, run_root, name, config, responder, expected_exit
+        )
         findings.extend(case_findings)
     findings.extend(check_outcome_cases(logs))
     permission_findings = check_permissions_probe(logs["declared-permissions"])

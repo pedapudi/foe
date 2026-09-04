@@ -13,7 +13,7 @@ from run_repair_loop import (
     granted_execute_paths,
     plan_warning_codes,
     proposal_contract,
-    repair_model_block,
+    prepare_repair,
     PipelineError,
 )
 
@@ -63,7 +63,7 @@ class ProposalContractTest(unittest.TestCase):
         self.contract = proposal_contract(
             self.workspace,
             self.workspace / "candidate-check.py",
-            {"provider": "exec", "model": "prepared-candidate", "exec": "/x", "candidate_file": "/y"},
+            None,
             3,
         )
 
@@ -79,8 +79,11 @@ class ProposalContractTest(unittest.TestCase):
         self.assertNotIn("grants.execute", text)
         self.assertNotIn("/usr/bin/", text)
 
+    def test_host_owned_proposals_have_no_model_block(self):
+        self.assertNotIn("model", self.contract)
 
-class RepairModelBlockTest(unittest.TestCase):
+
+class RepairSourceTest(unittest.TestCase):
     def arguments(self, **overrides) -> argparse.Namespace:
         values = {
             "repair_with_file": None,
@@ -91,25 +94,26 @@ class RepairModelBlockTest(unittest.TestCase):
         values.update(overrides)
         return argparse.Namespace(**values)
 
-    def test_the_file_mode_uses_the_deterministic_transport(self):
+    def test_the_file_mode_prepares_a_host_owned_candidate(self):
         workspace = Path(tempfile.mkdtemp())
         candidate = workspace / "given.json"
         candidate.write_text("{}", encoding="utf-8")
-        block = repair_model_block(self.arguments(repair_with_file=candidate), workspace)
-        self.assertEqual(block["provider"], "exec")
-        self.assertEqual(block["candidate_file"], str(workspace / "prepared-candidate.json"))
-        self.assertTrue((workspace / "prepared-candidate-transport.py").is_file())
+        block, prepared = prepare_repair(self.arguments(repair_with_file=candidate), workspace)
+        self.assertIsNone(block)
+        self.assertEqual(prepared, {})
+        self.assertTrue((workspace / "prepared-candidate.json").is_file())
 
     def test_the_model_mode_uses_the_given_route(self):
-        block = repair_model_block(
+        block, prepared = prepare_repair(
             self.arguments(repair_with_model="acme/coder-1", repair_reasoning_effort="high"),
             Path(tempfile.mkdtemp()),
         )
         self.assertEqual(block, {"provider": "acme", "model": "coder-1", "reasoning_effort": "high"})
+        self.assertIsNone(prepared)
 
     def test_a_route_without_a_slash_is_an_error(self):
         with self.assertRaises(PipelineError):
-            repair_model_block(self.arguments(repair_with_model="coder-1"), Path(tempfile.mkdtemp()))
+            prepare_repair(self.arguments(repair_with_model="coder-1"), Path(tempfile.mkdtemp()))
 
 
 if __name__ == "__main__":

@@ -1297,9 +1297,10 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
     std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
     // Materialization installs only example-owned tools and checks. Configs,
     // prose, runners, build files, and host responses stay outside the episode.
-    const NON_EXECUTABLE_FILES: [&str; 9] = [
+    const NON_EXECUTABLE_FILES: [&str; 10] = [
         "BUILD.bazel",
         "README.md",
+        "__pycache__",
         "check_test.sh",
         "config.json",
         "responses.py",

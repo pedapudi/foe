@@ -196,10 +196,10 @@ the child consumed, and which workflow inputs reached the child.
 ### Repeated stochastic and deterministic tests
 
 Provider-backed attempts measure whether the model can perform the task under
-real sampling and service conditions. The deterministic transport exercises
-a forced correction path without provider cost. It first leaves the
-documentation incomplete, receives verifier findings, repairs the
-documentation, and completes through a clean checker call.
+real sampling and service conditions. Deterministic responses supplied by the
+host exercise a forced correction path without provider cost. The first
+response leaves the documentation incomplete. Later responses receive verifier
+findings, repair the documentation, and complete through a clean checker call.
 
 The two forms cover different risks. Provider repetition detects behavior
 variance. The deterministic route protects the recovery and provenance
