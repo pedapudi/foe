@@ -485,33 +485,15 @@ reported the same way.
 
 The package calls the transport once per `model/request`, and the runtime
 has at most one outstanding request at a time, so the transport never runs
-concurrently with itself within one episode. That is a statement about
-overlap, not about blocking: the package awaits the transport ON the
-protocol loop, so a transport that blocks stops everything the host is
-doing for the length of the call.
+concurrently with itself within one episode. The host invokes a transport
+on the protocol loop. Request setup and streamed-response iteration must
+yield control so sibling episodes and other host work can proceed.
+Asynchronous I/O satisfies this requirement. An adapter around a synchronous
+streaming client must move both operations off the protocol loop.
 
-Blocking clients are the easy mistake here, because the signature is
-`async def` and a synchronous HTTP call inside it type-checks and works.
-It does not merely slow the episode down: sibling episodes stop
-advancing, the host answers no other request, and child processes are not
-reaped, so a slow endpoint reads as a wedged process rather than a slow
-one. Nor does a client-side timeout bound it — `requests` and friends
-time out each socket operation, not the request, so a peer that trickles
-bytes holds the loop indefinitely.
-
-Use an async client, or hand the blocking half to a thread:
-
-```python
-async def transport(request: dict) -> AsyncIterator[dict]:
-    response = await asyncio.to_thread(lambda: session.post(url, json=body, timeout=T))
-    ...
-```
-
-Host tools get this for free — a synchronous host tool runs in a worker
-thread for exactly this reason (see "Results and rendering"). A transport
-does not, because it is an async generator; the adapter owns it. When the document has child
-contracts, requests from child episodes carry an `episode_id` on the event;
-the package echoes it on every answer, as protocol.md requires.
+When the document has child contracts, requests from child episodes carry
+an `episode_id` on the event; the package echoes it on every answer, as
+protocol.md requires.
 
 ### The reference adapter
 
