@@ -44,8 +44,9 @@ installation remains intact until the build and verification succeed.
 ## Pin the binary and Python package to one commit
 
 Build both components from one clean checkout at a full commit hash. Branches
-and tags can move. Matching package version strings establish protocol
-compatibility; they do not identify the source revision that was installed.
+and tags can move. Package version strings do not identify the installed
+source revision. The configuration, log format, and runtime protocol checks
+are specified in [sdk.md](sdk.md#the-versions-a-pair-must-agree-on).
 
 The following commands require Git, Bazel, and uv. Replace the commit
 placeholder with a full forty-character commit hash. The source and install
