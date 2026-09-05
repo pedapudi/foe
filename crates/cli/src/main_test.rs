@@ -46,6 +46,20 @@ fn parse(line: &str) -> Result<Command, String> {
     command(&args)
 }
 
+/// docs/design.md: readable terminal output is opt-in and excludes the host protocol.
+#[test]
+fn conversation_is_an_explicit_running_option() {
+    let Ok(Command::Run(default)) = parse("a-task") else { panic!() };
+    assert!(!default.conversation);
+    for input in ["a-task --conversation", "--config c.json --conversation --headless"] {
+        let Ok(Command::Run(options)) = parse(input) else { panic!("{input}") };
+        assert!(options.conversation);
+    }
+    let error = parse("--config c.json --host --conversation").err().unwrap();
+    assert_eq!(error, "--conversation cannot be combined with --host");
+    assert!(parse("view logs --conversation").is_err());
+}
+
 #[test]
 fn every_form_parses_and_foreign_options_are_refused() {
     assert!(matches!(parse("plan --schema"), Ok(Command::Schema)));

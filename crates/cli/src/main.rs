@@ -102,7 +102,8 @@ const OPTS: &[Opt] = &[
     opt("", "--fork", "SOURCE_DIR", "", "seed the log from a prefix of SOURCE_DIR's log; the task is the fork's task"),
     opt("", "--at", "SEQ", "", "the --fork boundary: source events with seq below SEQ are copied"),
     opt("", "--no-open", "", "", "serve the viewer without opening a browser on it"),
-    opt("", "--headless", "", "", "run with no viewer at all"),
+    opt("", "--headless", "", "", "run without the browser viewer"),
+    opt("", "--conversation", "", "", "show the conversation and execution tree in the terminal"),
     opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
     opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
     opt("init", "--repository", "PATH", "required", "the repository to write .foe/contract.json and .foe/verify for"),
@@ -304,10 +305,14 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 log_dir: args.value("--log-dir").map(PathBuf::from),
                 no_open: args.switch("--no-open"),
                 headless: args.switch("--headless"),
+                conversation: args.switch("--conversation"),
                 host: args.switch("--host"),
                 fork: args.value("--fork").map(PathBuf::from),
                 at: args.value("--at").map(|t| t.parse().map_err(|_| format!("--at: {t} is not a seq"))).transpose()?,
             };
+            if options.host && options.conversation {
+                return Err("--conversation cannot be combined with --host".into());
+            }
             if options.fork.is_some() != options.at.is_some() {
                 return Err("--fork SOURCE_DIR and --at SEQ come together; run `foe --help`".into());
             }
