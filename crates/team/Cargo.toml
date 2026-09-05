@@ -1,0 +1,19 @@
+[package]
+name = "foe-team"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Agent team coordination: roster, durable messages, and model-facing tools"
+
+[dependencies]
+foe-log = { path = "../log" }
+foe-contract = { path = "../contract" }
+foe-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

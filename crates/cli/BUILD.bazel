@@ -16,6 +16,7 @@ rust_binary(
         "//crates/context:foe_context",
         "//crates/core:foe_core",
         "//crates/log:foe_log",
+        "//crates/team:foe_team",
         "//crates/telemetry:foe_telemetry",
         "//crates/transport:foe_transport",
         "//crates/view:foe_view",

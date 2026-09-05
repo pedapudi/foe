@@ -5,6 +5,7 @@ members = [
     "crates/contract",
     "crates/evidence",
     "crates/core",
+    "crates/team",
     "crates/code",
     "crates/transport",
     "crates/workflow",

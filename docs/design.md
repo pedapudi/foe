@@ -957,9 +957,9 @@ not finished.
     type,            resolution,        registry,    ├── crates/transport
     serde,           tool specs,        grants,      │    model clients, credentials
     serde_json       schema subset,     budget,      │
-                     harness text,      spawn,       ├── crates/workflow
-                     fingerprint,          teams,       │    graph scheduling and recovery
-                     inspection    result budget,    │
+                     harness text,      spawn,       ├── crates/team
+                     fingerprint,       result       │    roster, messages, coordination tools
+                     inspection         budget,      ├── crates/workflow
                                         exec,        ├── crates/context
                                         landlock,    │    projection, cut, summarization prompt
                                         protocol,    │
@@ -1050,10 +1050,11 @@ document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 2,350 lines on
-the same terms. It is separate because it grows a tool at a time: a new
-tool adds capability without touching the kernel, so room for tools must
-not become room for the loop. The workflow executor in `crates/workflow`
+The coding tools in `crates/code` stay under 1,900 lines. Team coordination
+in `crates/team` stays under 800 lines. Their combined budget is 2,700 lines.
+The separate limits keep coordination independent of filesystem and process
+tools. The combined limit prevents a crate boundary from increasing the total
+implementation allowance. The workflow executor in `crates/workflow`
 stays under 1,050 lines. It schedules the graph, bounds text entering model
 nodes, and routes failures through recovery. Inspection of a configured
 contract tree remains in `foe_contract::inspect`, beside the model it analyses.

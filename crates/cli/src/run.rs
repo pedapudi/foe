@@ -9,7 +9,6 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
-use foe_code::team::{self, Team};
 use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract};
 use foe_contract::fingerprint::{compute, Fingerprint};
 use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
@@ -31,6 +30,7 @@ use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedContract, SeedHeader};
 use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
+use foe_team::{self as team, Team};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};

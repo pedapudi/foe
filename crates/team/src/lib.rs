@@ -594,5 +594,5 @@ impl Tool for TeamTool {
 }
 
 #[cfg(test)]
-#[path = "team_test.rs"]
+#[path = "lib_test.rs"]
 mod tests;

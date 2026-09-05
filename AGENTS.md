@@ -52,7 +52,8 @@ sentence on first reading.
   "The two tiers of the test suite".
 - Rust line budgets exclude tests, generated code, blank lines, and
   comment-only lines. `log` and `core` form the kernel and stay under 6,250
-  lines together. `contract` stays under 1,575, `code` under 2,350, `workflow`
+  lines together. `contract` stays under 1,575 and `code` under 1,900. `team`
+  stays under 800, and `code` plus `team` stay under 2,700. `workflow` stays
   under 1,050, `context` under 500, `view` under 600, `cli` under 1,650,
   `transport` under 2,700, `telemetry` under 1,000, and `evidence` under 500.
   The viewer HTML, TypeScript, and CSS use the compressed bundle limit in
