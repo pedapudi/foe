@@ -52,6 +52,10 @@ failure and cleans up running children and sessions before returning the error.
 A task-lifetime session whose release cannot be recorded is stopped.
 The interrupted log receives no terminal outcome after recording fails.
 
+Reopening requires a complete final line. An incomplete trailing line makes
+the writer refuse to append, and its bytes remain available for inspection.
+Forking at a complete event boundary can retain the readable prefix.
+
 ## Envelope
 
 One JSON object per line.
