@@ -755,7 +755,8 @@ The binary has one running form and five forms that run nothing.
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
 foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
-foe "task" --headless                                    run; no viewer; print the outcome
+foe "task" --headless                                    run; no browser viewer; print the outcome
+foe "task" --conversation                                run; show conversation and execution tree in the terminal
 foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -777,11 +778,16 @@ prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
 reprinting every form.
 
-In every running form except `--host`, standard output receives exactly one
-line when the episode ends: the outcome as JSON. A shell reads it with one
-`read`; another process parses it with one `json.loads`. The exit code is 0
-for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
-Progress goes to standard error. The log goes to the file.
+By default, a run writes one JSON outcome line to standard output when the
+episode ends. This also applies to interactive terminals. A shell reads it
+with one `read`; another process parses it with one `json.loads`.
+`--conversation` selects a readable conversation and execution tree on
+standard output, including returned branch results and the final outcome.
+It suppresses the browser viewer and cannot be combined with `--host`.
+[viewer.md](viewer.md#terminal-conversation) specifies the terminal display.
+`--host` selects the log protocol described in [protocol.md](protocol.md).
+The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
+for `failed`. Diagnostics go to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
 the current directory otherwise. A workflow launch over a directory with
@@ -950,7 +956,7 @@ runtime reads configuration from no well-known location: only `foe init`
 and the document it writes name these paths, and the report the command
 prints states every one of these decisions.
 
-Without `--headless` and without `--host`, the binary serves the viewer on
+Without `--headless`, `--conversation`, or `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
 `/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
 three seconds after the episode ends so that an open page receives the

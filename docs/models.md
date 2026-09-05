@@ -16,7 +16,7 @@ The first command asks for an API key, checks it with one request, writes it
 to `~/.config/foe/credentials/anthropic.json`, and offers a list of models
 to make the default. The second command runs the built-in coding
 configuration against the current directory with that default model and
-prints the outcome as one JSON line. No flag names a model or a key file,
+prints the outcome as one JSON line by default. No flag names a model or a key file,
 because both were settled by the login.
 
 `foe login` alone lists every provider and whether each is

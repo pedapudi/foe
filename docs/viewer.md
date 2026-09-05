@@ -1,5 +1,46 @@
 # Viewer
 
+## Terminal conversation
+
+`foe --conversation` shows conversation text and the execution tree on
+standard output. The flag is off by default, including in interactive
+terminals. It selects the terminal display in place of the browser viewer.
+`--conversation` cannot be combined with `--host`.
+
+The display appends blocks to terminal scrollback. Each active episode has
+a column of tree connectors. A branch opens a column; its return joins
+that column to its parent and displays the outcome. A returned result
+means the child finished; it does not establish that its parent accepted
+or incorporated the result.
+
+The conversation shows the root task, parent and peer messages, nonempty assistant
+messages, returned child outcomes, and the final outcome. Tool requests,
+tool responses, reasoning, system instructions, and internal notifications
+are hidden. Child task inputs are hidden because workflow inputs can include
+full tool results. An image appears as a text placeholder.
+
+Messages appear after their complete `assistant/message` event is recorded.
+Polling reads appended log bytes every 100 milliseconds while execution
+runs. Before displaying a returned result, the display reads every
+available message from that child. Independent episodes can be displayed
+in discovery order; the display does not claim a global event order.
+Existing recorded messages are displayed when execution resumes.
+
+Final string values appear as text; strings containing JSON objects or arrays
+use the same rendering as structured values. Object fields have labels and nested
+indentation, and arrays appear as separated values. Markdown remains
+readable source text. Terminal wrapping determines line width.
+Colors distinguish headings in an interactive terminal; redirected output
+uses plain text with Unicode connectors. Control characters other than
+line feeds and tabs are removed.
+
+The display retains read offsets and episode labels, and reads logs through
+the viewer crate. It does not alter execution or retained evidence.
+A display error is reported on standard error while the episode continues
+to settle. Outcome exit codes retain their usual meanings.
+
+## Browser viewer
+
 The viewer renders an episode directory, which is the log of one episode
 and the logs of every descendant under `children/`, or a directory of such
 directories, whose episodes are shown side by side as independent runs.
