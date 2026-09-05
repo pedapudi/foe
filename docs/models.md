@@ -149,9 +149,13 @@ boundaries. An incomplete event at end of input is discarded.
 
 Malformed headers, chunk framing, event text, and parser-limit violations
 produce nonretryable errors. Connection failures, idle timeouts, and
-incomplete response bodies are retryable. Error response text and credential
-response text are read up to 64 KiB. These bounds cover response parsing;
-the runtime separately accounts for output tokens and retained context.
+incomplete response bodies are retryable. Error response text is read up to
+64 KiB. A successful credential response requires a complete UTF-8 JSON body
+of at most 64 KiB. A truncated credential body retains its transport error
+classification, and an oversized body is refused. Credential lifetimes that
+cannot be represented by the expiry clock are refused before caching or
+writing the token. These bounds cover response parsing; the runtime separately
+accounts for output tokens and retained context.
 
 The Rust HTTP and credential methods are asynchronous. Callers await request,
 verification, and token-refresh results. The command-line login flow runs

@@ -189,7 +189,13 @@ impl Google {
             }
         }
         let (token, expires_in) = mint(&self.credentials).await?;
-        *cache = Some((token.clone(), Instant::now() + Duration::from_secs(expires_in)));
+        let expiry =
+            Instant::now().checked_add(Duration::from_secs(expires_in)).ok_or_else(|| AuthError::Endpoint {
+                endpoint: self.credentials.token_uri().to_string(),
+                reason: "response expires_in exceeds the supported lifetime".into(),
+                retryable: false,
+            })?;
+        *cache = Some((token.clone(), expiry));
         Ok(token)
     }
 }
@@ -291,16 +297,23 @@ JJykaWpMBy01wxf52VpXYZY=
 
     #[tokio::test]
     async fn service_account_file_is_exchanged_with_a_jwt_bearer_grant() {
-        let server = Server::start(vec![Reply::full(200, r#"{"access_token":"sa-token","expires_in":3600}"#)]);
+        let invalid = serde_json::json!({"access_token":"unusable", "expires_in":u64::MAX}).to_string();
+        let server = Server::start(vec![
+            Reply::full(200, &invalid),
+            Reply::full(200, r#"{"access_token":"sa-token","expires_in":3600}"#),
+        ]);
         let path = scratch("sa.json");
         let json = serde_json::json!({
             "type": "service_account", "client_email": "sa@p.iam.gserviceaccount.com",
             "private_key": TEST_KEY, "token_uri": format!("{}/token", server.base()),
         });
         std::fs::write(&path, json.to_string()).unwrap();
-        let google = Google::open(&path).unwrap();
-        assert_eq!(google.token().await.unwrap(), "sa-token");
-        let body = server.requests()[0].body.clone();
+        let credential = Google::open(&path).unwrap();
+        let error = credential.token().await.unwrap_err();
+        assert!(!error.retryable(), "{error}");
+        assert!(error.to_string().contains("expires_in"), "{error}");
+        assert_eq!(credential.token().await.unwrap(), "sa-token");
+        let body = server.requests()[1].body.clone();
         assert!(
             body.starts_with("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=eyJ"),
             "{body}"
