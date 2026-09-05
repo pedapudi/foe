@@ -18,7 +18,7 @@ child log.
 | guarantee | generated case | conformance condition |
 |---|---|---|
 | declared permissions | granted and forbidden built-in reads | The forbidden read returns an error. |
-| reconstructable evidence | every generated episode | Ordinary requests and tool results derive from prior events. Team-message identifiers are unique, receipts name their queued recipient, and peer inbox items are deduplicated. |
+| reconstructable evidence | every generated episode | Ordinary requests and tool results derive from prior events. Canonical spills and rendering archives match their recorded locators. Team-message identifiers are unique, receipts name their queued recipient, and peer inbox items are deduplicated. |
 | typed outcomes | four termination cases | Each outcome uses its closed variant and expected process exit. |
 | hierarchical budgets | a workflow model-node child | Reservations, releases, and measured child spend agree. |
 | workflow provenance | a model choice and terminal tool node | Firings and branches follow the declared graph. |

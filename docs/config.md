@@ -466,6 +466,7 @@ runtime requires at least one observation. Each `seq` must name a successful
 `tool/result` in the same episode. An inlined canonical value is
 reconstructable from the event. A spilled canonical value must still be
 readable as JSON at the single-component path and byte length in the event.
+A recorded digest must also match the stored bytes.
 
 An invalid citation returns a `system` inbox finding and the episode
 continues. The runtime does not judge whether the result supports the claim.

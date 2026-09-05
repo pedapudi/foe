@@ -1,4 +1,4 @@
-use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{learned_findings, parse_tolerant, run, spill, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
@@ -6,7 +6,7 @@ use crate::test_util::{
     call, contract_with, done, registry_for, text as text_chunk, tmp, turn, verifier_spec, Probe, ScratchDir,
     ScriptedTransport, Verifier,
 };
-use crate::{Tool, Transport};
+use crate::{Tool, ToolValue, Transport};
 use foe_contract::document::ResolvedContract;
 use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
@@ -931,10 +931,12 @@ async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
     let dir = fx.dir.clone();
     let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
     let r = results(&events)[0];
-    assert_eq!(r.spill.as_deref(), Some("a.json"));
-    assert_eq!(r.value["spill"], "a.json");
+    let file = r.spill.as_ref().unwrap();
+    assert!(file.starts_with("result-") && file.ends_with(".json"));
+    assert_eq!(r.value["spill"], *file);
     assert!(r.rendered.starts_with("The canonical value was") && r.rendered.len() < SPILL_LIMIT);
-    let spilled: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("spill/a.json")).unwrap()).unwrap();
+    let spilled: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("spill").join(file)).unwrap()).unwrap();
     assert_eq!(spilled["big"].as_str().unwrap().len(), SPILL_LIMIT + 1);
 }
 
@@ -1368,4 +1370,21 @@ async fn a_composing_call_records_inner_calls_and_excludes_them_from_derived_mes
         })
         .collect();
     assert_eq!(tools, ["tc_p"], "the outer result alone reaches the model");
+}
+
+/// docs/log-format.md `tool/result`: distinct canonical values retain distinct immutable content paths.
+#[test]
+fn repeated_spills_preserve_prior_canonical_content() {
+    let scratch = tempfile::tempdir().unwrap();
+    let make = |letter: char| ToolValue::ok(json!({"content":letter.to_string().repeat(SPILL_LIMIT + 1)}), "large");
+    let first = spill(scratch.path(), make('a')).unwrap();
+    let second = spill(scratch.path(), make('b')).unwrap();
+    let repeated = spill(scratch.path(), make('a')).unwrap();
+    assert_ne!(first.2, second.2);
+    assert_eq!(first, repeated);
+    for (value, _, file) in [first, second] {
+        let bytes = std::fs::read(scratch.path().join(file.unwrap())).unwrap();
+        assert_eq!(value["digest"], crate::retrieval::digest(&bytes));
+        assert_eq!(value["bytes"], bytes.len());
+    }
 }
