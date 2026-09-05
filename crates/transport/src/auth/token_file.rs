@@ -86,10 +86,14 @@ fn token_from_response(endpoint: &str, json: serde_json::Value, previous_refresh
         return Err(fail("response has no refresh_token".into()));
     }
     let expires_in = json["expires_in"].as_u64().ok_or_else(|| fail("response has no numeric expires_in".into()))?;
+    let expires = expires_in
+        .checked_mul(1000)
+        .and_then(|milliseconds| now_ms().checked_add(milliseconds))
+        .ok_or_else(|| fail("response expires_in exceeds the supported lifetime".into()))?;
     Ok(Token {
         access: access.to_string(),
         refresh: refresh.to_string(),
-        expires: now_ms() + expires_in * 1000,
+        expires,
         account_id: account_id_from_jwt(access),
     })
 }
@@ -406,6 +410,18 @@ mod tests {
         peer.write_all(response.as_bytes()).await.unwrap();
         assert_eq!(waiting.await.unwrap(), vec![("authorization".into(), "Bearer fresh".into())]);
         assert_eq!(read_token(&path).unwrap().refresh, "renewed");
+    }
+
+    /// docs/models.md "HTTP requests and cancellation": credential lifetimes must be representable.
+    #[test]
+    fn unrepresentable_token_lifetimes_are_refused() {
+        for seconds in [u64::MAX, u64::MAX / 1000] {
+            let response =
+                serde_json::json!({"access_token":"access", "refresh_token":"refresh", "expires_in":seconds});
+            let error = token_from_response("http://localhost/token", response, "").unwrap_err();
+            assert!(!error.retryable(), "{error}");
+            assert!(error.to_string().contains("expires_in"), "{error}");
+        }
     }
 
     use sha2::Digest;

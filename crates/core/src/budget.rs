@@ -49,6 +49,7 @@ impl Pool {
             if let Some(start) = events.first() {
                 let elapsed = now_millis.saturating_sub(start.time).max(0) as u64 / 1000;
                 self.limits.seconds = self.limits.seconds.map(|s| s.saturating_sub(elapsed));
+                self.started = Instant::now();
             }
         }
     }

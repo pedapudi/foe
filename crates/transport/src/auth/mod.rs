@@ -141,10 +141,15 @@ pub(crate) async fn post_form(endpoint: &str, fields: &[(&str, &str)]) -> Result
     let mut response =
         crate::http::post(&url, &headers, body.as_bytes()).await.map_err(|e| fail(e.to_string(), e.retryable()))?;
     let mut text = String::new();
-    let _ = (&mut response.body).take(64 * 1024).read_to_string(&mut text).await;
-    if !(200..300).contains(&response.status) {
+    let success = (200..300).contains(&response.status);
+    let read = (&mut response.body).take(64 * 1024 + u64::from(success)).read_to_string(&mut text).await;
+    if !success {
         let retryable = response.status == 429 || (500..600).contains(&response.status);
         return Err(fail(format!("HTTP {}: {}", response.status, crate::describe_error_body(&text)), retryable));
+    }
+    read.map_err(|e| fail(format!("reading response body: {e}"), e.kind() != std::io::ErrorKind::InvalidData))?;
+    if text.len() > 64 * 1024 {
+        return Err(fail("response body exceeds 65536 bytes".into(), false));
     }
     serde_json::from_str(&text).map_err(|e| fail(format!("response is not JSON: {e}"), false))
 }
@@ -155,5 +160,51 @@ mod tests {
     fn form_encoding_escapes_reserved_bytes() {
         let text = super::form_encode(&[("grant_type", "refresh_token"), ("refresh_token", "a+b/c=d e&f")]);
         assert_eq!(text, "grant_type=refresh_token&refresh_token=a%2Bb%2Fc%3Dd+e%26f");
+    }
+
+    async fn form_response(raw: Vec<u8>) -> Result<serde_json::Value, super::AuthError> {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let mut socket = crate::testserver::accept_request(&listener).await;
+            socket.write_all(&raw).await.unwrap();
+            socket.shutdown().await.unwrap();
+        });
+        let result = super::post_form(&endpoint, &[]).await;
+        server.await.unwrap();
+        result
+    }
+
+    /// docs/models.md "HTTP requests and cancellation": credential JSON requires a complete body.
+    #[tokio::test]
+    async fn credential_success_rejects_incomplete_or_malformed_framing() {
+        for (response, retryable) in [
+            ("HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{}", true),
+            ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n", true),
+            ("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\nQ\r\n", false),
+        ] {
+            let error = form_response(response.as_bytes().to_vec()).await.expect_err("framing must be complete");
+            assert_eq!(error.retryable(), retryable, "{error}");
+        }
+    }
+
+    /// docs/models.md "HTTP requests and cancellation": credential bodies have a 64 KiB limit.
+    #[tokio::test]
+    async fn credential_success_requires_bounded_utf8_json() {
+        for bytes in [64 * 1024, 64 * 1024 + 1] {
+            let body = format!("{{}}{}", " ".repeat(bytes - 2));
+            let raw = format!("HTTP/1.1 200 OK\r\nContent-Length: {bytes}\r\n\r\n{body}");
+            let result = form_response(raw.into_bytes()).await;
+            if bytes == 64 * 1024 {
+                assert_eq!(result.unwrap(), serde_json::json!({}));
+            } else {
+                let error = result.unwrap_err();
+                assert!(!error.retryable(), "{error}");
+                assert!(error.to_string().contains("65536"), "{error}");
+            }
+        }
+        let error = form_response(b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\n{}\xff".to_vec()).await.unwrap_err();
+        assert!(!error.retryable(), "{error}");
     }
 }
