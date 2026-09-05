@@ -46,6 +46,14 @@ async fn run_source(source: &str, composer: Arc<FakeComposer>) -> ToolValue {
     run_with(&fx, sandbox, composer, json!({ "source": source })).await
 }
 
+#[test]
+fn the_spec_explains_exact_names_and_configured_output() {
+    let tool = Python::new();
+    assert!(tool.spec.description.contains("exact episode tool name"));
+    assert!(tool.spec.description.contains("value[\"stdout\"]"));
+    assert!(tool.spec.instruction.as_deref().unwrap().contains("without adding a namespace prefix"));
+}
+
 #[tokio::test]
 async fn source_composes_inner_calls_and_returns_a_derived_value() {
     if !interpreter_present() {

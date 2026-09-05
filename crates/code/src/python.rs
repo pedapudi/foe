@@ -67,9 +67,11 @@ impl Python {
                 description: format!(
                     "Run Python source in an isolated interpreter whose only capability is \
                      calling this episode's tools. The source defines a zero-argument main() \
-                     returning a JSON-serializable value. call_tool(name, args) performs one tool \
-                     call and returns {{\"value\": ..., \"is_error\": bool}}; fail(message) ends the \
-                     call as an error; compose_tools, block, and return are excluded. Environment, \
+                     returning a JSON-serializable value. call_tool(name, args) uses the exact \
+                     episode tool name without a namespace prefix and returns \
+                     {{\"value\": ..., \"is_error\": bool}}. Configured executable output remains in \
+                     value[\"stdout\"]. fail(message) ends the call as an error; compose_tools, block, \
+                     and return are excluded. Environment, \
                      workspace, and network are absent. Bounds: {memory_mib} MiB memory, \
                      {source_kib} KiB source, {PYTHON_INNER_CALL_MAX} inner calls, timeout_seconds \
                      (default {BASH_DEFAULT_TIMEOUT_SECS})."
@@ -77,7 +79,8 @@ impl Python {
                 instruction: Some(
                     "Use compose_tools when later tool calls depend on earlier results, or when \
                      several large results can be reduced before returning to the model. Issue \
-                     independent small calls at the top level so they can run concurrently."
+                     independent small calls at the top level so they can run concurrently. Pass \
+                     exact tool names to call_tool without adding a namespace prefix."
                         .into(),
                 ),
                 params: json!({

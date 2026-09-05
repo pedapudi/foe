@@ -226,8 +226,8 @@ def _capacity_config(
     require_composition: bool,
 ) -> dict[str, Any]:
     method = (
-        "Use compose_tools for the lookup. Its source must call region_catalog first, then call capacity_record "
-        "for every returned key, and return only the requested aggregate. "
+        "Use one compose_tools call for the lookup. Its source must call region_catalog first, then call "
+        "capacity_record for every returned key, and return only the requested aggregate. "
         if require_composition
         else "Use region_catalog to discover every capacity record key, then inspect every named record. "
     )

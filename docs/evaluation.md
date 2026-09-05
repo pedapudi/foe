@@ -340,6 +340,8 @@ record keys, retrieve every named record, and return an aggregate. Two attempts
 must pass strict grading. Each attempt must use one outer composition call with
 one catalog call followed by 15 record calls. The runner stops when this control
 fails because a comparison cannot measure a mechanism that did not execute.
+The tool description states the exact inner-call name and configured-output
+representation that the source must use.
 
 The mixed workload has three tasks. One presents the same dependent call shape
 without naming a composition mechanism. One aggregates repository records that

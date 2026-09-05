@@ -59,10 +59,11 @@ top-level statements in the source cannot call tools while the source
 loads.
 
 - `call_tool(name, args)` performs one inner dispatch and returns
-  `{"value": ..., "is_error": bool}`. `name` is an ordinary episode tool
-  name, which keeps configured tools callable when their names are not
-  valid identifiers. `args` is the same JSON object the model would send
-  in a top-level call.
+  `{"value": ..., "is_error": bool}`. `name` is the exact episode tool name
+  without a namespace prefix. This string form keeps configured tools callable
+  when their names are not valid identifiers. `args` is the same JSON object
+  the model would send in a top-level call. A configured executable leaves its
+  standard output as text in `value["stdout"]`.
 - `fail(message)` ends the outer call as an error carrying the message.
 
 Three control tools are excluded from inner dispatch, refused with an
