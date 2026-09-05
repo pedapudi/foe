@@ -101,20 +101,15 @@ fn source(events: &[Event], spill_dir: &Path, current_step: u32, key: &str) -> R
             continue;
         }
         let bytes = match archive {
-            Some((seq, archive)) => read_archive(spill_dir, seq, archive)?,
+            Some((seq, archive)) => {
+                foe_log::artifact::read_rendering(spill_dir, seq, archive).map_err(|e| format!("retrieve: {e}"))?
+            }
             None => result.rendered.as_bytes().to_vec(),
         };
+        std::str::from_utf8(&bytes).map_err(|e| format!("retrieve at event {}: {e}", event.seq))?;
         return Ok(Source { seq: event.seq, step: result.step, call_id: result.call_id.clone(), digest, bytes });
     }
     Err(text::RETRIEVE_UNAVAILABLE.into())
-}
-
-fn read_archive(spill_dir: &Path, seq: u64, archive: &RenderingArchive) -> Result<Vec<u8>, String> {
-    let bytes =
-        foe_log::artifact::read_rendering(spill_dir, seq, archive).map_err(|error| format!("retrieve: {error}"))?;
-    std::str::from_utf8(&bytes)
-        .map_err(|_| format!("retrieve: rendering archive event {seq} for {} is not UTF-8", archive.digest))?;
-    Ok(bytes)
 }
 
 pub struct ArchivedRendering {

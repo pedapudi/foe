@@ -94,29 +94,22 @@ fn cut(body: &str, share: usize, cursor: Option<&str>) -> String {
     // Only a numbered window resumes at a line: a line of any other output
     // that happens to open with a number and a tab names nothing readable.
     let resume = window.then(|| head.checked_sub(1).and_then(|last| numbered(lines[last]))).flatten();
-    let notice = match (resume, cursor) {
-        (Some(last), None) => text::fill(
-            text::CUT_WINDOW,
-            &[("omitted", &omitted), ("characters", &characters), ("next", &(last + 1).to_string())],
-        ),
-        (None, None) => text::fill(
-            text::CUT_OUTPUT,
-            &[("omitted", &omitted), ("characters", &characters), ("total", &lines.len().to_string())],
-        ),
-        (Some(_), Some(cursor)) => text::fill(
-            text::CUT_RETRIEVABLE_WINDOW,
-            &[("omitted", &omitted), ("characters", &characters), ("cursor", cursor)],
-        ),
-        (None, Some(cursor)) => text::fill(
-            text::CUT_RETRIEVABLE,
-            &[
-                ("omitted", &omitted),
-                ("characters", &characters),
-                ("total", &lines.len().to_string()),
-                ("cursor", cursor),
-            ],
-        ),
+    let template = match (resume, cursor) {
+        (Some(_), None) => text::CUT_WINDOW,
+        (None, None) => text::CUT_OUTPUT,
+        (Some(_), Some(_)) => text::CUT_RETRIEVABLE_WINDOW,
+        (None, Some(_)) => text::CUT_RETRIEVABLE,
     };
+    let notice = text::fill(
+        template,
+        &[
+            ("omitted", &omitted),
+            ("characters", &characters),
+            ("next", &resume.map_or(0, |last| last + 1).to_string()),
+            ("total", &lines.len().to_string()),
+            ("cursor", cursor.unwrap_or_default()),
+        ],
+    );
     let mut out: Vec<&str> = lines[..head].to_vec();
     out.push(&notice);
     out.extend_from_slice(&lines[lines.len() - tail..]);
