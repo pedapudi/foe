@@ -42,6 +42,17 @@ choice. The graph determines which choices exist. The model never adds an
 edge, reads a node it does not follow, invents a node, extends a budget, or
 skips a verification. The model decides, within those bounds, what to do.
 
+## Restart
+
+The runtime refuses to continue a log that contains workflow firing events.
+It reports the first workflow event before scheduling a node or a queued
+team task. A recorded successful operation may already have changed external
+state. Repeating it requires an explicit application decision.
+
+A log ending before its first workflow event can start the graph. Resuming
+completed firings, restoring their outputs, and continuing recovery decisions
+require scheduler restoration, which is unsupported.
+
 ## The graph
 
 ```json

@@ -12,4 +12,4 @@ pub mod bind;
 mod graph;
 mod run;
 
-pub use run::{render, run, WorkflowParams};
+pub use run::{render, run, validate_resume, WorkflowParams};
