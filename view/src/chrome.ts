@@ -72,7 +72,7 @@ export type LayoutMode = "outline" | "figure";
 
 export const LAYOUTS: readonly { id: LayoutMode; label: string; title: string }[] = [
   { id: "outline", label: "outline", title: "one collapsible hierarchy: the rail, the causal figure and the conversation read at a chosen depth" },
-  { id: "figure", label: "figure and conversation", title: "the causal figure beside a conversation scoped to what is selected in it" },
+  { id: "figure", label: "details", title: "the causal figure beside a conversation scoped to what is selected in it" },
 ];
 
 let currentLayoutValue: LayoutMode = "outline";
