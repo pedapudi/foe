@@ -141,7 +141,10 @@ impl Log {
 pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
     if log.next_seq() == 0 {
         log.append(EventData::EpisodeStart(start.clone()))?;
-        log.append(EventData::InboxItem(item(InboxSource::Task, &start.task)))?;
+    }
+    if log.next_seq() == 1 {
+        let task = lock(&log.inner).0.state().start.as_ref().expect("episode/start was recorded").task.clone();
+        log.append(EventData::InboxItem(item(InboxSource::Task, &task)))?;
         log.sync()?;
     }
     Ok(())
