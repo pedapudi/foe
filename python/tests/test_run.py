@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -12,6 +13,19 @@ import pytest
 import foe
 
 from scripted import SUMMARY, configured_model, reference_count, scripted, text_response, tool_response
+
+
+def test_public_model_backend_surface_uses_one_name() -> None:
+    from foe.adapters import litellm
+
+    assert hasattr(foe, "ModelBackend")
+    assert not hasattr(foe, "Transport")
+    assert callable(litellm.litellm_model_backend)
+    assert not hasattr(litellm, "litellm_transport")
+    for run in (foe.run_config, foe.start_config, foe.ExecutionContract.run, foe.ExecutionContract.start):
+        parameters = inspect.signature(run).parameters
+        assert "model_backend" in parameters
+        assert "transport" not in parameters
 
 
 def contract_with(
@@ -47,7 +61,7 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
         return f"{value['count']} references"
 
     requests: list[dict[str, Any]] = []
-    transport = scripted(
+    model_backend = scripted(
         [
             tool_response(("mutation_usage", {"mutation_id": "m_41"}), text="I will look."),
             text_response("Done: 3 references."),
@@ -59,7 +73,7 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
         contract_with(["read", mutation_usage]).run(
             task="Count references.",
-            transport=transport,
+            model_backend=model_backend,
             binary=fake_binary,
             log_dir=log_dir,
             on_event=events.append,
@@ -69,7 +83,7 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
     assert outcome == foe.Completed("Done: 3 references.")
     assert seen == [{"mutation_id": "m_41", "roots": ["/"]}]
 
-    # The transport received the header joined with the messages.
+    # The model backend received the header joined with the messages.
     assert len(requests) == 2
     first = requests[0]
     assert first["request_id"] == "rq_01"
@@ -106,7 +120,7 @@ def test_runtime_output_allowance_clamps_the_host_setting(fake_binary: Path, tmp
     outcome = asyncio.run(
         contract_with(["read"], output_tokens=30).run(
             task="Finish.",
-            transport=scripted([text_response("Done.")], requests),
+            model_backend=scripted([text_response("Done.")], requests),
             binary=fake_binary,
             log_dir=tmp_path / "episode",
             max_output_tokens=100,
@@ -126,7 +140,7 @@ def test_host_tool_exception_becomes_an_error_result(fake_binary: Path, tmp_path
     outcome = asyncio.run(
         contract_with(["read", explode]).run(
             task="t",
-            transport=scripted([tool_response(("explode", {"reason": "boom"})), text_response("ok")]),
+            model_backend=scripted([tool_response(("explode", {"reason": "boom"})), text_response("ok")]),
             binary=fake_binary,
             log_dir=tmp_path / "episode",
             on_event=events.append,
@@ -143,7 +157,7 @@ def test_steer_arrives_as_an_inbox_item(fake_binary: Path, tmp_path: Path) -> No
     requests: list[dict[str, Any]] = []
     gate: asyncio.Event | None = None
 
-    async def transport(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         requests.append(request)
         if len(requests) == 1:
             assert gate is not None
@@ -158,7 +172,11 @@ def test_steer_arrives_as_an_inbox_item(fake_binary: Path, tmp_path: Path) -> No
         nonlocal gate
         gate = asyncio.Event()
         handle = await contract_with(["read"]).start(
-            task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode", on_event=events.append
+            task="t",
+            model_backend=model_backend,
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
+            on_event=events.append,
         )
         while not any(e.type == "model/request" for e in events):
             await asyncio.sleep(0.01)
@@ -190,14 +208,14 @@ def test_steer_arrives_as_an_inbox_item(fake_binary: Path, tmp_path: Path) -> No
 def test_cancel_ends_the_episode_as_failed(fake_binary: Path, tmp_path: Path) -> None:
     started = asyncio.Event()
 
-    async def transport(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         started.set()
         await asyncio.sleep(3600)
         yield {"kind": "done", "stop": "end", "usage": {"input": 0, "output": 0, "cache_read": 0}}
 
     async def scenario() -> tuple[foe.Outcome, foe.Handle]:
         handle = await contract_with(["read"]).start(
-            task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode"
+            task="t", model_backend=model_backend, binary=fake_binary, log_dir=tmp_path / "episode"
         )
         await started.wait()
         return await handle.cancel(), handle
@@ -212,7 +230,9 @@ def test_blocked_outcome(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
         contract_with(["read", "block"]).run(
             task="t",
-            transport=scripted([tool_response(("block", {"code": "ambiguous-task", "message": "Which test?"}))]),
+            model_backend=scripted(
+                [tool_response(("block", {"code": "ambiguous-task", "message": "Which test?"}))]
+            ),
             binary=fake_binary,
             log_dir=tmp_path / "episode",
         )
@@ -224,7 +244,7 @@ def test_exhausted_outcome(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
         contract_with(["read"], model_calls=1).run(
             task="t",
-            transport=scripted([tool_response(("read", {"path": "/x"}))]),
+            model_backend=scripted([tool_response(("read", {"path": "/x"}))]),
             binary=fake_binary,
             log_dir=tmp_path / "episode",
         )
@@ -232,13 +252,15 @@ def test_exhausted_outcome(fake_binary: Path, tmp_path: Path) -> None:
     assert outcome == foe.Exhausted("model_calls")
 
 
-def test_failed_outcome_from_a_transport_exception(fake_binary: Path, tmp_path: Path) -> None:
-    async def transport(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+def test_failed_outcome_from_a_model_backend_exception(fake_binary: Path, tmp_path: Path) -> None:
+    async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         raise ConnectionError("no route to provider")
         yield {}
 
     outcome = asyncio.run(
-        contract_with(["read"]).run(task="t", transport=transport, binary=fake_binary, log_dir=tmp_path / "episode")
+        contract_with(["read"]).run(
+            task="t", model_backend=model_backend, binary=fake_binary, log_dir=tmp_path / "episode"
+        )
     )
     assert outcome == foe.Failed("ConnectionError: no route to provider")
 
@@ -260,7 +282,7 @@ def test_returns_and_verify(fake_binary: Path, tmp_path: Path) -> None:
     outcome = asyncio.run(
         contract.run(
             task="t",
-            transport=scripted(
+            model_backend=scripted(
                 [
                     tool_response(("return", {"value": {"title": ""}})),
                     tool_response(("return", {"value": {"title": "Experiment 7"}})),
@@ -281,7 +303,10 @@ def test_run_config_from_a_file(fake_binary: Path, tmp_path: Path) -> None:
     config.write_text(contract_with(["read"]).to_json("t"))
     outcome = asyncio.run(
         foe.run_config(
-            config, transport=scripted([text_response("hello")]), binary=fake_binary, log_dir=tmp_path / "episode"
+            config,
+            model_backend=scripted([text_response("hello")]),
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
         )
     )
     assert outcome == foe.Completed("hello")
@@ -292,37 +317,39 @@ def test_run_config_rejects_missing_tool_implementations(fake_binary: Path, tmp_
     doc["host_tools"] = {"missing": {"description": "d", "params": {"type": "object"}, "effect": "pure"}}
     doc["tools"].append("missing")
     with pytest.raises(ValueError, match="host_tools: no implementation was supplied for missing"):
-        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+        asyncio.run(foe.run_config(doc, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
-def test_a_model_block_and_a_host_transport_are_exclusive(fake_binary: Path, tmp_path: Path) -> None:
+def test_a_model_block_and_a_host_model_backend_are_exclusive(fake_binary: Path, tmp_path: Path) -> None:
     """docs/config.md `model`: the block decides who calls the model."""
     with_block = contract_with(["read"], model=configured_model()).to_dict("t")
-    with pytest.raises(ValueError, match="takes no transport"):
-        asyncio.run(foe.run_config(with_block, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+    with pytest.raises(ValueError, match="takes no model backend"):
+        asyncio.run(
+            foe.run_config(with_block, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e")
+        )
     without_block = contract_with(["read"]).to_dict("t")
-    with pytest.raises(ValueError, match="needs a transport"):
+    with pytest.raises(ValueError, match="needs a model backend"):
         asyncio.run(foe.run_config(without_block, binary=fake_binary, log_dir=tmp_path / "e"))
 
 
-def test_a_child_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
+def test_a_child_model_block_under_a_host_model_backend_is_refused(fake_binary: Path, tmp_path: Path) -> None:
     """docs/sdk.md "Who calls the model": one owner serves the contract tree."""
     doc = contract_with(["read"]).to_dict("t")
     doc["child_contracts"] = {"survey": contract_with(["read"], model=configured_model()).to_dict(child=True)}
     with pytest.raises(ValueError, match=r"model: child_contracts\.survey declares a `model` block"):
-        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+        asyncio.run(foe.run_config(doc, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
-def test_a_workflow_model_block_under_a_host_transport_is_refused(fake_binary: Path, tmp_path: Path) -> None:
+def test_a_workflow_model_block_under_a_host_model_backend_is_refused(fake_binary: Path, tmp_path: Path) -> None:
     """docs/sdk.md "Who calls the model": model nodes share the root owner."""
     doc = contract_with(["read"]).to_dict("t")
     node_contract = contract_with(["read"], model=configured_model()).to_dict(child=True)
     doc["workflow"] = {"nodes": {"survey": {"model": node_contract, "terminal": True}}}
     with pytest.raises(ValueError, match=r"model: workflow\.nodes\.survey\.model declares a `model` block"):
-        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+        asyncio.run(foe.run_config(doc, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
-def test_a_model_block_in_a_nested_workflow_under_a_host_transport_is_refused(
+def test_a_model_block_in_a_nested_workflow_under_a_host_model_backend_is_refused(
     fake_binary: Path, tmp_path: Path
 ) -> None:
     """docs/sdk.md "Who calls the model": the ownership rule applies at every level."""
@@ -338,7 +365,7 @@ def test_a_model_block_in_a_nested_workflow_under_a_host_transport_is_refused(
     }
     path = r"model: workflow\.nodes\.outer\.workflow\.nodes\.survey\.model declares a `model` block"
     with pytest.raises(ValueError, match=path):
-        asyncio.run(foe.run_config(doc, transport=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
+        asyncio.run(foe.run_config(doc, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
 def test_the_handle_carries_the_process_id_and_the_runtime_build(fake_binary: Path, tmp_path: Path) -> None:
@@ -356,7 +383,7 @@ def test_the_handle_carries_the_process_id_and_the_runtime_build(fake_binary: Pa
         responses = [tool_response(("reference_count", {"symbol": "add"})), text_response(SUMMARY)]
         handle = await contract_with(["read", record_identity]).start(
             task="Count the references.",
-            transport=scripted(responses),
+            model_backend=scripted(responses),
             binary=fake_binary,
             log_dir=tmp_path / "episode",
         )

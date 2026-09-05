@@ -110,21 +110,21 @@ def call(call_id: str, name: str, args: dict) -> list[dict]:
     ]
 
 
-def transport_from(answer: Answer) -> foe.Transport:
-    """A transport that plays `answer` for each step in place of a model.
+def model_backend_from(answer: Answer) -> foe.ModelBackend:
+    """A model backend that plays `answer` for each step in place of a model.
 
-    A transport that calls a real model has the same signature: an
+    A model backend that calls a real model has the same signature: an
     asynchronous callable that receives one request and yields chunk
     objects in the shape docs/protocol.md defines under `model/chunk`.
-    `foe.adapters.litellm.litellm_transport` is one such callable.
+    `foe.adapters.litellm.litellm_model_backend` is one such callable.
     """
 
-    async def transport(request: dict):
+    async def model_backend(request: dict):
         step = sum(1 for message in request["messages"] if message["role"] == "assistant")
         for chunk in answer(step):
             yield chunk
 
-    return transport
+    return model_backend
 
 
 def answers_for(name: str, report_path: Path) -> Answer:
@@ -227,7 +227,7 @@ async def main() -> None:
         log_dirs[name] = run_dir / name
         outcomes[name] = await contract.run(
             task=f"Triage the defect report at {report_path}.",
-            transport=transport_from(answers_for(name, report_path)),
+            model_backend=model_backend_from(answers_for(name, report_path)),
             binary=binary,
             log_dir=log_dirs[name],
         )

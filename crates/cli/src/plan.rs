@@ -79,7 +79,7 @@ pub fn permissions_report(contracts: &[ContractPermissions]) -> String {
 /// the two cannot disagree.
 pub fn summary_report(
     contract: &ResolvedContract,
-    transport: Option<&str>,
+    model_endpoint: Option<&str>,
     warnings: &[ConfigurationWarning],
 ) -> String {
     let paths = |paths: &[std::path::PathBuf], empty: &str| -> String {
@@ -121,7 +121,7 @@ pub fn summary_report(
         }
     };
     let mut rows = vec![
-        ("model", transport.unwrap_or("answered by the host over the protocol").to_string()),
+        ("model", model_endpoint.unwrap_or("answered by the host over the protocol").to_string()),
         ("read", paths(&contract.grants.read, "(none)")),
         ("write", paths(&contract.grants.write, "(none)")),
         ("execute", paths(&contract.grants.execute, "(none: shell built-ins only)")),

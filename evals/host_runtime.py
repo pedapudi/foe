@@ -22,12 +22,12 @@ def run(binary: Path, config: Path, log_dir: Path, responder: Responder) -> int:
     """Return the command status for an episode served by one response function."""
 
     async def serve() -> foe.Outcome:
-        async def transport(request: Request) -> AsyncIterator[Chunk]:
+        async def model_backend(request: Request) -> AsyncIterator[Chunk]:
             chunks = await asyncio.to_thread(responder, request)
             for chunk in chunks:
                 yield chunk
 
-        return await foe.run_config(config, transport=transport, binary=binary, log_dir=log_dir)
+        return await foe.run_config(config, model_backend=model_backend, binary=binary, log_dir=log_dir)
 
     outcome = asyncio.run(serve())
     match outcome:

@@ -74,8 +74,8 @@ bazel run //examples/self-extension
 
 Each target builds the foe binary, creates a disposable project under
 `target/`, runs one complete episode, checks the result, and prints a viewer
-command. The workflow and self-extension targets use a deterministic local
-transport. The sandbox target requires Linux with Landlock support. Every
+command. The workflow and self-extension targets use a deterministic host
+model backend. The sandbox target requires Linux with Landlock support. Every
 target requires `/usr/bin/python3`. The demo episodes need no model credential
 and make no network requests.
 

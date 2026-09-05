@@ -52,12 +52,12 @@ def outcome_json(outcome: foe.Outcome) -> tuple[dict[str, Any], int]:
 async def run(binary: Path, config: Path, log_dir: Path, responder: Responder) -> int:
     """Serve response functions without blocking the protocol loop."""
 
-    async def transport(request: Request) -> AsyncIterator[Chunk]:
+    async def model_backend(request: Request) -> AsyncIterator[Chunk]:
         chunks = await asyncio.to_thread(responder, request)
         for chunk in chunks:
             yield chunk
 
-    outcome = await foe.run_config(config, transport=transport, binary=binary, log_dir=log_dir)
+    outcome = await foe.run_config(config, model_backend=model_backend, binary=binary, log_dir=log_dir)
     value, status = outcome_json(outcome)
     print(json.dumps(value, separators=(",", ":")))
     return status

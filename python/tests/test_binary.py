@@ -35,7 +35,7 @@ def model_endpoint() -> Iterator[ScriptedHttpEndpoint]:
 
 
 def runtime_model(tmp_path: Path, endpoint: ScriptedHttpEndpoint) -> foe.Model:
-    """The model block for a deterministic runtime-owned HTTP endpoint."""
+    """The model block for a deterministic configured HTTP endpoint."""
     key_file = tmp_path / "endpoint.key"
     key_file.write_text("fixture-key\n", encoding="utf-8")
     return foe.Model(
@@ -102,7 +102,7 @@ def test_the_built_binary_completes_an_episode_with_a_host_tool(tmp_path: Path) 
     outcome = asyncio.run(
         contract.run(
             task="Count references.",
-            transport=scripted(
+            model_backend=scripted(
                 [
                     tool_response(("mutation_usage", {"mutation_id": "m_41"}), text="I will look."),
                     text_response("Done: 3 references."),

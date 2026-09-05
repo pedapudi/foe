@@ -119,7 +119,7 @@ if len(headers) != 1:
 if headers[0]["data"]["reason"] != "initial":
     fail(f"the only request/header has reason {headers[0]['data']['reason']}")
 if headers[0]["data"]["model"] != {"provider": "host", "model": "host"}:
-    fail("the request/header does not identify the host-owned route")
+    fail("the request/header does not identify the host model backend")
 
 requests = only("model/request")
 if headers[0]["seq"] > requests[0]["seq"]:

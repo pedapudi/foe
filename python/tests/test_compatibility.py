@@ -61,7 +61,7 @@ def run_one(binary: Path, log_dir: Path) -> foe.Outcome:
     responses = [tool_response(("reference_count", {"symbol": "add"})), text_response(SUMMARY)]
     return asyncio.run(
         contract_with(["read", reference_count]).run(
-            task="Count the references.", transport=scripted(responses), binary=binary, log_dir=log_dir
+            task="Count the references.", model_backend=scripted(responses), binary=binary, log_dir=log_dir
         )
     )
 

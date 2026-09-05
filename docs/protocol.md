@@ -32,8 +32,8 @@ The two modes are exclusive, and this document describes `--host` only.
 
 The host supplies a configuration file. foe validates it, writes
 `episode/start`, and begins. When the configuration has no `model` block,
-the host supplies the model transport and must answer `model/request` events.
-When the configuration has a `model` block, foe uses its built-in transport
+the host supplies the model backend and must answer `model/request` events.
+When the configuration has a `model` block, foe calls the configured endpoint
 and emits `model/request` events for the record only.
 
 Standard error carries diagnostics for a person. A host never parses it.
@@ -45,7 +45,7 @@ answer, and one ends the exchange.
 
 ### `model/request`
 
-Emitted once per model call when the host supplies the transport. The host
+Emitted once per model call when the host supplies the model backend. The host
 performs the request and streams the response back as `model/chunk` lines,
 ending with a `done` or `error` chunk.
 
@@ -61,7 +61,7 @@ The header referenced by `header_seq` carries the system prompt, the tool
 schemas, and the model route. The host combines it with `messages` to form
 the provider request. The host applies `max_output_tokens` as a provider
 output cap. A host-specific cap may make it smaller. When the host supplies
-the transport, the route's `provider` and `model` are both the word `host`.
+the model backend, the route's `provider` and `model` are both the word `host`.
 The runtime does not know which model the host calls, and the log records
 the route the runtime saw.
 
@@ -226,7 +226,7 @@ forwards the child's `request/header`, `model/request`, and
 `host/tool-call` events to its own host, tagged with the child's id. The
 root host therefore sees every request in the tree. It answers a request
 whose governing header names the host route. A request whose header names a
-runtime-owned route is part of the record and receives no host answer.
+configured endpoint route is part of the record and receives no host answer.
 Answers carry the same tag so that the root parent can route them down.
 
 The header travels with the requests it governs. A `model/request` names
@@ -239,8 +239,8 @@ executable reachable from the selected child contract. A sealed manifest
 associates each descriptor with its configuration key and digest. The child
 constructs its contract fingerprint and executor from those descriptors, so it never
 reopens the parent's configured executable paths. It retains close-on-exec
-copies and closes the inherited descriptor numbers before starting any model
-transport, tool, verifier, or descendant.
+copies and closes the inherited descriptor numbers before making any configured
+endpoint request or starting any tool, verifier, or descendant.
 
 ```json
 {"type": "model/chunk", "request_id": "rq_01", "episode_id": "ep_9c21", "chunk": {}}

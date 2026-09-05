@@ -299,7 +299,7 @@ mechanism covers one part of foe's runtime contract. Local harnesses with
 approvals disabled provide
 unattended execution without foe's runtime contract. Claude Code on the web
 and sandbox-runtime isolate credentials through network proxies. foe isolates
-credentials by placing the model transport in a separate process.
+credentials by running a host-supplied model backend in a separate process.
 
 ## Where foe is behind
 
@@ -514,7 +514,7 @@ outcome. This path suits pipelines already written against the Agent SDK.
 workspace-write` runs commands with network blocked by default and Landlock
 restrictions that a child process inherits. A foe episode started from
 inside that sandbox cannot reach a model provider unless the Codex sandbox
-is widened or foe's host-supplied transport is used. This path is therefore
+is widened or foe's host-supplied model backend is used. This path is therefore
 weak under Codex's default posture.
 
 **MCP server.** Codex reads `[mcp_servers.foe]` from `config.toml` with

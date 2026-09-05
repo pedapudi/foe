@@ -11,7 +11,7 @@ the depth left at the end of the string rather than the greatest depth it
 reached, runs foe against it, and checks the episode log and the repaired
 package.
 
-## Host-owned responses
+## Responses supplied by the host
 
 `responses.py` defines six deterministic answers. `run_with_host.py` supplies
 them through the host protocol, so the example needs no credential and opens

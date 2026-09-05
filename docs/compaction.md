@@ -64,7 +64,7 @@ earlier summary already covers are never read again.
 
 ## What the summary receives
 
-The summary is one model call through the episode's ordinary transport.
+The summary is one model call through the episode's ordinary model route.
 Its system prompt is a constant the runtime owns; an author cannot change
 it, and the contract fingerprint hashes it. The prompt tells the model that a transcript is
 being condensed, names the five headings the output must carry, in order,
@@ -199,7 +199,7 @@ fingerprint.
 
 `compact` defaults to false. `window_tokens` is the model's context window
 in tokens; it may be omitted for a model the provider table knows, and is
-required otherwise, including under a host that supplies the transport.
+required otherwise, including under a host that supplies the model backend.
 `reserve_tokens` defaults to 16384, `keep_recent_tokens` to 20000, and
 `margin_tokens` to 2048. [config.md](config.md) specifies the block, and
 [models.md](models.md) lists the windows the provider table knows.

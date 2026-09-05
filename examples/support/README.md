@@ -17,6 +17,6 @@ the binary in host mode and answers each request with a response function.
 The response files stay in the repository because the binary does not execute
 them inside an episode.
 
-Examples that exercise runtime-owned HTTP use `loopback_http.py`. The loopback
-server exposes a compatible endpoint without external network access or
-credentials.
+Examples that exercise a configured endpoint use `loopback_http.py`. The
+loopback server exposes a compatible endpoint without external network access
+or credentials.

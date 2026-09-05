@@ -49,7 +49,7 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | drive foe from my own contract | [embed-an-execution-contract](embed-an-execution-contract/) |
 | keep my tools in Python and let foe call the model | [embed-with-a-model-block](embed-with-a-model-block/) |
 | have foe evaluate and improve its own source, test, and specification | [self-extension](self-extension/) |
-| supply responses from a host-owned model client | [host-transport](host-transport/) |
+| supply responses from a host model backend | [host-model-backend](host-model-backend/) |
 
 ## When a run does not succeed
 
@@ -68,7 +68,7 @@ have seen before.
 
 | example | mechanism |
 |---|---|
-| [minimal](minimal/) | the smallest coding contract with host-owned responses |
+| [minimal](minimal/) | the smallest coding contract with responses supplied by its host |
 | [wrap-a-binary](wrap-a-binary/) | one executable used as an episode tool and completion verifier |
 | [subagents](subagents/) | child contracts under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
@@ -77,7 +77,7 @@ have seen before.
 | [embed-an-execution-contract](embed-an-execution-contract/) | the Python SDK: a contract supplying the model, its own host tools, and acting on the outcome |
 | [embed-with-a-model-block](embed-with-a-model-block/) | the Python SDK with the model left to foe: a `model` block beside Python host tools, and the episode's process identity |
 | [self-extension](self-extension/) | a direct episode and an evaluator-to-terminal-node workflow improving a disposable copy of foe's source, test, and specification |
-| [host-transport](host-transport/) | a host process supplying model chunks over the line protocol |
+| [host-model-backend](host-model-backend/) | a host process supplying model chunks over the line protocol |
 | [budget-exhausted](budget-exhausted/) | a limit reached while the work is unfinished |
 | [recovery-exhausted](recovery-exhausted/) | the retry ceiling, its growing delay, and what the log records |
 | [verification-unsatisfiable](verification-unsatisfiable/) | `done_when`, the `verify` inbox source, and a condition the work never meets |
@@ -103,15 +103,15 @@ configuration file, because the Python package builds the document in
 memory. Their contracts are the `foe.ExecutionContract` that
 `triage_contract` and `review_contract` return in each `run.py`.
 
-The host-transport example supplies responses over the protocol. The
+The host-model-backend example supplies responses over the protocol. The
 model-block embedding example uses a loopback HTTP endpoint to exercise the
 built-in client without reaching an external network.
 
 ## Against a real model
 
 [`docs/models.md`](../docs/models.md) specifies the configuration for each
-runtime-owned endpoint category. A root configuration without a `model` block
-delegates each request to its host process.
+endpoint category that the binary can call. A root configuration without a
+`model` block delegates each request to its host process.
 
 ## What the build checks
 

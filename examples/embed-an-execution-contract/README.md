@@ -30,7 +30,7 @@ python3 examples/embed-an-execution-contract/run.py /absolute/path/to/foe
 ```
 
 The package depends on the standard library alone, so `run.py` puts
-`python/` on the import path and needs no installation step. The transport
+`python/` on the import path and needs no installation step. The model backend
 plays fixed responses, so the example needs no provider credential and makes
 no network request. Each run creates `target/foe-embedding-demo.XXXXXX/`,
 holding the reports and one episode log per report. The runner prints a
@@ -38,11 +38,11 @@ command that serves the viewer for the first episode.
 
 ## What the application supplies
 
-**A model callable.** `transport_from` returns an asynchronous callable that
+**A model backend.** `model_backend_from` returns an asynchronous callable that
 receives one request and yields chunk objects. The runtime never learns
 which model answered, and the log records the route as `host`/`host`. A
-transport against a real provider has the same signature;
-`foe.adapters.litellm.litellm_transport` is one.
+model backend against a real endpoint has the same signature;
+`foe.adapters.litellm.litellm_model_backend` is one.
 
 **A tool the application implements.** `build_record` is an ordinary Python
 function under `@foe.tool`. The decorator derives the tool's name,

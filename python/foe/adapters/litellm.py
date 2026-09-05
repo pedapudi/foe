@@ -1,9 +1,9 @@
-"""A transport over `litellm.acompletion(stream=True)` with tool calling.
+"""A model backend over `litellm.acompletion(stream=True)` with tool calling.
 
-`litellm_transport(model=..., api_key=...)` returns an async callable that
+`litellm_model_backend(model=..., api_key=...)` returns an async callable that
 receives the request dict docs/sdk.md describes and yields `model/chunk`
 chunk objects as docs/protocol.md defines them. The `litellm` package is
-imported when the transport is constructed; install it with
+imported when the model backend is constructed; install it with
 `pip install foe[litellm]`.
 
 Credentials are passed explicitly. The adapter reads no environment
@@ -17,7 +17,7 @@ import importlib
 import json
 from typing import Any, AsyncIterator, Mapping
 
-from .._host import Transport
+from .._host import ModelBackend
 
 _RETRYABLE_ERRORS = (
     "RateLimitError",
@@ -108,14 +108,14 @@ def _usage(raw: Any) -> dict[str, int]:
     }
 
 
-def litellm_transport(
+def litellm_model_backend(
     model: str,
     *,
     api_key: str | None = None,
     api_base: str | None = None,
     **completion_kwargs: Any,
-) -> Transport:
-    """Build a transport that calls `model` through litellm.
+) -> ModelBackend:
+    """Build a model backend that calls `model` through litellm.
 
     `api_key` and `api_base` are passed to every completion call. Further
     keyword arguments are forwarded unchanged, so provider options such as
@@ -123,7 +123,7 @@ def litellm_transport(
     """
     litellm: Any = importlib.import_module("litellm")
 
-    async def transport(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         kwargs: dict[str, Any] = dict(completion_kwargs)
         kwargs.update(
             model=model,
@@ -190,4 +190,4 @@ def litellm_transport(
             "usage": _usage(usage),
         }
 
-    return transport
+    return model_backend

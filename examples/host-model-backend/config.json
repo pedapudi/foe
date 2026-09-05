@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "name": "host-transport",
+  "name": "host-model-backend",
   "instructions": {
     "role": "You are a coding agent. Read the file named in the task and summarize it in one sentence."
   },
