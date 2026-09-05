@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod append;
+pub mod artifact;
 pub mod digest;
 pub mod fold;
 pub mod seed;
