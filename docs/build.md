@@ -168,7 +168,21 @@ scripts/examples.sh target/debug/foe
 ```
 
 Continuous integration runs both tiers, along with `scripts/loc.sh`, the
-browser suite in `view/`, and the Python suite in `python/`.
+browser bundle build and test suite in `view/`, and the Python suite in
+`python/`.
+
+## Integrate a change
+
+Work happens on a branch. A branch reaches `main` by being rebased onto
+`main` or by being merged into `main` through a pull request, and squash
+merge is the default for a branch an agent produced. Before a push, every
+gate above runs on the tree that will become `main`: `cargo test --workspace`,
+`scripts/loc.sh`, `scripts/examples.sh`, the Python suite, and the browser
+bundle build and test suite. `main` requires the continuous-integration
+checks to pass. A conflict is resolved in an ordinary commit on the branch
+that states what the resolution changed, so a merge commit carries nothing
+beyond the automatic merge. `AGENTS.md` "Commits" holds the full set of
+rules.
 
 Repository-owned Rust test helpers create a unique working directory for each
 test invocation. A successful test removes its directory when its owner leaves
