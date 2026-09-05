@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod append;
+pub mod artifact;
 pub mod digest;
 pub mod fold;
 pub mod seed;
@@ -946,6 +947,8 @@ pub struct WorkflowRecovery {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LogError {
+    #[error("{0}")]
+    Recording(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("line {line}: {source}")]

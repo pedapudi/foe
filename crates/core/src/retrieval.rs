@@ -115,36 +115,8 @@ fn source(events: &[Event], spill_dir: &Path, current_step: u32, key: &str) -> R
 }
 
 fn read_archive(spill_dir: &Path, seq: u64, archive: &RenderingArchive) -> Result<Vec<u8>, String> {
-    let expected = foe_log::digest::rendering_file(&archive.digest);
-    if expected.as_deref() != Some(&archive.file) {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} has a path that does not match {}",
-            archive.digest
-        ));
-    }
-    let path = spill_dir.join(&archive.file);
-    let bytes = std::fs::read(&path).map_err(|error| {
-        format!(
-            "retrieve: rendering archive event {seq} at spill/{} for {} cannot be read: {error}",
-            archive.file, archive.digest
-        )
-    })?;
-    if bytes.len() as u64 != archive.bytes {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} at spill/{} for {} has {} bytes; expected {}",
-            archive.file,
-            archive.digest,
-            bytes.len(),
-            archive.bytes
-        ));
-    }
-    let actual = digest(&bytes);
-    if actual != archive.digest {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} at spill/{} has digest {actual}; expected {}",
-            archive.file, archive.digest
-        ));
-    }
+    let bytes =
+        foe_log::artifact::read_rendering(spill_dir, seq, archive).map_err(|error| format!("retrieve: {error}"))?;
     std::str::from_utf8(&bytes)
         .map_err(|_| format!("retrieve: rendering archive event {seq} for {} is not UTF-8", archive.digest))?;
     Ok(bytes)

@@ -39,6 +39,27 @@ fn start(contract: &ResolvedContract) -> EpisodeStart {
     }
 }
 
+/// docs/log-format.md "Writers": initialization resumes the task item from the recorded start.
+#[test]
+fn interrupted_initialization_restores_the_recorded_task_once() {
+    let dir = tmp("interrupted-initialization");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let mut recorded = start(&contract);
+    recorded.task = "retain this task".into();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    log.append(EventData::EpisodeStart(recorded.clone())).unwrap();
+    drop(log);
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let supplied = start(&contract);
+    super::initialize(&log, &supplied).unwrap();
+    super::initialize(&log, &supplied).unwrap();
+    let events = log.events();
+    assert_eq!(events.len(), 2);
+    let EventData::InboxItem(item) = &events[1].data else { panic!("the second event must carry the task") };
+    assert_eq!(item.source, InboxSource::Task);
+    assert_eq!(item.content, vec![foe_log::ContentBlock::Text { text: recorded.task }]);
+}
+
 struct Fixture {
     scratch: Option<ScratchDir>,
     dir: std::path::PathBuf,
@@ -1009,6 +1030,8 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
 #[derive(Default)]
 struct FakeSessions {
     exits: Mutex<Vec<(std::time::Instant, crate::SessionStatus)>>,
+    settlements: Mutex<Vec<crate::SessionSettlement>>,
+    stopped: Mutex<Vec<u64>>,
 }
 
 fn exited(id: u64) -> crate::SessionStatus {
@@ -1028,11 +1051,12 @@ impl crate::Sessions for FakeSessions {
     fn signal(&self, _id: u64, _signal: &str) -> Result<crate::SessionStatus, crate::CapError> {
         Err(crate::CapError::Invalid("unused".into()))
     }
-    fn stop(&self, _id: u64) -> Result<crate::SessionStatus, crate::CapError> {
-        Err(crate::CapError::Invalid("unused".into()))
+    fn stop(&self, id: u64) -> Result<crate::SessionStatus, crate::CapError> {
+        self.stopped.lock().unwrap().push(id);
+        Ok(exited(id))
     }
     fn settle(&self) -> Vec<crate::SessionSettlement> {
-        Vec::new()
+        std::mem::take(&mut *self.settlements.lock().unwrap())
     }
     fn take_exited(&self) -> Vec<crate::SessionStatus> {
         let now = std::time::Instant::now();
@@ -1042,6 +1066,79 @@ impl crate::Sessions for FakeSessions {
         *exits = later;
         ready
     }
+}
+
+/// docs/log-format.md "Writers": recording failure interrupts a pending
+/// response and stops a task session whose release cannot be recorded.
+#[tokio::test(start_paused = true)]
+async fn recording_failure_cancels_streaming_and_cleans_up_without_more_events() {
+    struct RejectChunks;
+    impl std::io::Write for RejectChunks {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let event: Event = serde_json::from_slice(bytes).unwrap();
+            if matches!(event.data, EventData::AssistantChunk { .. }) {
+                return Err(std::io::Error::other("fixture mirror closed"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    struct PendingResponse(Arc<std::sync::atomic::AtomicBool>);
+    #[async_trait::async_trait]
+    impl Transport for PendingResponse {
+        fn route(&self) -> foe_log::ModelRoute {
+            foe_log::ModelRoute { provider: "test".into(), model: "pending".into() }
+        }
+        async fn stream(&self, _req: crate::ModelRequestBody, sink: &mut (dyn crate::ChunkSink + Send)) {
+            struct Dropped(Arc<std::sync::atomic::AtomicBool>);
+            impl Drop for Dropped {
+                fn drop(&mut self) {
+                    self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+            let _dropped = Dropped(self.0.clone());
+            sink.push(text_chunk("first"));
+            sink.push(text_chunk("second"));
+            std::future::pending().await
+        }
+    }
+    let dir = tmp("log-failure-cleanup");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let log = Arc::new(Log::create_or_open(&dir, Some(Box::new(RejectChunks))).unwrap());
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let sessions = Arc::new(FakeSessions::default());
+    sessions.settlements.lock().unwrap().push(crate::SessionSettlement {
+        status: crate::SessionStatus { id: 1, name: "service".into(), alive: true, exit_code: None, seconds: 0 },
+        pid: 1,
+        process_group: 1,
+        released_to_task: true,
+    });
+    let (_, stop) = watch::channel(None);
+    let error = run(Params {
+        log: log.clone(),
+        start: start(&contract),
+        registry: Arc::new(registry_for(&contract, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
+        pool: Arc::new(Mutex::new(Pool::new(contract.budget.clone()))),
+        contract,
+        handles: Handles::default(),
+        transport: Arc::new(PendingResponse(dropped.clone())),
+        stop,
+        children: None,
+        sessions: Some(sessions.clone()),
+        context: None,
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("fixture mirror closed"), "{error}");
+    assert!(dropped.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(*sessions.stopped.lock().unwrap(), [1]);
+    let events = foe_log::fold::read_all(&dir).unwrap();
+    assert!(foe_log::fold::fold(&events).is_ok());
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::AssistantChunk { .. })).count(), 1);
+    assert!(!events.iter().any(|e| matches!(e.data, EventData::EpisodeEnd { .. })));
 }
 
 /// docs/log-format.md "Inbox": a session exit reaches the log as one

@@ -133,7 +133,7 @@ fn copy_rendering_archives(source: &Path, dest: &Path, events: &[Event]) -> Resu
         _ => None,
     });
     for (seq, archive) in archives {
-        let bytes = verify_archive(source, seq, archive)?;
+        let bytes = crate::artifact::read_rendering(&source.join("spill"), seq, archive)?;
         let target = dest.join("spill").join(&archive.file);
         if !target.exists() {
             let parent = target.parent().expect("an archive file has a parent");
@@ -153,42 +153,13 @@ fn copy_rendering_archives(source: &Path, dest: &Path, events: &[Event]) -> Resu
             std::fs::rename(temporary, &target)
                 .map_err(|error| archive_io(seq, archive, "install verified file", error))?;
         }
-        verify_archive(dest, seq, archive)?;
+        crate::artifact::read_rendering(&dest.join("spill"), seq, archive)?;
     }
     Ok(())
 }
 
-fn verify_archive(dir: &Path, seq: u64, archive: &RenderingArchive) -> Result<Vec<u8>, LogError> {
-    let expected = crate::digest::rendering_file(&archive.digest);
-    if expected.as_deref() != Some(&archive.file) {
-        return Err(archive_error(seq, archive, "file is not derived from digest"));
-    }
-    let path = dir.join("spill").join(&archive.file);
-    let bytes = std::fs::read(&path).map_err(|error| LogError::Archive {
-        seq,
-        path: format!("spill/{}", archive.file),
-        rule: format!("cannot read: {error}"),
-    })?;
-    if bytes.len() as u64 != archive.bytes {
-        return Err(archive_error(seq, archive, &format!("has {} bytes; expected {}", bytes.len(), archive.bytes)));
-    }
-    let actual = format!("sha256:{}", crate::digest::sha256_hex(&bytes));
-    if actual != archive.digest {
-        return Err(archive_error(seq, archive, &format!("has digest {actual}; expected {}", archive.digest)));
-    }
-    Ok(bytes)
-}
-
-fn archive_error(seq: u64, archive: &RenderingArchive, rule: &str) -> LogError {
-    LogError::Archive {
-        seq,
-        path: format!("spill/{}", archive.file),
-        rule: format!("{rule}; expected digest {}", archive.digest),
-    }
-}
-
 fn archive_io(seq: u64, archive: &RenderingArchive, operation: &str, error: std::io::Error) -> LogError {
-    archive_error(seq, archive, &format!("cannot {operation}: {error}"))
+    crate::artifact::archive_error(seq, archive, &format!("cannot {operation}: {error}"))
 }
 
 /// The events that close every obligation `events` left open, in the order

@@ -114,6 +114,7 @@ impl ToolValue {
         Self::failed(ToolFailureCode::Unavailable, message, false, serde_json::json!({}))
     }
     pub fn from_cap_error(context: &str, error: CapError) -> Self {
+        use ToolFailureCode::*;
         let message = match &error {
             CapError::Denied { path } => format!(
                 "{context}: {} is outside this tool's filesystem permissions; review grants.read and grants.write",
@@ -121,41 +122,20 @@ impl ToolValue {
             ),
             _ => format!("{context}: {error}"),
         };
-        match error {
-            CapError::Denied { path } => {
-                Self::failed(ToolFailureCode::CapabilityDenied, message, false, serde_json::json!({ "path": path }))
+        let (code, retryable, details) = match error {
+            CapError::Denied { path } => (CapabilityDenied, false, serde_json::json!({ "path": path })),
+            CapError::CapabilityDenied(capability) => {
+                (CapabilityDenied, false, serde_json::json!({ "capability": capability }))
             }
-            CapError::CapabilityDenied(capability) => Self::failed(
-                ToolFailureCode::CapabilityDenied,
-                message,
-                false,
-                serde_json::json!({ "capability": capability }),
-            ),
-            CapError::Budget { limit, .. } => {
-                Self::failed(ToolFailureCode::BudgetExhausted, message, false, serde_json::json!({ "limit": limit }))
+            CapError::Budget { limit, .. } => (BudgetExhausted, false, serde_json::json!({ "limit": limit })),
+            CapError::ProcessStart(reason) => (ProcessStartFailed, false, serde_json::json!({ "reason": reason })),
+            CapError::Log(error) => (Unavailable, false, serde_json::json!({ "log": error.to_string() })),
+            CapError::Io(error) => {
+                (OperationFailed, true, serde_json::json!({ "io_kind": format!("{:?}", error.kind()) }))
             }
-            CapError::ProcessStart(reason) => Self::failed(
-                ToolFailureCode::ProcessStartFailed,
-                message,
-                false,
-                serde_json::json!({ "reason": reason }),
-            ),
-            CapError::Log(error) => Self::failed(
-                ToolFailureCode::Unavailable,
-                message,
-                false,
-                serde_json::json!({ "log": error.to_string() }),
-            ),
-            CapError::Io(error) => Self::failed(
-                ToolFailureCode::OperationFailed,
-                message,
-                true,
-                serde_json::json!({ "io_kind": format!("{:?}", error.kind()) }),
-            ),
-            CapError::Invalid(reason) => {
-                Self::failed(ToolFailureCode::OperationFailed, message, true, serde_json::json!({ "reason": reason }))
-            }
-        }
+            CapError::Invalid(reason) => (OperationFailed, true, serde_json::json!({ "reason": reason })),
+        };
+        Self::failed(code, message, retryable, details)
     }
     /// Records what the call acted on, held to one line of [`SUBJECT_MAX`].
     /// A line past the limit ends in an ellipsis, so a cut is never silent.
@@ -355,7 +335,8 @@ pub struct SessionOutput {
 /// This episode's own log, as the lead of its team: appends team events and
 /// reads everything written so far. The team coordinator writes through it.
 pub trait LeadLog: Send + Sync {
-    fn append(&self, event: foe_log::EventData);
+    fn append(&self, event: foe_log::EventData) -> Result<(), CapError>;
+    fn check(&self) -> Result<(), CapError>;
     fn events(&self) -> Vec<foe_log::Event>;
 }
 

@@ -249,9 +249,9 @@ impl Team {
                 outcome: None,
                 call_id: req.call_id,
             };
-            self.log.append(EventData::TeamTask(task));
+            self.log.append(EventData::TeamTask(task))?;
         }
-        self.schedule(spawner);
+        self.schedule(spawner)?;
         self.state()
             .task(&task_id)
             .cloned()
@@ -260,11 +260,12 @@ impl Team {
 
     /// Starts ready tasks in board order. The lead process performs every
     /// assignment, so two agents cannot receive the same task.
-    pub fn schedule(self: &Arc<Self>, spawner: Arc<dyn Spawner>) {
+    pub fn schedule(self: &Arc<Self>, spawner: Arc<dyn Spawner>) -> Result<(), CapError> {
         loop {
             let mut watch = None;
             {
                 let _guard = self.operations.lock().unwrap();
+                self.log.check()?;
                 let state = self.state();
                 let queued: Vec<&TeamTask> =
                     state.tasks.iter().filter(|task| task.status == TaskStatus::Queued).collect();
@@ -286,7 +287,7 @@ impl Team {
                     })
                     .map(|task| (*task).clone())
                 else {
-                    return;
+                    return Ok(());
                 };
                 let blockers: Vec<&TeamTask> = task.blocked_by.iter().filter_map(|id| state.task(id)).collect();
                 if blockers.iter().any(|task| task.status != TaskStatus::Completed && settled(task.status)) {
@@ -302,11 +303,11 @@ impl Team {
                             code: BlockedCode::ChildBlocked,
                             message: format!("dependency tasks did not complete: {names}"),
                         },
-                    );
+                    )?;
                     continue;
                 }
                 if blockers.iter().any(|task| !settled(task.status)) {
-                    return;
+                    return Ok(());
                 }
                 let child_id = spawner.allocate_id();
                 let request = SpawnRequest {
@@ -322,39 +323,40 @@ impl Team {
                         running.revision += 1;
                         running.status = TaskStatus::Running;
                         running.owner = Some(child_id.clone());
-                        self.log.append(EventData::TeamTask(running));
+                        self.log.append(EventData::TeamTask(running))?;
                         self.log.append(EventData::TeamRoster {
                             member_id: child_id,
                             name: task.name.clone(),
                             description: task.description.clone(),
                             phase: MemberPhase::Provisioning,
-                        });
+                        })?;
                         watch = Some(handle);
                     }
-                    Err(CapError::Budget { limit: ExhaustedLimit::Concurrency, .. }) => return,
-                    Err(CapError::Budget { limit, .. }) => self.settle_task(task, Outcome::Exhausted { limit }),
-                    Err(error) => self.settle_task(task, Outcome::Failed { error: error.to_string() }),
+                    Err(CapError::Budget { limit: ExhaustedLimit::Concurrency, .. }) => return Ok(()),
+                    Err(CapError::Budget { limit, .. }) => self.settle_task(task, Outcome::Exhausted { limit })?,
+                    Err(error) => self.settle_task(task, Outcome::Failed { error: error.to_string() })?,
                 }
             }
             if let Some(handle) = watch {
                 let (team, scheduler) = (self.clone(), spawner.clone());
                 tokio::spawn(async move {
                     let _ = handle.run.settle().await;
-                    team.schedule(scheduler);
+                    let _ = team.schedule(scheduler);
                 });
             }
         }
     }
 
-    fn settle_task(&self, mut task: TeamTask, outcome: Outcome) {
+    fn settle_task(&self, mut task: TeamTask, outcome: Outcome) -> Result<(), CapError> {
         task.revision += 1;
         task.status = task_status(&outcome);
         task.outcome = Some(outcome);
-        self.log.append(EventData::TeamTask(task));
+        self.log.append(EventData::TeamTask(task))
     }
 
     /// Writes an inbox item to a member, addressed by roster name.
     pub fn steer(&self, name: &str, content: Vec<ContentBlock>) -> Result<(), CapError> {
+        self.log.check()?;
         let state = self.state();
         let member = state.member(name).ok_or_else(|| CapError::Invalid(format!("no member named {name}")))?;
         let item =
@@ -369,7 +371,7 @@ impl Team {
             .member_by_id(member_id)
             .map(|m| (m.name.clone(), m.description.clone()))
             .unwrap_or_else(|| (member_id.to_string(), String::new()));
-        self.log.append(EventData::TeamRoster { member_id: member_id.to_string(), name, description, phase });
+        let _ = self.log.append(EventData::TeamRoster { member_id: member_id.to_string(), name, description, phase });
     }
 
     /// Queues a message from one member to another and attempts delivery. A
@@ -384,7 +386,7 @@ impl Team {
             from: from.to_string(),
             to: target.member_id.clone(),
             content: content.clone(),
-        });
+        })?;
         let item = InboxItem {
             source: InboxSource::Peer,
             content,
@@ -406,7 +408,8 @@ impl ChildObserver for Team {
             EventData::EpisodeStart(_) => self.set_phase(child_id, MemberPhase::Active),
             EventData::InboxItem(item) if item.source == InboxSource::Peer => {
                 if let Some(id) = &item.message_id {
-                    self.log.append(EventData::TeamDelivered { message_id: id.clone(), to: child_id.to_string() });
+                    let _ =
+                        self.log.append(EventData::TeamDelivered { message_id: id.clone(), to: child_id.to_string() });
                 }
             }
             _ => {}
@@ -421,12 +424,18 @@ impl ChildObserver for Team {
         let member = state.member_by_id(child_id);
         if matches!(outcome, Outcome::Failed { .. }) {
             if let Some(member) = member {
-                self.log.append(EventData::TeamRoster {
-                    member_id: child_id.to_string(),
-                    name: member.name.clone(),
-                    description: member.description.clone(),
-                    phase: MemberPhase::Failed,
-                });
+                if self
+                    .log
+                    .append(EventData::TeamRoster {
+                        member_id: child_id.to_string(),
+                        name: member.name.clone(),
+                        description: member.description.clone(),
+                        phase: MemberPhase::Failed,
+                    })
+                    .is_err()
+                {
+                    return;
+                }
             }
         }
         if let Some(task) = state
@@ -435,7 +444,9 @@ impl ChildObserver for Team {
             .find(|task| task.owner.as_deref() == Some(child_id) && task.status == TaskStatus::Running)
             .cloned()
         {
-            self.settle_task(task, outcome.clone());
+            if self.settle_task(task, outcome.clone()).is_err() {
+                return;
+            }
         }
         let name = member.map(|member| member.name.clone()).unwrap_or_default();
         let text = format!("{name} ({child_id}) ended: {}", render_outcome(outcome));

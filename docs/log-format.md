@@ -45,6 +45,21 @@ The caller therefore treats the log as interrupted. Child launch ordering
 ensures that an append error before an owning event returns leaves no child
 process or budget reservation to settle.
 
+An I/O failure makes the writer unusable until the log is reopened. Later
+appends and synchronization attempts return the original failure without
+writing more bytes. The runtime stops scheduling work on any recording
+failure and cleans up running children and sessions before returning the error.
+A task-lifetime session whose release cannot be recorded is stopped.
+The interrupted log receives no terminal outcome after recording fails.
+
+Reopening requires a complete final line. An incomplete trailing line makes
+the writer refuse to append, and its bytes remain available for inspection.
+Forking at a complete event boundary can retain the readable prefix.
+
+If initialization stops after recording only `episode/start`, continuation
+writes the task inbox item from that recorded start before admitting work.
+Initialization preserves an existing task item.
+
 ## Envelope
 
 One JSON object per line.
