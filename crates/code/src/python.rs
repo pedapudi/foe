@@ -66,9 +66,9 @@ impl Python {
                 name: foe_core::COMPOSING_TOOL.into(),
                 description: format!(
                     "Run Python source in an isolated interpreter whose only capability is \
-                     calling this episode's tools. The source defines a zero-argument main() \
-                     returning a JSON-serializable value. call_tool(name, args) uses the exact \
-                     episode tool name without a namespace prefix and returns \
+                     calling this episode's tools. The source defines main(), which returns a \
+                     JSON-serializable value. call_tool(name, args) uses the exact \
+                     tool name without a namespace prefix and returns \
                      {{\"value\": ..., \"is_error\": bool}}. Configured executable output remains in \
                      value[\"stdout\"]. fail(message) ends the call as an error; compose_tools, block, \
                      and return are excluded. Environment, \
