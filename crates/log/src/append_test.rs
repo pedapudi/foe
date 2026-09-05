@@ -102,6 +102,24 @@ fn create_refuses_an_existing_log_and_open_resumes_it() {
     assert_eq!(read_all(&dir).unwrap().len(), 2);
 }
 
+/// docs/log-format.md "Writers": reopening refuses an incomplete final line without changing its bytes.
+#[test]
+fn reopening_refuses_a_partial_final_line() {
+    use std::io::Write;
+    for suffix in [b"{".as_slice(), b"{\"seq\":1}"] {
+        let dir = tmp("partial-reopen");
+        let mut writer = Writer::create(&dir, None).unwrap();
+        writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+        drop(writer);
+        let path = dir.join("episode.jsonl");
+        std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(suffix).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let error = Writer::open(&dir, None).err().expect("an incomplete final line must prevent appending");
+        assert!(error.to_string().contains("complete final log line"), "{error}");
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+}
+
 #[test]
 fn writer_rejects_events_that_break_the_structural_rules() {
     let dir = tmp("rules");
