@@ -251,6 +251,7 @@ dependencies = [
  "foe-contract",
  "foe-core",
  "foe-log",
+ "foe-team",
  "foe-telemetry",
  "foe-transport",
  "foe-view",
@@ -348,6 +349,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "foe-team"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "foe-contract",
+ "foe-core",
+ "foe-log",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

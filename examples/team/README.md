@@ -1,23 +1,18 @@
-# Team demo
+# Coordinated team demo
 
-A lead contract with two child contracts that talk to each other. The runner
-creates a small Python project and runs the episode with deterministic host
-responses. It checks the lead's log, both member logs, and the changed file.
+This example runs five agents across two nested teams. A lead changes a
+command-line program. Review and test tasks run concurrently. Their completed
+states unlock an integration task. The integration agent leads a nested team
+that audits the command usage before the final check runs.
 
-A team is the set of episodes spawned by one episode, the lead. The lead
-lists `spawn` and `team`; `grants.spawn` names the two child contracts it may
-start, `reviewer` and `tester`. Each member lists `send`, to message a
-teammate by roster name, and `notify`, to report to the lead. Every child an
-episode spawns is a member of that episode's team, so no further declaration
-is needed. The lead makes the code change itself and then spawns both
-members, who report back while the lead waits.
+The response service is deterministic. The runner checks the resulting
+workspace and every relevant coordination event. It requires no credential
+and makes no endpoint request.
 
 ## Requirements
 
-Linux, and `/usr/bin/python3` for the response functions, project checks, and
-runner checks. The demo needs no credential and makes no endpoint request.
-`responses.py` selects the lead, reviewer, or tester from the tools in each
-request. This selection stays deterministic when both members run concurrently.
+The example runs on Linux and uses `/usr/bin/python3` for its response
+service, project check, and runner assertions.
 
 ## Run
 
@@ -28,109 +23,107 @@ cargo build --release --bin foe
 examples/team/run.sh
 ```
 
-The runner takes the path of the binary as its only argument and defaults to
-`target/release/foe`. Each run creates `target/foe-team-demo.XXXXXX/` holding
-the materialized configuration, the project, and the episode log with both
-member logs under `children/`. The last line the runner prints is the
-command that serves the viewer for that log.
+The runner accepts the binary path as its only argument. It defaults to
+`target/release/foe`. Each run creates a directory named
+`target/foe-team-demo.XXXXXX/`. The directory contains the materialized
+configuration, the small project, and the complete episode tree.
 
-## What the run does
+The runner prints a viewer command after validation. Open the tasks tab to
+see both boards, their task histories, dependencies, owners, and scopes.
+The same projection is available while the run is live and from a static
+viewer export.
 
-The project holds a command line in `src/cli.py` and a check script in
-`tests/check.py` that expects a `--dry-run` flag the command line does not
-yet have.
+## Coordination graph
 
-1. The lead edits `src/cli.py` to add the flag.
-2. The lead spawns the reviewer with the file it changed and the tester with
-   the command to run.
-3. The tester runs `python3 -B tests/check.py`. The reviewer reads the
-   changed file and asks the tester, with `send`, which checks cover it.
-4. The tester answers with `send`. Each then reports to the lead with
-   `notify` and ends.
-5. The lead calls `wait`, which returns once both members have ended and
-   their `spawn/end` and `budget/release` events are in the lead's log, and
-   then finishes.
+The root board has one derived task and three added tasks:
 
-The members wait differently, because they wait for each other rather than
-for a child. `wait` covers children alone, and no tool holds an episode
-until a peer message arrives, so each member answers with a rotation of
-three read-only calls until the message it needs is in its inbox. The
-rotation exists so that no call repeats in three consecutive steps, which
-would end the episode as `looping-tool-call`.
-
-## The roster
-
-The roster is the list of members with their phase. It exists only as
-`team/roster` events in the lead's log, one per change of phase. A member
-enters as `provisioning` when `spawn` is called, becomes `active` when its
-`episode/start` is written, and becomes `failed` when its process ends
-without an outcome. The `team` tool returns the roster folded from those
-events, so the lead can see who is still active without any other state.
-
-```json
-{"seq": 21, "type": "team/roster", "data": { "member_id": "ep_598bf8c0", "name": "reviewer", "description": "Review the change to src/cli.py, which adds a --dry-run flag.", "phase": "provisioning" }}
-{"seq": 28, "type": "team/roster", "data": { "member_id": "ep_598bf8c0", "name": "reviewer", "description": "Review the change to src/cli.py, which adds a --dry-run flag.", "phase": "active" }}
+```text
+task_root  lead changes src/cli.py
+    ├── task_01  review src/cli.py ───────┐
+    ├── task_02  run tests/check.py ─────┤
+    └── task_03  integrate ◄─────────────┘
+                         │
+                         └── nested task_01  audit usage and checks
 ```
 
-The description is the task the member was spawned with. A member's roster
-name is the `name` the `spawn` call gives, and the contract name when it gives
-none, which is how the reviewer addresses `send` to `tester`.
+The runtime derives `task_root` from the root episode. It writes no
+`team/task` event for that task. The lead adds the other tasks with `spawn`.
+Each call records a queued revision before scheduling the child.
 
-## The mailbox fold
+The root permits two direct children at once. The scheduler assigns
+`task_01` and `task_02` immediately. `task_03` names both as dependencies and
+stays queued. A child settlement schedules ready work inside the runtime, so
+the lead makes no polling model request.
 
-A message between members passes through the lead's log. When the reviewer
-calls `send` with `to: "tester"`, the reviewer's process reports the call to
-the lead over the host protocol, and the lead's process appends a
-`team/message`. The message is durable at that point, before any delivery.
-The lead then writes the message into the tester's inbox as an `inbox/item`
-with source `peer`, `from` set to the reviewer's episode id, and the same
-`message_id`. After the tester has appended that item to its own log, the
-lead appends `team/delivered`.
+The integration child inspects the parent-led board with `team`. It then
+adds an audit task to the board it leads, waits for that task, runs the
+complete check, and reports to the root. The nested board demonstrates that
+every member can apply the same primitives at the next depth.
 
-```json
-{"seq": 30, "type": "team/message", "data": { "message_id": "tm_01", "from": "ep_598bf8c0", "to": "ep_bff3b86e", "content": [ { "type": "text", "text": "Which checks cover src/cli.py?" } ] }}
-{"seq": 31, "type": "team/delivered", "data": { "message_id": "tm_01", "to": "ep_bff3b86e" }}
+## Task assignment
+
+Only a lead process writes its `team/task` events. The board order is
+creation order. The scheduler scans that order and assigns each ready task
+to one freshly created child episode. Agents do not race to claim work.
+
+Each revision is a complete snapshot. A successful task has this history:
+
+```text
+queued → running → completed
 ```
 
-Folding the lead's log yields the whole mailbox: every `team/message` is
-queued, and each one with a matching `team/delivered` is settled. A message
-that is queued with no delivery record is redelivered when its target
-restarts, and the target drops a duplicate by `message_id`. The roster, the
-queue, and the delivery records are the only team state; there is no
-database and no in-memory copy that the log does not also hold.
+The task carries an advisory write scope. Review names `src/cli.py`, testing
+names `tests/check.py`, and integration names both. Scope communicates likely
+overlap. Filesystem grants remain the enforced authority.
 
-A member's `notify` call takes the other route: it becomes an `inbox/item`
-with source `child` in the lead's log, which enters the lead's next request.
-The runtime appends a second such item when the member ends, stating the
-outcome. That is how both reports and both endings reach the lead.
+## Peer and parent messages
 
-## What to look for
+The reviewer asks the tester which checks cover the changed file. Both are
+members of the root team. The reviewer calls `send` with the tester's roster
+name. The lead records `team/message`, delivers an `inbox/item` with source
+`peer`, and records `team/delivered` after the tester log receives it.
 
-The lead's log holds two `spawn/start` events and two `budget/reserve`
-events, each taking the 12 calls the member contract declares. It holds a
-`team/roster` event for each phase change of each member, and a
-`team/message` and `team/delivered` pair for each of the two `send` calls.
-It ends with four `inbox/item` events with source `child`, and a `spawn/end`
-and a `budget/release` for each member. In each member's log under
-`children/`, the `inbox/item` with source `peer` carries the sender's
-episode id and the `message_id` from the lead's log:
+The tester answers through the same route. A member that needs the answer
+calls `wait` for a peer inbox item. The wait blocks inside the runtime and
+uses no model request.
 
-```json
-{"seq": 19, "type": "inbox/item", "data": { "source": "peer", "content": [ { "type": "text", "text": "tests/check.py covers src/cli.py with three cases, one of them the dry run." } ], "from": "ep_bff3b86e", "message_id": "tm_02" }}
-```
+The nested auditor calls `notify`. Its report becomes a child inbox item in
+the integration log. The integration agent reports the combined result to
+the root in the same way. Cross-team communication therefore follows the
+team hierarchy through durable inbox items.
 
-The runner checks all of this. In the lead's log it requires two members
-that entered the roster as `provisioning` and became `active`, with neither
-recorded as `failed`. It requires one message each way between them, both
-settled by a delivery record, and four messages from members, of which one
-is the review and one the test result. In each member's log it requires one
-peer message, sent by the other member and carrying an id the lead queued,
-and an outcome of `completed`. It then checks that `src/cli.py` names the
-flag and that the project's own checks pass.
+## Lifecycle and shutdown
 
-In the viewer, the episodes region at the top of the left column shows the
-tree: the lead with both members hanging under it on a solid connector.
-Selecting the lead shows the two reports in its conversation as user
-messages; selecting a member shows the peer message in the member's own
-conversation. The trajectory region draws both members' spans inside the
-lead's, which is where the two overlapping runs are visible.
+A child enters its parent's roster as `provisioning` and becomes `active`
+when its `episode/start` arrives. An abnormal process end changes the phase
+to `failed`. The assigned task records every ordinary terminal outcome. The
+folded team view attaches that task status to its member. There is no idle
+worker pool. One task creates one child. The child process ends when its
+episode reaches an outcome.
+
+A bare `wait` returns when every added task on the caller's board has a
+terminal status and no child reservation remains. The root waits for three
+tasks. Integration waits for its nested audit. Since integration cannot
+settle before its own wait returns, the root wait covers the complete
+descendant tree.
+
+## Runner assertions
+
+The runner checks these invariants:
+
+- The root log contains no `team/task` event for `task_root`.
+- Every added task records `queued`, `running`, and `completed` in order.
+- Review and testing overlap.
+- Integration starts after both dependency tasks complete.
+- Peer messages are durable before delivery and arrive with matching ids.
+- Integration reads the root board through its parent team scope.
+- Integration creates and completes one task on its own board.
+- The nested auditor names integration as its parent and team lead.
+- Every roster member has a completed assigned task.
+- Every bare wait returns after the corresponding board settles.
+- The changed command and the project checks pass.
+
+The episodes region shows the process tree. The trajectory shows concurrent
+review and testing followed by integration and its nested audit. The tasks
+tab shows the two boards and the exact transitions that produced the final
+state.

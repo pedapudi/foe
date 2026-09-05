@@ -1,4 +1,4 @@
-use super::{configuration_warnings, cycles, summary_report};
+use super::{configuration_warnings, cycles, execution, root_agent_report, summary_report};
 use foe_contract::workflow::WorkflowConfig;
 use serde_json::json;
 
@@ -38,7 +38,9 @@ fn summary_lines_project_the_resolved_contract() {
     assert_eq!(warnings.len(), 1, "the empty execute grant beside a shell tool is statically known");
     assert!(line("warnings").contains("1: external-commands-unavailable"));
     assert!(line("warnings").contains("grants.execute"));
-    assert_eq!(line("workflow"), "", "no workflow row for a contract without one");
+    assert!(line("execution").contains("one root-bound agent node"));
+    assert_eq!(execution(&contract)["kind"], "root-agent");
+    assert!(root_agent_report(&contract).contains("root-agent   model summary  follows task  terminal  root episode"));
 }
 
 /// docs/workflow.md "Firing": the report lists each elementary cycle

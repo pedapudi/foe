@@ -9,7 +9,6 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
-use foe_code::team::{self, Team};
 use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract};
 use foe_contract::fingerprint::{compute, Fingerprint};
 use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
@@ -31,6 +30,7 @@ use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedContract, SeedHeader};
 use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
+use foe_team::{self as team, Team};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -720,6 +720,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     // A parent may have input queued already. Construction finishes before
     // the task takes seq 1, and the reader starts only after that append.
     loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    // A cleanly resumable log can end between recording a queued task and
+    // assigning it. Scheduling from the folded board continues that work.
+    team.schedule(spawner.clone());
     if host {
         protocol.spawn_reader(tokio::io::stdin());
     }

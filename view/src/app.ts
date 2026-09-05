@@ -19,19 +19,21 @@ import { drawOutline, depthControl } from "./render/outline.js";
 import { Hovercard } from "./render/hovercard.js";
 import { renderScope } from "./render/scoped.js";
 import { StatisticsView } from "./render/statistics.js";
+import { TeamView } from "./render/team.js";
 import { TrajectoryView } from "./render/trajectory.js";
 import { renderInfo, renderTree } from "./render/tree.js";
 import { WorkflowView } from "./render/workflow.js";
 import type { Sink } from "./source.js";
 import type { StatisticsEpisode } from "./statistics.js";
+import type { TeamEpisode } from "./team.js";
 import type { TrajectoryEpisode } from "./trajectory.js";
 import type { LogEvent } from "./types.js";
-import { declaredWorkflow, readWorkflow } from "./workflow.js";
+import { readWorkflow } from "./workflow.js";
 
-type Tab = "conversation" | "raw" | "diff" | "workflow" | "statistics";
+type Tab = "conversation" | "raw" | "diff" | "workflow" | "tasks" | "statistics";
 
 /** The tab each digit selects, which is also the order of the tab bar. */
-const TAB_KEYS: Tab[] = ["conversation", "raw", "diff", "workflow", "statistics"];
+const TAB_KEYS: Tab[] = ["conversation", "raw", "diff", "workflow", "tasks", "statistics"];
 
 interface EpisodeState {
   id: string;
@@ -67,6 +69,7 @@ export class App implements Sink {
   private readonly topbar: Topbar;
   private readonly trajectory: TrajectoryView;
   private readonly workflow: WorkflowView;
+  private readonly team: TeamView;
   private readonly statistics: StatisticsView;
   private readonly outlineHost = h("div", { class: "outline-host" });
   private readonly trajectoryGrip: HTMLElement;
@@ -93,6 +96,7 @@ export class App implements Sink {
       select: (id) => this.select(id),
       reveal: (id, seq) => this.reveal(id, seq),
     });
+    this.team = new TeamView({ select: (id) => this.select(id) });
     this.statistics = new StatisticsView({ reveal: (id, seq) => this.reveal(id, seq) });
     this.tabsBar = h(
       "div",
@@ -101,6 +105,7 @@ export class App implements Sink {
       this.tabButton("raw", "raw events"),
       this.tabButton("diff", "diff"),
       this.tabButton("workflow", "workflow"),
+      this.tabButton("tasks", "tasks"),
       this.tabButton("statistics", "statistics"),
       this.title,
     );
@@ -150,7 +155,7 @@ export class App implements Sink {
       " filter · ",
       h("kbd", null, "1"),
       "–",
-      h("kbd", null, "5"),
+      h("kbd", null, "6"),
       " tabs · drag or arrow a grip to resize, double click to reset",
     );
     clear(root);
@@ -319,15 +324,8 @@ export class App implements Sink {
     this.selected = id;
     this.cursor = id;
     if (this.tab === "diff") this.tab = "conversation";
-    if (this.tab === "workflow" && !this.declaresWorkflow(id)) this.tab = "conversation";
     this.renderSidebar();
     this.renderMain();
-  }
-
-  /** True when the episode's contract declares a graph, which the tab needs. */
-  private declaresWorkflow(id: string): boolean {
-    const summary = this.episodes.get(id)?.fold.summary;
-    return summary !== undefined && declaredWorkflow(summary.contract) !== null;
   }
 
   /**
@@ -363,9 +361,6 @@ export class App implements Sink {
   }
 
   setTab(tab: Tab): void {
-    // The workflow tab exists only for an episode that declares a graph, so
-    // its key does nothing for an episode that runs the free loop.
-    if (tab === "workflow" && !(this.selected !== null && this.declaresWorkflow(this.selected))) return;
     this.tab = tab;
     this.renderMain();
   }
@@ -532,19 +527,9 @@ export class App implements Sink {
     return h("button", { class: "tab", type: "button", role: "tab", "data-tab": tab, onclick: () => this.setTab(tab) }, label);
   }
 
-  /**
-   * Feeds the two tabs that derive their own view of the selected episode.
-   * Both gate on a digest of what they would draw, so this is called on
-   * every redraw and costs nothing when nothing changed.
-   */
+  /** Feeds views that fold the selected episode or its descendant tree. */
   private renderTabs(): void {
     const id = this.selected ?? "";
-    // The workflow tab appears once the episode's `episode/start` has been
-    // read and declares a graph, which in live mode is after the first
-    // selection is made.
-    const declared = this.declaresWorkflow(id);
-    const button = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="workflow"]');
-    if (button) button.hidden = !declared;
     // The outline is the conversation, so the tab that would repeat it is
     // not offered; the readings that are not of the same hierarchy are.
     const conversation = this.tabsBar.querySelector<HTMLElement>('.tab[data-tab="conversation"]');
@@ -552,11 +537,13 @@ export class App implements Sink {
     const state = this.episodes.get(id);
     if (!state) {
       this.workflow.update(null, null);
+      this.team.update([], null);
       this.statistics.update([], new Map(), this.rootScopes());
       return;
     }
     const summary = state.fold.summary;
     this.workflow.update(readWorkflow(summary.contract, state.fold.events), id);
+    this.team.update(this.teamScope(id), id);
     const names = new Map<string, string>();
     for (const s of this.summaries()) names.set(s.id, s.name === s.id ? s.id : `${s.name} ${s.id}`);
     this.statistics.update(this.statisticsScope(id), names, this.rootScopes());
@@ -589,6 +576,29 @@ export class App implements Sink {
     return found ? this.scopeOf(found.node) : [];
   }
 
+  /** The selected lead and descendant leads, in episode-tree order. */
+  private teamScope(id: string): TeamEpisode[] {
+    const found = flatten(buildTree(this.summaries(), this.orderIds)).find((entry) => entry.node.id === id);
+    if (!found) return [];
+    const visit = (node: TreeNode, depth: number): TeamEpisode[] => {
+      const state = this.episodes.get(node.id);
+      if (!state) return [];
+      const summary = state.fold.summary;
+      return [
+        {
+          id: summary.id,
+          name: summary.name,
+          task: summary.task,
+          depth,
+          events: state.fold.events,
+          outcome: summary.outcome,
+        },
+        ...node.children.flatMap((child) => visit(child, depth + 1)),
+      ];
+    };
+    return visit(found.node, 0);
+  }
+
   /** One scope per root, which the run comparison reports one row each. */
   private rootScopes(): StatisticsEpisode[][] {
     return buildTree(this.summaries(), this.orderIds).map((root) => this.scopeOf(root));
@@ -614,6 +624,8 @@ export class App implements Sink {
       next = h("div", { class: "empty" }, this.live ? "waiting for episodes" : "no episodes in this log");
     } else if (this.tab === "workflow") {
       next = this.workflow.el;
+    } else if (this.tab === "tasks") {
+      next = this.team.el;
     } else if (this.tab === "statistics") {
       next = this.statistics.el;
     } else if (this.tab === "conversation" && this.scope !== null) {

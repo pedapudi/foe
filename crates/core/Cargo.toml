@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Episode runtime: config, fingerprint, grants, budget, registry, loop, spawn, teams, sandbox, host protocol"
+description = "Episode runtime: config, fingerprint, grants, budget, registry, loop, spawn, sandbox, host protocol"
 
 [dependencies]
 foe-log = { path = "../log" }

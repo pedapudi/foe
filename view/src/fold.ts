@@ -444,6 +444,20 @@ export class EpisodeFold {
         );
       case "team/delivered":
         return this.note(ev, "delivered", `${str(data.message_id)} → ${str(data.to, "?")}`, "info", data);
+      case "team/task": {
+        const owner = str(data.owner);
+        const status = str(data.status, "?");
+        const member = s.roster.get(owner);
+        if (member && ["completed", "blocked", "exhausted", "failed"].includes(status)) member.phase = status;
+        return this.note(
+          ev,
+          "task",
+          `${str(data.task_id, "?")} · ${str(data.name, "?")} · ${status}${owner ? ` · ${owner}` : ""}`,
+          levelFor(status),
+          data,
+          owner || null,
+        );
+      }
       case "sandbox/denied":
         return this.note(
           ev,
@@ -504,8 +518,7 @@ export class EpisodeFold {
         this.graph(ev, data);
         return this.note(ev, ev.type, summarize(data), "info", data);
       default:
-        // Reserved types (team/task) and any type this bundle does not know
-        // render as a generic row.
+        // Any event type this bundle does not know renders as a generic row.
         return this.note(ev, ev.type, summarize(data), "info", data);
     }
   }

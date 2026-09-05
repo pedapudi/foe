@@ -395,7 +395,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         });
         let report = serde_json::json!({
             "contract_fingerprint": fingerprint.hash, "fingerprint_document": fingerprint.document, "contract": value,
-            "model_endpoint": model_endpoint, "workflow": workflow, "context": context,
+            "model_endpoint": model_endpoint, "execution": plan::execution(&contract), "workflow": workflow, "context": context,
             "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions, "warnings": warnings,
         });
         println!("{report}");
@@ -410,6 +410,8 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
         if contract.workflow.is_some() {
             print!("{}", plan::workflow_report(&contract)?);
+        } else {
+            print!("{}", plan::root_agent_report(&contract));
         }
         print!("tools\n{}", tool_rows(config, &contract)?);
         print!("{}", plan::reachable_tools_report(&reachable_tools));
