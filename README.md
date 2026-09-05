@@ -112,6 +112,17 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
+
+For a terminal conversation with branch connectors and readable results, run:
+
+```sh
+foe --config hello.json --conversation
+```
+
+This opt-in display hides tool requests and responses, shows completed
+messages as they arrive, and replaces the browser viewer. JSON remains the
+default output. See [the terminal display specification](docs/viewer.md#terminal-conversation).
+
 `examples/` holds thirteen examples, each of which runs. Every one builds a
 disposable project, uses deterministic responses, checks its own result, and
 leaves an episode to read. None needs a credential or external network

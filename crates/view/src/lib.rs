@@ -9,6 +9,9 @@
 
 mod project;
 mod server;
+mod terminal;
+
+pub use terminal::conversation;
 
 pub use project::{project, Node, Tree};
 pub use server::{serve, Bound, Server};

@@ -26,9 +26,9 @@ foe --config <path> --host [--log-dir <path>]
 
 `--host` selects this protocol. Standard output then carries the log, and
 standard input carries the host's answers. Without `--host`, standard output
-carries one JSON line at the end, the outcome, so that a shell or another
-contract invoking foe reads a single result; the log still goes to the file.
-The two modes are exclusive, and this document describes `--host` only.
+carries one JSON outcome line at the end by default. `--conversation` selects
+a readable terminal display and cannot be combined with `--host`.
+The log also goes to the file. This document specifies `--host`.
 
 The host supplies a configuration file. foe validates it, writes
 `episode/start`, and begins. When the configuration has no `model` block,

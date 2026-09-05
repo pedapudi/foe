@@ -102,6 +102,7 @@ pub struct Options {
     pub log_dir: Option<PathBuf>,
     pub no_open: bool,
     pub headless: bool,
+    pub conversation: bool,
     pub host: bool,
     /// Source log directory to seed the new episode from, with the
     /// boundary: source events with `seq` in `[1, at)` are copied.
@@ -569,7 +570,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         unconfined.policy_mut().add_write_root(dir, "telemetry capture directory");
     }
-    let viewer = match options.host || options.headless {
+    let viewer = match options.host || options.headless || options.conversation {
         true => None,
         false => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
     };
@@ -614,7 +615,13 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         process,
     };
     let executor = runtime()?;
-    let outcome = executor.block_on(episode(setup));
+    let outcome = executor.block_on(async {
+        if options.conversation {
+            foe_view::conversation(&telemetry_log_dir, episode(setup)).await
+        } else {
+            episode(setup).await
+        }
+    });
     // Episode cleanup finishes before shutdown. An idle standard-input read
     // must not prevent the command from reporting an outcome or recording error.
     executor.shutdown_background();
@@ -622,7 +629,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
     }
-    if !options.host {
+    if !options.host && !options.conversation {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);
     }
     Ok(ExitCode::from(match outcome {
