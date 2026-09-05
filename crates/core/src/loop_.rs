@@ -179,10 +179,11 @@ pub struct Params {
 /// whose `message_id` the log already holds. The protocol layer and the
 /// spawner deliver items through this.
 pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, LogError> {
-    if log.with_events(|events| crate::inbox::is_duplicate(events, &item)) {
+    let mut inner = lock(&log.inner);
+    if crate::inbox::is_duplicate(&inner.1, &item) {
         return Ok(None);
     }
-    log.append(EventData::InboxItem(item)).map(Some)
+    log.record(&mut inner, EventData::InboxItem(item)).map(Some)
 }
 
 /// Appends one `session`-source item per session exit not yet reported:

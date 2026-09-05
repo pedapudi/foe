@@ -27,7 +27,6 @@ use foe_core::protocol::{Host, InboxSink};
 use foe_core::spawn::{ChildObserver, Router};
 use foe_core::{CallCtx, CapError, LeadLog, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -192,9 +191,8 @@ pub struct Team {
     router: Arc<Router>,
     /// Read by `wait`, which returns once no reservation is outstanding.
     pool: Arc<Mutex<Pool>>,
-    /// Serializes task creation, assignment, and roster changes.
+    /// Serializes task creation, assignment, roster changes, and message allocation.
     operations: Mutex<()>,
-    messages: AtomicU64,
 }
 
 impl Team {
@@ -205,7 +203,7 @@ impl Team {
         router: Arc<Router>,
         pool: Arc<Mutex<Pool>>,
     ) -> Self {
-        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()), messages: AtomicU64::new(0) }
+        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()) }
     }
 
     pub fn state(&self) -> TeamState {
@@ -378,9 +376,10 @@ impl Team {
     /// failed delivery leaves the message queued without a delivery record;
     /// the fold reports it as undelivered.
     fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>) -> Result<String, CapError> {
+        let _guard = self.operations.lock().unwrap();
         let state = self.state();
         let target = state.member(to_name).ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
-        let message_id = format!("tm_{:02}", self.messages.fetch_add(1, Ordering::SeqCst) + 1);
+        let message_id = format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1);
         self.log.append(EventData::TeamMessage {
             message_id: message_id.clone(),
             from: from.to_string(),

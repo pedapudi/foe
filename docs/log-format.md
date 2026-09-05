@@ -585,6 +585,13 @@ Messages with a `team/message` and no matching `team/delivered` are
 redelivered when the target restarts. The target deduplicates by
 `message_id`.
 
+Message identifiers include the lead episode identity and an ordinal derived
+from its recorded queue. Allocation and queue insertion share the lead's
+operation lock. Resume continues that queue, while a fork has a distinct
+lead identity. Readers treat message identifiers as opaque strings.
+Duplicate detection and inbox insertion hold the same log lock, so concurrent
+redelivery creates one peer inbox item.
+
 `team/task` — implemented. One complete revision of a task added through
 `spawn`.
 

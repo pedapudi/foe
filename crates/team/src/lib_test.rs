@@ -217,6 +217,55 @@ fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     (team, log, inbox, router)
 }
 
+/// docs/log-format.md "Teams": message identity survives resume and remains
+/// distinct from a copied source queue after seeding.
+#[test]
+fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
+    let (first, log, inbox, router) = team();
+    log.append(start());
+    let first_id = first.send("ep_lead", "lead", text_content("first")).unwrap();
+    let resumed = Team::new(
+        "ep_lead".into(),
+        log.clone(),
+        inbox.clone(),
+        router.clone(),
+        Arc::new(Mutex::new(Pool::new(budget()))),
+    );
+    let second_id = resumed.send("ep_lead", "lead", text_content("second")).unwrap();
+    assert_ne!(first_id, second_id);
+    let mut copied = log.events();
+    let EventData::EpisodeStart(start) = &mut copied[0].data else { panic!() };
+    start.id = "ep_fork".into();
+    let fork_log = Arc::new(MemLog(Mutex::new(copied)));
+    fork_log.append(EventData::SeedEnd {});
+    let forked =
+        Team::new("ep_fork".into(), fork_log, inbox.clone(), router, Arc::new(Mutex::new(Pool::new(budget()))));
+    let fork_id = forked.send("ep_fork", "lead", text_content("fork")).unwrap();
+    assert_ne!(fork_id, first_id);
+    assert_ne!(fork_id, second_id);
+    assert_eq!(inbox.0.lock().unwrap().len(), 3);
+}
+
+/// docs/log-format.md "Teams": concurrent senders allocate distinct identities
+/// under the same lock that records their queue entries.
+#[test]
+fn concurrent_senders_record_distinct_messages() {
+    let (team, log, inbox, _) = team();
+    log.append(start());
+    std::thread::scope(|scope| {
+        for index in 0..16 {
+            let team = team.clone();
+            scope.spawn(move || {
+                team.send("ep_lead", "lead", text_content(&index.to_string())).unwrap();
+            });
+        }
+    });
+    let state = team.state();
+    assert_eq!(state.queue.len(), 16);
+    assert_eq!(state.queue.iter().map(|message| &message.message_id).collect::<BTreeSet<_>>().len(), 16);
+    assert_eq!(inbox.0.lock().unwrap().len(), 16);
+}
+
 #[test]
 fn notify_from_a_member_becomes_an_inbox_item() {
     let (team, _, inbox, _) = team();

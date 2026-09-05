@@ -218,6 +218,36 @@ def evaluate_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 class TraceQualityTest(unittest.TestCase):
+    def test_message_identity_and_redelivery_checks(self) -> None:
+        """docs/log-format.md Team: queued ids are unique; receipts may repeat."""
+        original = valid_events()
+        ending = original.pop()
+        message = {"message_id": "ep_test:tm_01", "from": "ep_test", "to": "ep_child", "content": []}
+        receipt = {"message_id": message["message_id"], "to": "ep_child"}
+        for kind, data in [("team/message", message), ("team/delivered", receipt), ("team/delivered", receipt)]:
+            original.append(event(len(original), kind, data))
+        original.append(event(len(original), "episode/end", ending["data"]))
+        report = evaluate_events(original)
+        self.assertTrue(report["valid"], report["violations"])
+        changed = copy.deepcopy(original)
+        changed[-2] = event(changed[-2]["seq"], "team/message", {**message, "content": [{"type": "text", "text": "different message"}]})
+        report = evaluate_events(changed)
+        self.assertTrue(any("team/message.message_id" in v["message"] for v in report["violations"]))
+        changed = copy.deepcopy(original)
+        changed[-2]["data"]["to"] = "ep_wrong"
+        report = evaluate_events(changed)
+        self.assertTrue(any("team/delivered" in v["message"] for v in report["violations"]))
+
+    def test_duplicate_peer_inbox_items_fail_conformance(self) -> None:
+        """docs/log-format.md Team: repeated delivery produces one inbox item."""
+        events = valid_events()
+        ending = events.pop()
+        item = {"source": "peer", "from": "ep_sender", "message_id": "ep_lead:tm_01", "content": []}
+        events.extend([event(len(events), "inbox/item", item), event(len(events) + 1, "inbox/item", item)])
+        events.append(event(len(events), "episode/end", ending["data"]))
+        report = evaluate_events(events)
+        self.assertTrue(any("peer inbox message_id" in v["message"] for v in report["violations"]))
+
     def test_valid_trace_conforms(self) -> None:
         report = evaluate_events(valid_events())
         self.assertTrue(report["valid"], report["violations"])
