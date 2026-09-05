@@ -39,6 +39,41 @@ fn start(contract: &ResolvedContract) -> EpisodeStart {
     }
 }
 
+/// docs/log-format.md "Team": duplicate detection and insertion are one
+/// operation even when several deliveries arrive concurrently.
+#[test]
+fn simultaneous_peer_deliveries_append_one_inbox_item() {
+    let dir = tmp("concurrent-inbox");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    super::initialize(&log, &start(&contract)).unwrap();
+    let barrier = Arc::new(std::sync::Barrier::new(16));
+    let retained = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..16)
+            .map(|_| {
+                let (log, barrier) = (log.clone(), barrier.clone());
+                scope.spawn(move || {
+                    barrier.wait();
+                    super::append_inbox_item(
+                        &log,
+                        foe_log::InboxItem {
+                            source: InboxSource::Peer,
+                            content: vec![],
+                            from: Some("ep_sender".into()),
+                            message_id: Some("ep_lead:tm_01".into()),
+                        },
+                    )
+                    .unwrap()
+                    .is_some()
+                })
+            })
+            .collect();
+        workers.into_iter().map(|worker| usize::from(worker.join().unwrap())).sum::<usize>()
+    });
+    assert_eq!(retained, 1);
+    assert_eq!(foe_log::fold::read_all(&dir).unwrap().len(), 3);
+}
+
 struct Fixture {
     scratch: Option<ScratchDir>,
     dir: std::path::PathBuf,

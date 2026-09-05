@@ -333,6 +333,37 @@ def _render_continuation(summary: dict[str, Any]) -> str:
     )
 
 
+def _check_team_messages(evaluation: Evaluation, log: EpisodeLog) -> None:
+    """Check durable message identity, receipts, and inbox deduplication."""
+    dimension = "reconstructable_evidence"
+    queued: dict[str, dict[str, Any]] = {}
+    received: set[str] = set()
+    for index, event in enumerate(log.events):
+        kind, data = _event_type(event), _event_data(event)
+        message_id = data.get("message_id")
+        valid_id = isinstance(message_id, str) and bool(message_id)
+        if kind == "team/message":
+            evaluation.check(
+                dimension, valid_id and message_id not in queued,
+                "team/message.message_id must be present and unique", log, index,
+            )
+            if valid_id:
+                queued[message_id] = data
+        elif kind == "team/delivered":
+            source = queued.get(message_id) if valid_id else None
+            evaluation.check(
+                dimension, source is not None and source.get("to") == data.get("to"),
+                "team/delivered must name an earlier message and its recipient", log, index,
+            )
+        elif kind == "inbox/item" and data.get("source") == "peer":
+            evaluation.check(
+                dimension, valid_id and message_id not in received,
+                "peer inbox message_id must be present and recorded once", log, index,
+            )
+            if valid_id:
+                received.add(message_id)
+
+
 def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
     dimension = "reconstructable_evidence"
     evaluation.check(dimension, log.parse_error is None, log.parse_error or "log parses", log)
@@ -341,6 +372,8 @@ def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
     evaluation.check(dimension, bool(log.events), "the log is empty", log)
     if not log.events:
         return
+
+    _check_team_messages(evaluation, log)
 
     for index, event in enumerate(log.events):
         seq = event.get("seq")
