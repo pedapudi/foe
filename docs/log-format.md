@@ -370,8 +370,9 @@ and valid JSON.
 when the result was written by the seeding step or by request failure
 recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and
-`is_error: true`. The rejection of every call in a response that hit the
-output length limit is `is_error: true` with `synthetic: false`, because the
+`is_error: true`. A missing result leaves the call's external effects unknown.
+The synthetic result states that repeating the call may repeat those effects.
+The rejection of every call in a response that hit the output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
 each surviving process session. An episode-lifetime result records the
