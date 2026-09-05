@@ -48,6 +48,20 @@ justify building it is a consumer needing first-completion-wins — a
 trajectory that waits on `any`, then pays for children whose results it
 discards.
 
+## Workflow continuation after process interruption
+
+Workflow continuation would restore completed firings, input versions,
+branch choices, verification retries, and recovery allowances from the log.
+The runtime refuses continuation from recorded workflow execution. Log
+inspection and evidence retention remain available.
+
+Supporting continuation requires a workload whose retained progress
+justifies scheduler recovery, explicit attribution of scheduling decisions,
+and a policy for tool calls whose results were never recorded. A process can
+stop after an external effect succeeds and before its result reaches the log.
+Resumption alone cannot guarantee that effects occur once. No event type or
+configuration key is reserved for workflow continuation.
+
 ## Event-conditioned workflow edges
 
 An event-conditioned edge would fire a workflow node on an inbox arrival —

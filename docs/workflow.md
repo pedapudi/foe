@@ -355,6 +355,19 @@ creating the process. A failed node-start append therefore leaves no child or
 reservation. The log remains interrupted because an append error does not
 establish whether every destination received the event.
 
+### Interrupted execution
+
+Workflow execution cannot resume from recorded `workflow/*` events. A launch
+with a workflow configuration refuses such a log before scheduling queued
+team tasks or starting nodes. The restriction applies to in-place resume and
+to a fork that contains those events. A log containing initialization alone
+can start its workflow.
+
+Recovery requires a separate invocation whose task accounts for the retained
+evidence and the actual state of affected files or services. A missing tool
+result does not establish whether the tool changed external state. Retrying
+such an action can repeat its effects.
+
 ### Completion
 
 The workflow completes when a terminal node completes, or when a chosen

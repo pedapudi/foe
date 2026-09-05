@@ -52,6 +52,14 @@ failure and cleans up running children and sessions before returning the error.
 A task-lifetime session whose release cannot be recorded is stopped.
 The interrupted log receives no terminal outcome after recording fails.
 
+Reopening requires a complete final line. An incomplete trailing line makes
+the writer refuse to append, and its bytes remain available for inspection.
+Forking at a complete event boundary can retain the readable prefix.
+
+If initialization stops after recording only `episode/start`, continuation
+writes the task inbox item from that recorded start before admitting work.
+Initialization preserves an existing task item.
+
 ## Envelope
 
 One JSON object per line.
@@ -362,8 +370,9 @@ and valid JSON.
 when the result was written by the seeding step or by request failure
 recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and
-`is_error: true`. The rejection of every call in a response that hit the
-output length limit is `is_error: true` with `synthetic: false`, because the
+`is_error: true`. A missing result leaves the call's external effects unknown.
+The synthetic result states that repeating the call may repeat those effects.
+The rejection of every call in a response that hit the output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
 each surviving process session. An episode-lifetime result records the
@@ -911,6 +920,8 @@ The destination contains its own canonical spills and rendering archives.
 Reading retained evidence does not open the source episode. A missing file,
 an invalid locator, malformed canonical JSON, or a content mismatch makes
 seeding fail before `seed/end`. The error names the event, file, and rule.
+A destination with `fork_origin` and no `seed/end` records incomplete seeding.
+Opening or resuming that destination is refused before execution.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own
@@ -932,6 +943,10 @@ boundary with every binding obligation closed, including one ending at
 `seed/end`, is appended to as it stands; one cut short mid-line or with a
 binding obligation open is seeded at N equal to its count of complete
 events into a fresh directory beside it, which the run then continues.
+A workflow configuration refuses execution when the resulting log contains
+any `workflow/*` event. Seeding preserves workflow evidence without restoring
+its scheduler. The restrictions are specified in
+[workflow.md](workflow.md#interrupted-execution).
 
 A replay is a seed at N equal to the source log's length, with the model
 responses replayed from `assistant/chunk` events rather than requested.

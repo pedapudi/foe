@@ -30,11 +30,23 @@ impl Writer {
     /// Opens an existing log for continued appending, for example after
     /// seeding. Reads the current length to resume the sequence.
     pub fn open(dir: &Path, mirror: Option<Box<dyn Write + Send>>) -> Result<Self, LogError> {
-        let events = fold::read_all(dir)?;
+        let (events, consumed) = fold::read_from(dir, 0)?;
+        if std::fs::metadata(dir.join(LOG_FILE))?.len() != consumed {
+            return Err(LogError::Invalid {
+                seq: events.len() as u64,
+                rule: "reopening requires a complete final log line",
+            });
+        }
         if events.is_empty() {
             return Err(LogError::Empty);
         }
         let state = fold::fold(&events)?;
+        if state.start.as_ref().is_some_and(|start| start.fork_origin.is_some()) && state.seeded_through.is_none() {
+            return Err(LogError::Invalid {
+                seq: events.len() as u64,
+                rule: "reopening a seeded log requires seed/end",
+            });
+        }
         let file = std::fs::OpenOptions::new().append(true).open(dir.join(LOG_FILE))?;
         Ok(Self { file, mirror, next_seq: events.len() as u64, state, failure: None })
     }

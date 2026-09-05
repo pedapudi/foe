@@ -276,6 +276,10 @@ fn seed_rejects_invalid_canonical_evidence_and_ignores_results_outside_the_prefi
         let error = seed(&src, events.len() as u64, &dst, header()).unwrap_err().to_string();
         assert!(error.contains("event 5") && error.contains(file), "{fault}: {error}");
         assert!(!read_all(&dst).unwrap().iter().any(|e| matches!(e.data, EventData::SeedEnd {})));
+        let before = std::fs::read(dst.join(fold::LOG_FILE)).unwrap();
+        let error = Writer::open(&dst, None).err().expect("incomplete seeding must refuse reopening");
+        assert!(error.to_string().contains("seed/end"), "{fault}: {error}");
+        assert_eq!(std::fs::read(dst.join(fold::LOG_FILE)).unwrap(), before);
         let earlier = tmp("canonical-outside-prefix");
         seed(&src, 5, &earlier, header()).unwrap();
         assert!(!earlier.join("spill/result.json").exists());
