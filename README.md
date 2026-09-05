@@ -29,6 +29,13 @@ The log is the only state: the viewer, replay, forking, budget accounting, and
 team coordination are derived from it. Nothing is reachable unless a
 configuration grants it.
 
+Every episode is also a one-agent team with one task and one inbox. Granting
+`spawn` lets its lead add durable board tasks for child episodes. Dependencies,
+capacity, and child outcomes drive scheduling inside the runtime. The same
+mechanism applies recursively, so one episode can expand into nested teams
+without a separate orchestration service. [examples/team](examples/team)
+demonstrates concurrent work, dependencies, peer messages, and a nested team.
+
 ## The name
 
 A foe is a unit of energy equal to 10^51 ergs, the energy released by one
@@ -151,13 +158,14 @@ model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Ten line budgets bound the Rust source, excluding tests and generated code.
+Eleven line budgets bound the Rust source, excluding tests and generated code.
 
 | surface | line ceiling |
 |---|---:|
 | kernel (`log` and `core`) | 6,250 |
 | execution contracts | 1,575 |
-| tools | 2,350 |
+| coding tools | 1,900 |
+| team coordination | 800 |
 | workflows | 1,050 |
 | compaction | 500 |
 | viewer server | 600 |
@@ -166,8 +174,9 @@ Ten line budgets bound the Rust source, excluding tests and generated code.
 | telemetry | 1,000 |
 | evidence | 500 |
 
-The separate budgets keep growth in one surface from enlarging another.
-`scripts/loc.sh` enforces all ten. Continuous integration also limits the
+Coding tools and team coordination also stay under 2,700 lines together. The
+separate budgets keep growth in one surface from enlarging another.
+`scripts/loc.sh` enforces all eleven. Continuous integration also limits the
 compressed browser bundle to 150 KB and the stripped release binary with that
 bundle embedded to 8 MiB. [docs/design.md](docs/design.md#size) explains what
 each boundary protects.

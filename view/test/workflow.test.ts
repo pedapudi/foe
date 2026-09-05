@@ -42,10 +42,21 @@ function edge(workflow: Workflow, from: string, to: string, label: string | null
   return found;
 }
 
-test("an episode with no workflow key declares no graph", () => {
+test("an episode with no workflow key uses one root-bound agent node", () => {
   assert.equal(declaredWorkflow({}), null);
   assert.equal(declaredWorkflow({ workflow: { nodes: {} } }), null);
-  assert.equal(readWorkflow({ name: "coding" }, []), null);
+  const workflow = readWorkflow({ name: "coding" }, [
+    { seq: 0, time: 1, type: "episode/start", data: {} },
+    { seq: 1, time: 2, type: "inbox/item", data: { source: "task" } },
+    { seq: 2, time: 3, type: "episode/end", data: { outcome: { kind: "completed" } } },
+  ]);
+  assert.equal(workflow.source, "root-agent");
+  assert.deepEqual(workflow.nodes.map((entry) => entry.name), ["root-agent"]);
+  assert.equal(workflow.nodes[0]!.firings.length, 1);
+  assert.deepEqual(workflow.nodes[0]!.firings[0]!.inputs, [1]);
+  assert.equal(workflow.nodes[0]!.terminal, true);
+  assert.equal(workflow.edges[0]!.from, "task");
+  assert.equal(workflow.edges[0]!.traversed, true);
 });
 
 test("every declared node appears, whether or not it fired", () => {

@@ -112,9 +112,8 @@ pub enum EventData {
     TeamMessage { message_id: String, from: String, to: String, content: Vec<ContentBlock> },
     #[serde(rename = "team/delivered")]
     TeamDelivered { message_id: String, to: String },
-    /// Reserved for a shared task board.
     #[serde(rename = "team/task")]
-    TeamTask(serde_json::Value),
+    TeamTask(TeamTask),
 
     // ---- sandbox ---------------------------------------------------------
     #[serde(rename = "sandbox/denied")]
@@ -770,6 +769,41 @@ pub enum SpawnContext {
 pub enum MemberPhase {
     Provisioning,
     Active,
+    Failed,
+}
+
+/// One complete revision of a task on a team's board. The lead log is the
+/// only writer. A queued task has no owner. A running or settled task names
+/// the child episode assigned to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TeamTask {
+    pub task_id: String,
+    pub revision: u64,
+    pub name: String,
+    pub contract: String,
+    pub description: String,
+    pub context: SpawnContext,
+    pub status: TaskStatus,
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<Outcome>,
+    /// The model-issued call that posted the task. A later capacity release
+    /// may start the child, so the call and the launch can be separated.
+    pub call_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    Queued,
+    Running,
+    Completed,
+    Blocked,
+    Exhausted,
     Failed,
 }
 

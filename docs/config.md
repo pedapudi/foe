@@ -281,7 +281,7 @@ Object. Required. Names what the episode may reach.
 | `read` | list of strings | yes, at least one | absolute directories the episode may read |
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
-| `spawn` | list of strings | no | names from `child_contracts` the episode may start; default empty |
+| `spawn` | list of strings | no | names from `child_contracts` that board tasks may assign to child episodes; default empty |
 | `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
 | `task_session` | boolean | no | permits `session start` with `lifetime: "task"`; default false |
 
@@ -349,6 +349,11 @@ included in contract fingerprint.
 The kinds present and the count of each participate in fingerprint. The paths
 do not.
 
+A nonempty `grants.spawn` list authorizes the `spawn` tool to add board tasks
+for the named child contracts. The grant does not add a tool schema. The
+contract must also list `spawn` in `tools` before its model can delegate.
+Each added task uses the selected child contract's grants and budget.
+
 ### `budget`
 
 Object. Required.
@@ -409,10 +414,11 @@ child's `workflow` each make the child able to start descendants, and the
 model node counts at every level of nested workflows.
 
 `max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
-counts the direct children of the episode that declares it, so a child with
-its own children answers to its own value. The number of episodes running at
-once anywhere in the tree is bounded instead by `max_episodes`, which every
-episode in the tree draws from.
+counts the direct children of the episode that declares it. A ready board
+task remains queued while that many children run. The scheduler starts the
+task after a running child returns capacity. A child applies its own value to
+the team it leads. `max_episodes` bounds the number of episodes that can run
+across the complete tree.
 
 ### `done_when`
 
@@ -602,6 +608,12 @@ count includes every `follows` entry, branch successor, and
 `recovery.follows` entry. Construction checks this count before building
 graph indexes. The graph participates in fingerprint as workflow.md "Fingerprint"
 lists.
+
+When this field is absent, planning and viewing project one terminal
+`root-agent` node that follows the invocation task and runs in the root
+episode. Execution uses the direct agent loop. The projection adds no
+configuration value, fingerprint input, log event, budget reservation, or
+child episode.
 
 ### `task`
 

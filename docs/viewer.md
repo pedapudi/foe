@@ -23,14 +23,14 @@ Below the top bar the page has four regions.
   each episode ran and what it did.
 - The **main** region, below the trajectory, holds one tab at a time for
   the selected episode: **conversation**, **raw events**, **diff**,
-  **workflow**, and **statistics**. The digits `1` to `5` select them in
-  that order. The workflow tab is present only for an episode whose
-  contract declares a graph; the other four are always present.
+  **workflow**, **tasks**, and **statistics**. The digits `1` to `6` select
+  them in that order.
 
 The main region holds one episode, the selected one, however many the
 viewer shows. Reading several episodes against each other is what the
-other figures are for: the trajectory draws every episode as a row, the
-statistics tab gives every root a row of its own, and the diff tab sets
+other views are for. The trajectory draws every episode as a row. The tasks
+tab follows coordination through the selected episode's descendant tree.
+The statistics tab gives every root a row of its own. The diff tab sets
 the suffixes of two forked episodes side by side. A second conversation
 pane would take width from those three and answer a narrower question than
 any of them.
@@ -377,8 +377,8 @@ theme, the typeface and the text size.
 
 With the outline showing the run it stands in for the episode rail, the
 trajectory region and the conversation tab together, and those are not
-drawn; the raw events, diff, workflow and statistics tabs are readings of
-something else and stay reachable below it.
+drawn. The raw events, diff, workflow, tasks, and statistics tabs are other
+readings and stay reachable below it.
 
 ### The channels of a row
 
@@ -571,13 +571,16 @@ episode, and `j` and `k` move between rows.
 
 ## The workflow view
 
-The workflow tab draws the graph an episode declares and the run that went
-through it, in one figure. Both halves are drawn, because the argument of a
-declared workflow is that the graph bounds what the model may do while the
-model chooses freely inside it: a figure of the firings alone would show
-the choices and lose the bound.
+The workflow tab draws an episode's effective execution graph and the run
+that went through it. A contract without a `workflow` field appears as one
+terminal `root-agent` node that follows the invocation task. The node runs
+inside the root episode. This projection adds no workflow event or child.
 
-The declaration comes from `episode/start`, whose `contract` is the resolved
+A declared workflow shows its declared graph and its firings in one figure.
+The graph bounds what the model may do. The firings show the choices made
+inside that bound.
+
+The declared graph comes from `episode/start`, whose `contract` is the resolved
 configuration with the task removed and whose `workflow` key holds the node
 declaration that [workflow.md](workflow.md) specifies. The run comes from
 `workflow/node-start`, `workflow/node-end`, `workflow/branch`, and
@@ -642,6 +645,30 @@ The gap between two columns holds the branch labels of the left one and is
 never narrower than the longest of them needs. A pane too narrow for the
 figure shrinks the boxes to their minimum; below that the figure keeps its
 own width and the pane scrolls it sideways.
+
+## The tasks view
+
+The tasks tab folds task boards from the selected episode and its descendant
+episodes. Every episode leads a team. Its first board row is the invocation
+task, derived from `episode/start` and `episode/end`. This singleton board
+requires no `team/task` event.
+
+Each `team/task` event is a complete revision of an added task. The view
+keeps the greatest revision for current state and retains the revision order
+as the task's history. A row shows status, owner, dependencies, advisory
+write scope, and the transitions recorded so far. Clicking an owner selects
+that member's episode.
+
+The selected episode's board is always present. A descendant board appears
+when its lead adds a task. This rule keeps singleton child boards from
+repeating the episode tree while preserving nested coordination. Selecting a
+child shows its own singleton board.
+
+The live server and static export run this same fold over the same events.
+A live board changes when a task revision arrives. A static board reconstructs
+the final state and the full transition history from the completed logs.
+Dependencies are displayed by task identifier. Board order remains creation
+order, which is also the scheduler's assignment order among ready tasks.
 
 ## The statistics view
 

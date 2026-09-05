@@ -25,14 +25,6 @@ prefix-materialization cost that the per-launch copy makes significant,
 or a consumer that needs foe to witness the selection among outcomes. No
 event type or configuration key is reserved.
 
-## Team task board
-
-A team task board is a list of tasks shared by a lead and its members, held
-in the lead's log, from which a member claims a task, reports progress, and
-marks completion. The board would be folded from the lead's log in the same
-way as the roster and the message queue. The task board is not implemented.
-Reserved event type: `team/task`, carrying an unconstrained JSON object.
-
 ## Correlated request and response over the inbox
 
 A correlated exchange lets one episode ask another a question and match the

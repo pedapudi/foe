@@ -91,6 +91,8 @@ export interface Edge {
 }
 
 export interface Workflow {
+  /** Whether the graph is declared by the contract or derived for the root loop. */
+  source: "declared" | "root-agent";
   /** Every declared node, in name order. */
   nodes: WorkflowNode[];
   edges: Edge[];
@@ -131,9 +133,9 @@ function detailOf(node: Record<string, unknown>, kind: NodeKind): string {
  * declaration with no firing, which is what a run that has not started yet
  * looks like.
  */
-export function readWorkflow(contract: Record<string, unknown>, events: LogEvent[]): Workflow | null {
+export function readWorkflow(contract: Record<string, unknown>, events: LogEvent[]): Workflow {
   const declared = declaredWorkflow(contract);
-  if (declared === null) return null;
+  if (declared === null) return rootAgentWorkflow(events);
   const declaredNodes = obj(declared.nodes);
   const names = Object.keys(declaredNodes).sort();
 
@@ -277,11 +279,58 @@ export function readWorkflow(contract: Record<string, unknown>, events: LogEvent
   }
 
   return {
+    source: "declared",
     nodes: names.map((name) => nodes.get(name)!),
     edges,
     recoveries,
     hasTask,
     chosen: [...chosen].sort(),
+  };
+}
+
+/** The effective one-node execution used when a contract declares no graph. */
+function rootAgentWorkflow(events: LogEvent[]): Workflow {
+  const start = events.find((event) => event.type === "episode/start");
+  const task = events.find((event) => event.type === "inbox/item" && str(obj(event.data).source) === "task");
+  const end = events.find((event) => event.type === "episode/end");
+  const outcome = obj(end?.data.outcome);
+  const completed = str(outcome.kind) === "completed";
+  const firing: Firing[] = start
+    ? [
+        {
+          fire: 1,
+          startSeq: start.seq,
+          startTime: start.time,
+          endSeq: end?.seq ?? null,
+          endTime: end?.time ?? null,
+          durationMs: end ? end.time - start.time : null,
+          error: end && !completed ? str(outcome.kind, "failed") : "",
+          childId: null,
+          inputs: task ? [task.seq] : [],
+          label: null,
+        },
+      ]
+    : [];
+  return {
+    source: "root-agent",
+    nodes: [
+      {
+        name: "root-agent",
+        kind: "model",
+        detail: "",
+        verify: "",
+        branches: [],
+        maxFires: 1,
+        terminal: true,
+        firings: firing,
+        direction: end ? (completed ? "good" : "bad") : "",
+        running: Boolean(start && !end),
+      },
+    ],
+    edges: [{ from: TASK_SOURCE, to: "root-agent", label: null, traversed: Boolean(task) }],
+    recoveries: [],
+    hasTask: true,
+    chosen: [],
   };
 }
 

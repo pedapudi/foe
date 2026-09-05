@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Agent team coordination: roster, durable messages, and model-facing tools"
+description = "Agent team task boards, scheduling, messages, and model-facing tools"
 
 [dependencies]
 foe-log = { path = "../log" }

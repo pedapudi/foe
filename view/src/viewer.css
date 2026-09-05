@@ -2159,7 +2159,7 @@ table.events td.type.error {
   margin-top: 3px;
 }
 
-/* ---- figure furniture, shared by the two tabs ---- */
+/* ---- figure furniture shared by derived views ---- */
 
 .fig-head {
   display: flex;
@@ -2396,6 +2396,136 @@ table.events td.type.error {
   stroke-width: 1.1;
   stroke-dasharray: 3 3;
   opacity: 0.7;
+}
+
+/* ---- task boards ---- */
+
+.teams {
+  padding-bottom: 24px;
+}
+
+.task-boards {
+  padding: 0 var(--dt-gap-edge);
+}
+
+.task-board {
+  margin-top: var(--dt-gap-group);
+  margin-left: calc(min(var(--team-depth), 3) * var(--dt-gap-group));
+}
+
+.task-board-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--dt-gap-item);
+  border-bottom: 1px solid var(--v2-rule);
+  padding-bottom: var(--dt-gap-line);
+}
+
+.team-lead,
+.task-owner {
+  border: none;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.team-lead {
+  color: var(--v2-ink);
+  font-weight: 600;
+}
+
+.team-lead.selected {
+  color: var(--v2-accent);
+}
+
+.team-id,
+.task-id,
+.task-count,
+.task-fields,
+.task-status {
+  font-family: var(--v2-mono);
+  font-size: calc(10.5px * var(--dt-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.team-id,
+.task-id {
+  margin-left: var(--dt-gap-item);
+  color: var(--v2-ink-faint);
+  font-weight: 400;
+}
+
+.task-count {
+  margin-left: auto;
+  color: var(--v2-ink-faint);
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: var(--dt-gap-edge);
+  padding: var(--dt-gap-item) 0;
+  border-bottom: 1px solid var(--v2-rule-soft);
+}
+
+.task-status {
+  padding-top: 2px;
+  color: var(--v2-ink-faint);
+}
+
+.task-status.good {
+  color: var(--v2-good);
+}
+
+.task-status.caution {
+  color: var(--v2-caution);
+}
+
+.task-status.bad {
+  color: var(--v2-bad);
+}
+
+.task-name {
+  color: var(--v2-ink);
+}
+
+.task-description {
+  max-width: 72ch;
+  margin-top: 2px;
+  color: var(--v2-ink-soft);
+}
+
+.task-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px var(--dt-gap-item);
+  margin: var(--dt-gap-line) 0 0;
+}
+
+.task-fields dt {
+  color: var(--v2-ink-faint);
+}
+
+.task-fields dd {
+  margin: 0;
+  color: var(--v2-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.task-owner {
+  color: var(--v2-ink-soft);
+  font: inherit;
+}
+
+.task-owner:hover {
+  color: var(--v2-accent);
+}
+
+@media (max-width: 720px) {
+  .task-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }
 
 /* ---- statistics tab ---- */

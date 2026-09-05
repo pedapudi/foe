@@ -19,15 +19,8 @@ Each name resolves against three sources, checked in this order.
    six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
    `compose_tools` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
-   `block`, by which the model reports a blocking condition; `spawn`, which
-   starts a child episode, and `wait`, which blocks until every child this
-   episode started has ended or, with `until`, until an arrival matches one
-   of its conditions — a child reaching an outcome, a session exiting, or
-   an inbox arrival by source — bounded by
-   `timeout_seconds`; `steer`, which sends a message to a running
-   child, and `notify`, which sends one to the episode that started this
-   one; and `send` and `team`, which address a teammate through the lead
-   and list the team's roster. [design.md](design.md) and
+   `block`, by which the model reports a blocking condition; and the six
+   team tools specified below. [design.md](design.md) and
    [log-format.md](log-format.md) specify `block`, spawning, waiting, and
    teams. One further tool, `return`, is synthesized rather than named in
    `tools`: a `done_when.returns` schema adds it to the registry, and
@@ -189,6 +182,37 @@ invocation uses the captured executable. Replacing, modifying, or deleting the
 source cannot change the run. The configured source path remains the command
 reported to the model and in errors. The invocation name becomes argument zero
 for multicall dispatch and participates in the contract fingerprint.
+
+## Built-in team tools
+
+Every episode has an effective team containing itself and its root task. A
+contract exposes only the team tools named in its `tools` list. The absence
+of those schemas keeps the one-agent request header unchanged.
+
+| tool | effect | behavior |
+|---|---|---|
+| `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `scope` lists advisory write paths. |
+| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, or inbox source. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
+| `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
+| `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. |
+| `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
+
+Each returned member includes its roster `phase`. A member assigned through
+the board also includes `task_status`, derived from the task whose owner is
+that member. The rendered summary uses task status when it is available.
+
+`spawn` returns the complete current task revision. A ready task normally
+returns with `status: running` and an owner episode. A concurrency-bound task
+returns with `status: queued`; the runtime starts it when another member
+settles. Other exhausted structural or spend limits settle the task with
+`status: exhausted`. Invalid dependencies fail the tool call.
+
+The root task uses `task_root`. Added tasks use `task_01`, `task_02`, and
+later identifiers in creation order. A dependency on `task_root` is refused
+because the root episode settles after its delegated tasks. Every other
+dependency must already exist. These two rules keep dependency scheduling
+finite and acyclic without a model-driven claim protocol.
 
 ## Built-in coding tools
 

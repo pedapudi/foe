@@ -720,6 +720,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     // A parent may have input queued already. Construction finishes before
     // the task takes seq 1, and the reader starts only after that append.
     loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    // A cleanly resumable log can end between recording a queued task and
+    // assigning it. Scheduling from the folded board continues that work.
+    team.schedule(spawner.clone());
     if host {
         protocol.spawn_reader(tokio::io::stdin());
     }

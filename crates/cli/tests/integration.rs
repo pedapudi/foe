@@ -704,6 +704,196 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
     assert_eq!(released["data"]["spent"]["episodes"], 2, "the reconstructed subtree count includes the model node");
 }
 
+/// docs/design.md "Agent teams": an ordinary episode is a one-agent team
+/// whose lifecycle and task inbox supply its state without coordination events.
+#[test]
+fn a_single_agent_team_adds_no_coordination_overhead_to_the_log() {
+    let dir = scratch("single-agent-team");
+    let config = config(&dir, |_| {});
+    let (events, code) = host_run(&dir, &config, vec![vec![text("complete"), done("end")]], |_, _| unreachable!());
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(events.iter().filter(|event| event["type"] == "inbox/item").count(), 1);
+    assert!(!events.iter().any(|event| {
+        matches!(
+            event["type"].as_str(),
+            Some(
+                "team/task"
+                    | "team/roster"
+                    | "team/message"
+                    | "team/delivered"
+                    | "spawn/start"
+                    | "spawn/end"
+                    | "budget/reserve"
+                    | "budget/release"
+            )
+        )
+    }));
+}
+
+/// docs/design.md "Agent teams": board tasks are durable before launch,
+/// concurrency queues excess work, and returned capacity starts the next
+/// ready task without another model request.
+#[test]
+fn a_team_schedules_queued_tasks_without_model_polling() {
+    let dir = scratch("team-scheduler");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 10, "max_depth": 1, "max_episodes": 4, "max_concurrent": 2 });
+        c["child_contracts"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Complete the assigned task." }, "tools": ["block"],
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_first", "spawn", r#"{"contract":"worker","task":"first","name":"first"}"#);
+    delegate.extend(call("tc_second", "spawn", r#"{"contract":"worker","task":"second","name":"second"}"#));
+    delegate.extend(call(
+        "tc_join",
+        "spawn",
+        r#"{"contract":"worker","task":"join","name":"join","blocked_by":["task_01","task_02"]}"#,
+    ));
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let responses = vec![
+        delegate,
+        vec![text("first complete"), done("end")],
+        vec![text("second complete"), done("end")],
+        vec![text("join complete"), done("end")],
+        vec![text("team complete"), done("end")],
+    ];
+    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+
+    let tasks: Vec<&Value> = events.iter().filter(|event| event["type"] == "team/task").collect();
+    let states = |id: &str| {
+        tasks
+            .iter()
+            .filter(|event| event["data"]["task_id"] == id)
+            .map(|event| event["data"]["status"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(states("task_01"), ["queued", "running", "completed"]);
+    assert_eq!(states("task_02"), ["queued", "running", "completed"]);
+    assert_eq!(states("task_03"), ["queued", "running", "completed"]);
+    let dependency_owners: Vec<&str> = tasks
+        .iter()
+        .filter(|event| {
+            matches!(event["data"]["task_id"].as_str(), Some("task_01" | "task_02"))
+                && event["data"]["status"] == "running"
+        })
+        .map(|event| event["data"]["owner"].as_str().unwrap())
+        .collect();
+    let last_dependency_end = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| {
+            event["type"] == "spawn/end"
+                && dependency_owners.contains(&event["data"]["child_id"].as_str().unwrap_or_default())
+        })
+        .map(|(index, _)| index)
+        .max()
+        .unwrap();
+    let join_running = events
+        .iter()
+        .position(|event| {
+            event["type"] == "team/task"
+                && event["data"]["task_id"] == "task_03"
+                && event["data"]["status"] == "running"
+        })
+        .unwrap();
+    assert!(last_dependency_end < join_running, "the dependent task starts after both prerequisites settle");
+    assert_eq!(
+        events.iter().filter(|event| event["type"] == "model/request").count(),
+        2,
+        "the root made no polling request"
+    );
+}
+
+/// docs/design.md "Agent teams": a dependency that reaches a terminal
+/// status other than completed blocks its dependent task without launch.
+#[test]
+fn a_team_blocks_work_whose_dependency_did_not_complete() {
+    let dir = scratch("team-dependency-block");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 8, "max_depth": 1, "max_episodes": 3 });
+        c["child_contracts"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Complete the assigned task." }, "tools": ["block"],
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_blocker", "spawn", r#"{"contract":"worker","task":"blocked work"}"#);
+    delegate.extend(call(
+        "tc_dependent",
+        "spawn",
+        r#"{"contract":"worker","task":"dependent work","blocked_by":["task_01"]}"#,
+    ));
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let mut blocked =
+        call("tc_block", "block", r#"{"code":"goal-unreachable","message":"the prerequisite cannot complete"}"#);
+    blocked.push(done("tool"));
+    let responses = vec![delegate, blocked, vec![text("dependency handled"), done("end")]];
+    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+
+    let states = |id: &str| {
+        events
+            .iter()
+            .filter(|event| event["type"] == "team/task" && event["data"]["task_id"] == id)
+            .map(|event| event["data"]["status"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(states("task_01"), ["queued", "running", "blocked"]);
+    assert_eq!(states("task_02"), ["queued", "blocked"]);
+    assert_eq!(events.iter().filter(|event| event["type"] == "spawn/start").count(), 1);
+    let dependent = events
+        .iter()
+        .rev()
+        .find(|event| event["type"] == "team/task" && event["data"]["task_id"] == "task_02")
+        .unwrap();
+    assert_eq!(dependent["data"]["outcome"]["kind"], "blocked");
+    assert_eq!(dependent["data"]["outcome"]["code"], "child-blocked");
+}
+
+/// docs/design.md "Termination": parent settlement records a terminal board
+/// revision before `episode/end`, even when the lead omits `wait`.
+#[test]
+fn parent_settlement_closes_a_running_board_task_before_episode_end() {
+    let dir = scratch("team-parent-settlement");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 4, "max_depth": 1, "max_episodes": 2 });
+        c["child_contracts"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Complete the assigned task." }, "tools": ["block"],
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_spawn", "spawn", r#"{"contract":"worker","task":"work"}"#);
+    delegate.push(done("end"));
+    let responses = vec![delegate, vec![text("child complete"), done("end")]];
+    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    assert_eq!(code, 0, "{:?}", events.last());
+    let states = events
+        .iter()
+        .filter(|event| event["type"] == "team/task")
+        .map(|event| event["data"]["status"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(matches!(states.as_slice(), ["queued", "running", "completed" | "failed"]), "{states:?}");
+    let terminal = events
+        .iter()
+        .position(|event| {
+            event["type"] == "team/task" && matches!(event["data"]["status"].as_str(), Some("completed" | "failed"))
+        })
+        .unwrap();
+    let spawn_end = events.iter().position(|event| event["type"] == "spawn/end").unwrap();
+    let release = events.iter().position(|event| event["type"] == "budget/release").unwrap();
+    let end = events.iter().position(|event| event["type"] == "episode/end").unwrap();
+    assert!(terminal < spawn_end && spawn_end < release && release < end, "child settlement order is complete");
+}
+
 /// docs/protocol.md "Children": a child replaces inherited executable
 /// descriptors with close-on-exec copies before it starts any tool.
 #[test]
@@ -1517,6 +1707,7 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
         assert_eq!(first["contract"]["name"], json!(serde_json::from_str::<Value>(&text).unwrap()["name"]));
         assert!(first["contract"].get("task").is_none(), "{name}: the contract omits the task");
         if name == "workflow" {
+            assert_eq!(first["execution"]["kind"], "workflow");
             assert_eq!(first["workflow"]["terminal"], json!(["apply"]), "plan reports the workflow's terminal node");
             assert_eq!(first["workflow"]["cycles"], json!([]));
             assert_eq!(first["workflow"]["possible_firings"], json!(4), "survey once, propose once, apply twice");
@@ -1528,6 +1719,8 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
                     .is_some_and(|paths| paths.iter().any(|path| path == "contract.workflow.nodes.propose.model"))
             }));
         } else {
+            assert_eq!(first["execution"]["kind"], "root-agent");
+            assert_eq!(first["execution"]["nodes"], 1);
             assert_eq!(first["workflow"], Value::Null);
         }
     }
@@ -1545,8 +1738,8 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("recovery-exhausted", "sha256:ff1f692d7d998087fb8f822d1910cfd05ab67caa6d145690ce07f72a881bca93"),
     ("sandbox", "sha256:932fe9b17c07577ccb41b72a52badca207846c308002679365e7a5265140392c"),
     ("self-extension", "sha256:abced697a9b437a93f40c17e26e837d81759a4968a6f446fadf6754a8446ee87"),
-    ("subagents", "sha256:4a825e30490e8b5c64796ace7cf58ea06ec785b90abc06c8d6bf2b1c78111d20"),
-    ("team", "sha256:ae1978eb29d9db78a771479db3526b0dff9a2586cac6f1c034088aacf1075446"),
+    ("subagents", "sha256:6f41f87735ad15dd8323b1e54d7902a4ca092e840a1423a7c6a0de03f789c5d7"),
+    ("team", "sha256:1bb14d3af0d3ae018708a8b27ceb7de431a9320f3f8d90719f8d00fe05930873"),
     ("verification-unsatisfiable", "sha256:c2207889e5ead88e8a5150136a8efc64d040e066a3401de66636fe9b8e9d3294"),
     ("workflow", "sha256:66b30392a9f8bac98b2592865d3b8eba0c3afa9d6f26d16c8989a58ac79fa1b0"),
     ("wrap-a-binary", "sha256:9a2672e91bb2fda28724ca1bb56adb70f04f8b1ced92b551a3e0bd856ae7a7b3"),

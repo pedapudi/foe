@@ -548,7 +548,10 @@ These events appear only in a lead's log.
 { "member_id": "ep_a1", "name": "reviewer", "description": "…", "phase": "active" }
 ```
 
-`phase` is one of `provisioning`, `active`, `failed`.
+`phase` is `provisioning`, `active`, or `failed`. It records roster admission
+and abnormal process termination. The member's board task records ordinary
+settlement as `completed`, `blocked`, or `exhausted` without another roster
+event.
 
 `team/message` — implemented. A message queued for delivery.
 
@@ -567,7 +570,45 @@ Messages with a `team/message` and no matching `team/delivered` are
 redelivered when the target restarts. The target deduplicates by
 `message_id`.
 
-`team/task` — reserved, for a shared task board.
+`team/task` — implemented. One complete revision of a task added through
+`spawn`.
+
+```json
+{
+  "task_id": "task_03",
+  "revision": 1,
+  "name": "integration",
+  "contract": "integration",
+  "description": "Run the complete test suite.",
+  "context": "fresh",
+  "status": "running",
+  "owner": "ep_b2",
+  "blocked_by": ["task_01", "task_02"],
+  "scope": ["tests"],
+  "call_id": "tc_07"
+}
+```
+
+`status` is `queued`, `running`, `completed`, `blocked`, `exhausted`, or
+`failed`. A queued task has no owner. A running or settled task names its
+child episode in `owner`. A terminal revision carries that episode's
+`outcome`. Each revision increases `revision` by one and leaves the task
+identifier, name, contract, description, context, dependencies, scope, and
+originating call unchanged.
+
+The first task on every board is derived from `episode/start`. It has
+identifier `task_root`, revision zero, and the lead episode as its owner.
+An `episode/end` projects its terminal revision. Neither projection writes a
+`team/task` event. Added task identifiers start at `task_01` and follow
+creation order.
+
+Only the lead process writes `team/task`. A task may depend only on tasks
+already present in the same lead log. The runtime assigns a ready task by
+recording a child launch and then a running revision under the lead's team
+operation lock. Observing a child outcome writes the terminal task revision.
+The reservation returns after that revision and after `spawn/end` and
+`budget/release` close the child's obligations.
+A clean resume schedules a task whose latest durable revision is queued.
 
 ### Sandbox
 

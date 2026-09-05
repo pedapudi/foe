@@ -261,8 +261,9 @@ log alone.
 The cost model behind the loop is that model turns are the expensive
 resource and wall-clock time the cheap one. `wait` is the sanctioned
 trade between them: it spends wall-clock time so that no model turn is
-spent polling. Bare, it blocks until every child has ended. With `until`,
-it blocks until an arrival matches one of the named conditions, each in
+spent polling. Bare, it blocks until every added board task has settled and
+no child reservation remains. With `until`, it blocks until an arrival
+matches one of the named conditions, each in
 outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
 named outcome kind, a session (by id, or `any`) exiting, or an inbox
 arrival by source; `timeout_seconds` returns the call after that long
@@ -274,7 +275,7 @@ elapsed time, and `wait` is itself a tool call, so all blocking happens
 where blocking already happens.
 
 The same pieces form the verified-future pattern foe implements: `spawn`
-returns the handle, `done_when.returns` is the future's type,
+returns the durable task state, `done_when.returns` is the future's type,
 `done_when.verify` is the resolution predicate, and `wait` is the join.
 The predicate self-repairs: findings return to the model for another
 attempt, and retries spent reject the future into a typed `Blocked`. A
@@ -545,12 +546,22 @@ prefix.
 [tools.md](tools.md#the-turn-budget) specifies the division and the
 notice.
 
-## Subagents and teams
+## Agent teams
 
-An episode with a `spawn` grant may start child episodes. A child is a
-separate process with its own log, its own grants, and a budget reserved from
-its parent's remaining budget. The child's log header names the parent.
-The child may select a model or inherit the nearest ancestor's selection.
+Every episode leads a team. The team initially contains the lead episode and
+the invocation task assigned to it. The lifecycle events already identify
+that member, task, inbox, and outcome. The runtime writes no team event and
+starts no child for this one-agent case.
+
+The `spawn` capability expands the team. One call adds a durable task to the
+lead's board. The runtime starts a child episode for that task when its
+dependencies have completed and the episode has capacity. The child receives
+the task as its first inbox item. Each child is a member of its parent's team
+and the lead of its own team, which permits the same mechanism at every depth.
+
+A child is a separate process with its own log, grants, and reserved budget.
+The child's log header names its parent and team lead. The child may select a
+model or inherit the nearest ancestor's selection.
 
 The parent writes the declared child contract unchanged. It writes the
 effective runtime allowance and the expected declared-contract fingerprint in
@@ -573,10 +584,9 @@ Source-path replacement, in-place modification, and deletion therefore cannot
 change child fingerprint or execution.
 
 Child creation separates identifier allocation from launch. Allocating an
-identifier reserves no budget and starts no process. A parent appends the
-event that names the child before launch can reserve budget or create the
-process. A workflow therefore records `workflow/node-start` before its
-spawner records `budget/reserve` and `spawn/start`.
+identifier reserves no budget and starts no process. A workflow records
+`workflow/node-start` before its spawner records `budget/reserve` and
+`spawn/start`.
 
 ```
    root   budget: 40 calls, 320k input, 80k output
@@ -600,43 +610,63 @@ its remaining input allowance. Concurrent descendants can each cross their
 reserved allowances. The runtime clamps a supported provider's output cap to
 the remaining output allowance.
 
-A spawn that would pass a cap fails as a tool call with a result naming the
-limit, and no child starts; the model reads that result like any other.
-A parent observes a child as settled only after it has appended `spawn/end`
-and `budget/release` and returned the child's reservation to the pool, so
-anything waiting on the child sees the account of it already closed.
+A task remains queued while `max_concurrent` prevents a launch. The scheduler
+starts it after a running child returns capacity. Another exhausted limit
+settles the task as exhausted with the limit recorded in its outcome.
+A clean resume also schedules tasks whose queued revision was durable before
+the prior process stopped.
+The child outcome writes the terminal task revision before its reservation
+returns. A parent observes a completed wait only after `spawn/end` and
+`budget/release` have closed the child account.
+
+The board contains the root task followed by added tasks in creation order.
+An added task records its identifier, revision, child contract, description,
+status, owner, dependencies, and advisory write scope. Each revision is a
+complete snapshot. Only the lead process appends revisions. This single
+writer assigns each ready task to one new child, which removes agent-side
+claim races and makes assignment deterministic.
+
+A dependency names an earlier task on the same board. This ordering makes a
+cycle unrepresentable. A dependent task starts after every dependency
+completes. A dependency with another terminal status settles the dependent
+task as blocked. Advisory write scopes expose likely overlap to agents and
+the viewer. Filesystem grants remain the enforced authority.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
-the same way. A steer arrives in the child's next request; nothing
-interrupts a request in flight. A parent that has delegated work calls
-`wait` to hold until its children have ended, so that their reports are in
-the request that follows.
+the same way. A steer arrives in the child's next request. A request in
+flight continues uninterrupted. A parent calls `wait` after delegation. The
+call consumes no model request while tasks are queued or running, and returns
+after every task has settled.
 
-A team is a set of episodes that share a lead. The lead's log holds the
-roster and the queue of messages between members.
+The lead's log also holds the roster and the queue of messages between
+members.
 
 ```
    lead log                                   member log
    ────────                                   ──────────
+   team/task      {task, revision, status, owner}
    team/roster    {member, name, phase}
    team/message   {id, from, to, content}  ──►  inbox/item {source: peer, message_id}
    team/delivered {id, to}                 ◄──  (written after the member's append)
 ```
 
-Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on an
-episode's own children. `notify`, `send`, and `team` act on the team the
-episode belongs to: in an episode with a parent they are host tool calls that the
-parent answers, as the [protocol](protocol.md#children) describes; in a
-root, `send` and `team` act on its own roster, and `notify` fails because
-no parent exists.
+Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on the team
+an episode leads. `notify` and `send` act on the team the episode belongs to.
+The `team` tool lists the parent-led team by default and accepts `scope: led`
+to list the team that the current episode leads. A root's parent-led and led
+team are the same team. The [protocol](protocol.md#children) carries member
+calls to the lead process.
 
 A message is durable in the lead's log before delivery is attempted. The
 member's receipt is recorded after the member has written the message to its
 own log. Messages queued and never delivered are redelivered when a member
 restarts, and the member drops duplicates by `message_id`. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
-state exists.
+state exists. A newly assigned member learns about its board task through the
+task inbox item that starts its episode. Other coordination uses the board
+projection and durable peer messages, so no idle worker or broadcast poll is
+required.
 
 ## Workspace notes
 

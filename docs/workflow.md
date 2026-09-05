@@ -84,6 +84,17 @@ episode. The configuration's permissions and budget become the workflow's
 ceiling: every node draws from them and none exceeds them. "Model nodes"
 below states the rule for each field.
 
+A contract without `workflow` has one effective execution node named
+`root-agent`. That node follows the invocation task, runs the contract's
+agent loop in the root episode, and is terminal. This normalized form is a
+plan and viewer projection. The direct loop remains its runtime
+implementation and writes no workflow event. The absent configuration field
+also remains absent from contract identity.
+
+The root-bound node is specific to the one-node projection. An author-written
+model node inside a declared workflow runs in a child episode. That isolation
+keeps the node's conversation limited to its declared predecessors.
+
 The invocation task, the configuration's `task` string, enters the graph
 through one built-in source named `task`. A node that lists `task` in its
 `follows` receives the task text as a section labeled `task`, placed first

@@ -3,31 +3,31 @@
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
-    "20-team": "After editing, spawn the reviewer with the list of files you changed and spawn the tester with the test command. Use team to see who is on the roster. Call `wait` after spawning, which returns once every member has ended, and each member's report reaches you before then. Finish when wait returns."
+    "20-team": "After editing, add review and test tasks, then add an integration task blocked by both. Give each task its file scope. Call `wait`, which returns after the board settles. Finish from the reports."
   },
   "tools": ["read", "grep", "edit", "spawn", "wait", "team"],
   "grants": {
     "read": ["/home/user/project"],
     "write": ["/home/user/project/src"],
     "execute": ["/usr/bin/python3"],
-    "spawn": ["reviewer", "tester"]
+    "spawn": ["reviewer", "tester", "integration"]
   },
   "budget": {
     "model_calls": 60,
     "input_tokens": 480000,
     "output_tokens": 120000,
     "seconds": 2400,
-    "max_depth": 1,
-    "max_episodes": 3,
+    "max_depth": 2,
+    "max_episodes": 5,
     "max_concurrent": 2
   },
   "child_contracts": {
     "reviewer": {
       "name": "reviewer",
       "instructions": {
-        "role": "You review a change for correctness. Read the files named in the task. Use send to ask the tester which checks cover a file. Use notify to report your findings to the lead as a numbered list, or to report that there are none."
+        "role": "You review a change for correctness. Read the named files. Use send to ask the tester which checks cover the change. Use wait for the peer answer. Use notify to report numbered findings to the lead."
       },
-      "tools": ["read", "grep", "send", "notify"],
+      "tools": ["read", "grep", "send", "wait", "notify"],
       "grants": {
         "read": ["/home/user/project"]
       },
@@ -36,14 +36,45 @@
     "tester": {
       "name": "tester",
       "instructions": {
-        "role": "You run the test command named in the task and report the result. Answer a question from the reviewer with send. Use notify to report pass or fail to the lead, with the failing check names when any fail."
+        "role": "You run the named test command. Use wait for a peer question, answer with send, and use notify to report the result to the lead."
       },
-      "tools": ["read", "grep", "bash", "send", "notify"],
+      "tools": ["read", "grep", "bash", "send", "wait", "notify"],
       "grants": {
         "read": ["/home/user/project"],
         "execute": ["/usr/bin/python3"]
       },
       "budget": { "model_calls": 12, "input_tokens": 96000, "output_tokens": 24000 }
+    },
+    "integration": {
+      "name": "integration",
+      "instructions": {
+        "role": "You integrate completed review and test work. Inspect the parent task board. Delegate the usage audit, wait for it, run the complete check, and notify your parent of the result."
+      },
+      "tools": ["read", "bash", "spawn", "wait", "team", "notify"],
+      "grants": {
+        "read": ["/home/user/project"],
+        "execute": ["/usr/bin/python3"],
+        "spawn": ["usage-auditor"]
+      },
+      "budget": {
+        "model_calls": 20,
+        "input_tokens": 160000,
+        "output_tokens": 40000,
+        "max_depth": 1,
+        "max_episodes": 2,
+        "max_concurrent": 1
+      },
+      "child_contracts": {
+        "usage-auditor": {
+          "name": "usage-auditor",
+          "instructions": {
+            "role": "You compare command usage text with its automated check and notify your parent of the result."
+          },
+          "tools": ["read", "grep", "notify"],
+          "grants": { "read": ["/home/user/project"] },
+          "budget": { "model_calls": 6, "input_tokens": 48000, "output_tokens": 12000, "max_depth": 0 }
+        }
+      }
     }
   },
   "task": "Add a `--dry-run` flag to src/cli.py that prints the planned actions without performing them. Run `python3 -B tests/check.py` to confirm nothing else changed."
