@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 pub struct Pool {
     limits: Budget,
     started: Instant,
+    restored: bool,
     /// Model requests this episode made, retries included.
     requests: u64,
     /// Provider-reported input tokens this episode consumed.
@@ -32,11 +33,24 @@ impl Pool {
         Self {
             limits,
             started: Instant::now(),
+            restored: false,
             requests: 0,
             input_tokens: 0,
             output_tokens: 0,
             active: BTreeMap::new(),
             children_spent: BudgetAmount::default(),
+        }
+    }
+
+    /// Restores recorded consumption once, before any child admission. Downtime consumes wall-clock allowance.
+    pub fn restore(&mut self, events: &[foe_log::Event], now_millis: i64) {
+        if !std::mem::replace(&mut self.restored, true) {
+            events.iter().for_each(|e| self.apply(&e.data));
+            if let Some(start) = events.first() {
+                let elapsed = now_millis.saturating_sub(start.time).max(0) as u64 / 1000;
+                self.limits.seconds = self.limits.seconds.map(|s| s.saturating_sub(elapsed));
+                self.started = Instant::now();
+            }
         }
     }
 

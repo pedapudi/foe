@@ -152,7 +152,7 @@ pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
 
 /// Everything one episode needs. `start` is written when the log is empty;
 /// a seeded log keeps its own. `pool` is shared with the spawner; `run`
-/// folds the existing events into it before the first step. `context`
+/// restores its recorded consumption once. Call `Pool::restore` before admitting children. `context`
 /// compacts the conversation when it outgrows the window; `None` never
 /// compacts.
 pub struct Params {
@@ -387,7 +387,7 @@ impl Episode {
         initialize(&p.log, &p.start)?;
         let events = p.log.events();
         let state = fold::fold(&events)?;
-        events.iter().for_each(|e| lock(&p.pool).apply(&e.data));
+        lock(&p.pool).restore(&events, foe_log::append::now_millis());
         Ok(Self {
             inbox: Inbox::from_state(&state),
             header: state.header_seq.zip(state.header),

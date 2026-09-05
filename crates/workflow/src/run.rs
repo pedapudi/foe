@@ -66,6 +66,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let text = p.start.task.clone();
     let runtime_build = p.start.runtime.build.clone();
     initialize(&log, &p.start)?;
+    log.with_events(|events| lock(&p.pool).restore(events, foe_log::append::now_millis()));
     // The task item is at seq 1 in every log (docs/log-format.md), so a
     // firing that follows `task` names that event among its inputs.
     let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };

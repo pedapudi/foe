@@ -735,6 +735,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     if workflow.is_some() {
         log.with_events(foe_workflow::validate_resume).map_err(|e| e.to_string())?;
     }
+    log.with_events(|events| loop_::lock(&pool).restore(events, foe_log::append::now_millis()));
     let _ = team.schedule(spawner.clone());
     if host {
         protocol.spawn_reader(tokio::io::stdin());
