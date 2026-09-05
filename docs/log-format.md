@@ -353,8 +353,20 @@ prompt. The field is optional and absent when a tool states none, which is
 the case for host tools and for every log written before tools stated it.
 
 `spill` names a file under `spill/` when the canonical value was too large to
-inline; the inlined `value` is then a locator object, and `rendered` states
-the file and carries the rendering. `synthetic` is true
+inline. The locator in `value` carries `spill`, `bytes`, `is_error`, and
+`digest`. The digest is SHA-256 of the stored JSON bytes, formatted as
+`sha256:` followed by lowercase hexadecimal. The filename is
+`result-<hexadecimal digest>.json`. `rendered` states the file and carries
+the rendering. File creation synchronizes the complete bytes before the
+result is recorded. An existing file must have identical content.
+
+Readers accept locators without `digest` for compatibility. They require a
+single-component filename, matching locator fields, a regular file, the
+recorded byte length, and valid JSON. When present, the digest must match.
+Locators without a digest cannot detect substitutions that preserve length
+and valid JSON.
+
+`synthetic` is true
 when the result was written by the seeding step or by request failure
 recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and
@@ -895,16 +907,19 @@ Given a source log and a boundary `seq` N:
    settlement and did not receive it. Charging the reservation is the
    conservative reading, so a synthetic release never understates a
    subtree.
-5. Copy each rendering archive whose archive event and matching tool result
-   were copied. Verify the source before copying and the destination after
-   copying. Do not copy an archive referenced only at or after N.
+5. Copy each canonical spill referenced by a copied tool result and each
+   rendering archive whose archive event and matching tool result were
+   copied. Validate the source and verify identical destination bytes.
+   Do not copy files referenced only at or after N.
 6. Append `seed/end`.
 7. Continue with live events.
 
-The destination contains its own archive files. Retrieval from a seeded log
-does not open the source episode. A missing archive, an unexpected path, a
-length mismatch, or a digest mismatch makes seeding fail with the archive
-event and violated rule named.
+The destination contains its own canonical spills and rendering archives.
+Reading retained evidence does not open the source episode. A missing file,
+an invalid locator, malformed canonical JSON, or a content mismatch makes
+seeding fail before `seed/end`. The error names the event, file, and rule.
+A destination with `fork_origin` and no `seed/end` records incomplete seeding.
+Opening or resuming that destination is refused before execution.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own

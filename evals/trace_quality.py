@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -333,6 +334,52 @@ def _render_continuation(summary: dict[str, Any]) -> str:
     )
 
 
+def _check_artifact(evaluation: Evaluation, log: EpisodeLog, index: int, data: dict[str, Any], rendering: bool = False) -> None:
+    """docs/log-format.md: retained evidence must match the recorded locator."""
+    if not rendering and data.get("spill") is None:
+        return
+    locator = data if rendering else data.get("value")
+    reason = None
+    try:
+        if not isinstance(locator, dict):
+            raise ValueError("locator must be an object")
+        name = locator.get("file") if rendering else data.get("spill")
+        count, digest = locator.get("bytes"), locator.get("digest")
+        if not isinstance(name, str) or not name:
+            raise ValueError("file must be a non-empty string")
+        if rendering:
+            if not isinstance(digest, str) or len(digest) != 71 or not digest.startswith("sha256:"):
+                raise ValueError("rendering digest must be SHA-256")
+            if name != f"renderings/{digest[7:]}.txt" or any(c not in "0123456789abcdef" for c in digest[7:]):
+                raise ValueError("rendering file must be derived from its digest")
+        elif (Path(name).name != name or name in (".", "..") or locator.get("spill") != name
+              or type(locator.get("is_error")) is not bool or locator["is_error"] != data.get("is_error")):
+            raise ValueError("canonical locator requires a single-component file and matching is_error")
+        if type(count) is not int or count < 0:
+            raise ValueError("bytes must be an unsigned integer")
+        path = log.path.parent / "spill" / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("archive must be a regular file")
+        content = path.read_bytes()
+        if len(content) != count:
+            raise ValueError("archive byte length differs")
+        if "digest" in locator and digest != "sha256:" + hashlib.sha256(content).hexdigest():
+            raise ValueError("archive digest differs")
+        if rendering:
+            content.decode("utf-8")
+        else:
+            def reject_constant(value: str) -> None:
+                raise ValueError(f"JSON constant {value} is invalid")
+            json.loads(content, parse_constant=reject_constant)
+    except (OSError, ValueError, UnicodeError) as error:
+        reason = str(error)
+    evaluation.check(
+        "reconstructable_evidence", reason is None,
+        f"{'tool/rendering-archive' if rendering else 'tool/result spill'}: {reason or 'content matches locator'}",
+        log, index,
+    )
+
+
 def _check_team_messages(evaluation: Evaluation, log: EpisodeLog) -> None:
     """Check durable message identity, receipts, and inbox deduplication."""
     dimension = "reconstructable_evidence"
@@ -537,7 +584,17 @@ def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
                 log,
                 index,
             )
+        elif kind == "tool/rendering-archive":
+            _check_artifact(evaluation, log, index, data, rendering=True)
+            following = log.events[index + 1] if index + 1 < len(log.events) else {}
+            result = _event_data(following)
+            evaluation.check(
+                dimension, _event_type(following) == "tool/result"
+                and result.get("step") == data.get("step") and result.get("call_id") == data.get("call_id"),
+                "tool/rendering-archive must immediately precede its matching tool/result", log, index,
+            )
         elif kind == "tool/result":
+            _check_artifact(evaluation, log, index, data)
             call_id = data.get("call_id")
             if isinstance(call_id, str):
                 results.setdefault(call_id, []).append((index, data))

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -247,6 +248,55 @@ class TraceQualityTest(unittest.TestCase):
         events.append(event(len(events), "episode/end", ending["data"]))
         report = evaluate_events(events)
         self.assertTrue(any("peer inbox message_id" in v["message"] for v in report["violations"]))
+
+    def test_canonical_spill_conformance_checks(self) -> None:
+        """docs/log-format.md tool/result: canonical bytes remain reconstructable."""
+        for fault in (None, "missing", "digest", "length", "json", "path", "error"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                content = b'{"content":"two"}' if fault != "json" else b'invalid'
+                name = "result.json" if fault != "path" else "../result.json"
+                locator = {"spill": name, "bytes": len(content), "is_error": False,
+                           "digest": "sha256:" + hashlib.sha256(content).hexdigest()}
+                if fault == "digest":
+                    locator["digest"] = "sha256:" + "0" * 64
+                if fault == "length":
+                    locator["bytes"] = len(content) + 1
+                if fault == "error":
+                    locator["is_error"] = True
+                (root / "spill").mkdir()
+                if fault != "missing":
+                    (root / "spill" / name).write_bytes(content)
+                events = valid_inner_call_events()
+                events[6]["data"].update(spill=name, value=locator)
+                path = root / "episode.jsonl"
+                path.write_text("".join(json.dumps(e) + "\n" for e in events))
+                report = evaluate([path])
+                self.assertEqual(report["valid"], fault is None, report["violations"])
+                if fault is not None:
+                    self.assertTrue(any("tool/result spill" in v["message"] for v in report["violations"]))
+
+    def test_rendering_archive_conformance_checks(self) -> None:
+        """docs/log-format.md tool/rendering-archive: bytes and result association agree."""
+        for fault in (None, "digest", "pair"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                content = b"complete rendering"
+                digest = hashlib.sha256(content).hexdigest()
+                name = f"renderings/{digest}.txt"
+                path = root / "spill" / name
+                path.parent.mkdir(parents=True)
+                path.write_bytes(content if fault != "digest" else b"different rendering")
+                events = valid_inner_call_events()
+                archive = {"step": 1, "call_id": "inner" if fault != "pair" else "absent",
+                           "file": name, "digest": "sha256:" + digest, "bytes": len(content)}
+                events.insert(6, event(6, "tool/rendering-archive", archive))
+                for index, item in enumerate(events):
+                    item["seq"] = index
+                log = root / "episode.jsonl"
+                log.write_text("".join(json.dumps(e) + "\n" for e in events))
+                report = evaluate([log])
+                self.assertEqual(report["valid"], fault is None, report["violations"])
 
     def test_valid_trace_conforms(self) -> None:
         report = evaluate_events(valid_events())

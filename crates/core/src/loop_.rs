@@ -22,7 +22,7 @@ use foe_log::{
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -810,13 +810,7 @@ fn learned_findings(log: &Log, candidate: &Value) -> String {
             let Some(result) = result else {
                 return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
             };
-            if !result.spill.as_ref().is_none_or(|file| {
-                Path::new(file).file_name().is_some_and(|name| name == std::ffi::OsStr::new(file))
-                    && std::fs::read(log.dir().join("spill").join(file)).is_ok_and(|bytes| {
-                        result.value == json!({ "spill": file, "bytes": bytes.len(), "is_error": false })
-                            && serde_json::from_slice::<Value>(&bytes).is_ok()
-                    })
-            }) {
+            if foe_log::artifact::read_canonical(&log.dir().join("spill"), seq, result).is_err() {
                 return format!("`learned[{index}].seq` {seq} does not reconstruct");
             }
         }
@@ -878,7 +872,7 @@ fn append_result(
         let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
         log.append(EventData::ToolRenderingArchive(archive))?;
     }
-    let (value, mut rendered, spill) = spill(spill_dir, &call.id, value)?;
+    let (value, mut rendered, spill) = spill(spill_dir, value)?;
     let mut inner = lock(&log.inner);
     if cite_seq {
         rendered.insert_str(0, &format!("[seq {}]\n", inner.0.next_seq()))
@@ -1007,26 +1001,25 @@ async fn run_calls(
         .collect()
 }
 
-/// Writes a canonical value to `spill/<call_id>.json` when it exceeds
+/// Writes a canonical value to a content-derived file under `spill/` when it exceeds
 /// [`SPILL_LIMIT`]. Returns the inlined value, which is then a locator, the
 /// rendered text, and the spill file name.
-fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, String, Option<String>), RuntimeError> {
+fn spill(spill_dir: &Path, value: ToolValue) -> Result<(Value, String, Option<String>), RuntimeError> {
     let canonical =
         serde_json::to_vec(&value.value).map_err(|e| RuntimeError::Protocol(format!("tool value serializes: {e}")))?;
     let rendered = value.rendered.unwrap_or_else(|| String::from_utf8_lossy(&canonical).into_owned());
     if canonical.len() <= SPILL_LIMIT {
         return Ok((value.value, rendered, None));
     }
-    std::fs::create_dir_all(spill_dir).map_err(foe_log::LogError::Io)?;
-    let safe: String =
-        call_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-    let file = format!("{safe}.json");
-    std::fs::write(spill_dir.join(&file), &canonical).map_err(foe_log::LogError::Io)?;
+    let digest = crate::retrieval::digest(&canonical);
+    let file = format!("result-{}.json", digest.trim_start_matches("sha256:"));
+    foe_log::artifact::retain(&spill_dir.join(&file), &canonical).map_err(foe_log::LogError::Io)?;
     let framed = text::fill(
         text::SPILL_FRAME,
         &[("bytes", &canonical.len().to_string()), ("path", &format!("spill/{file}")), ("head", &rendered)],
     );
-    let locator = serde_json::json!({ "spill": file, "bytes": canonical.len(), "is_error": value.is_error });
+    let locator =
+        serde_json::json!({ "spill": file, "bytes": canonical.len(), "is_error": value.is_error, "digest": digest });
     Ok((locator, framed, Some(file)))
 }
 

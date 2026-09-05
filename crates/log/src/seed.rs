@@ -3,11 +3,8 @@
 //! Forking, replay, and the end of every episode use this.
 
 use crate::append::Writer;
-use crate::{
-    Event, EventData, ForkOrigin, LogError, Obligation, Outcome, RenderingArchive, ToolCall, ToolResult, Usage,
-};
+use crate::{Event, EventData, ForkOrigin, LogError, Obligation, Outcome, ToolCall, ToolResult, Usage};
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::Write;
 use std::path::Path;
 
 /// Rendered text of a synthetic result for a tool call whose real result
@@ -121,45 +118,29 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
     for data in closing_events(&written) {
         written.push(writer.append(data)?);
     }
-    copy_rendering_archives(source, dest, &written)?;
+    copy_artifacts(source, dest, &written)?;
     written.push(writer.append(EventData::SeedEnd {})?);
     writer.sync()?;
     Ok(written)
 }
 
-fn copy_rendering_archives(source: &Path, dest: &Path, events: &[Event]) -> Result<(), LogError> {
-    let archives = events.iter().filter_map(|event| match &event.data {
-        EventData::ToolRenderingArchive(archive) => Some((event.seq, archive)),
-        _ => None,
-    });
-    for (seq, archive) in archives {
-        let bytes = crate::artifact::read_rendering(&source.join("spill"), seq, archive)?;
-        let target = dest.join("spill").join(&archive.file);
-        if !target.exists() {
-            let parent = target.parent().expect("an archive file has a parent");
-            std::fs::create_dir_all(parent).map_err(|error| archive_io(seq, archive, "create directory", error))?;
-            let temporary = parent.join(format!(".{}.tmp", archive.digest.trim_start_matches("sha256:")));
-            if temporary.exists() {
-                std::fs::remove_file(&temporary)
-                    .map_err(|error| archive_io(seq, archive, "remove incomplete temporary file", error))?;
+fn copy_artifacts(source: &Path, dest: &Path, events: &[Event]) -> Result<(), LogError> {
+    for event in events {
+        let spill = source.join("spill");
+        let (file, bytes) = match &event.data {
+            EventData::ToolRenderingArchive(a) => (&a.file, crate::artifact::read_rendering(&spill, event.seq, a)?),
+            EventData::ToolResult(r) if r.spill.is_some() => {
+                (r.spill.as_ref().unwrap(), crate::artifact::read_canonical(&spill, event.seq, r)?.unwrap())
             }
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)
-                .map_err(|error| archive_io(seq, archive, "create temporary file", error))?;
-            file.write_all(&bytes).map_err(|error| archive_io(seq, archive, "write temporary file", error))?;
-            file.sync_all().map_err(|error| archive_io(seq, archive, "synchronize temporary file", error))?;
-            std::fs::rename(temporary, &target)
-                .map_err(|error| archive_io(seq, archive, "install verified file", error))?;
-        }
-        crate::artifact::read_rendering(&dest.join("spill"), seq, archive)?;
+            _ => continue,
+        };
+        crate::artifact::retain(&dest.join("spill").join(file), &bytes).map_err(|e| LogError::Archive {
+            seq: event.seq,
+            path: file.clone(),
+            rule: e.to_string(),
+        })?;
     }
     Ok(())
-}
-
-fn archive_io(seq: u64, archive: &RenderingArchive, operation: &str, error: std::io::Error) -> LogError {
-    crate::artifact::archive_error(seq, archive, &format!("cannot {operation}: {error}"))
 }
 
 /// The events that close every obligation `events` left open, in the order

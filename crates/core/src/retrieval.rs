@@ -5,7 +5,6 @@ use crate::{CallCtx, RuntimeError, Tool, ToolValue};
 use foe_contract::{fingerprint::sha256_hex, harness_text as text, Effect, ToolSpec};
 use foe_log::{Event, EventData, RenderingArchive};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -41,17 +40,13 @@ pub fn cursor(step: u32, call_id: &str, rendering: &str, offset: usize) -> Strin
 /// Context policies use this form so archived bytes remain outside their
 /// projection boundary.
 pub fn cursor_for_digest(step: u32, call_id: &str, digest: &str, offset: usize) -> String {
-    make_cursor(step, call_id, digest, offset)
+    let key = source_key(step, call_id, digest);
+    let body = format!("r1.{key}.{offset:x}");
+    format!("{body}.{}", sha256_hex(body.as_bytes()))
 }
 
 pub fn digest(bytes: &[u8]) -> String {
     format!("sha256:{}", sha256_hex(bytes))
-}
-
-fn make_cursor(step: u32, call_id: &str, digest: &str, offset: usize) -> String {
-    let key = source_key(step, call_id, digest);
-    let body = format!("r1.{key}.{offset:x}");
-    format!("{body}.{}", sha256_hex(body.as_bytes()))
 }
 
 fn source_key(step: u32, call_id: &str, digest: &str) -> String {
@@ -136,27 +131,7 @@ pub fn retain(
     let Some(file) = foe_log::digest::rendering_file(&archived.digest) else {
         return Err(RuntimeError::Protocol("tool rendering archive: digest is invalid".into()));
     };
-    let path = spill_dir.join(&file);
-    std::fs::create_dir_all(path.parent().expect("an archive has a parent")).map_err(foe_log::LogError::Io)?;
-    if path.exists() {
-        let bytes = std::fs::read(&path).map_err(foe_log::LogError::Io)?;
-        if digest(&bytes) != archived.digest || bytes != archived.complete.as_bytes() {
-            return Err(RuntimeError::Protocol(format!(
-                "tool rendering archive spill/{file}: existing content does not match {}",
-                archived.digest
-            )));
-        }
-    } else {
-        let temporary = path.with_extension("tmp");
-        let io = |error| RuntimeError::Log(foe_log::LogError::Io(error));
-        if temporary.exists() {
-            std::fs::remove_file(&temporary).map_err(io)?;
-        }
-        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(io)?;
-        output.write_all(archived.complete.as_bytes()).map_err(io)?;
-        output.sync_all().map_err(io)?;
-        std::fs::rename(temporary, &path).map_err(io)?;
-    }
+    foe_log::artifact::retain(&spill_dir.join(&file), archived.complete.as_bytes()).map_err(foe_log::LogError::Io)?;
     Ok(RenderingArchive {
         step,
         call_id: call_id.into(),
