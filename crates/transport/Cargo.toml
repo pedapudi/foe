@@ -13,7 +13,7 @@ foe-contract = { path = "../contract" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["net"] }
 async-trait.workspace = true
 sha2.workspace = true
 # The home directory comes from the passwd database, never from `HOME`.
@@ -23,9 +23,18 @@ nix = { version = "0.31", features = ["user"] }
 # environment variable.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "1"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+futures-util = "0.3"
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-stream = { version = "0.1", features = ["time"] }
 # RS256 for service-account assertions; already in the tree through rustls.
 ring = "0.17"
 base64 = "0.22"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

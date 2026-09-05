@@ -5,8 +5,8 @@
 //! an OAuth access token with the refresh token that renews it. Google
 //! credentials are an application-default-credentials file or a service
 //! account file, exchanged for a short-lived access token. Each source
-//! implements [`Auth`], which the request loop calls once per request on a
-//! blocking thread, so a source may refresh a token there.
+//! implements [`Auth`], which authorizes each request asynchronously.
+//! Cancellation interrupts token-endpoint I/O and waiting for the cache lock.
 
 use std::path::PathBuf;
 
@@ -16,15 +16,17 @@ pub mod login;
 pub mod token_file;
 
 /// Produces the headers that authenticate one request.
+#[async_trait::async_trait]
 pub trait Auth: Send + Sync {
-    fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
+    async fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
 }
 
 /// A source that adds no authentication header.
 pub struct NoAuth;
 
+#[async_trait::async_trait]
 impl Auth for NoAuth {
-    fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
+    async fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
         Ok(Vec::new())
     }
 }
@@ -129,17 +131,17 @@ pub(crate) fn form_encode(fields: &[(&str, &str)]) -> String {
 /// Posts a form to a token endpoint and returns the JSON body of a 2xx
 /// response. Any other status is an `Endpoint` error quoting the body;
 /// 429 and 5xx are retryable.
-pub(crate) fn post_form(endpoint: &str, fields: &[(&str, &str)]) -> Result<serde_json::Value, AuthError> {
-    use std::io::Read;
+pub(crate) async fn post_form(endpoint: &str, fields: &[(&str, &str)]) -> Result<serde_json::Value, AuthError> {
+    use tokio::io::AsyncReadExt;
     let fail =
         |reason: String, retryable: bool| AuthError::Endpoint { endpoint: endpoint.to_string(), reason, retryable };
     let url = crate::http::Url::parse(endpoint).map_err(|e| fail(e, false))?;
     let body = form_encode(fields);
     let headers = [("content-type", "application/x-www-form-urlencoded"), ("accept", "application/json")];
     let mut response =
-        crate::http::post(&url, &headers, body.as_bytes()).map_err(|e| fail(e.to_string(), e.retryable()))?;
+        crate::http::post(&url, &headers, body.as_bytes()).await.map_err(|e| fail(e.to_string(), e.retryable()))?;
     let mut text = String::new();
-    let _ = (&mut response.body).take(64 * 1024).read_to_string(&mut text);
+    let _ = (&mut response.body).take(64 * 1024).read_to_string(&mut text).await;
     if !(200..300).contains(&response.status) {
         let retryable = response.status == 429 || (500..600).contains(&response.status);
         return Err(fail(format!("HTTP {}: {}", response.status, crate::describe_error_body(&text)), retryable));

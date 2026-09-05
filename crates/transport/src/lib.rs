@@ -28,14 +28,15 @@
 //! the client appends `/responses` or `/chat/completions`. For Vertex AI it
 //! is the regional origin, which is derived from `location` when absent.
 //!
-//! The HTTP work runs on a blocking thread; `stream` forwards chunks to the
-//! caller's sink as they arrive.
+//! HTTP and credential refresh use asynchronous I/O. Decoded chunks reach
+//! the caller's sink directly, with no intermediate chunk queue.
 
 #![forbid(unsafe_code)]
 
-use std::io::Read;
+use futures_util::FutureExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 
 use foe_contract::ModelConfig;
 use foe_core::{Chunk, ModelRequestBody, Transport};
@@ -301,8 +302,8 @@ fn open_auth(plan: &Plan) -> Result<Arc<dyn Auth>, TransportError> {
 
 /// One cheap authenticated request that proves a credential works, for
 /// `foe login`. Returns a sentence for the person on failure.
-pub fn verify_credential(provider: &Provider, base_url: Option<&str>, auth: &dyn Auth) -> Result<(), String> {
-    let headers = auth.headers().map_err(|e| e.to_string())?;
+pub async fn verify_credential(provider: &Provider, base_url: Option<&str>, auth: &dyn Auth) -> Result<(), String> {
+    let headers = auth.headers().await.map_err(|e| e.to_string())?;
     match provider.verify {
         Verify::None | Verify::MintToken => Ok(()),
         Verify::GetJson(path) => {
@@ -311,12 +312,12 @@ pub fn verify_credential(provider: &Provider, base_url: Option<&str>, auth: &dyn
             let mut all: Vec<(&str, &str)> = provider.headers.to_vec();
             all.extend(headers.iter().map(|(k, v)| (k.as_str(), v.as_str())));
             all.push(("accept", "application/json"));
-            let mut response = http::request("GET", &url, &all, &[]).map_err(|e| format!("{text}: {e}"))?;
+            let mut response = http::request("GET", &url, &all, &[]).await.map_err(|e| format!("{text}: {e}"))?;
             if (200..300).contains(&response.status) {
                 return Ok(());
             }
             let mut body = String::new();
-            let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut body);
+            let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut body).await;
             let detail = describe_error_body(&body);
             Err(match response.status {
                 401 | 403 => format!("the provider rejected the key (HTTP {}: {detail})", response.status),
@@ -388,9 +389,7 @@ fn is_terminal(chunk: &Chunk) -> bool {
     matches!(chunk, Chunk::Done { .. } | Chunk::Error { .. })
 }
 
-/// Forwards chunks from the blocking request to the caller's sink. Ensures
-/// the sequence ends with exactly one terminal chunk even if the worker
-/// fails.
+/// Delivers decoded chunks directly to the sink. Cancellation drops the request and its socket owner.
 async fn deliver(
     exchange: Exchange,
     auth: Arc<dyn Auth>,
@@ -398,88 +397,62 @@ async fn deliver(
     sink: &mut (dyn foe_core::ChunkSink + Send),
 ) {
     let provider = exchange.provider;
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let worker = tokio::task::spawn_blocking(move || perform(exchange, auth, decoder, Outbox { tx, closed: false }));
-    let mut terminal = false;
-    while let Some(chunk) = rx.recv().await {
-        terminal |= is_terminal(&chunk);
-        sink.push(chunk);
-    }
-    let joined = worker.await;
-    if !terminal {
-        let reason = match joined {
-            Ok(()) => "request ended without a final chunk".to_string(),
-            Err(e) => format!("request worker failed: {e}"),
-        };
-        sink.push(Chunk::Error { message: format!("{provider}: {reason}"), retryable: true });
+    let mut out = Outbox { sink, closed: false };
+    let result = std::panic::AssertUnwindSafe(perform(exchange, auth, decoder, &mut out)).catch_unwind().await;
+    match result {
+        Ok(Err(error)) => out.push(error),
+        _ if !out.closed => out.push(Chunk::Error {
+            message: format!("{provider}: request ended without a final chunk"),
+            retryable: true,
+        }),
+        _ => {}
     }
 }
 
-/// The sending side of the chunk channel. Drops everything after the first
-/// terminal chunk and after the receiver has gone away.
-struct Outbox {
-    tx: tokio::sync::mpsc::UnboundedSender<Chunk>,
+struct Outbox<'a> {
+    sink: &'a mut (dyn foe_core::ChunkSink + Send),
     closed: bool,
 }
 
-impl Outbox {
+impl Outbox<'_> {
     fn push(&mut self, chunk: Chunk) {
-        if self.closed {
-            return;
-        }
-        let terminal = is_terminal(&chunk);
-        if self.tx.send(chunk).is_err() || terminal {
-            self.closed = true;
+        if !self.closed {
+            self.closed = is_terminal(&chunk);
+            self.sink.push(chunk);
         }
     }
 }
 
-/// Adds the credential headers, sends the request, and drives the decoder
-/// until a terminal chunk. Runs on a blocking thread, so a token refresh
-/// may block here.
-fn perform(exchange: Exchange, auth: Arc<dyn Auth>, mut decoder: Box<dyn Decoder>, mut out: Outbox) {
+async fn perform(
+    exchange: Exchange,
+    auth: Arc<dyn Auth>,
+    mut decoder: Box<dyn Decoder>,
+    out: &mut Outbox<'_>,
+) -> Result<(), Chunk> {
     let provider = exchange.provider;
-    let credential = match auth.headers() {
-        Ok(headers) => headers,
-        Err(e) => {
-            out.push(Chunk::Error { message: format!("{provider}: credential: {e}"), retryable: e.retryable() });
-            return;
-        }
-    };
+    let credential = auth
+        .headers()
+        .await
+        .map_err(|e| Chunk::Error { message: format!("{provider}: credential: {e}"), retryable: e.retryable() })?;
     let mut headers: Vec<(&str, &str)> = exchange.headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     headers.extend(credential.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-    let mut response = match http::post(&exchange.url, &headers, &exchange.body) {
-        Ok(response) => response,
-        Err(e) => {
-            out.push(Chunk::Error { message: format!("{provider}: {e}"), retryable: e.retryable() });
-            return;
-        }
-    };
+    let mut response = http::post(&exchange.url, &headers, &exchange.body)
+        .await
+        .map_err(|e| Chunk::Error { message: format!("{provider}: {e}"), retryable: e.retryable() })?;
     if !(200..300).contains(&response.status) {
-        out.push(status_error(provider, &mut response));
-        return;
+        return Err(status_error(provider, &mut response).await);
     }
-    loop {
-        match sse::next_event(&mut response.body) {
-            Ok(Some(event)) => {
-                decoder.event(&event, &mut |chunk| out.push(chunk));
-                if out.closed {
-                    return;
-                }
-            }
-            Ok(None) => {
-                out.push(decoder.end_of_stream());
-                return;
-            }
-            Err(e) => {
-                // Invalid UTF-8 is a malformed stream; anything else is the
-                // connection failing under us.
-                let retryable = e.kind() != std::io::ErrorKind::InvalidData;
-                out.push(Chunk::Error { message: format!("{provider}: reading response body: {e}"), retryable });
-                return;
-            }
+    while !out.closed {
+        let event = sse::next_event(&mut response.body).await.map_err(|e| Chunk::Error {
+            message: format!("{provider}: reading response body: {e}"),
+            retryable: e.kind() != std::io::ErrorKind::InvalidData,
+        })?;
+        match event {
+            Some(event) => decoder.event(&event, &mut |chunk| out.push(chunk)),
+            None => out.push(decoder.end_of_stream()),
         }
     }
+    Ok(())
 }
 
 /// Largest error body read for its message.
@@ -490,7 +463,7 @@ const MAX_ERROR_BODY: u64 = 64 * 1024;
 /// when present and the raw body otherwise.
 /// https://docs.anthropic.com/en/api/errors
 /// https://platform.openai.com/docs/guides/error-codes
-fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
+async fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
     let status = response.status;
     // OpenAI sends `retry-after-ms` beside the standard `retry-after`;
     // only the delay-seconds form of the standard header is translated.
@@ -499,7 +472,7 @@ fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
         .and_then(|v| v.trim().parse::<u64>().ok())
         .or_else(|| response.header("retry-after").and_then(|v| v.trim().parse::<u64>().ok()).map(|s| s * 1000));
     let mut text = String::new();
-    let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut text);
+    let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut text).await;
     let mut message = format!("{provider}: HTTP {status}: {}", describe_error_body(&text));
     if let Some(ms) = retry_after_ms {
         message.push_str(&format!(" retry_after_ms={ms}"));
@@ -814,8 +787,8 @@ mod tests {
         assert_eq!(describe_error_body(""), "empty response body");
     }
 
-    #[test]
-    fn verification_accepts_2xx_and_explains_401() {
+    #[tokio::test]
+    async fn verification_accepts_2xx_and_explains_401() {
         use crate::testserver::{Reply, Server};
         let server = Server::start(vec![
             Reply::full(200, r#"{"data":[]}"#),
@@ -823,8 +796,8 @@ mod tests {
         ]);
         let provider = provider_info("anthropic").unwrap();
         let auth = auth::api_key::ApiKey::new(auth::KeyHeader::XApiKey, "sk-test".into());
-        verify_credential(provider, Some(&server.base()), &auth).unwrap();
-        let err = verify_credential(provider, Some(&server.base()), &auth).unwrap_err();
+        verify_credential(provider, Some(&server.base()), &auth).await.unwrap();
+        let err = verify_credential(provider, Some(&server.base()), &auth).await.unwrap_err();
         assert_eq!(err, "the provider rejected the key (HTTP 401: authentication_error: invalid x-api-key)");
         let seen = server.requests();
         assert_eq!((seen[0].method.as_str(), seen[0].path.as_str()), ("GET", "/v1/models"));

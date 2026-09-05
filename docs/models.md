@@ -122,6 +122,41 @@ used.
 `compatible-http` knows no windows because the endpoint decides which model
 answers.
 
+## HTTP requests and cancellation
+
+Each built-in client opens an HTTP/1.1 connection for one request. The client
+uses compiled certificate roots and explicit headers. It does not discover
+proxies, follow redirects, decompress responses, or reuse connections.
+
+Cancelling a model request drops its pending connection or response. The
+runtime aborts the task that owns the socket. Credential refresh uses the
+same transport, and cancellation also releases the credential cache lock.
+No detached response worker or unbounded queue of decoded chunks remains.
+The decoder delivers each chunk directly to the runtime recorder.
+
+Connection establishment, including TLS negotiation, has a thirty-second
+limit. Waiting for response headers has a six-hundred-second limit. Each
+response body frame has the same idle limit. Episode cancellation and the
+contract's `seconds` allowance can end these waits earlier. The operating
+system's hostname lookup may continue after the requesting future is dropped.
+
+Response headers have a 64 KiB buffer limit and a limit of one hundred
+fields. Chunk extensions and trailers have separate 16 KiB limits.
+Each server-sent event line and the event's retained name and data have a
+one MiB limit. Retained data includes one newline per data field while the
+event is assembled. Empty data fields preserve their event and line
+boundaries. An incomplete event at end of input is discarded.
+
+Malformed headers, chunk framing, event text, and parser-limit violations
+produce nonretryable errors. Connection failures, idle timeouts, and
+incomplete response bodies are retryable. Error response text and credential
+response text are read up to 64 KiB. These bounds cover response parsing;
+the runtime separately accounts for output tokens and retained context.
+
+The Rust HTTP and credential methods are asynchronous. Callers await request,
+verification, and token-refresh results. The command-line login flow runs
+these methods on a local runtime while retaining synchronous terminal input.
+
 ## Where credentials live
 
 foe has two convention paths, both under the home directory of the user

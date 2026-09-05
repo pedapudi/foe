@@ -215,3 +215,24 @@ fn write_chunks(stream: &mut TcpStream, pieces: &[String]) {
         let _ = stream.flush();
     }
 }
+
+/// Accepts a complete request while retaining the socket for cancellation assertions.
+pub async fn accept_request(listener: &tokio::net::TcpListener) -> tokio::net::TcpStream {
+    use tokio::io::AsyncReadExt;
+    let (mut stream, _) = listener.accept().await.unwrap();
+    let mut head = Vec::new();
+    while !head.ends_with(b"\r\n\r\n") {
+        head.push(stream.read_u8().await.unwrap());
+        assert!(head.len() < 16 * 1024, "fixture request head exceeds 16 KiB");
+    }
+    let head = String::from_utf8(head).unwrap();
+    let length = head
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().unwrap())
+        })
+        .unwrap_or(0);
+    stream.read_exact(&mut vec![0; length]).await.unwrap();
+    stream
+}

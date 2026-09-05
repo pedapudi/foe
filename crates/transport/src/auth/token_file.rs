@@ -15,8 +15,8 @@
 //! authorization-code flow with PKCE (RFC 7636).
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -54,14 +54,14 @@ pub struct OAuthClient {
 
 impl OAuthClient {
     /// Exchanges a refresh token for a new token pair.
-    pub fn refresh(&self, refresh_token: &str) -> Result<Token, AuthError> {
+    pub async fn refresh(&self, refresh_token: &str) -> Result<Token, AuthError> {
         let fields =
             [("grant_type", "refresh_token"), ("refresh_token", refresh_token), ("client_id", &self.client_id)];
-        token_from_response(&self.token_url, post_form(&self.token_url, &fields)?, refresh_token)
+        token_from_response(&self.token_url, post_form(&self.token_url, &fields).await?, refresh_token)
     }
 
     /// Exchanges an authorization code and its PKCE verifier for a token.
-    pub fn exchange_code(&self, code: &str, verifier: &str, redirect_uri: &str) -> Result<Token, AuthError> {
+    pub async fn exchange_code(&self, code: &str, verifier: &str, redirect_uri: &str) -> Result<Token, AuthError> {
         let fields = [
             ("grant_type", "authorization_code"),
             ("client_id", &self.client_id),
@@ -69,7 +69,7 @@ impl OAuthClient {
             ("code_verifier", verifier),
             ("redirect_uri", redirect_uri),
         ];
-        token_from_response(&self.token_url, post_form(&self.token_url, &fields)?, "")
+        token_from_response(&self.token_url, post_form(&self.token_url, &fields).await?, "")
     }
 }
 
@@ -137,8 +137,8 @@ impl TokenFile {
     }
 
     /// The current token, refreshed and rewritten when within the margin.
-    pub fn current(&self) -> Result<Token, AuthError> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+    pub async fn current(&self) -> Result<Token, AuthError> {
+        let mut state = self.state.lock().await;
         if state.needs_refresh(now_ms()) {
             if state.refresh.is_empty() {
                 return Err(AuthError::Credential {
@@ -146,7 +146,7 @@ impl TokenFile {
                     reason: "access token needs refresh, but this access-only token file has no refresh token".into(),
                 });
             }
-            let mut fresh = self.client.refresh(&state.refresh)?;
+            let mut fresh = self.client.refresh(&state.refresh).await?;
             if fresh.account_id.is_none() {
                 fresh.account_id = state.account_id.clone();
             }
@@ -158,9 +158,10 @@ impl TokenFile {
     }
 }
 
+#[async_trait::async_trait]
 impl Auth for TokenFile {
-    fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
-        let token = self.current()?;
+    async fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
+        let token = self.current().await?;
         let mut headers = vec![("authorization".to_string(), format!("Bearer {}", token.access))];
         if let (Some(name), Some(id)) = (self.account_header, token.account_id) {
             headers.push((name.to_string(), id));
@@ -259,8 +260,8 @@ mod tests {
         format!("eyJhbGciOiJub25lIn0.{body}.sig")
     }
 
-    #[test]
-    fn a_token_near_expiry_is_refreshed_and_rewritten_atomically() {
+    #[tokio::test]
+    async fn a_token_near_expiry_is_refreshed_and_rewritten_atomically() {
         let server = Server::start(vec![Reply::full(
             200,
             &serde_json::json!({ "access_token": jwt("acct_42"), "refresh_token": "r2", "expires_in": 3600 })
@@ -271,7 +272,7 @@ mod tests {
         write_token(&path, &stale).unwrap();
         let client = OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
         let file = TokenFile::open(&path, client, Some("chatgpt-account-id")).unwrap();
-        let headers = file.headers().unwrap();
+        let headers = file.headers().await.unwrap();
         assert!(headers[0].1.starts_with("Bearer eyJ"), "{headers:?}");
         assert_eq!(headers[1], ("chatgpt-account-id".to_string(), "acct_42".to_string()));
         let seen = server.requests();
@@ -284,12 +285,12 @@ mod tests {
         assert!(written.expires > now_ms() + 3_500_000);
         assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
         // A second request within the new lifetime does not touch the endpoint.
-        file.headers().unwrap();
+        file.headers().await.unwrap();
         assert_eq!(server.requests().len(), 1);
     }
 
-    #[test]
-    fn a_fresh_token_is_used_as_is_and_a_refused_refresh_names_the_endpoint() {
+    #[tokio::test]
+    async fn a_fresh_token_is_used_as_is_and_a_refused_refresh_names_the_endpoint() {
         let path = scratch("token-fresh.json");
         let fresh = Token {
             access: "a".into(),
@@ -300,20 +301,20 @@ mod tests {
         write_token(&path, &fresh).unwrap();
         let client = OAuthClient { token_url: "http://127.0.0.1:9/oauth/token".into(), client_id: "cid".into() };
         let file = TokenFile::open(&path, client, None).unwrap();
-        assert_eq!(file.headers().unwrap(), vec![("authorization".to_string(), "Bearer a".to_string())]);
+        assert_eq!(file.headers().await.unwrap(), vec![("authorization".to_string(), "Bearer a".to_string())]);
 
         let server =
             Server::start(vec![Reply::full(401, r#"{"error":"invalid_grant","error_description":"revoked"}"#)]);
         let path = scratch("token-revoked.json");
         write_token(&path, &Token { expires: 0, ..fresh }).unwrap();
         let client = OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
-        let err = TokenFile::open(&path, client, None).unwrap().headers().unwrap_err();
+        let err = TokenFile::open(&path, client, None).unwrap().headers().await.unwrap_err();
         assert!(!err.retryable());
         assert!(err.to_string().contains("/oauth/token: HTTP 401"), "{err}");
     }
 
-    #[test]
-    fn an_access_only_token_works_until_refresh_is_required() {
+    #[tokio::test]
+    async fn an_access_only_token_works_until_refresh_is_required() {
         let path = scratch("token-access-only.json");
         let fresh = Token {
             access: "leased-access".into(),
@@ -327,21 +328,24 @@ mod tests {
 
         let client = OAuthClient { token_url: "http://127.0.0.1:9/oauth/token".into(), client_id: "cid".into() };
         let file = TokenFile::open(&path, client.clone(), None).unwrap();
-        assert_eq!(file.headers().unwrap(), vec![("authorization".to_string(), "Bearer leased-access".to_string())]);
+        assert_eq!(
+            file.headers().await.unwrap(),
+            vec![("authorization".to_string(), "Bearer leased-access".to_string())]
+        );
 
         write_token(&path, &Token { expires: 0, ..fresh }).unwrap();
-        let error = TokenFile::open(&path, client, None).unwrap().headers().unwrap_err();
+        let error = TokenFile::open(&path, client, None).unwrap().headers().await.unwrap_err();
         assert!(matches!(&error, AuthError::Credential { .. }), "{error}");
         assert!(error.to_string().contains("access-only token file has no refresh token"), "{error}");
         assert!(!error.retryable());
     }
 
-    #[test]
-    fn code_exchange_and_authorization_url_follow_pkce() {
+    #[tokio::test]
+    async fn code_exchange_and_authorization_url_follow_pkce() {
         let server =
             Server::start(vec![Reply::full(200, r#"{"access_token":"opaque","refresh_token":"r","expires_in":60}"#)]);
         let client = OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
-        let token = client.exchange_code("c0de", "v3rifier", "http://localhost:1455/auth/callback").unwrap();
+        let token = client.exchange_code("c0de", "v3rifier", "http://localhost:1455/auth/callback").await.unwrap();
         assert_eq!((token.access.as_str(), token.refresh.as_str(), token.account_id), ("opaque", "r", None));
         assert_eq!(
             server.requests()[0].body,
@@ -367,6 +371,41 @@ mod tests {
         std::fs::write(&path, "{\"access\": \"\", \"refresh\": \"\", \"expires\": 1}").unwrap();
         let err = read_token(&path).unwrap_err().to_string();
         assert!(err.ends_with("access token is empty"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn cancelled_refresh_closes_its_socket_and_releases_waiting_requests() {
+        // docs/models.md: cancellation interrupts refresh I/O and releases the credential cache lock.
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = OAuthClient {
+            token_url: format!("http://{}/token", listener.local_addr().unwrap()),
+            client_id: "fixture".into(),
+        };
+        let path = scratch("cancelled-refresh.json");
+        let stale = Token { access: "expired".into(), refresh: "refresh".into(), expires: 0, account_id: None };
+        write_token(&path, &stale).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let file = TokenFile::open(&path, client, None).unwrap();
+        let mut first = Box::pin(file.headers());
+        let mut peer = tokio::select! {
+            result = &mut first => panic!("refresh completed without a response: {result:?}"),
+            stream = crate::testserver::accept_request(&listener) => stream,
+        };
+        let mut waiting = Box::pin(file.headers());
+        assert!(futures_util::poll!(&mut waiting).is_pending());
+        drop(first);
+        assert_eq!(peer.read(&mut [0; 1]).await.unwrap(), 0);
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        let mut peer = tokio::select! {
+            result = &mut waiting => panic!("refresh completed without a response: {result:?}"),
+            stream = crate::testserver::accept_request(&listener) => stream,
+        };
+        let body = r#"{"access_token":"fresh","refresh_token":"renewed","expires_in":3600}"#;
+        let response = format!("HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+        peer.write_all(response.as_bytes()).await.unwrap();
+        assert_eq!(waiting.await.unwrap(), vec![("authorization".into(), "Bearer fresh".into())]);
+        assert_eq!(read_token(&path).unwrap().refresh, "renewed");
     }
 
     use sha2::Digest;

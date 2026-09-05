@@ -1,39 +1,23 @@
-//! A minimal HTTP/1.1 client: one request per connection, with the response
-//! body read as a stream.
+//! Cancellable HTTP/1.1 connections with bounded response buffering.
 //!
-//! The clients in this crate need two HTTP shapes: POST a document, then
-//! read a server-sent-event body line by line until the server finishes or
-//! the connection drops; and a short GET or form POST against a token or
-//! model-listing endpoint. A general-purpose client would bring proxy
-//! discovery from the environment, redirects, compression, and connection
-//! pools, none of which this crate wants. This module sends one request per
-//! TCP connection with `Connection: close`, decodes `Transfer-Encoding:
-//! chunked` and `Content-Length` framing, and nothing else.
-//!
-//! Invariants:
-//! - No environment variable is read. There is no proxy support.
-//! - TLS trusts Mozilla's root certificates compiled in through
-//!   `webpki-roots`. The system certificate store is never opened.
-//! - Every read on the socket times out after [`READ_TIMEOUT`] of silence,
-//!   so a dead connection surfaces as an error rather than a hang.
+//! Each response owns its connection task. Dropping the response or the
+//! pending request aborts that task and closes the connection. Requests use
+//! explicit headers and compiled trust roots. There is no proxy discovery,
+//! redirect handling, compression, or ambient certificate lookup.
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper_util::rt::TokioIo;
 use std::fmt;
-use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::io;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite};
+use tokio::net::TcpStream;
+use tokio_stream::StreamExt;
 
-/// Longest wait for a TCP connection to be established.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Longest silence tolerated between bytes of a response. Providers keep a
-/// stream alive with periodic events, and a model that is thinking with its
-/// reasoning hidden may send nothing for minutes, so the limit is generous.
-/// The episode's wall-clock budget, enforced by the runtime, bounds the
-/// whole request.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(600);
-
-/// Largest response head (status line plus headers) accepted.
 const MAX_HEAD_BYTES: usize = 64 * 1024;
 
 /// A parsed `http://` or `https://` URL with only the parts this client uses.
@@ -145,112 +129,90 @@ impl fmt::Display for HttpError {
     }
 }
 
-/// A response whose head has been read and whose body is still on the wire.
+/// A response and the task that owns its socket.
 pub struct Response {
     pub status: u16,
-    headers: Vec<(String, String)>,
-    pub body: BufReader<Body>,
+    headers: hyper::HeaderMap,
+    pub body: Box<dyn AsyncBufRead + Send + Unpin>,
+    _connection: Connection,
 }
 
 impl Response {
-    /// The first header with this name, compared case-insensitively.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+        self.headers.get(name).and_then(|v| v.to_str().ok())
     }
 }
 
-/// Sends one POST of a JSON body and returns once the response head has
-/// arrived. `headers` are sent verbatim after the fixed headers this client
-/// always sends.
-pub fn post(url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
-    request("POST", url, headers, body)
+struct Connection(tokio::task::JoinHandle<Result<(), hyper::Error>>);
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
-/// Sends one request and returns once the response head has arrived. The
-/// body is sent as JSON unless `headers` carries its own `content-type`; a
-/// GET sends no body. `accept` defaults to `text/event-stream`, which every
-/// endpoint this crate talks to also answers with plain JSON.
-pub fn request(method: &str, url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
-    let mut stream = connect(url)?;
-    let given = |name: &str| headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(name));
-    let mut head = format!(
-        "{method} {} HTTP/1.1\r\nhost: {}\r\nconnection: close\r\nuser-agent: foe/{}\r\n",
-        url.path,
-        url.host_header(),
-        env!("CARGO_PKG_VERSION"),
-    );
-    if method != "GET" {
-        if !given("content-type") {
-            head.push_str("content-type: application/json\r\n");
-        }
-        head.push_str(&format!("content-length: {}\r\n", body.len()));
-    }
-    if !given("accept") {
-        head.push_str("accept: text/event-stream\r\n");
-    }
-    for (name, value) in headers {
-        head.push_str(name);
-        head.push_str(": ");
-        head.push_str(value);
-        head.push_str("\r\n");
-    }
-    head.push_str("\r\n");
-    let body = if method == "GET" { &[][..] } else { body };
-    stream
-        .write_all(head.as_bytes())
-        .and_then(|_| stream.write_all(body))
-        .and_then(|_| stream.flush())
-        .map_err(wrap_io)?;
-
-    let mut reader = BufReader::new(stream);
-    let status_line = read_head_line(&mut reader)?;
-    let status = parse_status(&status_line)?;
-    let mut headers = Vec::new();
-    let mut total = status_line.len();
-    loop {
-        let line = read_head_line(&mut reader)?;
-        total += line.len();
-        if total > MAX_HEAD_BYTES {
-            return Err(HttpError::Malformed(format!("response head exceeds {MAX_HEAD_BYTES} bytes")));
-        }
-        if line.is_empty() {
-            break;
-        }
-        let (name, value) =
-            line.split_once(':').ok_or_else(|| HttpError::Malformed(format!("header line {line:?}")))?;
-        headers.push((name.trim().to_ascii_lowercase(), value.trim().to_string()));
-    }
-    let framing = framing(&headers)?;
-    Ok(Response { status, headers, body: BufReader::new(Body { inner: reader, framing }) })
+pub async fn post(url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
+    request("POST", url, headers, body).await
 }
 
-fn connect(url: &Url) -> Result<Stream, HttpError> {
-    let addrs = (url.host.as_str(), url.port).to_socket_addrs().map_err(HttpError::Connect)?;
-    let mut last = io::Error::new(io::ErrorKind::NotFound, "host resolved to no address");
-    let mut tcp = None;
-    for addr in addrs {
-        match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
-            Ok(s) => {
-                tcp = Some(s);
-                break;
-            }
-            Err(e) => last = e,
+pub async fn request(method: &str, url: &Url, headers: &[(&str, &str)], body: &[u8]) -> Result<Response, HttpError> {
+    let stream =
+        tokio::time::timeout(CONNECT_TIMEOUT, connect(url)).await.map_err(|_| HttpError::Connect(timeout()))??;
+    let mut request = hyper::Request::builder()
+        .method(method)
+        .uri(&url.path)
+        .header("host", url.host_header())
+        .header("connection", "close")
+        .header("user-agent", concat!("foe/", env!("CARGO_PKG_VERSION")));
+    for (key, value) in [("accept", "text/event-stream"), ("content-type", "application/json")] {
+        if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case(key)) {
+            request = request.header(key, value);
         }
     }
-    let tcp = tcp.ok_or(HttpError::Connect(last))?;
+    for (key, value) in headers {
+        request = request.header(*key, *value);
+    }
+    let body = if method == "GET" { Bytes::new() } else { Bytes::copy_from_slice(body) };
+    let request =
+        request.body(Full::new(body)).map_err(|e| HttpError::Malformed(format!("request headers or URL: {e}")))?;
+    let (mut sender, connection) = hyper::client::conn::http1::Builder::new()
+        .max_buf_size(MAX_HEAD_BYTES)
+        .handshake(TokioIo::new(stream))
+        .await
+        .map_err(http_error)?;
+    let connection = Connection(tokio::spawn(connection));
+    let response = tokio::time::timeout(READ_TIMEOUT, sender.send_request(request))
+        .await
+        .map_err(|_| HttpError::Io(timeout()))?
+        .map_err(http_error)?;
+    let (parts, body) = response.into_parts();
+    let stream = body.into_data_stream().timeout(READ_TIMEOUT).map(|frame| match frame {
+        Ok(frame) => frame.map_err(body_error),
+        Err(_) => Err(timeout()),
+    });
+    let body = Box::new(tokio_util::io::StreamReader::new(Box::pin(stream)));
+    Ok(Response { status: parts.status.as_u16(), headers: parts.headers, body, _connection: connection })
+}
+
+trait Socket: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Socket for T {}
+
+async fn connect(url: &Url) -> Result<Box<dyn Socket>, HttpError> {
+    let tcp = TcpStream::connect((url.host.as_str(), url.port)).await.map_err(HttpError::Connect)?;
     tcp.set_nodelay(true).map_err(HttpError::Connect)?;
-    tcp.set_read_timeout(Some(READ_TIMEOUT)).map_err(HttpError::Connect)?;
-    tcp.set_write_timeout(Some(READ_TIMEOUT)).map_err(HttpError::Connect)?;
     if !url.tls {
-        return Ok(Stream::Plain(tcp));
+        return Ok(Box::new(tcp));
     }
     let name = rustls::pki_types::ServerName::try_from(url.host.clone()).map_err(|e| HttpError::Tls(e.to_string()))?;
-    let conn = rustls::ClientConnection::new(tls_config(), name).map_err(|e| HttpError::Tls(e.to_string()))?;
-    Ok(Stream::Tls(Box::new(rustls::StreamOwned::new(conn, tcp))))
+    let tls = tokio_rustls::TlsConnector::from(tls_config()).connect(name, tcp).await.map_err(|e| {
+        if e.get_ref().is_some_and(|inner| inner.is::<rustls::Error>()) {
+            HttpError::Tls(e.to_string())
+        } else {
+            HttpError::Io(e)
+        }
+    })?;
+    Ok(Box::new(tls))
 }
 
-/// One client configuration shared by every connection. Built on first use
-/// from the compiled-in Mozilla roots.
 fn tls_config() -> Arc<rustls::ClientConfig> {
     static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
     CONFIG
@@ -262,174 +224,43 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
         .clone()
 }
 
-/// Distinguishes a TLS failure surfaced through `io::Error` from a plain
-/// socket failure, so that a certificate problem is not retried.
-fn wrap_io(e: io::Error) -> HttpError {
-    let is_tls = e.get_ref().is_some_and(|inner| inner.is::<rustls::Error>());
-    if is_tls {
-        HttpError::Tls(e.to_string())
+fn timeout() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "HTTP connection exceeded its time limit")
+}
+
+fn body_error(error: hyper::Error) -> io::Error {
+    use std::error::Error;
+    let mut source = error.source();
+    while let Some(cause) = source {
+        if let Some(cause) = cause.downcast_ref::<io::Error>() {
+            return match cause.kind() {
+                io::ErrorKind::InvalidInput | io::ErrorKind::InvalidData => {
+                    io::Error::new(io::ErrorKind::InvalidData, cause.to_string())
+                }
+                io::ErrorKind::UnexpectedEof => {
+                    io::Error::new(io::ErrorKind::UnexpectedEof, "connection closed before the body was complete")
+                }
+                kind => io::Error::new(kind, cause.to_string()),
+            };
+        }
+        source = cause.source();
+    }
+    io::Error::other(error)
+}
+
+fn http_error(error: hyper::Error) -> HttpError {
+    if error.is_parse() {
+        HttpError::Malformed(error.to_string())
     } else {
-        HttpError::Io(e)
+        HttpError::Io(body_error(error))
     }
-}
-
-fn read_head_line(reader: &mut BufReader<Stream>) -> Result<String, HttpError> {
-    let mut line = String::new();
-    let n = reader.read_line(&mut line).map_err(wrap_io)?;
-    if n == 0 {
-        return Err(HttpError::Io(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
-            "connection closed before the response head",
-        )));
-    }
-    while line.ends_with('\n') || line.ends_with('\r') {
-        line.pop();
-    }
-    Ok(line)
-}
-
-fn parse_status(line: &str) -> Result<u16, HttpError> {
-    let mut parts = line.splitn(3, ' ');
-    let version = parts.next().unwrap_or("");
-    if !version.starts_with("HTTP/1.") {
-        return Err(HttpError::Malformed(format!("status line {line:?}")));
-    }
-    parts.next().and_then(|s| s.parse().ok()).ok_or_else(|| HttpError::Malformed(format!("status line {line:?}")))
-}
-
-fn framing(headers: &[(String, String)]) -> Result<Framing, HttpError> {
-    let find = |name: &str| headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
-    if find("transfer-encoding").is_some_and(|v| v.to_ascii_lowercase().contains("chunked")) {
-        return Ok(Framing::Chunked { remaining: 0, done: false });
-    }
-    match find("content-length") {
-        Some(v) => {
-            v.trim().parse().map(Framing::Length).map_err(|_| HttpError::Malformed(format!("content-length {v:?}")))
-        }
-        None => Ok(Framing::UntilClose),
-    }
-}
-
-enum Stream {
-    Plain(TcpStream),
-    Tls(Box<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>),
-}
-
-impl Read for Stream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match self {
-            Stream::Plain(s) => s.read(buf),
-            Stream::Tls(s) => s.read(buf),
-        }
-    }
-}
-
-impl Write for Stream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self {
-            Stream::Plain(s) => s.write(buf),
-            Stream::Tls(s) => s.write(buf),
-        }
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Stream::Plain(s) => s.flush(),
-            Stream::Tls(s) => s.flush(),
-        }
-    }
-}
-
-/// How the server delimits the body. See RFC 9112 section 6.
-enum Framing {
-    /// `Transfer-Encoding: chunked`. `remaining` counts bytes left in the
-    /// current chunk; `done` is set once the zero-length chunk and its
-    /// trailers have been consumed.
-    Chunked { remaining: u64, done: bool },
-    /// `Content-Length`: bytes still to read.
-    Length(u64),
-    /// Neither header: the body ends when the server closes the connection.
-    UntilClose,
-}
-
-/// The response body with transfer framing removed. Yields `Ok(0)` at the
-/// end of a complete body and `UnexpectedEof` when the connection closes
-/// before the framing says the body is complete.
-pub struct Body {
-    inner: BufReader<Stream>,
-    framing: Framing,
-}
-
-impl Read for Body {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-        match &mut self.framing {
-            Framing::UntilClose => self.inner.read(buf),
-            Framing::Length(remaining) => {
-                if *remaining == 0 {
-                    return Ok(0);
-                }
-                let want = buf.len().min(usize::try_from(*remaining).unwrap_or(usize::MAX));
-                let got = self.inner.read(&mut buf[..want])?;
-                if got == 0 {
-                    return Err(truncated());
-                }
-                *remaining -= got as u64;
-                Ok(got)
-            }
-            Framing::Chunked { remaining, done } => {
-                if *done {
-                    return Ok(0);
-                }
-                if *remaining == 0 {
-                    let size_line = read_crlf_line(&mut self.inner)?;
-                    let digits = size_line.split(';').next().unwrap_or("").trim();
-                    let size = u64::from_str_radix(digits, 16)
-                        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, format!("chunk size {size_line:?}")))?;
-                    if size == 0 {
-                        // Trailer fields, if any, end with an empty line.
-                        while !read_crlf_line(&mut self.inner)?.is_empty() {}
-                        *done = true;
-                        return Ok(0);
-                    }
-                    *remaining = size;
-                }
-                let want = buf.len().min(usize::try_from(*remaining).unwrap_or(usize::MAX));
-                let got = self.inner.read(&mut buf[..want])?;
-                if got == 0 {
-                    return Err(truncated());
-                }
-                *remaining -= got as u64;
-                if *remaining == 0 {
-                    // The CRLF that terminates every chunk's data.
-                    read_crlf_line(&mut self.inner)?;
-                }
-                Ok(got)
-            }
-        }
-    }
-}
-
-fn truncated() -> io::Error {
-    io::Error::new(io::ErrorKind::UnexpectedEof, "connection closed before the body was complete")
-}
-
-fn read_crlf_line(reader: &mut BufReader<Stream>) -> io::Result<String> {
-    let mut line = String::new();
-    if reader.read_line(&mut line)? == 0 {
-        return Err(truncated());
-    }
-    while line.ends_with('\n') || line.ends_with('\r') {
-        line.pop();
-    }
-    Ok(line)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testserver::{Reply, Server};
+    use tokio::io::AsyncReadExt;
 
     #[test]
     fn url_parse_defaults_port_and_path() {
@@ -467,15 +298,15 @@ mod tests {
         assert_eq!(Url::parse("http://[::1]:8080").unwrap().host_header(), "[::1]:8080");
     }
 
-    #[test]
-    fn chunked_body_is_reassembled_across_chunks_and_reads() {
+    #[tokio::test]
+    async fn chunked_body_is_reassembled_across_chunks_and_reads() {
         let server =
             Server::start(vec![Reply::chunked(200, vec!["hel", "lo\r\n", "wor", "ld"]).with_header("x-test", "1")]);
-        let mut resp = post(&server.url("/p"), &[("x-custom", "v")], b"{}").unwrap();
+        let mut resp = post(&server.url("/p"), &[("x-custom", "v")], b"{}").await.unwrap();
         assert_eq!(resp.status, 200);
         assert_eq!(resp.header("X-Test"), Some("1"));
         let mut text = String::new();
-        resp.body.read_to_string(&mut text).unwrap();
+        resp.body.read_to_string(&mut text).await.unwrap();
         assert_eq!(text, "hello\r\nworld");
         let seen = server.requests();
         assert_eq!(seen[0].path, "/p");
@@ -484,15 +315,16 @@ mod tests {
         assert_eq!(seen[0].header("content-type"), Some("application/json"));
     }
 
-    #[test]
-    fn get_sends_no_body_and_form_post_keeps_its_content_type() {
+    #[tokio::test]
+    async fn get_sends_no_body_and_form_post_keeps_its_content_type() {
         let server = Server::start(vec![Reply::full(200, "{}"), Reply::full(200, "{}")]);
-        let mut resp = request("GET", &server.url("/v1/models"), &[("authorization", "Bearer k")], b"ignored").unwrap();
+        let mut resp =
+            request("GET", &server.url("/v1/models"), &[("authorization", "Bearer k")], b"ignored").await.unwrap();
         assert_eq!(resp.status, 200);
         let mut text = String::new();
-        resp.body.read_to_string(&mut text).unwrap();
+        resp.body.read_to_string(&mut text).await.unwrap();
         let form = [("content-type", "application/x-www-form-urlencoded")];
-        request("POST", &server.url("/token"), &form, b"a=1&b=2").unwrap();
+        request("POST", &server.url("/token"), &form, b"a=1&b=2").await.unwrap();
         let seen = server.requests();
         assert_eq!((seen[0].method.as_str(), seen[0].path.as_str(), seen[0].body.as_str()), ("GET", "/v1/models", ""));
         assert_eq!(seen[0].header("content-length"), None);
@@ -501,42 +333,123 @@ mod tests {
         assert_eq!(seen[1].body, "a=1&b=2");
     }
 
-    #[test]
-    fn content_length_body_stops_at_length() {
+    #[tokio::test]
+    async fn content_length_body_stops_at_length() {
         let server = Server::start(vec![Reply::full(404, "nope")]);
-        let mut resp = post(&server.url("/"), &[], b"").unwrap();
+        let mut resp = post(&server.url("/"), &[], b"").await.unwrap();
         assert_eq!(resp.status, 404);
         let mut text = String::new();
-        resp.body.read_to_string(&mut text).unwrap();
+        resp.body.read_to_string(&mut text).await.unwrap();
         assert_eq!(text, "nope");
     }
 
-    #[test]
-    fn truncated_chunked_body_is_unexpected_eof() {
+    #[tokio::test]
+    async fn truncated_chunked_body_is_unexpected_eof() {
         let server = Server::start(vec![Reply::chunked_then_close(200, vec!["partial"])]);
-        let mut resp = post(&server.url("/"), &[], b"").unwrap();
-        let mut text = String::new();
-        let err = resp.body.read_to_string(&mut text).unwrap_err();
+        let mut resp = post(&server.url("/"), &[], b"").await.unwrap();
+        let mut prefix = [0; 7];
+        resp.body.read_exact(&mut prefix).await.unwrap();
+        assert_eq!(&prefix, b"partial");
+        let err = resp.body.read_to_end(&mut Vec::new()).await.unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
-        assert_eq!(text, "partial");
     }
 
-    #[test]
-    fn closed_before_head_is_retryable_io() {
+    #[tokio::test]
+    async fn closed_before_head_is_retryable_io() {
         let server = Server::start(vec![Reply::close_immediately()]);
-        let err = post(&server.url("/"), &[], b"").err().expect("a closed socket fails");
+        let err = post(&server.url("/"), &[], b"").await.err().expect("a closed socket fails");
         assert!(matches!(err, HttpError::Io(_)), "{err}");
         assert!(err.retryable());
     }
 
-    #[test]
-    fn refused_connection_is_retryable_connect_error() {
+    #[tokio::test]
+    async fn refused_connection_is_retryable_connect_error() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         let url = Url::parse(&format!("http://127.0.0.1:{port}")).unwrap();
-        let err = post(&url, &[], b"").err().expect("a refused connection fails");
+        let err = post(&url, &[], b"").await.err().expect("a refused connection fails");
         assert!(matches!(err, HttpError::Connect(_)), "{err}");
         assert!(err.retryable());
+    }
+
+    #[tokio::test]
+    async fn cancellation_closes_the_socket_before_and_after_response_headers() {
+        // docs/models.md: cancellation closes model and credential HTTP connections.
+        use tokio::io::AsyncWriteExt;
+        for send_headers in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            let mut pending = Box::pin(post(&url, &[], b""));
+            let mut peer = tokio::select! {
+                response = &mut pending => panic!("request finished before the server replied: {:?}", response.err()),
+                stream = crate::testserver::accept_request(&listener) => stream,
+            };
+            if send_headers {
+                peer.write_all(b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n").await.unwrap();
+                let response = pending.await.unwrap();
+                drop(response);
+            } else {
+                drop(pending);
+            }
+            assert_eq!(peer.read(&mut [0; 1]).await.unwrap(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_headers_and_chunk_framing_are_nonretryable() {
+        // docs/models.md: response heads and chunk framing have finite limits.
+        use tokio::io::AsyncWriteExt;
+        let oversized = "x".repeat(128 * 1024);
+        for (wire, body_failure) in [
+            (format!("HTTP/1.1 200 OK\r\nx-large: {oversized}"), false),
+            (format!("HTTP/1.1 200 OK\r\n{}\r\n", "x-item: a\r\n".repeat(101)), false),
+            (format!("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n1;{oversized}"), true),
+            (format!("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n0\r\nx-large: {oversized}"), true),
+            ("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\nwrong\r\n".into(), true),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+            let server = tokio::spawn(async move {
+                let mut peer = crate::testserver::accept_request(&listener).await;
+                let _ = peer.write_all(wire.as_bytes()).await;
+                let _ = peer.read(&mut [0; 1]).await;
+            });
+            match post(&url, &[], b"").await {
+                Ok(mut response) => {
+                    assert!(body_failure);
+                    let error = response.body.read_to_end(&mut Vec::new()).await.unwrap_err();
+                    assert_eq!(error.kind(), io::ErrorKind::InvalidData, "{error}");
+                }
+                Err(error) => {
+                    assert!(!body_failure, "{error}");
+                    assert!(!error.retryable(), "{error}");
+                }
+            }
+            server.await.unwrap();
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn response_body_idle_limit_uses_elapsed_time() {
+        // docs/models.md: a stalled response body fails after 600 seconds.
+        use tokio::io::AsyncWriteExt;
+        // Socket setup uses the reactor before the elapsed-time assertion starts.
+        tokio::time::resume();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let mut pending = Box::pin(post(&url, &[], b""));
+        let mut peer = tokio::select! {
+            response = &mut pending => panic!("request finished before the server replied: {:?}", response.err()),
+            stream = crate::testserver::accept_request(&listener) => stream,
+        };
+        peer.write_all(b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n").await.unwrap();
+        let mut response = pending.await.unwrap();
+        tokio::time::pause();
+        let start = tokio::time::Instant::now();
+        let error = response.body.read(&mut [0; 1]).await.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        let elapsed = tokio::time::Instant::now() - start;
+        assert!((READ_TIMEOUT - Duration::from_millis(1)..=READ_TIMEOUT + Duration::from_millis(1)).contains(&elapsed));
     }
 }
