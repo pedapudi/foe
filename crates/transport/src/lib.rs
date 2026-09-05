@@ -467,10 +467,9 @@ async fn status_error(provider: &str, response: &mut http::Response) -> Chunk {
     let status = response.status;
     // OpenAI sends `retry-after-ms` beside the standard `retry-after`;
     // only the delay-seconds form of the standard header is translated.
-    let retry_after_ms = response
-        .header("retry-after-ms")
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .or_else(|| response.header("retry-after").and_then(|v| v.trim().parse::<u64>().ok()).map(|s| s * 1000));
+    let retry_after_ms = response.header("retry-after-ms").and_then(|v| v.trim().parse::<u64>().ok()).or_else(|| {
+        response.header("retry-after").and_then(|v| v.trim().parse::<u64>().ok()).map(|s| s.saturating_mul(1000))
+    });
     let mut text = String::new();
     let _ = (&mut response.body).take(MAX_ERROR_BODY).read_to_string(&mut text).await;
     let mut message = format!("{provider}: HTTP {status}: {}", describe_error_body(&text));
@@ -785,6 +784,17 @@ mod tests {
         );
         assert_eq!(describe_error_body("<html>\n  502 Bad Gateway\n</html>"), "<html> 502 Bad Gateway </html>");
         assert_eq!(describe_error_body(""), "empty response body");
+    }
+
+    /// docs/models.md "HTTP requests and cancellation": retry delays cannot overflow milliseconds.
+    #[tokio::test]
+    async fn large_retry_after_preserves_the_retryable_error() {
+        use crate::testserver::{Reply, Server};
+        let server = Server::start(vec![Reply::full(429, "busy").with_header("retry-after", &u64::MAX.to_string())]);
+        let mut response = http::post(&server.url("/request"), &[], b"").await.unwrap();
+        let Chunk::Error { message, retryable } = status_error("fixture", &mut response).await else { panic!() };
+        assert!(retryable);
+        assert!(message.contains(&format!("retry_after_ms={}", u64::MAX)), "{message}");
     }
 
     #[tokio::test]
