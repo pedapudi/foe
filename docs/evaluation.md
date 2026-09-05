@@ -335,16 +335,19 @@ execution-contract configurations.
 The comparison measures product configurations. It does not isolate the token
 cost of one instruction from the token cost of one tool schema.
 
-The development task aggregates several configured-tool results. Two attempts
-must complete correctly, invoke `compose_tools`, and record at least two inner calls.
-The runner skips the held-back tasks when this activation gate fails.
+The capability control requires `compose_tools` to discover 15 configured-tool
+record keys, retrieve every named record, and return an aggregate. Two attempts
+must pass strict grading. Each attempt must use one outer composition call with
+one catalog call followed by 15 record calls. The runner stops when this control
+fails because a comparison cannot measure a mechanism that did not execute.
 
-The held-back set has three tasks. One aggregates configured-tool results that
-the shell cannot obtain directly. One aggregates repository records that a
-narrow shell command can process. One repairs ordinary repository code. Their
-task prompts contain no composition guidance.
+The mixed workload has three tasks. One presents the same dependent call shape
+without naming a composition mechanism. One aggregates repository records that
+a narrow shell command can process. One repairs ordinary repository code. All
+three tasks run after the capability control passes. Natural activation does
+not decide whether the remaining tasks run.
 
-Every held-back task runs three times under each configuration. The runner
+Every mixed-workload task runs three times under each configuration. The runner
 rotates configuration order across attempts and tasks. The binary, task data,
 model endpoint, model settings, budgets, completion rules, and required kernel
 sandbox remain fixed.
@@ -357,16 +360,20 @@ successes. An early failure cannot appear efficient by stopping before it
 finishes.
 
 The report records input, output, and cache-read tokens separately. It also
-records model calls, duration, first-request input, composition source bytes, inner
-canonical and rendered bytes, outer Python result bytes, inner errors, and
-tool activation. Suppressed rendered bytes describe the mechanism. Provider
-usage counters are the authority for token-efficiency claims.
+records model calls, duration, first-request input, composition source bytes,
+inner canonical and rendered bytes, outer composition result bytes, inner
+errors, and tool activation. It separately records uses of `/usr/bin/python3`
+through `bash`, which measures ordinary workspace scripting. Suppressed
+rendered bytes describe the mechanism. Provider usage counters are the
+authority for token-efficiency claims.
 
 Default adoption requires all of these conditions:
 
-- Every tool-composition attempt passes strictly.
-- Tool composition loses no strict success on any held-back task.
-- Every configured-tool aggregation attempt activates tool composition.
+- The capability control passes twice with its complete dependent call chain.
+- Every tool-composition attempt in the mixed workload passes strictly.
+- Tool composition loses no strict success on any mixed-workload task.
+- Tool composition activates naturally on at least two of three
+  dependent-call attempts.
 - Every attempt reports provider usage.
 - Tool composition adds a strict-success gain or reduces total tokens per
   strict success by at least 10 percent against the lower-token simpler
@@ -381,7 +388,7 @@ SHA-256 digest rather than its endpoint and model identifiers. A dry run prints
 the largest possible spend and launches no attempt:
 
 ```sh
-bazel run //evals:python-composition-assessment -- \
+bazel run //evals:tool-composition-assessment -- \
   --model-config /absolute/path/to/model.json
 ```
 
@@ -389,7 +396,7 @@ Add `--confirm-spend` and an absolute `--keep` directory to run and retain the
 assessment. Raw configurations and logs remain outside Git because they carry
 credential paths and runtime route metadata.
 
-#### Recorded default-adoption result
+#### Recorded activation-screen result
 
 The assessment ran on 2026-09-04, before the public tool rename, against source tree
 `git-tree-sha1:b0d62036ec462cf30dcb37e5cc6a7c221fb6d619` and binary
@@ -397,7 +404,7 @@ The assessment ran on 2026-09-04, before the public tool rename, against source 
 The model configuration digest was
 `sha256:c878e94438a9fbc675a2eb033291ea02a64d9e27398753840c5e96cae53d097d`.
 
-All six development attempts passed strict grading with complete provider
+All six activation-screen attempts passed strict grading with complete provider
 usage and conformant traces under the required sandbox. Each configuration
 made five configured batch calls and one return call per attempt. The Python
 configuration made no Python call in either attempt.
@@ -408,11 +415,11 @@ configuration made no Python call in either attempt.
 | `shell-output-narrowing` | 2/2 | 0 | 1,116 | 9,025.0 |
 | `python-tool-composition` | 2/2 | 0 | 1,261 | 9,300.0 |
 
-The development activation gate failed, so the runner launched no held-back
-attempt. The result kept tool composition opt-in for the default coding
-workflow. It establishes the cost of offering an unused tool on this task. It
-does not measure tasks where the prompt requires composition or where another
-workload activates the tool naturally.
+The activation gate failed, so the runner launched no comparison task. This
+result predates the dependent capability control and mixed workload described
+above. It establishes the request cost of offering an unused tool during
+independent configured-tool calls. It supplies no evidence about dependent
+composition, ordinary shell scripting, code repair, or default adoption.
 
 ### Comparable metrics
 

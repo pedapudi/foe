@@ -47,8 +47,8 @@ sh_binary(
 )
 
 sh_binary(
-    name = "python-composition-assessment",
-    srcs = ["python_composition_assessment.py"],
+    name = "tool-composition-assessment",
+    srcs = ["tool_composition_assessment.py"],
     args = [
         "--foe",
         "$(rootpath //:foe)",
@@ -104,13 +104,13 @@ sh_test(
 )
 
 sh_test(
-    name = "python_composition_assessment_test",
-    srcs = ["run_python_composition_assessment_tests.sh"],
+    name = "tool_composition_assessment_test",
+    srcs = ["run_tool_composition_assessment_tests.sh"],
     data = [
         "foe_build.py",
         "micro_tasks.py",
-        "python_composition_assessment.py",
-        "python_composition_assessment_test.py",
+        "tool_composition_assessment.py",
+        "tool_composition_assessment_test.py",
         "run_micro_evals.py",
         "trace_quality.py",
     ],
@@ -122,7 +122,7 @@ test_suite(
     tests = [
         ":runtime_evals_test",
         ":micro_tasks_test",
-        ":python_composition_assessment_test",
+        ":tool_composition_assessment_test",
         ":trace_quality_test",
     ],
 )

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,11 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from python_composition_assessment import (  # noqa: E402
+from tool_composition_assessment import (  # noqa: E402
     CONFIGURATIONS,
     TASKS,
     aggregate_configuration,
-    development_gate,
+    capability_control,
     fixture_digest,
     mechanism_metrics,
     prepare_config,
@@ -24,6 +25,7 @@ from python_composition_assessment import (  # noqa: E402
     recommendation,
     run_grader,
     schedule,
+    spending_plan,
 )
 
 
@@ -76,9 +78,67 @@ class FixtureTests(unittest.TestCase):
         for config in shaped.values():
             self.assertEqual(config["sandbox"], {"mode": "required"})
 
-    def test_holdout_prompts_do_not_name_a_composition_mechanism(self) -> None:
+    def test_dependent_fixture_requires_catalog_then_record_lookups(self) -> None:
+        task = next(task for task in TASKS if task.name == "dependent-capacity-control")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            grader = root / "grader"
+            workspace.mkdir()
+            grader.mkdir()
+            metadata = task.materialize(workspace, grader)
+            catalog = subprocess.run(
+                [str(metadata["catalog"])], text=True, capture_output=True, check=True
+            )
+            keys = json.loads(catalog.stdout)["keys"]
+            records = [
+                json.loads(
+                    subprocess.run(
+                        [str(metadata["record"]), key], text=True, capture_output=True, check=True
+                    ).stdout
+                )
+                for key in keys
+            ]
+
+        self.assertEqual(len(keys), 15)
+        self.assertGreater(sum(len(record["annotation"]) for record in records), 30000)
+        totals: dict[str, list[int]] = {}
+        for record in records:
+            if record["state"] == "available":
+                total = totals.setdefault(record["region"], [0, 0])
+                total[0] += record["capacity"]
+                total[1] += 1
+        winner = max(totals, key=lambda region: (totals[region][0], region))
+        self.assertEqual(
+            metadata["oracle"],
+            {
+                "region": winner,
+                "available_capacity": totals[winner][0],
+                "record_count": totals[winner][1],
+            },
+        )
+
+    def test_capability_control_names_composition_and_mixed_workload_does_not(self) -> None:
+        control = next(task for task in TASKS if task.task_set == "capability-control")
+        mixed = next(task for task in TASKS if task.name == "dependent-capacity-selection")
+        prompts = {}
+        for task in (control, mixed):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                workspace = root / "workspace"
+                grader = root / "grader"
+                workspace.mkdir()
+                grader.mkdir()
+                metadata = task.materialize(workspace, grader)
+                prompts[task.name] = prepare_config(
+                    task, CONFIGURATIONS[2], workspace, metadata, MODEL
+                )["task"]
+        self.assertIn("compose_tools", prompts[control.name])
+        self.assertNotIn("compose_tools", prompts[mixed.name])
+
+    def test_mixed_workload_prompts_do_not_name_a_composition_mechanism(self) -> None:
         forbidden = ("call_tool", "composition", "compose_tools", "shell", "bash")
-        for task in (task for task in TASKS if task.task_set == "holdout"):
+        for task in (task for task in TASKS if task.task_set == "mixed-workload"):
             with self.subTest(task=task.name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 workspace = root / "workspace"
@@ -91,7 +151,11 @@ class FixtureTests(unittest.TestCase):
                 self.assertTrue(all(term not in prompt for term in forbidden), prompt)
 
     def test_read_only_graders_detect_workspace_mutation(self) -> None:
-        for name in ("shard-priority-total", "regional-capacity-selection", "completed-charge-leader"):
+        for name in (
+            "dependent-capacity-control",
+            "dependent-capacity-selection",
+            "completed-charge-leader",
+        ):
             task = next(task for task in TASKS if task.name == name)
             with self.subTest(task=name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -167,8 +231,27 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(measured["outer_composition_rendered_bytes"], 1)
         self.assertEqual(measured["top_level_rendered_bytes"], 1)
 
+    def test_mechanism_metrics_detect_shell_python_scripting(self) -> None:
+        events = [
+            {
+                "type": "assistant/message",
+                "data": {
+                    "tool_calls": [
+                        {
+                            "id": "script",
+                            "name": "bash",
+                            "args": {"command": "/usr/bin/python3 -c 'print(42)'"},
+                        }
+                    ]
+                },
+            }
+        ]
+        measured = mechanism_metrics(events)
+        self.assertEqual(measured["shell_calls"], 1)
+        self.assertEqual(measured["shell_python_calls"], 1)
+
     def test_schedule_rotates_configuration_order(self) -> None:
-        tasks = tuple(task for task in TASKS if task.task_set == "holdout")
+        tasks = tuple(task for task in TASKS if task.task_set == "mixed-workload")
         planned = schedule(tasks, 3)
         for attempt in range(1, 4):
             for task in tasks:
@@ -188,6 +271,11 @@ class MeasurementTests(unittest.TestCase):
         ]
         self.assertEqual(set(first_names), {configuration.name for configuration in CONFIGURATIONS})
 
+    def test_spending_plan_counts_every_scheduled_configuration(self) -> None:
+        plan = spending_plan(2, 3)
+        self.assertIn("        125    828,000   105,000  every scheduled attempt", plan)
+        self.assertIn("5,220 seconds", plan)
+
 
 def result(
     task: str,
@@ -199,7 +287,7 @@ def result(
 ) -> dict:
     return {
         "task": task,
-        "task_set": "development" if task == "shard-priority-total" else "holdout",
+        "task_set": "capability-control" if task == "dependent-capacity-control" else "mixed-workload",
         "configuration": configuration,
         "strict_success": strict,
         "infrastructure_error": None,
@@ -216,15 +304,19 @@ def result(
         "mechanism": {
             "composition_calls": composition_calls,
             "shell_calls": 0,
-            "inner_calls": composition_calls * 3,
+            "shell_python_calls": 0,
+            "inner_calls": composition_calls * 16,
+            "inner_calls_by_tool": (
+                {"region_catalog": 1, "capacity_record": 15} if composition_calls else {}
+            ),
         },
     }
 
 
 class DecisionTests(unittest.TestCase):
-    def held_back_results(self) -> list[dict]:
+    def comparison_results(self) -> list[dict]:
         results = []
-        tasks = [task.name for task in TASKS if task.task_set == "holdout"]
+        tasks = [task.name for task in TASKS if task.task_set == "mixed-workload"]
         costs = {
             "ordinary-coding-tools": 100,
             "shell-output-narrowing": 90,
@@ -233,7 +325,9 @@ class DecisionTests(unittest.TestCase):
         for configuration in costs:
             for task in tasks:
                 for _ in range(3):
-                    activation = int(configuration == "tool-composition" and task == "regional-capacity-selection")
+                    activation = int(
+                        configuration == "tool-composition" and task == "dependent-capacity-selection"
+                    )
                     results.append(
                         result(task, configuration, input_tokens=costs[configuration], composition_calls=activation)
                     )
@@ -248,24 +342,38 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(report["input_tokens_per_strict_success"], 400)
 
     def test_material_savings_with_complete_quality_support_adoption(self) -> None:
-        report = recommendation(self.held_back_results(), 3)
+        report = recommendation(self.comparison_results(), 3)
         self.assertTrue(report["include_composition_by_default"], report["findings"])
         self.assertLessEqual(report["total_token_ratio_against_lower_token_simpler_configuration"], 0.90)
 
     def test_one_composition_quality_failure_blocks_adoption(self) -> None:
-        results = self.held_back_results()
+        results = self.comparison_results()
         failed = next(result for result in results if result["configuration"] == "tool-composition")
         failed["strict_success"] = False
         report = recommendation(results, 3)
         self.assertFalse(report["include_composition_by_default"])
         self.assertTrue(any("did not pass every" in finding for finding in report["findings"]))
 
-    def test_development_gate_requires_successful_composition(self) -> None:
-        passed = [result("shard-priority-total", "tool-composition", composition_calls=1) for _ in range(2)]
-        self.assertEqual(development_gate(passed, 2), (True, []))
+    def test_capability_control_requires_the_complete_dependent_chain(self) -> None:
+        passed = [result("dependent-capacity-control", "tool-composition", composition_calls=1) for _ in range(2)]
+        self.assertEqual(capability_control(passed, 2), (True, []))
         missing = copy.deepcopy(passed)
-        missing[0]["mechanism"]["composition_calls"] = 0
-        self.assertFalse(development_gate(missing, 2)[0])
+        missing[0]["mechanism"]["inner_calls_by_tool"]["capacity_record"] = 14
+        self.assertFalse(capability_control(missing, 2)[0])
+
+    def test_majority_natural_activation_is_required_for_default_adoption(self) -> None:
+        results = self.comparison_results()
+        activated = [
+            item
+            for item in results
+            if item["configuration"] == "tool-composition"
+            and item["task"] == "dependent-capacity-selection"
+        ]
+        activated[1]["mechanism"]["composition_calls"] = 0
+        activated[2]["mechanism"]["composition_calls"] = 0
+        report = recommendation(results, 3)
+        self.assertFalse(report["include_composition_by_default"])
+        self.assertTrue(any("majority" in finding for finding in report["findings"]))
 
 
 if __name__ == "__main__":

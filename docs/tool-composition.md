@@ -225,10 +225,10 @@ evidence exist.
    policy, environment access, memory exhaustion, and non-termination. The
    runtime test suite carries these; network and clock isolation follow
    from the policy and are exercised by the sandbox tests.
-3. **Quality on tasks that exercise composition.** A development set
-   contains tasks where Python sources issue several inner calls and return a
-   smaller derived value. A holdout set measures whether the mechanism
-   preserves or improves task score.
+3. **Quality on tasks that exercise composition.** A forced capability control
+   proves that one source can complete a dependent call chain and return a
+   smaller derived value. A mixed workload then measures natural selection and
+   task quality without naming a mechanism in its task prompts.
 4. **Mixed-workload cost.** Tasks that benefit and tasks that do not run
    together. Reports separate the fixed request cost of the `compose_tools`
    schema, source replay, inner canonical bytes, suppressed rendered

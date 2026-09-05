@@ -35,7 +35,6 @@ from trace_quality import evaluate
 EVALUATED = 0
 DEPLOYMENT_FAULT = 1
 NOTHING_LAUNCHED = 2
-QUALITY_COMPONENTS = ("artifact_correct", "outcome_correct", "trace_conformant", "within_budget")
 
 
 @dataclass(frozen=True)
@@ -116,126 +115,162 @@ def _json_schema(properties: dict[str, dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _observation_batches(seed: int, names: tuple[str, ...]) -> dict[str, list[dict[str, Any]]]:
-    categories = ("priority", "standard", "deferred", "standard")
-    batches: dict[str, list[dict[str, Any]]] = {}
-    for shard_index, name in enumerate(names):
-        rows = []
-        for row_index in range(32):
-            quantity = 20 + ((row_index * 37 + shard_index * 53 + seed) % 181)
-            rows.append(
-                {
-                    "record": f"{name}-{row_index + 1:03d}",
-                    "category": categories[(row_index + shard_index + seed) % len(categories)],
-                    "accepted": (row_index * 3 + shard_index + seed) % 7 != 0,
-                    "quantity": quantity,
-                    "annotation": f"retained observation {seed:02d}-{shard_index:02d}-{row_index:03d} " + "x" * 44,
-                }
-            )
-        batches[name] = rows
-    return batches
-
-
-def _winning_batch(batches: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    totals = {
-        name: sum(row["quantity"] for row in rows if row["accepted"] and row["category"] == "priority")
-        for name, rows in batches.items()
+def _capacity_records(seed: int, regions: tuple[str, ...]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    records = {}
+    totals = {region: [0, 0] for region in regions}
+    for index in range(15):
+        key = f"capacity-{seed:02d}-{index + 1:03d}"
+        region = regions[(index * 3 + seed) % len(regions)]
+        available = (index * 5 + seed) % 4 != 0
+        capacity = 100 + ((index * 131 + seed * 17) % 900)
+        annotation = " ".join(
+            hashlib.sha256(f"{seed}:{index}:{part}".encode()).hexdigest() for part in range(32)
+        )
+        records[key] = {
+            "key": key,
+            "region": region,
+            "state": "available" if available else "reserved",
+            "capacity": capacity,
+            "annotation": annotation,
+        }
+        if available:
+            totals[region][0] += capacity
+            totals[region][1] += 1
+    winner = max(totals, key=lambda region: (totals[region][0], region))
+    expected = {
+        "region": winner,
+        "available_capacity": totals[winner][0],
+        "record_count": totals[winner][1],
     }
-    winner = max(totals, key=lambda name: (totals[name], name))
-    count = sum(row["accepted"] and row["category"] == "priority" for row in batches[winner])
-    return {"shard": winner, "priority_quantity": totals[winner], "record_count": count}
+    return records, expected
 
 
-def _batch_tool(batches: dict[str, list[dict[str, Any]]]) -> str:
+def _catalog_tool(keys: tuple[str, ...]) -> str:
     return f'''#!/usr/bin/python3
 import json
 import sys
 
-batches = {batches!r}
-if len(sys.argv) != 2 or sys.argv[1] not in batches:
-    print(json.dumps({{"error": "give one declared shard name"}}))
+keys = {keys!r}
+if len(sys.argv) != 1:
+    print(json.dumps({{"error": "region_catalog accepts no arguments"}}))
     raise SystemExit(2)
-name = sys.argv[1]
-print(json.dumps({{"shard": name, "observations": batches[name]}}, separators=(",", ":")))
+print(json.dumps({{"keys": keys}}, separators=(",", ":")))
 '''
 
 
-def _batch_fixture(
+def _capacity_record_tool(records: dict[str, dict[str, Any]]) -> str:
+    return f'''#!/usr/bin/python3
+import json
+import sys
+
+records = {records!r}
+if len(sys.argv) != 2 or sys.argv[1] not in records:
+    print(json.dumps({{"error": "give one key returned by region_catalog"}}))
+    raise SystemExit(2)
+print(json.dumps(records[sys.argv[1]], separators=(",", ":")))
+'''
+
+
+def _capacity_fixture(
     workspace: Path,
     grader: Path,
     *,
     seed: int,
-    names: tuple[str, ...],
+    regions: tuple[str, ...],
 ) -> dict[str, Any]:
-    batches = _observation_batches(seed, names)
-    expected = _winning_batch(batches)
+    records, expected = _capacity_records(seed, regions)
     readme = _write(
         workspace,
         "README.md",
-        """# Observation batches
+        """# Regional capacity
 
-Each observation names a category, acceptance state, and quantity. The assigned
-task defines the aggregate to return. Repository files must remain unchanged.
+The catalog and capacity records are available through configured tools. The
+assigned task defines the aggregate to return. Repository files must remain
+unchanged.
 """,
     )
-    tool = _write(grader, "observation_batch", _batch_tool(batches), executable=True)
+    catalog = _write(grader, "region_catalog", _catalog_tool(tuple(records)), executable=True)
+    record = _write(grader, "capacity_record", _capacity_record_tool(records), executable=True)
     grade = _write(
         grader,
         "grade",
         _candidate_grader(expected, {"README.md": _sha256(readme)}),
         executable=True,
     )
-    return {"grade": grade, "tool": tool, "oracle": expected, "shards": names}
+    return {"catalog": catalog, "record": record, "grade": grade, "oracle": expected}
 
 
-def _development_batch_materialize(workspace: Path, grader: Path) -> dict[str, Any]:
-    return _batch_fixture(
+def _capability_control_materialize(workspace: Path, grader: Path) -> dict[str, Any]:
+    return _capacity_fixture(
         workspace,
         grader,
         seed=17,
-        names=("cedar", "elm", "fir", "maple", "oak"),
+        regions=("central", "coastal", "northern", "southern"),
     )
 
 
-def _held_back_batch_materialize(workspace: Path, grader: Path) -> dict[str, Any]:
-    return _batch_fixture(
+def _dependent_capacity_materialize(workspace: Path, grader: Path) -> dict[str, Any]:
+    return _capacity_fixture(
         workspace,
         grader,
         seed=43,
-        names=("amber", "cobalt", "indigo", "ochre", "silver", "violet"),
+        regions=("eastern", "mountain", "western", "plains"),
     )
 
 
-def _batch_config(workspace: Path, metadata: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
-    shards = ", ".join(metadata["shards"])
+def _capacity_config(
+    workspace: Path,
+    metadata: dict[str, Any],
+    model: dict[str, Any],
+    *,
+    require_composition: bool,
+) -> dict[str, Any]:
+    method = (
+        "Use compose_tools for the lookup. Its source must call region_catalog first, then call capacity_record "
+        "for every returned key, and return only the requested aggregate. "
+        if require_composition
+        else "Use region_catalog to discover every capacity record key, then inspect every named record. "
+    )
     return _base_config(
         workspace,
         model,
         task=(
-            f"Inspect every observation batch named here: {shards}. Select the shard with the greatest sum of "
-            "quantity among observations whose category is priority and whose accepted field is true. Return the "
-            "shard, that quantity, and the number of contributing observations. Preserve repository files."
+            method
+            + "Select the region with the greatest sum of capacity among records whose state is available. Return "
+            "the region, that capacity, and the number of contributing records. Preserve repository files."
         ),
         returns=_json_schema(
             {
-                "shard": {"type": "string"},
-                "priority_quantity": {"type": "integer"},
+                "region": {"type": "string"},
+                "available_capacity": {"type": "integer"},
                 "record_count": {"type": "integer"},
             }
         ),
         tool_defs={
-            "observation_batch": {
-                "exec": str(metadata["tool"]),
+            "region_catalog": {
+                "exec": str(metadata["catalog"]),
+                "description": "Accept no args. The successful stdout JSON has a keys array for capacity_record.",
+            },
+            "capacity_record": {
+                "exec": str(metadata["record"]),
                 "description": (
-                    "Return the complete observation batch for one shard. "
-                    f"Call with args containing one of: {shards}."
+                    "Accept one key from region_catalog as the sole args entry. The successful stdout is one "
+                    "complete capacity record as JSON."
                 ),
-            }
+            },
         },
     )
 
 
-def _batch_oracle(_workspace: Path, _metadata: dict[str, Any]) -> None:
+def _capability_control_config(workspace: Path, metadata: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+    return _capacity_config(workspace, metadata, model, require_composition=True)
+
+
+def _dependent_capacity_config(workspace: Path, metadata: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+    return _capacity_config(workspace, metadata, model, require_composition=False)
+
+
+def _capacity_oracle(_workspace: Path, _metadata: dict[str, Any]) -> None:
     return None
 
 
@@ -411,32 +446,32 @@ def batches(items, size):
 
 TASKS = (
     Task(
-        "shard-priority-total",
-        "development",
-        "Confirm that the model selects and successfully uses registry composition.",
-        4,
-        32000,
-        3000,
-        180,
-        _development_batch_materialize,
-        _batch_config,
-        _batch_oracle,
-    ),
-    Task(
-        "regional-capacity-selection",
-        "holdout",
-        "Aggregate several configured-tool results that a shell cannot obtain directly.",
+        "dependent-capacity-control",
+        "capability-control",
+        "Confirm that explicit composition completes a dependent configured-tool chain.",
         4,
         36000,
         3000,
         180,
-        _held_back_batch_materialize,
-        _batch_config,
-        _batch_oracle,
+        _capability_control_materialize,
+        _capability_control_config,
+        _capacity_oracle,
+    ),
+    Task(
+        "dependent-capacity-selection",
+        "mixed-workload",
+        "Measure natural composition on a dependent configured-tool chain.",
+        4,
+        36000,
+        3000,
+        180,
+        _dependent_capacity_materialize,
+        _dependent_capacity_config,
+        _capacity_oracle,
     ),
     Task(
         "completed-charge-leader",
-        "holdout",
+        "mixed-workload",
         "Aggregate repository records that a narrow shell command can handle.",
         4,
         24000,
@@ -448,7 +483,7 @@ TASKS = (
     ),
     Task(
         "batch-partition-repair",
-        "holdout",
+        "mixed-workload",
         "Measure quality and fixed request cost on an ordinary code repair.",
         5,
         24000,
@@ -480,7 +515,7 @@ def _base_config(
         raise ValueError("a completion rule is required")
     return {
         "version": 4,
-        "name": "python-composition-assessment",
+        "name": "tool-composition-assessment",
         "instructions": {
             "10-role": "You are a coding agent working in a small repository.",
             "20-completion": (
@@ -583,6 +618,13 @@ def mechanism_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
         "top_level_tools": sorted({call.get("name") for call in calls if isinstance(call.get("name"), str)}),
         "composition_calls": len(composition_ids),
         "shell_calls": sum(call.get("name") == "bash" for call in calls),
+        "shell_python_calls": sum(
+            call.get("name") == "bash"
+            and isinstance(call.get("args"), dict)
+            and isinstance(call["args"].get("command"), str)
+            and "/usr/bin/python3" in call["args"]["command"]
+            for call in calls
+        ),
         "inner_calls": len(inner),
         "inner_errors": sum(result.get("is_error") is True for result in inner_results),
         "inner_calls_by_tool": dict(sorted(by_tool.items())),
@@ -789,6 +831,9 @@ def aggregate_configuration(results: list[dict[str, Any]], configuration: str) -
                     result["mechanism"]["composition_calls"] > 0 for result in matching
                 ),
                 "shell_activations": sum(result["mechanism"]["shell_calls"] > 0 for result in matching),
+                "shell_python_activations": sum(
+                    result["mechanism"]["shell_python_calls"] > 0 for result in matching
+                ),
             }
     return {
         "attempts": len(selected),
@@ -813,39 +858,44 @@ def aggregate_configuration(results: list[dict[str, Any]], configuration: str) -
         ),
         "composition_activations": sum(result["mechanism"]["composition_calls"] > 0 for result in selected),
         "shell_activations": sum(result["mechanism"]["shell_calls"] > 0 for result in selected),
+        "shell_python_activations": sum(
+            result["mechanism"]["shell_python_calls"] > 0 for result in selected
+        ),
         "task_results": task_results,
     }
 
 
-def recommendation(results: list[dict[str, Any]], holdout_attempts: int) -> dict[str, Any]:
-    holdout_tasks = tuple(task for task in TASKS if task.task_set == "holdout")
-    expected = len(holdout_tasks) * holdout_attempts
+def recommendation(results: list[dict[str, Any]], comparison_attempts: int) -> dict[str, Any]:
+    comparison_tasks = tuple(task for task in TASKS if task.task_set == "mixed-workload")
+    comparison_results = [result for result in results if result["task_set"] == "mixed-workload"]
+    expected = len(comparison_tasks) * comparison_attempts
     by_configuration = {
-        configuration.name: aggregate_configuration(
-            [result for result in results if result["task_set"] == "holdout"],
-            configuration.name,
-        )
+        configuration.name: aggregate_configuration(comparison_results, configuration.name)
         for configuration in CONFIGURATIONS
     }
     findings = []
-    if holdout_attempts < 3:
-        findings.append("The held-back comparison has fewer than three attempts per task.")
+    if comparison_attempts < 3:
+        findings.append("The mixed-workload comparison has fewer than three attempts per task.")
     if any(report["attempts"] != expected for report in by_configuration.values()):
-        findings.append("The held-back comparison is incomplete.")
+        findings.append("The mixed-workload comparison is incomplete.")
     composition_report = by_configuration["tool-composition"]
     simpler = [by_configuration["ordinary-coding-tools"], by_configuration["shell-output-narrowing"]]
     if composition_report["strict_successes"] != expected:
-        findings.append("The tool-composition configuration did not pass every held-back attempt.")
-    for task in holdout_tasks:
+        findings.append("The tool-composition configuration did not pass every mixed-workload attempt.")
+    for task in comparison_tasks:
         composition_successes = composition_report["task_results"].get(task.name, {}).get("strict_successes", 0)
         simpler_best = max(report["task_results"].get(task.name, {}).get("strict_successes", 0) for report in simpler)
         if composition_successes < simpler_best:
             findings.append(f"Tool composition reduced task quality on {task.name}.")
     if any(report["usage"]["attempts_with_reported_usage"] != expected for report in by_configuration.values()):
-        findings.append("Provider usage is incomplete for at least one held-back configuration.")
-    composition_task = composition_report["task_results"].get("regional-capacity-selection", {})
-    if composition_task.get("composition_activations") != holdout_attempts:
-        findings.append("Tool composition did not activate on every configured-tool aggregation attempt.")
+        findings.append("Provider usage is incomplete for at least one mixed-workload configuration.")
+    dependent_task = composition_report["task_results"].get("dependent-capacity-selection", {})
+    natural_activations = dependent_task.get("composition_activations", 0)
+    required_natural_activations = comparison_attempts // 2 + 1
+    if natural_activations < required_natural_activations:
+        findings.append(
+            "Tool composition did not activate naturally on a majority of dependent-call attempts."
+        )
 
     composition_cost = composition_report["total_tokens_per_strict_success"]
     simpler_costs = [
@@ -869,37 +919,43 @@ def recommendation(results: list[dict[str, Any]], holdout_attempts: int) -> dict
     return {
         "include_composition_by_default": include,
         "quality_advantage": quality_advantage,
+        "natural_dependent_task_activations": natural_activations,
+        "required_natural_dependent_task_activations": required_natural_activations,
         "total_token_ratio_against_lower_token_simpler_configuration": efficiency_ratio,
         "material_total_token_advantage": efficiency_advantage,
         "findings": findings,
     }
 
 
-def development_gate(results: list[dict[str, Any]], attempts: int) -> tuple[bool, list[str]]:
+def capability_control(results: list[dict[str, Any]], attempts: int) -> tuple[bool, list[str]]:
     selected = [
         result
         for result in results
-        if result["task_set"] == "development" and result["configuration"] == "tool-composition"
+        if result["task_set"] == "capability-control" and result["configuration"] == "tool-composition"
     ]
     findings = []
     if len(selected) != attempts:
-        findings.append("The development activation run is incomplete.")
-    if not all(result["strict_success"] for result in selected):
-        findings.append("The tool-composition configuration failed a development activation attempt.")
-    if not all(
-        result["mechanism"]["composition_calls"] > 0 and result["mechanism"]["inner_calls"] >= 2
+        findings.append("The composition capability control is incomplete.")
+    if len(selected) == attempts and not all(result["strict_success"] for result in selected):
+        findings.append("The tool-composition configuration failed a capability-control attempt.")
+    if len(selected) == attempts and not all(
+        result["mechanism"]["composition_calls"] == 1
+        and result["mechanism"]["inner_calls_by_tool"].get("region_catalog") == 1
+        and result["mechanism"]["inner_calls_by_tool"].get("capacity_record") == 15
         for result in selected
     ):
-        findings.append("The composition tool did not make at least two inner calls in every development attempt.")
+        findings.append("The composition capability control did not complete its declared dependent tool chain.")
     return not findings, findings
 
 
-def spending_plan(development_attempts: int, holdout_attempts: int) -> str:
+def spending_plan(capability_attempts: int, comparison_attempts: int) -> str:
     rows = []
     total_calls = total_input = total_output = total_seconds = 0
     for task in TASKS:
-        attempts = development_attempts if task.task_set == "development" else holdout_attempts
-        multiplier = attempts * len(CONFIGURATIONS)
+        if task.task_set == "capability-control":
+            multiplier = capability_attempts
+        else:
+            multiplier = comparison_attempts * len(CONFIGURATIONS)
         calls = task.model_calls * multiplier
         input_tokens = task.input_tokens * multiplier
         output_tokens = task.output_tokens * multiplier
@@ -924,7 +980,7 @@ def spending_plan(development_attempts: int, holdout_attempts: int) -> str:
             f"  {total_calls:>11}  {total_input:>9,}  {total_output:>8,}  every scheduled attempt",
             "",
             f"The cumulative wall-clock allowance is {total_seconds:,} seconds.",
-            "Held-back tasks are skipped if the development activation gate fails.",
+            "Mixed-workload tasks are skipped only if the forced capability control fails.",
             "No attempt was launched. Add --confirm-spend to launch them.",
         ]
     )
@@ -962,8 +1018,8 @@ def main() -> int:
         required=True,
         help="JSON file containing the model block. The report retains only its SHA-256 digest.",
     )
-    parser.add_argument("--development-attempts", type=int, default=2)
-    parser.add_argument("--holdout-attempts", type=int, default=3)
+    parser.add_argument("--capability-attempts", type=int, default=2)
+    parser.add_argument("--comparison-attempts", type=int, default=3)
     parser.add_argument("--confirm-spend", action="store_true")
     parser.add_argument("--keep", type=Path, help="Keep configurations, workspaces, logs, and report here.")
     args = parser.parse_args()
@@ -972,7 +1028,7 @@ def main() -> int:
         print(message, file=sys.stderr)
         return NOTHING_LAUNCHED
 
-    if not 1 <= args.development_attempts <= 3 or not 1 <= args.holdout_attempts <= 3:
+    if not 1 <= args.capability_attempts <= 3 or not 1 <= args.comparison_attempts <= 3:
         return refuse("attempt counts must be between 1 and 3")
     binary = args.foe.resolve()
     if not binary.is_file():
@@ -983,7 +1039,7 @@ def main() -> int:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         return refuse(str(error))
     if not args.confirm_spend:
-        print(spending_plan(args.development_attempts, args.holdout_attempts))
+        print(spending_plan(args.capability_attempts, args.comparison_attempts))
         return NOTHING_LAUNCHED
 
     temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -1002,17 +1058,30 @@ def main() -> int:
 
     results = []
     scheduled_index = 0
-    for attempt, task, configuration in schedule(_selected_tasks("development"), args.development_attempts):
+    control_task = _selected_tasks("capability-control")[0]
+    composition_configuration = configuration_by_name("tool-composition")
+    for attempt in range(1, args.capability_attempts + 1):
         scheduled_index += 1
         print(
-            f"composition assessment: {task.task_set}, attempt {attempt}, {task.name}, {configuration.name}",
+            f"composition assessment: {control_task.task_set}, attempt {attempt}, "
+            f"{control_task.name}, {composition_configuration.name}",
             file=sys.stderr,
             flush=True,
         )
-        results.append(run_attempt(binary, run_root, task, configuration, model, attempt, scheduled_index))
-    development_passed, development_findings = development_gate(results, args.development_attempts)
-    if development_passed:
-        for attempt, task, configuration in schedule(_selected_tasks("holdout"), args.holdout_attempts):
+        results.append(
+            run_attempt(
+                binary,
+                run_root,
+                control_task,
+                composition_configuration,
+                model,
+                attempt,
+                scheduled_index,
+            )
+        )
+    control_passed, control_findings = capability_control(results, args.capability_attempts)
+    if control_passed:
+        for attempt, task, configuration in schedule(_selected_tasks("mixed-workload"), args.comparison_attempts):
             scheduled_index += 1
             print(
                 f"composition assessment: {task.task_set}, attempt {attempt}, {task.name}, {configuration.name}",
@@ -1022,22 +1091,25 @@ def main() -> int:
             results.append(run_attempt(binary, run_root, task, configuration, model, attempt, scheduled_index))
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "evaluation": "tool-composition-default-adoption",
         "evaluated_foe": evaluated,
         "model_config_sha256": model_digest,
-        "development_attempts_per_task": args.development_attempts,
-        "holdout_attempts_per_task": args.holdout_attempts,
-        "development_gate": {"passed": development_passed, "findings": development_findings},
-        "holdout_skipped": not development_passed,
+        "capability_attempts": args.capability_attempts,
+        "comparison_attempts_per_task": args.comparison_attempts,
+        "capability_control": {"passed": control_passed, "findings": control_findings},
+        "mixed_workload_skipped": not control_passed,
         "configuration_aggregates": {
-            configuration.name: aggregate_configuration(results, configuration.name)
+            configuration.name: aggregate_configuration(
+                [result for result in results if result["task_set"] == "mixed-workload"],
+                configuration.name,
+            )
             for configuration in CONFIGURATIONS
         },
         "recommendation": (
-            recommendation(results, args.holdout_attempts)
-            if development_passed
-            else {"include_composition_by_default": False, "findings": development_findings}
+            recommendation(results, args.comparison_attempts)
+            if control_passed
+            else {"include_composition_by_default": False, "findings": control_findings}
         ),
         "results": results,
     }
