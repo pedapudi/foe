@@ -425,6 +425,48 @@ above. It establishes the request cost of offering an unused tool during
 independent configured-tool calls. It supplies no evidence about dependent
 composition, ordinary shell scripting, code repair, or default adoption.
 
+#### Recorded mixed-workload result keeps composition opt-in
+
+The assessment ran on 2026-09-05 against source tree
+`git-tree-sha1:2b45e96073a18b76e5c0d608c8d288a2010fd245` and binary
+`sha256:ec7b01b7663bb6490373be6c7182e566d28f40a1bc8e2c3afb9f4c2bed5363fc`.
+The model configuration digest was
+`sha256:0c70fd43cca7ca748a053166c5e1e44ed3cc18c42d3b82b4fe67ab232ec9f2a3`.
+
+Both capability-control attempts passed strict grading. Each used one
+`compose_tools` call containing one catalog call and 15 record calls. Neither
+attempt recorded an inner error.
+
+The mixed workload launched 27 attempts: three tasks under three
+configurations, with three attempts for each pairing. Every attempt passed
+strict grading with complete provider usage, a conformant trace, and no
+infrastructure fault.
+
+| configuration | strict successes | natural composition activations | shell Python activations | median first-request input tokens | total tokens per strict success |
+|---|---:|---:|---:|---:|---:|
+| `ordinary-coding-tools` | 9 of 9 | 0 | 4 | 1,022 | 13,860.7 |
+| `shell-output-narrowing` | 9 of 9 | 0 | 4 | 1,054 | 14,026.8 |
+| `tool-composition` | 9 of 9 | 0 | 6 | 1,249 | 15,199.4 |
+
+The composition-enabled configuration used 9.7 percent more total tokens than
+the lower-token ordinary configuration. Its median first request contained 227
+more input tokens. The model selected `compose_tools` in none of the mixed
+attempts, including the dependent-call task.
+
+The three configurations started `/usr/bin/python3` through `bash` in 14 mixed
+attempts. This observation establishes use of ordinary workspace scripting. It
+does not isolate scripting's contribution to task quality.
+
+Two diagnostic executions preceded the recorded result. The first exposed
+ambiguous documentation for inner-call names and configured executable output.
+The second showed that every repair configuration produced a correct artifact
+but exhausted the same five-call limit before completion. The recorded source
+clarifies the interface and gives every configuration equal completion
+headroom. The diagnostic attempts do not contribute to the table.
+
+The result keeps `compose_tools` available through explicit execution contracts.
+It does not qualify the tool for the default coding workflow.
+
 ### Comparable metrics
 
 Each benchmark report includes these metrics:
