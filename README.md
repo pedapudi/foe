@@ -79,7 +79,7 @@ and managed-cloud endpoints.
 takes, its default, and what it does.
 
 A configuration of your own is one JSON document. This is the smallest one
-that runs with the built-in model transport.
+that directs the binary to call a configured model endpoint.
 
 ```json
 {
@@ -144,10 +144,10 @@ bazel run //evals:micro -- --model openai/gpt-5.6-sol --confirm-spend
 
 ## Embedding
 
-A host application launches the binary, reads the log from standard output, and
-answers model requests and host tool calls on standard input. The Python
-package in `python/` does this and exposes a transport interface so that the
-host keeps the model credentials. See [docs/sdk.md](docs/sdk.md).
+A host application launches the binary, reads the log from standard output,
+and answers model requests and host tool calls on standard input. The Python
+package in `python/` accepts a model backend callback so the host can keep the
+model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 

@@ -627,8 +627,8 @@ li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: 
         starting contract; <code>foe plan</code> answers "will this work?"
         before anything runs.</li>
         <li><strong>Embedded</strong> — the Python package builds the contract, launches
-        the binary, and services host tools; the model is called by your
-        transport or by foe's own.</li>
+        the binary, and services host tools; the host supplies a model backend
+        or the binary calls the configured endpoint.</li>
         <li><strong>Under a host</strong> — any process can drive foe over the
         line-oriented protocol on standard input and output.</li>
       </ul>

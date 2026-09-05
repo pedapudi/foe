@@ -335,7 +335,7 @@ class Episode:
                 return text, calls, chunk["stop"], chunk["usage"], None
             elif kind == "error":
                 return text, [], "end", {"input": 0, "output": 0, "cache_read": 0}, chunk["message"]
-        ended = "model transport ended without a done or error chunk"
+        ended = "model backend ended without a done or error chunk"
         return text, [], "end", {"input": 0, "output": 0, "cache_read": 0}, ended
 
     def tool_result(self, step: int, call: dict[str, Any], value: Any, rendered: str, is_error: bool) -> None:

@@ -7,16 +7,16 @@ answers the protocol over the binary's standard input and standard output,
 and returns a typed outcome. The binary is the runtime; it owns the episode
 loop, the log, the grants, and the sandbox. The package executes no tool of
 its own: a tool the application declares is routed to the callable it
-supplied. The model is called by a transport the application supplies, or
-by the binary's own transport when the contract declares a `model` block,
-which "Who calls the model" below states.
+supplied. The application supplies a model backend when the contract omits a
+`model` block. When the contract declares a `model` block, the binary calls
+the configured endpoint. "Who calls the model" below states the rule.
 
 The package lives in `python/foe`, targets Python 3.11 and later, and
 depends on the standard library alone. It ships `py.typed` and passes
 `mypy --strict`, so an editor sees every type from the source. Nothing in
-the package reads an environment variable. No credential passes through
-it: one lives in the embedding application's transport, or in the file the
-binary reads for the provider its `model` block names.
+the package reads an environment variable. No credential passes through it:
+one lives in the embedding application's model backend, or in the file the
+binary reads for the endpoint its `model` block names.
 
 ## A complete example
 
@@ -57,12 +57,13 @@ contract = foe.ExecutionContract(
 
 
 async def main() -> None:
-    from foe.adapters.litellm import litellm_transport
+    from foe.adapters.litellm import litellm_model_backend
 
-    transport = litellm_transport("anthropic/claude-opus-5", api_key=Path("~/.config/foe/key").expanduser().read_text().strip())
+    api_key = Path("~/.config/foe/key").expanduser().read_text().strip()
+    model_backend = litellm_model_backend("configured-model", api_key=api_key)
     outcome = await contract.run(
         task="Propose the next experiment.",
-        transport=transport,
+        model_backend=model_backend,
         binary="/usr/local/bin/foe",
         log_dir=Path("/tmp/episodes/proposer-01"),
         on_event=lambda e: print(e.seq, e.type),
@@ -107,7 +108,7 @@ when the binary asks.
 | `foe.Event` | one log event, as delivered to `on_event` |
 | `foe.Runtime` | the version and build hash the binary states |
 | `foe.CONFIG_VERSION`, `foe.LOG_FORMAT_VERSION`, `foe.PROTOCOL_VERSION` | the versions this package speaks |
-| `foe.adapters.litellm.litellm_transport` | the reference transport adapter |
+| `foe.adapters.litellm.litellm_model_backend` | the reference model backend adapter |
 
 ### `ExecutionContract`
 
@@ -130,9 +131,9 @@ foe.ExecutionContract(
 Each argument maps to the key of the same name in config.md. `child_contracts`
 holds child contracts; a child is an `ExecutionContract` whose `version` and `sandbox`
 are omitted from the document because they are inherited, and which keeps
-its own `model` when it declares one. `model` names the provider and model
-the binary's own transport calls; when None the key is omitted and the host
-answers every model request. `sandbox` is
+its own `model` when it declares one. `model` configures the endpoint the
+binary calls; when None the key is omitted and the host answers every model
+request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
 runtime's default applies.
 
@@ -189,7 +190,7 @@ therefore compute the fingerprint on a machine that cannot run the contract.
 await contract.run(
     task: str,
     *,
-    transport: Transport | None = None,
+    model_backend: ModelBackend | None = None,
     binary: str | os.PathLike,
     log_dir: str | os.PathLike,
     on_event: Callable[[foe.Event], None] | None = None,
@@ -199,9 +200,9 @@ await contract.run(
 
 `start` takes the same arguments and returns a `foe.Handle` once the binary
 has written `episode/start`. `run` is `start` followed by
-`await handle.wait()`. A contract with a `model` takes no `transport`, and
-a contract without one requires it; "Who calls the model" below states the
-rule and what each choice means.
+`await handle.wait()`. A contract with a `model` takes no `model_backend`.
+A contract without one requires a model backend. "Who calls the model"
+below states what each choice means.
 
 The package writes the document to a temporary file, creates `log_dir`
 when it does not exist, and launches
@@ -209,7 +210,7 @@ when it does not exist, and launches
 when the binary exits. `on_event` receives every line the binary writes,
 parsed into a `foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`,
 and `version`; the callback runs on the event loop and should return
-quickly. `max_output_tokens` is passed through to the transport on every
+quickly. `max_output_tokens` is passed through to the model backend on every
 request; the package has no opinion about its value.
 
 `Handle` exposes:
@@ -242,7 +243,7 @@ the closed pipe.
 await foe.run_config(
     config: Mapping[str, Any] | str | os.PathLike,
     *,
-    transport, binary, log_dir,
+    model_backend, binary, log_dir,
     tools: Iterable[foe.HostTool] = (),
     on_event=None, max_output_tokens=None,
 ) -> foe.Outcome
@@ -251,7 +252,7 @@ await foe.run_config(
 These take a complete document, as a dict or as the path of a JSON file,
 and run it the way `ExecutionContract.run` does. They exist for a document written
 by hand or produced by another contract. The document must carry `task`,
-and its `model` block decides whether `transport` is required or refused.
+and its `model` block decides whether `model_backend` is required or refused.
 `tools` supplies the implementation of every name
 in the document's `host_tools`; a missing implementation is an error before
 launch.
@@ -266,14 +267,13 @@ viewer process. `str(viewer)` is the URL.
 ## Who calls the model
 
 A contract's `model` block decides which process performs the model call.
-The block and a host transport are exclusive, and every episode needs one
-of the two, so the package refuses a document that carries both or
-neither.
+The `model` block and `model_backend` argument are mutually exclusive. Every
+episode needs one of them, so the package rejects both together or both absent.
 
-| the contract | who calls the model | `transport` |
+| the contract | who calls the model | `model_backend` |
 |---|---|---|
 | no `model` block | the host, over the protocol | required |
-| a `model` block | the binary, through its built-in transport | refused |
+| a `model` block | the binary calls the configured endpoint | refused |
 
 Host tools work the same under both. The package writes the callables it
 was given into `host_tools`, the binary emits `host/tool-call` for every
@@ -282,7 +282,7 @@ with a `tool/result` line. An application whose own model abstraction
 cannot carry foe's tool calls therefore still embeds foe through this
 package: it declares a `model` block and keeps its tools in Python.
 
-Without a `model` block, the package calls `transport` once per
+Without a `model` block, the package calls `model_backend` once per
 `model/request` and streams the chunks back. The `request/header` event
 names the route `host`/`host`, because the runtime does not know which
 model the host called.
@@ -314,11 +314,11 @@ named key file and sends no authentication header when that option is absent.
 The block does not participate in the contract fingerprint, so two contracts
 that differ only in their model hash alike.
 
-A document that leaves the model to the host must leave every descendant
-to the host. The package checks child contracts and model nodes at every
-level of nested workflows before launch. It rejects an explicit
-runtime-owned model block below a host-owned root so one owner serves model
-calls throughout the contract tree.
+A document that leaves the model to the host must leave every descendant to
+the host. The package checks child contracts and model nodes at every level
+of nested workflows before launch. It rejects a configured endpoint below a
+root that uses a host model backend, so one owner serves model calls
+throughout the contract tree.
 
 ## Host tools
 
@@ -415,7 +415,7 @@ The arguments for `return` are invalid: value: expected type object, found null
 
 The wrapper exists only on the call. `foe.Completed.value` holds the
 declared object itself, so a contract reading the outcome never sees the
-`value` key. A transport, a test double, or an evaluation harness that
+`value` key. A model backend, a test double, or an evaluation harness that
 produces the `return` call on the model's behalf must write the wrapper,
 because nothing between the model and the runtime adds it.
 
@@ -456,13 +456,13 @@ process the episode starts. The host process is never sandboxed, because
 it holds the credentials, so a host tool that reaches the filesystem
 without its handle is outside both checks.
 
-## The transport adapter protocol
+## The model backend callback protocol
 
-A transport is an async callable that receives one request dict and yields
-chunk dicts.
+A model backend is an async callable that receives one request dict and
+yields chunk dicts.
 
 ```python
-async def transport(request: dict) -> AsyncIterator[dict]: ...
+async def model_backend(request: dict) -> AsyncIterator[dict]: ...
 ```
 
 The request dict has five keys.
@@ -475,20 +475,20 @@ The request dict has five keys.
 | `messages` | the derived message list from the `model/request` event, as log-format.md defines it |
 | `max_output_tokens` | the value given to `run`, or None |
 
-The transport yields `chunk` objects in the form protocol.md defines
+The model backend yields `chunk` objects in the form protocol.md defines
 under `model/chunk`: `text`, `thinking`, `tool_call_start`,
 `tool_call_delta`, `tool_call_end`, then one `done` with `stop` and `usage`,
 or one `error` with `message` and `retryable`. The package wraps each in a
-`model/chunk` line and writes it to the binary. A transport that raises is
-reported as an `error` chunk with `retryable` false and the exception's
-type and message. A transport that ends without a terminal chunk is
+`model/chunk` line and writes it to the binary. A model backend that raises
+is reported as an `error` chunk with `retryable` false and the exception's
+type and message. A model backend that ends without a terminal chunk is
 reported the same way.
 
-The package calls the transport once per `model/request`, and the runtime
-has at most one outstanding request at a time, so the transport never runs
-concurrently with itself within one episode. The host invokes a transport
-on the protocol loop. Request setup and streamed-response iteration must
-yield control so sibling episodes and other host work can proceed.
+The package calls the model backend once per `model/request`. The runtime
+has at most one outstanding request at a time, so the model backend never
+runs concurrently with itself within one episode. The host invokes the model
+backend on the protocol loop. Request setup and streamed-response iteration
+must yield control so sibling episodes and other host work can proceed.
 Asynchronous I/O satisfies this requirement. An adapter around a synchronous
 streaming client must move both operations off the protocol loop.
 
@@ -498,8 +498,8 @@ protocol.md requires.
 
 ### The reference adapter
 
-`foe.adapters.litellm.litellm_transport(model, *, api_key=None,
-api_base=None, **completion_kwargs)` returns a transport over
+`foe.adapters.litellm.litellm_model_backend(model, *, api_key=None,
+api_base=None, **completion_kwargs)` returns a model backend over
 `litellm.acompletion(stream=True)` with tool calling. It maps the system
 prompt, the derived messages, and the tool schemas to the request shape
 that library expects. It maps streamed deltas back to chunks: content to
@@ -509,11 +509,11 @@ tool-call kinds, the finish reason to `stop`, and the usage block to
 connection failure, or a server error are reported with `retryable` true;
 every other exception is reported with `retryable` false.
 
-The library is imported when `litellm_transport` is called, so importing
+The library is imported when `litellm_model_backend` is called, so importing
 `foe` does not require it. Install it with `pip install foe[litellm]`. Pass
 `api_key` explicitly; the adapter reads no environment variable. No other
-adapter ships with the package. An application that talks to a provider
-directly writes its own transport against the protocol above.
+adapter ships with the package. An application that talks to an endpoint
+directly writes its own model backend against the callback protocol above.
 
 ## The outcome union
 
@@ -547,7 +547,7 @@ launch a document it knows the binary would refuse.
 
 The package is a host. It runs the host tools, reads the log as it is
 written, and, for a contract that leaves the model to it, holds the
-credential and performs the model call through the transport. Every
+credential and performs the model call through the model backend. Every
 exchange between the two passes through the binary's log, so a log
 directory produced through the package replays and views the same way as
 one produced by the binary alone.

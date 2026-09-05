@@ -541,16 +541,16 @@ td:first-child { font-family: var(--dia-face-label); color: var(--dia-ink); whit
 
 <section class="dia-slide" data-dia-part="models">
   <div class="dia-kicker">models</div>
-  <h2 class="dia-title">Two model-call ownership modes</h2>
+  <h2 class="dia-title">Who calls the model</h2>
   <div class="dia-columns">
     <div class="dia-body">
       <ul style="--dia-marker: '▸'; list-style: none;">
-        <li><strong>Runtime-owned HTTP</strong> — compatible, OAuth-backed, managed-cloud,
+        <li><strong>Configured endpoint</strong> — compatible, OAuth-backed, managed-cloud,
         and keyed endpoints use clients compiled into the binary.</li>
-        <li><strong>Host-owned</strong> — the embedding application answers requests
+        <li><strong>Host model backend</strong> — the embedding application answers requests
         through a package or the raw protocol.</li>
         <li><strong>One binary</strong> — every HTTP client is present, and runtime
-        credentials come from explicit files rather than environment variables.</li>
+        endpoint credentials come from explicit files rather than environment variables.</li>
       </ul>
       <p>Streams record as chunks in the log — text, thinking, tool-call
       deltas — so a replayed request shows exactly what arrived, in

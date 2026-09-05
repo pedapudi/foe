@@ -169,10 +169,10 @@ configuration key is reserved.
 
 ## A TypeScript SDK
 
-A TypeScript SDK would do for a Node.js application what the Python package does:
-build a configuration, launch the binary, and serve the host protocol with a
-transport the contract supplies. The TypeScript SDK is not implemented. No
-event type or configuration key is reserved.
+A TypeScript SDK would do for a Node.js application what the Python package
+does: build a configuration, launch the binary, and serve the host protocol
+with a model backend the application supplies. The TypeScript SDK is not
+implemented. No event type or configuration key is reserved.
 
 ## Additional viewer axes
 

@@ -4,15 +4,15 @@ The package builds the configuration document docs/config.md specifies,
 runs the `foe` binary, answers the host protocol docs/protocol.md specifies
 over the binary's standard input and output, and returns a typed outcome.
 It executes no tool of its own: a host tool is routed to the callable the
-embedding contract supplies. The model is called by the embedding
-contract's transport, or by the binary's own transport when the document
-carries a `model` block. Nothing in the package reads an environment
-variable.
+embedding contract supplies. The host supplies a model backend when the
+document has no `model` block. When the document has a `model` block, the
+binary calls the configured endpoint. Nothing in the package reads an
+environment variable.
 """
 
 from ._capabilities import Exec, ExecResult, ReadFS, WriteFS
 from ._errors import BinaryError, CapabilityError, CompatibilityError, ConfigError, ProtocolError
-from ._host import EventCallback, Handle, Transport, Viewer, run_config, serve, start_config
+from ._host import EventCallback, Handle, ModelBackend, Viewer, run_config, serve, start_config
 from ._outcome import Blocked, Completed, Event, Exhausted, Failed, Outcome, Runtime
 from ._contract import BUILTIN_TOOLS, Budget, DoneWhen, Grants, ExecutionContract, Model, Returns, ToolDef, Verified
 from ._schema import schema_for
@@ -53,7 +53,7 @@ __all__ = [
     "ToolDef",
     "ToolResult",
     "ToolSpec",
-    "Transport",
+    "ModelBackend",
     "Verified",
     "Viewer",
     "WriteFS",

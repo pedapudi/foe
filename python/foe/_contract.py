@@ -17,7 +17,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from ._capabilities import PathLike
 from ._errors import BinaryError, ConfigError
-from ._host import EventCallback, Handle, Transport, start_config
+from ._host import EventCallback, Handle, ModelBackend, start_config
 from ._outcome import Outcome
 from ._schema import JsonSchema, schema_for
 from ._tools import HostTool
@@ -114,8 +114,9 @@ class Budget:
 class Model:
     """The model foe calls itself. See docs/config.md `model`.
 
-    A contract that declares one leaves the model to the binary's built-in
-    transport, and the host that runs it supplies no transport of its own.
+    A contract that declares one directs the binary to call the configured
+    endpoint. The model backend parameter applies to a contract that omits
+    this block.
     `options` carries the provider-specific keys, whose values config.md
     makes flat strings: `api_key_file`, `base_url`, `project`, and the rest
     docs/models.md lists per provider.
@@ -389,7 +390,7 @@ class ExecutionContract:
         self,
         task: str,
         *,
-        transport: Transport | None = None,
+        model_backend: ModelBackend | None = None,
         binary: PathLike,
         log_dir: PathLike,
         on_event: EventCallback | None = None,
@@ -397,13 +398,13 @@ class ExecutionContract:
     ) -> Handle:
         """Launch an episode and return a handle to steer, cancel, or await it.
 
-        A contract with a `model` calls the model through foe's built-in
-        transport and takes no `transport`; a contract without one leaves
-        the model to the host and requires it.
+        A contract with a `model` directs foe to call the configured endpoint.
+        A contract without one leaves the model to the host and requires
+        `model_backend`.
         """
         return await start_config(
             self.to_dict(task),
-            transport=transport,
+            model_backend=model_backend,
             binary=binary,
             log_dir=log_dir,
             tools=self.all_host_tools().values(),
@@ -415,7 +416,7 @@ class ExecutionContract:
         self,
         task: str,
         *,
-        transport: Transport | None = None,
+        model_backend: ModelBackend | None = None,
         binary: PathLike,
         log_dir: PathLike,
         on_event: EventCallback | None = None,
@@ -424,7 +425,7 @@ class ExecutionContract:
         """Run an episode to its outcome."""
         handle = await self.start(
             task,
-            transport=transport,
+            model_backend=model_backend,
             binary=binary,
             log_dir=log_dir,
             on_event=on_event,

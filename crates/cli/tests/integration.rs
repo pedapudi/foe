@@ -202,7 +202,7 @@ fn types(events: &[Value]) -> Vec<&str> {
     events.iter().map(|e| e["type"].as_str().unwrap()).collect()
 }
 
-/// docs/protocol.md: the host supplies the transport and answers host tool
+/// docs/protocol.md: the host supplies the model backend and answers host tool
 /// calls; the exit code follows the outcome.
 #[test]
 fn a_hosted_episode_with_a_host_tool_completes() {
@@ -1480,6 +1480,8 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
     for (name, text) in examples() {
         let first = plan(&materialize(&a, &name, &text, "first task"));
         let second = plan(&materialize(&b, &name, &text, "second task"));
+        assert!(first.get("model_endpoint").is_some(), "{name}: plan names model endpoint ownership");
+        assert!(first.get("transport").is_none(), "{name}: plan omits the former public ownership term");
         let fingerprint = first["contract_fingerprint"].as_str().unwrap();
         assert!(fingerprint.starts_with("sha256:") && fingerprint.len() == 71, "{name}: {fingerprint}");
         assert_eq!(
@@ -1518,7 +1520,7 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 #[rustfmt::skip]
 const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("budget-exhausted", "sha256:9fbbc1d6124705e0fe6670ac3a2a9354942b75ac7ef6aae38b3a81b07fe7fa93"),
-    ("host-transport", "sha256:6edc5655961a1532619a5cd9317905a4eff8d611907b9175b69874c8f77fab19"),
+    ("host-model-backend", "sha256:567fc0f592f44c2ad638f0231c871ab9604cb3241e5945ebd3de69081af0a7f1"),
     ("minimal", "sha256:b8872d36e26f43f0d7607aeef035dead64c53064f374aebd91489bc75a9be15a"),
     ("recovery-exhausted", "sha256:ff1f692d7d998087fb8f822d1910cfd05ab67caa6d145690ce07f72a881bca93"),
     ("sandbox", "sha256:932fe9b17c07577ccb41b72a52badca207846c308002679365e7a5265140392c"),

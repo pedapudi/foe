@@ -108,7 +108,7 @@ nothing emits it.
           "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         }
       ],
-      "connect_tcp": ["model transport in contract"]
+      "connect_tcp": ["configured model endpoint in contract"]
     },
     "process_boundary": {
       "kind": "cgroup-v2",
@@ -207,7 +207,7 @@ model received and a pointer to the header in effect.
 `consumed` lists the `seq` of every `inbox/item` that entered this request
 for the first time. `messages` is the full derived message list, in the
 form defined under [Derived messages](#derived-messages).
-`max_output_tokens` is the cap the runtime asks the transport to apply after
+`max_output_tokens` is the cap the model route receives after the runtime has
 considering the remaining episode-wide output allowance. It is omitted when
 neither the configuration nor the budget supplies a cap. A provider can lack
 an equivalent request field; [models.md](models.md) records those cases.
@@ -265,10 +265,10 @@ the prefix that arrived before the failure.
 
 The message also carries `thinking`, a list of reasoning blocks
 `{ "text": "…", "signature": "…" }` assembled from `thinking` and
-`thinking_signature` chunks in order, and omitted when empty. A transport
+`thinking_signature` chunks in order, and omitted when empty. The caller
 replays these blocks to the same model route, where a provider may require
-them for a turn that continues after a tool call, and omits them for any
-other route.
+them for a turn that continues after a tool call. The caller omits them for
+any other route.
 
 `usage.input` includes cache-read input. `usage.output` includes reasoning
 when the provider reports reasoning inside its output count.

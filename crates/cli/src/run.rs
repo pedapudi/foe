@@ -144,7 +144,7 @@ pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedCont
         let Some(model) = &descendant.model else { continue };
         let plan = foe_transport::plan(model).map_err(|e| format!("{contract_key}.model: {e}"))?;
         if let Some(path) = plan.credential_path {
-            policy.add_read_file(path, format!("credential for model transport in {contract_key}"));
+            policy.add_read_file(path, format!("credential for configured model endpoint in {contract_key}"));
         }
     }
     Ok(())
@@ -470,8 +470,8 @@ fn credential_option(provider: &str) -> &'static str {
 #[path = "run_test.rs"]
 mod tests;
 
-/// One line naming the transport a `model` block resolves to, for `foe plan`.
-pub fn describe_transport(contract: &ResolvedContract) -> String {
+/// One line naming the endpoint a `model` block resolves to, for `foe plan`.
+pub fn describe_model_endpoint(contract: &ResolvedContract) -> String {
     let Some(model) = &contract.model else { return "no model".into() };
     foe_transport::plan(model).map(|plan| plan.describe()).unwrap_or_else(|e| e.to_string())
 }

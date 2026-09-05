@@ -1,6 +1,6 @@
 # Embed foe with a model block
 
-A Python application that supplies a tool and no transport. The contract
+A Python application that supplies a tool and no model backend. The contract
 carries a `model` block, so foe reaches the model through its own client,
 holds the credential, and writes each request to the log for the record
 alone. The application declares `record_finding` as a host tool, and every
@@ -10,10 +10,10 @@ protocol.
 This is the second of the two ways an application can embed foe through the
 Python package. [`../embed-an-execution-contract/`](../embed-an-execution-contract/)
 is the first: no `model` block, and the application answers every model
-request with a transport of its own. An application whose model abstraction
-carries plain text cannot express foe's tool calls faithfully across that
-seam, and this shape is what it uses instead. `docs/sdk.md` under "Who calls
-the model" states the rule: the block and a host transport are exclusive.
+request with its model backend. An application whose model abstraction
+carries plain text cannot express foe's tool calls faithfully through that
+callback, and this shape is what it uses instead. `docs/sdk.md` under "Who
+calls the model" states the ownership rule.
 
 This directory has no `config.json`, because the configuration is Python.
 `foe.ExecutionContract` is the configuration document that `docs/config.md`
@@ -60,9 +60,10 @@ function in this process, where the application's findings list lives.
 `@record_finding.render` sets the text the model sees in place of the
 returned object.
 
-**No transport.** `contract.run` and `contract.start` take a `transport`
-argument only for a contract with no `model` block. This one has a block,
-so passing a transport as well is refused before the binary starts.
+**No model backend.** `contract.run` and `contract.start` take a
+`model_backend` argument only for a contract with no `model` block. This
+contract has a block, so passing a model backend is refused before the binary
+starts.
 
 **A supervisor's view of the episode.** `start` returns once foe has
 written `episode/start`, so `handle.pid` and `handle.runtime` hold the
@@ -95,4 +96,4 @@ the package wrote, carrying the rendering the application produced.
   result holds the text `@record_finding.render` produced, so the tool ran
   in the application's process;
 - the application's findings list holds the one finding the model recorded;
-- the outcome is `completed` with the sentence the transport produced.
+- the outcome is `completed` with the sentence the configured endpoint produced.

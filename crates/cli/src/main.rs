@@ -59,7 +59,7 @@ const FORMS: &[Form] = &[
     form("login", "[PROVIDER]", "configure a provider's credential and the default model, or list the providers"),
     form("init", "", "write a repository's starting execution contract and placeholder verifier into its .foe directory"),
     form("view", "DIR", "write a log directory as one self-contained page, or serve it"),
-    form("plan", "", "print a readiness summary, then the resolved contract with its fingerprint, transport, reachable tools, and resolved permissions; bare, list the built-in tools"),
+    form("plan", "", "print a readiness summary, then the resolved contract with its fingerprint, model endpoint, reachable tools, and resolved permissions; bare, list the built-in tools"),
     form("telemetry", "LOG...", "print, for finished episode logs, the payload telemetry emission writes"),
 ];
 
@@ -376,7 +376,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
     let contract = load(config)?;
     let fingerprint = run::fingerprint(&contract)?;
     let value = contract.to_value();
-    let transport = contract.model.as_ref().map(|_| run::describe_transport(&contract));
+    let model_endpoint = contract.model.as_ref().map(|_| run::describe_model_endpoint(&contract));
     let context = run::context_policy(&contract)?.map(|policy| policy.describe());
     let reachable_tools = plan::reachable_tools(&contract)?;
     let resolved_permissions = plan::resolved_permissions(&contract)?;
@@ -395,15 +395,15 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         });
         let report = serde_json::json!({
             "contract_fingerprint": fingerprint.hash, "fingerprint_document": fingerprint.document, "contract": value,
-            "transport": transport, "workflow": workflow, "context": context,
+            "model_endpoint": model_endpoint, "workflow": workflow, "context": context,
             "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions, "warnings": warnings,
         });
         println!("{report}");
     } else {
-        print!("{}", plan::summary_report(&contract, transport.as_deref(), &warnings));
+        print!("{}", plan::summary_report(&contract, model_endpoint.as_deref(), &warnings));
         println!();
         println!("fingerprint  {}", fingerprint.hash);
-        println!("model     {}", transport.as_deref().unwrap_or("answered by the host over the protocol"));
+        println!("model     {}", model_endpoint.as_deref().unwrap_or("answered by the host over the protocol"));
         if let Some(context) = &context {
             println!("context   {context}");
         }

@@ -15,7 +15,7 @@ to find the relevant specification, report, or guide.
 | [models.md](models.md) | which model endpoints exist, where their credentials live, and how `foe login` sets them up |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |
 | [protocol.md](protocol.md) | how a process that launched foe exchanges lines with it |
-| [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model transport |
+| [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model backend |
 | [tools.md](tools.md) | what each built-in tool does and how executables and host tools become tools |
 | [sandbox.md](sandbox.md) | how grants become kernel restrictions and what happens when the kernel lacks them |
 | [viewer.md](viewer.md) | what the viewer shows and how it is served and exported |

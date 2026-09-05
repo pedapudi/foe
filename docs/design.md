@@ -134,11 +134,11 @@ A running foe is a tree of processes sharing one directory tree of logs.
 
 Three facts about this picture carry the design.
 
-A host that supplies the transport holds every credential, and the episode
-process then has no key and no network. A model call is a request the
-episode writes to its log and the host answers. A host that leaves the
-model to a `model` block answers no such request; the episode process then
-holds the credential that block names and reaches the provider itself.
+A host that supplies the model backend holds every model credential. The
+episode process then has no key and no network. A model call is a request the
+episode writes to its log and the host answers. When a `model` block is
+present, the host answers no model request. The episode process holds the
+credential that block names and calls the configured endpoint.
 
 Restrictions only narrow downward. The root episode runs under a ruleset
 compiled from its grants. Every process it starts runs under a subset of
@@ -661,7 +661,7 @@ as further processes. Restrictions only narrow at each spawn.
    host            no restriction applied by foe, ever
      │
      └─ episode    Landlock: read roots, write roots, execute roots, own log dir
-          │        network: open when foe holds the transport; closed when the host does
+          │        network: open for a configured model endpoint; closed when the host supplies the model backend
           │
           ├─ tool  Landlock: subset of the episode's; network closed
           │
@@ -682,8 +682,8 @@ becomes evidence in the record.
 the default, applies what the kernel supports and records which version it
 got. `required` refuses to start. `off` applies nothing.
 
-The process that launched foe is never restricted, because it holds the
-transport and the credentials, and restricting it would break the host.
+The process that launched foe is never restricted. Host tools and a host
+model backend run in that process.
 
 ## The host protocol
 
@@ -713,9 +713,9 @@ calls.
 
 The answers are recorded as log events when foe receives them. The log is
 therefore complete by construction, because every exchange with the host
-passed through it. A host that supplies the transport keeps credentials in
-its own process, and the episode process then has no network access of its
-own.
+passed through it. A host that supplies the model backend keeps model
+credentials in its own process. The episode process then has no network
+access of its own.
 
 ## The command line
 
@@ -730,7 +730,7 @@ foe --config FILE --host [--log-dir DIR]                 run under a host; stdou
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, transport, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```

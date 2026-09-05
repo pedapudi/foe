@@ -1,6 +1,6 @@
 """Runs a contract whose `model` block leaves the model call to foe.
 
-The application declares one tool of its own and no transport. foe reaches
+The application declares one tool of its own and no model backend. foe reaches
 the model through its own client, and every call the model makes to the
 Python tool comes back over the host protocol.
 

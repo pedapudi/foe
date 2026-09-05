@@ -1,4 +1,4 @@
-"""Runs config.json with a transport that returns fixed responses instead of calling a model.
+"""Runs config.json with a model backend that returns fixed responses.
 
 The runner creates a disposable project, materializes the configuration
 with absolute paths, runs the episode through the Python package, and
@@ -37,10 +37,10 @@ def validate_proposal(candidate: dict) -> list[str]:
     return [] if candidate == PROPOSAL else ["the proposal differs from the expected result"]
 
 
-def transport_for(readme: Path):
-    """A transport that plays a `read` call, then returns one proposal.
+def model_backend_for(readme: Path):
+    """A model backend that plays a `read` call, then returns one proposal.
 
-    A transport that calls a real model has the same signature: an
+    A model backend that calls a real model has the same signature: an
     asynchronous callable that receives one request and yields chunk
     objects in the shape docs/protocol.md defines under `model/chunk`.
     """
@@ -59,13 +59,13 @@ def transport_for(readme: Path):
         ],
     ]
 
-    async def transport(request):
+    async def model_backend(request):
         # One response per step; the step is the count of assistant messages so far.
         step = sum(1 for message in request["messages"] if message["role"] == "assistant")
         for chunk in script[min(step, len(script) - 1)]:
             yield chunk
 
-    return transport
+    return model_backend
 
 
 def prepare(run_dir: Path) -> tuple[Path, Path]:
@@ -121,21 +121,21 @@ async def main() -> None:
     binary = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "target/release/foe"
     output_dir = REPO / "target"
     output_dir.mkdir(exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix="foe-host-transport-demo.", dir=output_dir))
+    run_dir = Path(tempfile.mkdtemp(prefix="foe-host-model-backend-demo.", dir=output_dir))
     config_path, readme = prepare(run_dir)
     log_dir = run_dir / "episode"
 
-    print(f"Running the host transport demo in {run_dir}")
+    print(f"Running the host model backend demo in {run_dir}")
     outcome = await foe.run_config(
         config_path,
-        transport=transport_for(readme),
+        model_backend=model_backend_for(readme),
         binary=binary,
         log_dir=log_dir,
         tools=[validate_proposal],
     )
     print(outcome)
     check(log_dir, outcome)
-    print("Host transport demo passed. Inspect it with:")
+    print("Host model backend demo passed. Inspect it with:")
     print(f"  {binary} view {log_dir} --serve")
 
 

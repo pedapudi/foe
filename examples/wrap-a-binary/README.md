@@ -30,7 +30,7 @@ status to zero.
 The runtime hashes the file's contents into the contract fingerprint, so
 editing the checker changes the fingerprint.
 
-## Host-owned responses
+## Responses supplied by the host
 
 `responses.py` defines five deterministic answers. `run_with_host.py` supplies
 them through the host protocol, so the example needs no credential and opens

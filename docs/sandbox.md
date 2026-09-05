@@ -92,7 +92,7 @@ declares no `model` block, and an executable whose tool definition does not
 ask for the network, read no resolver file.
 
 A bind grant is inbound only. Outbound TCP is not a grant: it follows the
-model transport and each tool definition's `network` field, as stated under
+configured model endpoint and each tool definition's `network` field, as stated under
 [What is not enforced](#what-is-not-enforced), and widening it is a
 separate design.
 
@@ -117,7 +117,7 @@ recorded as 7. Version 0 means Landlock is absent or disabled.
 | 1 | 5.13 | filesystem access by path: read, write, create, remove, and execute, as listed above |
 | 2 | 5.19 | renaming and linking across directories is part of write access |
 | 3 | 6.2 | truncation is part of write access |
-| 4 | 6.7 | TCP: an executable with `network: false` can neither bind nor connect; an episode that does not hold the model transport cannot connect |
+| 4 | 6.7 | TCP: an executable with `network: false` can neither bind nor connect; an episode without a `model` block cannot connect |
 | 5 | 6.10 | device control calls (`ioctl`) on device files are part of write access |
 | 6 | 6.12 | a sandboxed process cannot signal a process outside its sandbox and cannot connect to abstract Unix sockets created outside it |
 | 7 | 6.15 | the kernel logs each denied access to the audit subsystem, including denials inside executables the episode starts |
@@ -153,8 +153,8 @@ unrestricted. The runtime therefore applies the ruleset from the main
 thread before the asynchronous runtime exists.
 
 Part of the policy is known only after work that the policy itself would
-forbid: the port the viewer listens on, and the credential file the
-resolved model transport reads. `crates/core/src/confine.rs` holds that
+forbid: the port the viewer listens on, and the credential file for a
+configured model endpoint. `crates/core/src/confine.rs` holds that
 assembly. A value of type `Unconfined` owns the policy while the process is
 still unrestricted and is the only source of a mutable reference to it.
 Entering confinement consumes that value and returns a `Confined`, which
@@ -178,16 +178,16 @@ The episode keeps:
 - execute on every selected captured executable and required exact
   interpreter in that tree;
 - execute on its own binary when a child contract is reachable;
-- read on the credential files resolved by its reachable model transports;
+- read on the credential files resolved by its reachable model blocks;
 - read and write on its own log directory, which holds its children's
   directories and its spill files;
 - the loader, system, and device paths;
-- outbound TCP when the episode calls a model transport or a reachable
+- outbound TCP when the episode calls a configured model endpoint or a reachable
   configured tool declares `network: true`;
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
   a viewer, on the viewer's port, which the command line adds to the policy
   before applying it;
-- no outbound TCP when a host process holds the transport.
+- no outbound TCP when a host process supplies the model backend.
 
 ## Process ownership
 
@@ -418,8 +418,8 @@ denials to the restricting process without privilege and without a daemon.
   can alter files owned by that user, including captured executable files.
   Processes that run with the same user identity are inside the host trust
   boundary.
-- The network of the episode process when it holds the transport. An
-  episode with a `model` block connects to the provider itself, and
+- The network of an episode process with a `model` block. Such an episode
+  connects to the configured endpoint, and
   Landlock has no rule that names a remote host, so outbound TCP is open
   for that process and for nothing it starts without `network: true`.
 - Anything on a kernel below the tier that enforces it, as listed in the

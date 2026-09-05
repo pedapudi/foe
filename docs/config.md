@@ -164,8 +164,8 @@ episode.
 
 The `model` block names no key file; the key is read from
 `~/.config/foe/credentials/anthropic.json`, which `foe login anthropic`
-writes. When a host process supplies the model transport, the `model` block
-is omitted.
+writes. A host process that supplies the model backend omits the `model`
+block.
 
 ## Keys
 
@@ -296,7 +296,7 @@ enclosing directory in `grants.execute`.
 
 A `bind` grant lets a server the episode starts listen on the named ports;
 [sandbox.md](sandbox.md) states how the kernel enforces it. It grants no
-outbound reach: connecting stays tied to the model transport and to each
+outbound reach: connecting stays tied to the configured model endpoint and to each
 tool definition's `network` field.
 
 A `task_session` grant permits a session process group to survive episode
@@ -497,7 +497,7 @@ the model's window. [compaction.md](compaction.md) specifies the policy.
 
 `window_tokens` may be omitted when `compact` is true and the `model` block
 names a model the provider table knows; [models.md](models.md) lists them.
-For any other model, and under a host that supplies the transport, it is
+For any other model, and under a host that supplies the model backend, it is
 required, and its absence is a construction error naming the key. When
 given, it must exceed `reserve_tokens` plus `keep_recent_tokens`.
 
@@ -510,8 +510,9 @@ The block participates in fingerprint.
 
 ### `model`
 
-Object. Optional. When present, foe calls the model itself. When absent, the
-host process must answer model requests over the [protocol](protocol.md).
+Object. Optional. When present, foe calls the configured model endpoint.
+When absent, the host process must supply a model backend that answers model
+requests over the [protocol](protocol.md).
 
 | field | type | required | meaning |
 |---|---|---|---|

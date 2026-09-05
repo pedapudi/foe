@@ -15,7 +15,7 @@ SUMMARY = "Done: 3 references."
 
 
 def configured_model() -> foe.Model:
-    """A runtime-owned model block for tests that reject it before execution."""
+    """A configured model endpoint for tests that reject it before execution."""
     return foe.Model(
         provider="compatible-http",
         model="fixture-model",
@@ -51,14 +51,14 @@ def tool_response(*calls: tuple[str, dict[str, Any]], text: str = "") -> Chunks:
 def scripted(
     responses: Sequence[Chunks], requests: list[dict[str, Any]] | None = None
 ) -> Callable[[dict[str, Any]], AsyncIterator[dict[str, Any]]]:
-    """A transport that answers the n-th request with the n-th response.
+    """A model backend that answers the n-th request with the n-th response.
 
     Every request received is appended to `requests` when given. A request
     beyond the script ends the episode with an error chunk.
     """
     queue = list(responses)
 
-    async def transport(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+    async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         if requests is not None:
             requests.append(request)
         if not queue:
@@ -67,4 +67,4 @@ def scripted(
         for chunk in queue.pop(0):
             yield chunk
 
-    return transport
+    return model_backend

@@ -129,7 +129,7 @@ impl Policy {
                 }
             }
             if contract.model.is_some() {
-                policy.reserve_network(format!("model transport in {contract_key}"));
+                policy.reserve_network(format!("configured model endpoint in {contract_key}"));
             }
         }
         if contracts.len() > 1 {
