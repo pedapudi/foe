@@ -281,6 +281,7 @@ async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging
         max_episodes: 4,
         ..budget()
     });
+    pool.started = std::time::Instant::now() - std::time::Duration::from_secs(5);
     pool.restore(&events, 6_000);
     assert_eq!(
         pool.remaining(),
