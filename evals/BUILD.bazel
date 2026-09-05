@@ -46,6 +46,25 @@ sh_binary(
     ],
 )
 
+sh_binary(
+    name = "python-composition-assessment",
+    srcs = ["python_composition_assessment.py"],
+    args = [
+        "--foe",
+        "$(rootpath //:foe)",
+        "--source-root",
+        "$(rootpath //:Cargo.toml)",
+    ],
+    data = [
+        "micro_tasks.py",
+        "run_micro_evals.py",
+        "trace_quality.py",
+        "//:Cargo.toml",
+        "//:foe",
+        "foe_build.py",
+    ],
+)
+
 sh_test(
     name = "trace_quality_test",
     srcs = ["run_unit_tests.sh"],
@@ -84,11 +103,26 @@ sh_test(
     size = "small",
 )
 
+sh_test(
+    name = "python_composition_assessment_test",
+    srcs = ["run_python_composition_assessment_tests.sh"],
+    data = [
+        "foe_build.py",
+        "micro_tasks.py",
+        "python_composition_assessment.py",
+        "python_composition_assessment_test.py",
+        "run_micro_evals.py",
+        "trace_quality.py",
+    ],
+    size = "small",
+)
+
 test_suite(
     name = "conformance_tests",
     tests = [
         ":runtime_evals_test",
         ":micro_tasks_test",
+        ":python_composition_assessment_test",
         ":trace_quality_test",
     ],
 )

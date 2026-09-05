@@ -94,6 +94,111 @@ def valid_events() -> list[dict[str, Any]]:
     ]
 
 
+def valid_inner_call_events() -> list[dict[str, Any]]:
+    """docs/log-format.md `tool/inner-call`: inner results stay out of derived messages."""
+    events = valid_events()
+    events[0]["data"]["contract"]["tools"] = ["python", "read"]
+    events[4] = event(
+        4,
+        "assistant/message",
+        {
+            "step": 1,
+            "request_id": "rq_1",
+            "text": "",
+            "tool_calls": [{"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}],
+            "stop": "tool",
+            "usage": {"input": 10, "output": 2, "cache_read": 0},
+            "interrupted": False,
+        },
+    )
+    events[5:] = [
+        event(
+            5,
+            "tool/inner-call",
+            {"outer_call_id": "outer", "call_id": "inner", "index": 0, "name": "read", "args": {"path": "x"}},
+        ),
+        event(
+            6,
+            "tool/result",
+            {
+                "step": 1,
+                "call_id": "inner",
+                "name": "read",
+                "value": {"content": "two"},
+                "rendered": "two",
+                "is_error": False,
+                "duration_ms": 1,
+                "synthetic": False,
+            },
+        ),
+        event(
+            7,
+            "tool/result",
+            {
+                "step": 1,
+                "call_id": "outer",
+                "name": "python",
+                "value": {"returned": 2},
+                "rendered": "2",
+                "is_error": False,
+                "duration_ms": 2,
+                "synthetic": False,
+            },
+        ),
+        event(
+            8,
+            "model/request",
+            {
+                "step": 2,
+                "attempt": 1,
+                "request_id": "rq_2",
+                "header_seq": 2,
+                "consumed": [],
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "Return the typed result."}]},
+                    {
+                        "role": "assistant",
+                        "text": "",
+                        "tool_calls": [
+                            {"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}
+                        ],
+                    },
+                    {"role": "tool", "call_id": "outer", "name": "python", "rendered": "2", "is_error": False},
+                ],
+            },
+        ),
+        event(
+            9,
+            "assistant/message",
+            {
+                "step": 2,
+                "request_id": "rq_2",
+                "text": "",
+                "tool_calls": [{"id": "returned", "name": "return", "args": {"value": {"count": 2}}}],
+                "stop": "tool",
+                "usage": {"input": 20, "output": 2, "cache_read": 0},
+                "interrupted": False,
+            },
+        ),
+        event(
+            10,
+            "tool/result",
+            {
+                "step": 2,
+                "call_id": "returned",
+                "name": "return",
+                "value": {"count": 2},
+                "rendered": '{"count":2}',
+                "is_error": False,
+                "duration_ms": 0,
+                "synthetic": False,
+            },
+        ),
+        event(11, "episode/end", {"outcome": {"kind": "completed", "value": {"count": 2}}}),
+    ]
+    return events
+
+
 def evaluate_events(events: list[dict[str, Any]]) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as temporary:
         log = Path(temporary) / "episode.jsonl"
@@ -119,6 +224,28 @@ class TraceQualityTest(unittest.TestCase):
         events = copy.deepcopy(valid_events())
         events[0]["data"]["contract"]["grants"]["read"] = ["relative"]
         self.assert_dimension_fails(events, "declared_permissions")
+
+    def test_inner_call_trace_conforms_and_excludes_the_inner_result(self) -> None:
+        report = evaluate_events(valid_inner_call_events())
+        self.assertTrue(report["valid"], report["violations"])
+
+    def test_inner_call_must_name_an_unsettled_model_issued_call(self) -> None:
+        events = valid_inner_call_events()
+        events[5]["data"]["outer_call_id"] = "missing"
+        self.assert_dimension_fails(events, "reconstructable_evidence")
+
+    def test_inner_call_index_counts_from_zero(self) -> None:
+        events = valid_inner_call_events()
+        events[5]["data"]["index"] = 1
+        self.assert_dimension_fails(events, "reconstructable_evidence")
+
+    def test_inner_result_in_a_model_request_is_detected(self) -> None:
+        events = valid_inner_call_events()
+        events[8]["data"]["messages"].insert(
+            2,
+            {"role": "tool", "call_id": "inner", "name": "read", "rendered": "two", "is_error": False},
+        )
+        self.assert_dimension_fails(events, "reconstructable_evidence")
 
     def test_message_mutation_is_detected(self) -> None:
         events = copy.deepcopy(valid_events())

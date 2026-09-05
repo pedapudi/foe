@@ -208,6 +208,12 @@ def _messages_for_request(log: EpisodeLog, request_index: int) -> list[dict[str,
             break
 
     messages: list[dict[str, Any]] = []
+    inner_call_ids = {
+        data.get("call_id")
+        for event in log.events[:request_index]
+        if _event_type(event) == "tool/inner-call"
+        and isinstance((data := _event_data(event)).get("call_id"), str)
+    }
     from_seq = 0
     if summary is not None:
         state = summary.get("state", {})
@@ -260,7 +266,7 @@ def _messages_for_request(log: EpisodeLog, request_index: int) -> list[dict[str,
                 if isinstance(thinking, list) and thinking:
                     message["thinking"] = thinking
                 messages.append(message)
-        elif kind == "tool/result":
+        elif kind == "tool/result" and data.get("call_id") not in inner_call_ids:
             messages.append(
                 {
                     "role": "tool",
@@ -370,6 +376,8 @@ def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
     inbox_consumed: set[int] = set()
     requests: dict[str, int] = {}
     calls: dict[str, tuple[int, str]] = {}
+    model_issued_calls: set[str] = set()
+    inner_indices: dict[str, list[int]] = {}
     results: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     for index, event in enumerate(log.events):
         kind = _event_type(event)
@@ -448,6 +456,45 @@ def _check_evidence(evaluation: Evaluation, log: EpisodeLog) -> None:
                     )
                     if isinstance(call_id, str) and isinstance(name, str):
                         calls[call_id] = (index, name)
+                        model_issued_calls.add(call_id)
+        elif kind == "tool/inner-call":
+            outer_call_id = data.get("outer_call_id")
+            call_id = data.get("call_id")
+            name = data.get("name")
+            inner_index = data.get("index")
+            valid_outer = (
+                isinstance(outer_call_id, str)
+                and outer_call_id in model_issued_calls
+                and outer_call_id not in results
+            )
+            evaluation.check(
+                dimension,
+                valid_outer,
+                "tool/inner-call.outer_call_id must name one unsettled model-issued call",
+                log,
+                index,
+            )
+            valid_call = isinstance(call_id, str) and call_id not in calls and isinstance(name, str)
+            evaluation.check(
+                dimension,
+                valid_call,
+                "tool/inner-call must have a unique call_id and a string name",
+                log,
+                index,
+            )
+            indices = inner_indices.setdefault(outer_call_id, []) if isinstance(outer_call_id, str) else []
+            valid_index = isinstance(inner_index, int) and inner_index == len(indices)
+            evaluation.check(
+                dimension,
+                valid_index,
+                "tool/inner-call.index must count from zero within its outer call",
+                log,
+                index,
+            )
+            if isinstance(inner_index, int):
+                indices.append(inner_index)
+            if valid_call:
+                calls[call_id] = (index, name)
         elif kind == "assistant/chunk":
             request_id = data.get("request_id")
             evaluation.check(

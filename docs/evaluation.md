@@ -320,6 +320,75 @@ its reported usage. The trace evaluator verifies the released output against
 the child log and does not claim that the unsupported cap bounded the child.
 It continues to enforce output reservations for routes that accept the cap.
 
+### Python composition default-adoption assessment
+
+The Python composition assessment determines whether the built-in `python`
+tool belongs in the default coding workflow. It compares three complete
+execution-contract configurations.
+
+- `ordinary-coding-tools` provides the coding tools in the current workflow.
+- `shell-output-narrowing` adds one instruction that directs shell commands to
+  emit only the evidence needed for the next decision.
+- `python-tool-composition` adds the built-in `python` tool and its existing
+  tool instruction.
+
+The comparison measures product configurations. It does not isolate the token
+cost of one instruction from the token cost of one tool schema.
+
+The development task aggregates several configured-tool results. Two attempts
+must complete correctly, invoke `python`, and record at least two inner calls.
+The runner skips the held-back tasks when this activation gate fails.
+
+The held-back set has three tasks. One aggregates configured-tool results that
+the shell cannot obtain directly. One aggregates repository records that a
+narrow shell command can process. One repairs ordinary repository code. Their
+task prompts contain no composition guidance.
+
+Every held-back task runs three times under each configuration. The runner
+rotates configuration order across attempts and tasks. The binary, task data,
+model endpoint, model settings, budgets, completion rules, and required kernel
+sandbox remain fixed.
+
+Strict success requires an accepted artifact, a completed outcome, a conformant
+trace, and provider-reported usage within the declared budget. The report
+retains every attempt. Total tokens per strict success divide provider-reported
+input plus output from every launched attempt by the number of strict
+successes. An early failure cannot appear efficient by stopping before it
+finishes.
+
+The report records input, output, and cache-read tokens separately. It also
+records model calls, duration, first-request input, Python source bytes, inner
+canonical and rendered bytes, outer Python result bytes, inner errors, and
+tool activation. Suppressed rendered bytes describe the mechanism. Provider
+usage counters are the authority for token-efficiency claims.
+
+Default adoption requires all of these conditions:
+
+- Every Python configuration attempt passes strictly.
+- The Python configuration loses no strict success on any held-back task.
+- Every configured-tool aggregation attempt activates Python composition.
+- Every attempt reports provider usage.
+- Python composition adds a strict-success gain or reduces total tokens per
+  strict success by at least 10 percent against the lower-token simpler
+  configuration.
+
+Activated attempts alone cannot qualify the tool. A benefit confined to the
+composition-heavy task leaves the tool opt-in. Any task-quality regression
+blocks default adoption for this workflow.
+
+The runner accepts a complete model block from a file. The report retains its
+SHA-256 digest rather than its endpoint and model identifiers. A dry run prints
+the largest possible spend and launches no attempt:
+
+```sh
+bazel run //evals:python-composition-assessment -- \
+  --model-config /absolute/path/to/model.json
+```
+
+Add `--confirm-spend` and an absolute `--keep` directory to run and retain the
+assessment. Raw configurations and logs remain outside Git because they carry
+credential paths and runtime route metadata.
+
 ### Comparable metrics
 
 Each benchmark report includes these metrics:
