@@ -557,6 +557,11 @@ the schema and tool listings of `foe plan` have no wrapper in the package.
 
 ## The versions a pair must agree on
 
+For deployment, install the binary and package from one immutable source
+commit using [the source-pinning procedure](build.md#pin-the-binary-and-python-package-to-one-commit).
+The checks below establish protocol compatibility. Matching versions do not
+establish that both components were built from the same source revision.
+
 A binary and this package run an episode together only when three versions
 agree. The package holds each as a constant.
 
