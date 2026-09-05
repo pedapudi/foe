@@ -635,6 +635,7 @@ operation lock. Observing a child outcome writes the terminal task revision.
 The reservation returns after that revision and after `spawn/end` and
 `budget/release` close the child's obligations.
 A clean resume schedules a task whose latest durable revision is queued.
+Recorded budget consumption is restored before that scheduling pass.
 
 ### Sandbox
 

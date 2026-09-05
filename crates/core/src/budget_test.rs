@@ -248,3 +248,60 @@ fn one_request_may_cross_the_input_allowance_and_the_next_is_refused() {
     pool.note_usage(Usage { input: 700, output: 5, cache_read: 0 });
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
 }
+
+/// docs/config.md `budget`: restoration charges recorded consumption once before child admission.
+#[tokio::test(start_paused = true)]
+async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging() {
+    let reserved = BudgetAmount {
+        model_calls: Some(8),
+        input_tokens: Some(80),
+        output_tokens: Some(20),
+        episodes: Some(1),
+        seconds: None,
+    };
+    let events = vec![
+        foe_log::Event {
+            seq: 0,
+            time: 1_000,
+            version: None,
+            data: EventData::BudgetReserve { child_id: "child".into(), reserved },
+        },
+        foe_log::Event {
+            seq: 1,
+            time: 2_000,
+            version: None,
+            data: EventData::BudgetRelease { child_id: "child".into(), spent: reserved },
+        },
+    ];
+    let mut pool = Pool::new(Budget {
+        model_calls: 10,
+        input_tokens: Some(100),
+        output_tokens: Some(25),
+        seconds: Some(20),
+        max_episodes: 4,
+        ..budget()
+    });
+    pool.restore(&events, 6_000);
+    assert_eq!(
+        pool.remaining(),
+        BudgetAmount {
+            model_calls: Some(2),
+            input_tokens: Some(20),
+            output_tokens: Some(5),
+            seconds: Some(15),
+            episodes: Some(2)
+        }
+    );
+    assert_eq!(
+        pool.reserve("too-large", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap_err(),
+        ExhaustedLimit::ModelCalls
+    );
+    let granted =
+        pool.reserve("live", BudgetAmount { model_calls: Some(1), episodes: Some(1), ..Default::default() }).unwrap();
+    let before = pool.remaining();
+    pool.restore(&events, 100_000);
+    assert_eq!(pool.remaining(), before);
+    assert_eq!(pool.active_children(), 1);
+    pool.release("live", granted);
+    assert_eq!(pool.remaining().model_calls, Some(1));
+}

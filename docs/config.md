@@ -369,6 +369,12 @@ Object. Required.
 | `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
 | `loop_threshold` | integer | no | 8 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
 
+On resume, recorded model usage and child reservations are restored before
+any queued team task or workflow node starts. Restoration occurs once per
+pool, so executor startup cannot charge the same events twice. The seconds
+allowance includes whole seconds elapsed since the recorded episode start,
+including downtime. A fresh fork starts its own wall-clock allowance.
+
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
 is reserved from its parent's remainder. The child reports what its whole
