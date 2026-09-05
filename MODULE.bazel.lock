@@ -505,7 +505,7 @@
           "FILE:@@//crates/contract/Cargo.toml 76a139e58b41c902392da6bc54a764567580cce2594b80e89934102a356bdce9",
           "FILE:@@//crates/evidence/Cargo.toml 7c114ae786986abaaa43dc9af6ed2dd913976f82c8f4783056e02c9ed1875467",
           "FILE:@@//crates/core/Cargo.toml d581b83dbd8b9d9b276fbb6a395b38f33c0975540670430cecaa8c5244a8e52e",
-          "FILE:@@//crates/code/Cargo.toml 5128a1bc07192d1cbb3fe2b09b4877e920acf257b740acccf276c6b14cecd5d9",
+          "FILE:@@//crates/code/Cargo.toml 8e9f7e23adf2ab670e92b42c11a2657fc131819f0937fe3af00c2a35e79b4925",
           "FILE:@@//crates/transport/Cargo.toml 2b3149cb9f615e004ba3492c3e4341b8230e2ce314284e0bf7ca05a7084b4202",
           "FILE:@@//crates/workflow/Cargo.toml 694abe6f7e51b06da5020b533d26d8fb3103e543ac71c771e7f4de5c5b088267",
           "FILE:@@//crates/context/Cargo.toml f1bd85c6063e33d0d5ddfbd8be9af07ac79b47c40716c86032b7d7d38599043c",
