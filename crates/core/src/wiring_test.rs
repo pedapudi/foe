@@ -51,6 +51,68 @@ fn types(log: &Log) -> Vec<String> {
     log.events().iter().map(|e| e.data.type_name()).collect()
 }
 
+/// docs/log-format.md "Writers": child settlement returns recording failure,
+/// releases local capacity, and prevents subsequent child admission.
+#[tokio::test]
+async fn settlement_recording_failure_cannot_publish_success_or_admit_another_child() {
+    struct RejectSettlement(&'static str);
+    impl std::io::Write for RejectSettlement {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let event: Event = serde_json::from_slice(bytes).unwrap();
+            if event.data.type_name() == self.0 {
+                return Err(std::io::Error::other("settlement mirror failed"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    for failed_event in ["spawn/end", "budget/release"] {
+        let dir = scratch("wiring", "settlement-recording");
+        let log = Arc::new(Log::create_or_open(&dir, Some(Box::new(RejectSettlement(failed_event)))).unwrap());
+        log.append(EventData::EpisodeStart(start())).unwrap();
+        let mut child_start = start();
+        child_start.id = "ep_child".into();
+        child_start.parent_id = Some("ep_root".into());
+        let lines = [
+            Event { seq: 0, time: 1, version: Some(foe_log::LOG_VERSION), data: EventData::EpisodeStart(child_start) },
+            Event {
+                seq: 1,
+                time: 1,
+                version: None,
+                data: EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::json!("done") } },
+            },
+        ];
+        let body = format!(
+            "#!/bin/sh\nprintf '%s\\n' '{}' '{}'\n",
+            serde_json::to_string(&lines[0]).unwrap(),
+            serde_json::to_string(&lines[1]).unwrap()
+        );
+        let config = parent_config();
+        let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+        let inner = process_spawner(
+            "ep_root",
+            dir.to_path_buf(),
+            config,
+            Arc::new(Lines::default()),
+            Arc::new(Router::new()),
+            Arc::new(Seen::default()),
+        )
+        .with_launcher(script(&dir, "ending-child", &body));
+        let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+        let req = request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() });
+        let child = spawner.spawn(req.clone()).unwrap();
+        let settled = child.run.settle().await;
+        assert!(matches!(settled.outcome, Outcome::Failed { ref error } if error.contains(failed_event)));
+        assert_eq!(lock(&pool).active_children(), 0);
+        let bytes = std::fs::read(dir.join("episode.jsonl")).unwrap();
+        assert!(matches!(spawner.spawn(req), Err(CapError::Log(_))));
+        assert_eq!(std::fs::read(dir.join("episode.jsonl")).unwrap(), bytes);
+        assert!(foe_log::fold::fold(&foe_log::fold::read_all(&dir).unwrap()).is_ok());
+    }
+}
+
 /// docs/log-format.md "Budget and spawn": a child's reservation is recorded
 /// before it starts and released with what it spent when it settles.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

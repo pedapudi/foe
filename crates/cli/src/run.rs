@@ -610,7 +610,12 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         host: options.host,
         process,
     };
-    let outcome = runtime()?.block_on(episode(setup))?;
+    let executor = runtime()?;
+    let outcome = executor.block_on(episode(setup));
+    // Episode cleanup finishes before shutdown. An idle standard-input read
+    // must not prevent the command from reporting an outcome or recording error.
+    executor.shutdown_background();
+    let outcome = outcome?;
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
     }
@@ -708,13 +713,15 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let registry = Arc::new(registry);
     let children = Some(router.clone());
     {
-        let (protocol, router, cancel) = (protocol.clone(), router.clone(), cancel.clone());
+        let (protocol, router, cancel, log) = (protocol.clone(), router.clone(), cancel.clone(), log.clone());
         tokio::spawn(async move {
-            if tokio::signal::ctrl_c().await.is_ok() {
-                cancel.store(true, Ordering::SeqCst);
-                router.cancel_all();
-                protocol.stop("interrupted by SIGINT");
-            }
+            let reason = tokio::select! {
+                _ = tokio::signal::ctrl_c() => "interrupted by SIGINT".to_string(),
+                error = log.failed() => error.to_string(),
+            };
+            cancel.store(true, Ordering::SeqCst);
+            router.cancel_all();
+            protocol.stop(&reason);
         });
     }
     // A parent may have input queued already. Construction finishes before
@@ -722,7 +729,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     // A cleanly resumable log can end between recording a queued task and
     // assigning it. Scheduling from the folded board continues that work.
-    team.schedule(spawner.clone());
+    let _ = team.schedule(spawner.clone());
     if host {
         protocol.spawn_reader(tokio::io::stdin());
     }

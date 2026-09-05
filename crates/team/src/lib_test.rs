@@ -18,14 +18,62 @@ fn budget() -> Budget {
 struct MemLog(Mutex<Vec<Event>>);
 
 impl LeadLog for MemLog {
-    fn append(&self, data: EventData) {
+    fn append(&self, data: EventData) -> Result<(), CapError> {
         let mut events = self.0.lock().unwrap();
         let seq = events.len() as u64;
         events.push(Event { seq, time: 0, version: None, data });
+        Ok(())
+    }
+    fn check(&self) -> Result<(), CapError> {
+        Ok(())
     }
     fn events(&self) -> Vec<Event> {
         self.0.lock().unwrap().clone()
     }
+}
+
+impl MemLog {
+    fn append(&self, data: EventData) {
+        LeadLog::append(self, data).unwrap();
+    }
+}
+
+/// docs/log-format.md "Writers": a failed team append cannot deliver a
+/// message, and a scheduler cannot admit work after recording has failed.
+#[test]
+fn recording_failure_prevents_message_delivery_and_scheduling() {
+    struct FailedLog;
+    impl LeadLog for FailedLog {
+        fn append(&self, _: EventData) -> Result<(), CapError> {
+            self.check()
+        }
+        fn check(&self) -> Result<(), CapError> {
+            Err(CapError::Log(foe_log::LogError::Recording("team/message recording failed".into())))
+        }
+        fn events(&self) -> Vec<Event> {
+            vec![event(0, start())]
+        }
+    }
+    struct NoLaunch;
+    impl Spawner for NoLaunch {
+        fn allocate_id(&self) -> String {
+            panic!("recording failure must precede allocation")
+        }
+        fn launch(&self, _: String, _: SpawnRequest) -> Result<foe_core::SpawnHandle, CapError> {
+            panic!("recording failure must precede child launch")
+        }
+    }
+    let inbox = Arc::new(MemInbox::default());
+    let team = Arc::new(Team::new(
+        "ep_lead".into(),
+        Arc::new(FailedLog),
+        inbox.clone(),
+        Arc::new(Router::new()),
+        Arc::new(Mutex::new(Pool::new(budget()))),
+    ));
+    assert!(team.send("ep_lead", "lead", text_content("message")).is_err());
+    assert!(inbox.0.lock().unwrap().is_empty());
+    assert!(team.schedule(Arc::new(NoLaunch)).is_err());
 }
 
 #[derive(Default)]

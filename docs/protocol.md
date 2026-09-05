@@ -196,6 +196,10 @@ is a protocol error.
 
 ## Timeouts
 
+After episode cleanup, the command-line process reports its outcome or
+recording error without waiting for the host to close standard input.
+An idle input read does not extend the completed invocation.
+
 foe waits for a `model/chunk` and for a `tool/result` up to the `seconds`
 remaining in the episode's budget. When the budget's `seconds` elapse with
 an answer outstanding, foe ends the episode as `exhausted` with limit

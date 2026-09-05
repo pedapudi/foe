@@ -58,6 +58,7 @@ pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct Log {
     dir: PathBuf,
     inner: Mutex<(foe_log::append::Writer, Vec<Event>)>,
+    failure: watch::Sender<Option<String>>,
 }
 
 impl Log {
@@ -76,7 +77,7 @@ impl Log {
             true => foe_log::append::Writer::create(dir, mirror)?,
             false => foe_log::append::Writer::open(dir, mirror)?,
         };
-        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)) })
+        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)), failure: watch::channel(None).0 })
     }
 
     pub fn dir(&self) -> &Path {
@@ -84,14 +85,34 @@ impl Log {
     }
 
     pub fn append(&self, data: EventData) -> Result<Event, LogError> {
-        let mut inner = lock(&self.inner);
-        let event = inner.0.append(data)?;
+        self.record(&mut lock(&self.inner), data)
+    }
+
+    fn record(&self, inner: &mut (foe_log::append::Writer, Vec<Event>), data: EventData) -> Result<Event, LogError> {
+        self.check()?;
+        let event = self.capture(inner.0.append(data))?;
         inner.1.push(event.clone());
         Ok(event)
     }
 
     pub fn sync(&self) -> Result<(), LogError> {
-        lock(&self.inner).0.sync()
+        self.capture(lock(&self.inner).0.sync())
+    }
+
+    fn capture<T>(&self, result: Result<T, LogError>) -> Result<T, LogError> {
+        result.inspect_err(|error| {
+            if self.failure.borrow().is_none() {
+                self.failure.send_replace(Some(error.to_string()));
+            }
+        })
+    }
+
+    pub fn check(&self) -> Result<(), LogError> {
+        self.failure.borrow().clone().map_or(Ok(()), |error| Err(LogError::Recording(error)))
+    }
+
+    pub async fn failed(&self) -> LogError {
+        LogError::Recording(wait_stop(self.failure.subscribe()).await)
     }
 
     pub fn next_seq(&self) -> u64 {
@@ -180,16 +201,31 @@ fn post_session_exits(log: &Log, sessions: Option<&Arc<dyn crate::Sessions>>) ->
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     let (log, pool) = (params.log.clone(), params.pool.clone());
     let (children, sessions) = (params.children.clone(), params.sessions.clone());
-    let driven = match Episode::new(params) {
-        Ok(mut episode) => episode.drive().await,
-        Err(e) => Err(e),
+    let driven = async { Episode::new(params)?.drive().await };
+    finish(&log, &pool, children.as_deref(), sessions, driven).await
+}
+
+/// Stops work on recording failure and cleans up before returning any error.
+pub async fn finish(
+    log: &Log,
+    pool: &Mutex<Pool>,
+    children: Option<&Router>,
+    sessions: Option<Arc<dyn crate::Sessions>>,
+    work: impl std::future::Future<Output = Result<Outcome, RuntimeError>>,
+) -> Result<Outcome, RuntimeError> {
+    let driven = tokio::select! {
+        biased;
+        error = log.failed() => Err(error.into()),
+        result = work => result,
     };
+    let settled = settle(log, pool, children, sessions).await;
+    log.check()?;
     let outcome = match driven {
         Ok(outcome) => outcome,
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    settle(&log, &pool, children.as_deref(), sessions).await?;
+    settled?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)
@@ -215,15 +251,22 @@ pub async fn settle(
     children: Option<&Router>,
     sessions: Option<Arc<dyn crate::Sessions>>,
 ) -> Result<(), RuntimeError> {
+    if lock(pool).active_children() > 0 {
+        if let Some(children) = children {
+            children.cancel_all();
+        }
+        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
+    }
     if let Some(sessions) = sessions {
         let settler = sessions.clone();
         let settled = tokio::task::spawn_blocking(move || settler.settle())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
         let step = log.with_events(latest_step);
+        let mut recording = Ok(());
         for settlement in settled {
             let (value, subject) = settlement.result();
-            log.append(EventData::ToolResult(ToolResult {
+            let result = log.append(EventData::ToolResult(ToolResult {
                 step,
                 call_id: format!("session-{}-settle", settlement.status.id),
                 name: crate::session::SESSION_TOOL.into(),
@@ -235,15 +278,15 @@ pub async fn settle(
                 subject: Some(subject),
                 duration_ms: 0,
                 synthetic: true,
-            }))?;
+            }));
+            if result.is_err() && settlement.released_to_task {
+                let stopper = sessions.clone();
+                let _ = tokio::task::spawn_blocking(move || stopper.stop(settlement.status.id)).await;
+            }
+            recording = recording.and(result.map(|_| ()));
         }
+        recording?;
         post_session_exits(log, Some(&sessions))?;
-    }
-    if lock(pool).active_children() > 0 {
-        if let Some(children) = children {
-            children.cancel_all();
-        }
-        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
     }
     for data in log.with_events(seed::closing_events) {
         log.append(data)?;
@@ -849,8 +892,7 @@ fn append_result(
         duration_ms,
         synthetic,
     };
-    let event = inner.0.append(EventData::ToolResult(result.clone()))?;
-    inner.1.push(event);
+    log.record(&mut inner, EventData::ToolResult(result.clone()))?;
     Ok(result)
 }
 
@@ -937,9 +979,13 @@ async fn run_calls(
                 index: 0.into(),
             }) as Arc<dyn crate::Composer>
         });
+        let log = log.clone();
         let task = async move {
             let started = Instant::now();
-            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await;
+            let value = match log.check() {
+                Ok(()) => registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await,
+                Err(error) => ToolValue::from_cap_error(&call.name, crate::CapError::Log(error)),
+            };
             (i, value, started.elapsed().as_millis() as u64)
         };
         if concurrent {
@@ -981,8 +1027,8 @@ fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, St
 }
 
 /// Records streamed chunks as `assistant/chunk` events and assembles the
-/// message. A log write failure is kept and reported after the stream. The
-/// workflow executor records its recovery requests through it as well.
+/// message. The shared log retains a recording failure and wakes the
+/// executor, which cancels the stream. Workflow recovery uses the same recorder.
 pub struct Recorder {
     log: Arc<Log>,
     step: u32,
@@ -994,7 +1040,6 @@ pub struct Recorder {
     thinking: Vec<ThinkingBlock>,
     open_thinking: Option<String>,
     terminal: Option<Chunk>,
-    failure: Option<LogError>,
 }
 
 impl Recorder {
@@ -1008,7 +1053,6 @@ impl Recorder {
             thinking: Vec::new(),
             open_thinking: None,
             terminal: None,
-            failure: None,
         }
     }
 
@@ -1026,7 +1070,7 @@ impl Recorder {
     }
 
     pub fn check(&mut self) -> Result<(), RuntimeError> {
-        self.failure.take().map_or(Ok(()), |e| Err(e.into()))
+        Ok(self.log.check()?)
     }
 
     /// The `Done` or `Error` chunk that ended the stream, taken once.
@@ -1055,10 +1099,13 @@ impl Recorder {
 
 impl ChunkSink for Recorder {
     fn push(&mut self, chunk: Chunk) {
+        if self.log.check().is_err() {
+            return;
+        }
         let event =
             EventData::AssistantChunk { step: self.step, request_id: self.request_id.clone(), chunk: chunk.clone() };
-        if let Err(e) = self.log.append(event) {
-            self.failure.get_or_insert(e);
+        if self.log.append(event).is_err() {
+            return;
         }
         match chunk {
             Chunk::Text { delta } => {

@@ -355,7 +355,8 @@ pub struct SessionOutput {
 /// This episode's own log, as the lead of its team: appends team events and
 /// reads everything written so far. The team coordinator writes through it.
 pub trait LeadLog: Send + Sync {
-    fn append(&self, event: foe_log::EventData);
+    fn append(&self, event: foe_log::EventData) -> Result<(), CapError>;
+    fn check(&self) -> Result<(), CapError>;
     fn events(&self) -> Vec<foe_log::Event>;
 }
 

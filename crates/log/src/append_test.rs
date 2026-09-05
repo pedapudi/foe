@@ -7,6 +7,64 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
 
+/// docs/log-format.md "Writers": partial mirror writes and flush failures
+/// prevent every later write and preserve the first error.
+#[test]
+fn mirror_failures_leave_a_reopenable_prefix_and_disable_the_writer() {
+    struct FailingMirror {
+        flush_fails: bool,
+        partial: bool,
+    }
+    impl std::io::Write for FailingMirror {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.flush_fails {
+                return Ok(bytes.len());
+            }
+            if std::mem::take(&mut self.partial) {
+                return Ok(1);
+            }
+            Err(std::io::Error::other("mirror write failed"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::other("mirror flush failed"))
+        }
+    }
+    for flush_fails in [false, true] {
+        let dir = tmp("failed-mirror");
+        let mut writer = Writer::create(&dir, Some(Box::new(FailingMirror { flush_fails, partial: true }))).unwrap();
+        let error = writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap_err().to_string();
+        let retained = std::fs::read(dir.join("episode.jsonl")).unwrap();
+        assert!(error.contains("event 0 episode/start") && error.contains("mirror"));
+        assert_eq!(writer.append(fx::inbox(InboxSource::Task, "task")).unwrap_err().to_string(), error);
+        assert_eq!(writer.sync().unwrap_err().to_string(), error);
+        assert_eq!(std::fs::read(dir.join("episode.jsonl")).unwrap(), retained);
+        let mut reopened = Writer::open(&dir, None).unwrap();
+        reopened.append(fx::inbox(InboxSource::Task, "task")).unwrap();
+        assert!(crate::fold::fold(&read_all(&dir).unwrap()).is_ok());
+    }
+}
+
+/// docs/log-format.md "Writers": file write and synchronization failures
+/// disable the writer even when a later operation could succeed.
+#[cfg(unix)]
+#[test]
+fn file_failures_preserve_the_original_recording_error() {
+    for sync in [false, true] {
+        let dir = tmp("failed-file");
+        let mut writer = Writer::create(&dir, None).unwrap();
+        writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
+        let failed_file = if sync { "/dev/null" } else { "/dev/full" };
+        writer.file = std::fs::OpenOptions::new().write(true).open(failed_file).unwrap();
+        let error = if sync { writer.sync() } else { writer.append(fx::inbox(InboxSource::Task, "task")).map(|_| ()) }
+            .unwrap_err()
+            .to_string();
+        writer.file = std::fs::OpenOptions::new().append(true).open(dir.join("episode.jsonl")).unwrap();
+        assert_eq!(writer.append(fx::inbox(InboxSource::Task, "task")).unwrap_err().to_string(), error);
+        assert_eq!(writer.sync().unwrap_err().to_string(), error);
+        assert_eq!(read_all(&dir).unwrap().len(), 1);
+    }
+}
+
 impl std::io::Write for Capture {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.0.lock().unwrap().extend_from_slice(buf);
