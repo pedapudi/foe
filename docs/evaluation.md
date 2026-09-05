@@ -353,6 +353,8 @@ Every mixed-workload task runs three times under each configuration. The runner
 rotates configuration order across attempts and tasks. The binary, task data,
 model endpoint, model settings, budgets, completion rules, and required kernel
 sandbox remain fixed.
+The model-call budgets leave a completion call after the expected task work.
+Calls that a configuration does not use incur no cost.
 
 Strict success requires an accepted artifact, a completed outcome, a conformant
 trace, and provider-reported usage within the declared budget. The report

@@ -273,7 +273,7 @@ class MeasurementTests(unittest.TestCase):
 
     def test_spending_plan_counts_every_scheduled_configuration(self) -> None:
         plan = spending_plan(2, 3)
-        self.assertIn("        125    828,000   105,000  every scheduled attempt", plan)
+        self.assertIn("        152    828,000   105,000  every scheduled attempt", plan)
         self.assertIn("5,220 seconds", plan)
 
 
