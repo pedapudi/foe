@@ -47,9 +47,21 @@ pub struct WorkflowParams {
     pub workflow: WorkflowConfig,
 }
 
+/// Refuses recorded workflow execution until its scheduling state can be restored.
+pub fn validate_resume(events: &[Event]) -> Result<(), RuntimeError> {
+    if let Some(event) = events.iter().find(|e| e.data.type_name().starts_with("workflow/")) {
+        return Err(RuntimeError::Protocol(format!(
+            "workflow resume at event {}: recorded firings require scheduler restoration; no node was started",
+            event.seq
+        )));
+    }
+    Ok(())
+}
+
 /// Runs the workflow to its end and writes `episode/end`.
 pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let p = params.episode;
+    p.log.with_events(validate_resume)?;
     let log = p.log.clone();
     let text = p.start.task.clone();
     let runtime_build = p.start.runtime.build.clone();

@@ -42,6 +42,17 @@ choice. The graph determines which choices exist. The model never adds an
 edge, reads a node it does not follow, invents a node, extends a budget, or
 skips a verification. The model decides, within those bounds, what to do.
 
+## Restart
+
+The runtime refuses to continue a log that contains workflow firing events.
+It reports the first workflow event before scheduling a node or a queued
+team task. A recorded successful operation may already have changed external
+state. Repeating it requires an explicit application decision.
+
+A log ending before its first workflow event can start the graph. Resuming
+completed firings, restoring their outputs, and continuing recovery decisions
+require scheduler restoration, which is unsupported.
+
 ## The graph
 
 ```json
@@ -343,6 +354,19 @@ succeeds. The spawner then records `budget/reserve` and `spawn/start` before
 creating the process. A failed node-start append therefore leaves no child or
 reservation. The log remains interrupted because an append error does not
 establish whether every destination received the event.
+
+### Interrupted execution
+
+Workflow execution cannot resume from recorded `workflow/*` events. A launch
+with a workflow configuration refuses such a log before scheduling queued
+team tasks or starting nodes. The restriction applies to in-place resume and
+to a fork that contains those events. A log containing initialization alone
+can start its workflow.
+
+Recovery requires a separate invocation whose task accounts for the retained
+evidence and the actual state of affected files or services. A missing tool
+result does not establish whether the tool changed external state. Retrying
+such an action can repeat its effects.
 
 ### Completion
 

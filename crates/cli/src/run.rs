@@ -732,6 +732,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     loop_::initialize(&log, &start).map_err(|e| format!("{}: {e}", log_dir.display()))?;
     // A cleanly resumable log can end between recording a queued task and
     // assigning it. Scheduling from the folded board continues that work.
+    if workflow.is_some() {
+        log.with_events(foe_workflow::validate_resume).map_err(|e| e.to_string())?;
+    }
     let _ = team.schedule(spawner.clone());
     if host {
         protocol.spawn_reader(tokio::io::stdin());

@@ -1128,3 +1128,19 @@ async fn a_firing_still_running_when_the_episode_stops_is_abandoned() {
     let error = node_error(&events, "linger").expect("the abandoned firing was given an end");
     assert!(error.contains("stopped") && error.contains("cancelled"), "{error}");
 }
+
+/// docs/workflow.md "Restart": recorded firings are refused before any tool is dispatched.
+#[tokio::test(start_paused = true)]
+async fn recorded_workflow_firings_are_refused_before_dispatch() {
+    let mut fx =
+        Fixture::new("resume-refused", &["record"], json!({"nodes":{"effect":{"tool":"record","terminal":true}}}))
+            .effectful_tool("record", 0, Effect::Writes);
+    let (_, events) = fx.run().await;
+    assert_eq!(fx.calls("record").len(), 1);
+    let error = super::validate_resume(&events).unwrap_err().to_string();
+    assert!(error.contains("workflow resume at event 2"), "{error}");
+    super::validate_resume(&events[..2]).unwrap();
+    fx.add_tool("record", Vec::new(), 0, Effect::Writes, json!({"type":"object"}));
+    assert!(fx.run_result().await.unwrap_err().to_string().contains("workflow resume"));
+    assert!(fx.calls("record").is_empty());
+}
