@@ -97,7 +97,7 @@ def valid_events() -> list[dict[str, Any]]:
 def valid_inner_call_events() -> list[dict[str, Any]]:
     """docs/log-format.md `tool/inner-call`: inner results stay out of derived messages."""
     events = valid_events()
-    events[0]["data"]["contract"]["tools"] = ["python", "read"]
+    events[0]["data"]["contract"]["tools"] = ["compose_tools", "read"]
     events[4] = event(
         4,
         "assistant/message",
@@ -105,7 +105,9 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
             "step": 1,
             "request_id": "rq_1",
             "text": "",
-            "tool_calls": [{"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}],
+            "tool_calls": [
+                {"id": "outer", "name": "compose_tools", "args": {"source": "def main(): return 2"}}
+            ],
             "stop": "tool",
             "usage": {"input": 10, "output": 2, "cache_read": 0},
             "interrupted": False,
@@ -137,7 +139,7 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
             {
                 "step": 1,
                 "call_id": "outer",
-                "name": "python",
+                "name": "compose_tools",
                 "value": {"returned": 2},
                 "rendered": "2",
                 "is_error": False,
@@ -160,10 +162,16 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
                         "role": "assistant",
                         "text": "",
                         "tool_calls": [
-                            {"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}
+                            {"id": "outer", "name": "compose_tools", "args": {"source": "def main(): return 2"}}
                         ],
                     },
-                    {"role": "tool", "call_id": "outer", "name": "python", "rendered": "2", "is_error": False},
+                    {
+                        "role": "tool",
+                        "call_id": "outer",
+                        "name": "compose_tools",
+                        "rendered": "2",
+                        "is_error": False,
+                    },
                 ],
             },
         ),

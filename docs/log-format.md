@@ -389,8 +389,8 @@ emitted so that the host can execute it. The result arrives as an ordinary
 
 `tool/inner-call` — implemented. One inner dispatch a composing tool
 performed through the registry while its own model-issued call ran. The
-built-in `python` tool is the one composing tool;
-[code-mode.md](code-mode.md) specifies it, and the generic event name is
+built-in `compose_tools` tool is the one composing tool;
+[tool-composition.md](tool-composition.md) specifies it, and the generic event name is
 shared by design with any future composing tool.
 
 ```json

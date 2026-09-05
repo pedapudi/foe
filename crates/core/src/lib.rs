@@ -170,7 +170,7 @@ impl ToolValue {
 /// Name of the one composing tool, implemented in `foe-code`. The agent
 /// loop builds a [`Composer`] for a call with this name and for no other,
 /// so no further tool can reach inner dispatch.
-pub const COMPOSING_TOOL: &str = "python";
+pub const COMPOSING_TOOL: &str = "compose_tools";
 
 /// Dispatches inner tool calls on behalf of the composing tool, recording
 /// each as a `tool/inner-call` event and its ordinary `tool/result`. The
@@ -251,7 +251,7 @@ pub struct ExecRequest {
     /// Bytes for standard input; `None` means `/dev/null`.
     pub stdin: Option<Vec<u8>>,
     /// Replaces the narrowing the executor would derive from `command`.
-    /// The `python` tool confines its interpreter with a policy of its
+    /// The `compose_tools` tool confines its interpreter with a policy of its
     /// own; every other request leaves this unset.
     pub policy: Option<sandbox::Policy>,
     /// File descriptors the child receives, each at the number given. The

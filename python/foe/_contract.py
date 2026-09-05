@@ -30,7 +30,7 @@ BUILTIN_TOOLS: frozenset[str] = frozenset(
         "edit",
         "bash",
         "session",
-        "python",
+        "compose_tools",
         "retrieve",
         "block",
         "spawn",

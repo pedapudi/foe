@@ -17,7 +17,7 @@ Each name resolves against three sources, checked in this order.
 
 1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
    six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
-   `python` specified below;
+   `compose_tools` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
    `block`, by which the model reports a blocking condition; `spawn`, which
    starts a child episode, and `wait`, which blocks until every child this
@@ -194,7 +194,7 @@ for multicall dispatch and participates in the contract fingerprint.
 
 The six coding tools live in the `foe-code` crate, which exposes two
 functions. `foe_code::all()` returns every coding tool; `foe_code::readonly()`
-returns only `read` and `grep`. The `bash`, `session`, and `python` tools
+returns only `read` and `grep`. The `bash`, `session`, and `compose_tools` tools
 are compiled
 only when the crate's `exec` feature is enabled, which they are by default.
 A build without that feature contains no code path that starts a process.
@@ -214,7 +214,7 @@ the first `read` root, and paths in results are shown relative to it.
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial` |
 | `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial`; `bytes`; `signal` |
-| `python` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
+| `compose_tools` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -233,7 +233,7 @@ model received.
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 | `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
-| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
+| `compose_tools` | `compose_tools: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -506,13 +506,13 @@ how a granted port is served across calls — a server it holds keeps its
 listener until the session ends. Widening outbound access is a separate
 design; no grant kind opens it.
 
-### `python`
+### `compose_tools`
 
 The tool runs model-written Python source in an isolated interpreter whose
 only capability is calling this episode's tools, and returns the value its
 zero-argument `main` computed. The runtime records every inner
 call in the log; the model sees the returned value, a derivation summary,
-and the process's own output as diagnostics. [code-mode.md](code-mode.md)
+and the process's own output as diagnostics. [tool-composition.md](tool-composition.md)
 specifies the source, confinement, bounds, and log
 representation; [log-format.md](log-format.md) specifies the
 `tool/inner-call` event. The interpreter is `/usr/bin/python3`, named by
