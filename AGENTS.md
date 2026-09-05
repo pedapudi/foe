@@ -65,7 +65,26 @@ sentence on first reading.
   imperative, then the reason when it is not obvious.
 - No trailers of any kind. No co-author lines. No links to sessions or
   tools. No mention of any AI system anywhere in the repository.
+- A commit that touches more than five files, or that renames anything,
+  carries a body. The body states the resulting behavior, the reason, the
+  compatibility impact, and the validation performed.
+- A rename is its own commit and changes no behavior.
+- A commit that breaks compatibility names the error an old input now
+  receives and the document that records the break.
 - Never force-push. Never commit to `main` from a worktree; open a branch.
+- Work happens on a branch. A branch reaches `main` in one of two ways: it
+  is rebased onto `main`, or it is merged into `main` through a pull
+  request. Squash merge is the default for a branch an agent produced.
+- `main` is never merged into a branch that is then pushed as `main`.
+- A series is integrated once. The branch it came from is deleted after
+  integration.
+- A merge commit carries nothing beyond the automatic merge. A conflict is
+  resolved in an ordinary commit on the branch, and that commit's message
+  states what the resolution changed.
+- Every gate runs on the tree that will become `main` before a push: `cargo test
+  --workspace`, `scripts/loc.sh`, `scripts/examples.sh`, the Python suite
+  in `python/`, and the browser bundle build and test suite in `view/`.
+- `main` requires the continuous-integration checks to pass.
 
 ## Verification
 
