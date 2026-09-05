@@ -56,6 +56,10 @@ Reopening requires a complete final line. An incomplete trailing line makes
 the writer refuse to append, and its bytes remain available for inspection.
 Forking at a complete event boundary can retain the readable prefix.
 
+If initialization stops after recording only `episode/start`, continuation
+writes the task inbox item from that recorded start before admitting work.
+Initialization preserves an existing task item.
+
 ## Envelope
 
 One JSON object per line.

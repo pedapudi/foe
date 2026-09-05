@@ -39,6 +39,27 @@ fn start(contract: &ResolvedContract) -> EpisodeStart {
     }
 }
 
+/// docs/log-format.md "Writers": initialization resumes the task item from the recorded start.
+#[test]
+fn interrupted_initialization_restores_the_recorded_task_once() {
+    let dir = tmp("interrupted-initialization");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let mut recorded = start(&contract);
+    recorded.task = "retain this task".into();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    log.append(EventData::EpisodeStart(recorded.clone())).unwrap();
+    drop(log);
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let supplied = start(&contract);
+    super::initialize(&log, &supplied).unwrap();
+    super::initialize(&log, &supplied).unwrap();
+    let events = log.events();
+    assert_eq!(events.len(), 2);
+    let EventData::InboxItem(item) = &events[1].data else { panic!("the second event must carry the task") };
+    assert_eq!(item.source, InboxSource::Task);
+    assert_eq!(item.content, vec![foe_log::ContentBlock::Text { text: recorded.task }]);
+}
+
 struct Fixture {
     scratch: Option<ScratchDir>,
     dir: std::path::PathBuf,
