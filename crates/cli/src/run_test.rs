@@ -447,3 +447,35 @@ fn ordinary_prepared_fork_retains_source_fingerprint_exemption() {
     assert!(launch.expected_contract_fingerprint.is_none());
     assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
 }
+
+/// docs/log-format.md "Seeding": a destination without seed/end cannot resume.
+#[test]
+fn resume_refuses_an_incomplete_seed_without_changing_its_log() {
+    let dir = crate::tests::scratch("foe-cli-resume", "incomplete-seed");
+    let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+    writer
+        .append(EventData::EpisodeStart(EpisodeStart {
+            id: "ep_fork".into(),
+            parent_id: None,
+            fork_origin: Some(foe_log::ForkOrigin { episode_id: "ep_source".into(), seq: 1 }),
+            team_id: None,
+            contract: serde_json::json!({}),
+            contract_fingerprint: "sha256:source".into(),
+            task: "task".into(),
+            runtime: runtime_info(),
+            sandbox: foe_log::SandboxInfo {
+                mode: foe_log::SandboxMode::Off,
+                landlock_abi: 0,
+                resolved_permissions: Default::default(),
+                process_boundary: Default::default(),
+            },
+            effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
+        }))
+        .unwrap();
+    writer.sync().unwrap();
+    drop(writer);
+    let before = std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap();
+    let error = resume(&dir, "sha256:source").unwrap_err();
+    assert!(error.contains("seed/end"), "{error}");
+    assert_eq!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap(), before);
+}

@@ -373,7 +373,9 @@ On resume, recorded model usage and child reservations are restored before
 any queued team task or workflow node starts. Restoration occurs once per
 pool, so executor startup cannot charge the same events twice. The seconds
 allowance includes whole seconds elapsed since the recorded episode start,
-including downtime. A fresh fork starts its own wall-clock allowance.
+including downtime. Restoration starts the remaining timer after subtracting
+that elapsed time, so setup time is charged once. A fresh fork starts its own
+wall-clock allowance.
 
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget

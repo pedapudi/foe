@@ -174,10 +174,11 @@ Outcome =
 vocabulary so that a supervising episode can route on it. The vocabulary is
 listed in [log-format.md](log-format.md#blocked-codes).
 
-A finished episode is never extended. An interrupted one — a log without
-`episode/end` — is continued by launching over its directory, under "The
-command line" below. A later episode may be seeded from a prefix of any
-log, which is how replay and forking work.
+A finished episode is never extended. An interrupted episode without a workflow can
+continue under the rules in "The command line" below. A workflow launch
+refuses a log containing recorded workflow execution because scheduler state
+is not restored. A later episode can retain a log prefix through seeding;
+execution of that prefix remains subject to these launch rules.
 
 The model's context is a projection of the log, and the projection is
 bounded. When a configuration enables compaction and the next request is
@@ -783,8 +784,10 @@ for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
 Progress goes to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A directory that already holds a log is
-continued under the log's own episode id. One whose log ends at `seed/end`
+the current directory otherwise. A workflow launch over a directory with
+recorded `workflow/*` events is refused before queued tasks or nodes start.
+The restriction also applies to forks containing those events. Execution without a workflow
+can continue under the log's episode id. A log ending at `seed/end`
 — a prepared fork — or at an event boundary with every binding obligation
 closed continues in place. An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean

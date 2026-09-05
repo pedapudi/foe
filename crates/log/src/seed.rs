@@ -10,7 +10,7 @@ use std::path::Path;
 /// Rendered text of a synthetic result for a tool call whose real result
 /// never reached the log. The model sees this text.
 pub const ORPHAN_RENDERED: &str =
-    "The result of this tool call was not recorded; the episode was interrupted before the call finished.";
+    "The result of this tool call was not recorded. Its external effects are unknown; repeating it may repeat those effects.";
 
 /// Recorded as the outcome of a child, and as the error of a compaction,
 /// that the log opened and the episode ended without.
