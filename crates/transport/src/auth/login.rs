@@ -52,11 +52,11 @@ impl Default for Endpoints {
 /// Verifies an API key by making one request to the provider with it.
 /// `base_url` replaces the provider's default, for a provider that has
 /// none and for tests.
-pub fn verify_api_key(provider: &Provider, base_url: Option<&str>, key: &str) -> Result<(), String> {
+pub async fn verify_api_key(provider: &Provider, base_url: Option<&str>, key: &str) -> Result<(), String> {
     let AuthKind::ApiKey { header, .. } = provider.auth else {
         return Err(format!("{} does not authenticate with an API key", provider.name));
     };
-    crate::verify_credential(provider, base_url, &super::api_key::ApiKey::new(header, key.to_string()))
+    crate::verify_credential(provider, base_url, &super::api_key::ApiKey::new(header, key.to_string())).await
 }
 
 /// Writes an API key as the provider's credential file and returns where it
@@ -133,7 +133,7 @@ impl BrowserLogin {
 
     /// Waits for the callback carrying a code with the expected state, then
     /// exchanges it for a token.
-    pub fn finish(self) -> Result<super::token_file::Token, String> {
+    pub async fn finish(self) -> Result<super::token_file::Token, String> {
         let code = wait_for_code(&self.listener, &self.state)?;
         let client = super::token_file::OAuthClient {
             token_url: self.token_url,
@@ -141,6 +141,7 @@ impl BrowserLogin {
         };
         client
             .exchange_code(&code, &self.verifier, &self.redirect_uri)
+            .await
             .map_err(|e| format!("token exchange failed: {e}; run `foe login openai-codex` again"))
     }
 }
