@@ -41,6 +41,50 @@ archive endpoint. `--install-dir` must be absolute. The installer copies the
 new binary through a temporary file and renames it into place. An existing
 installation remains intact until the build and verification succeed.
 
+## Pin the binary and Python package to one commit
+
+Build both components from one clean checkout at a full commit hash. Branches
+and tags can move. Package version strings do not identify the installed
+source revision. The configuration, log format, and runtime protocol checks
+are specified in [sdk.md](sdk.md#the-versions-a-pair-must-agree-on).
+
+The following commands require Git, Bazel, and uv. Replace the commit
+placeholder with a full forty-character commit hash. The source and install
+directories must not already exist.
+
+```sh
+set -eu
+foe_commit=FULL_FORTY_CHARACTER_COMMIT_HASH
+foe_source_dir="$PWD/foe-source"
+foe_pair_dir="$PWD/foe-pair"
+test ! -e "$foe_source_dir"
+test ! -e "$foe_pair_dir"
+git clone https://github.com/pedapudi/foe.git "$foe_source_dir"
+git -C "$foe_source_dir" checkout --detach "$foe_commit"
+test "$(git -C "$foe_source_dir" rev-parse HEAD)" = "$foe_commit"
+test -z "$(git -C "$foe_source_dir" status --porcelain)"
+mkdir -p "$foe_pair_dir/bin"
+cd "$foe_source_dir"
+bazel build --lockfile_mode=error //:foe
+install -m 755 bazel-bin/crates/cli/foe "$foe_pair_dir/bin/foe"
+uv venv "$foe_pair_dir/venv"
+uv pip install --python "$foe_pair_dir/venv/bin/python" ./python
+printf '%s\n' "$foe_commit" > "$foe_pair_dir/source-commit"
+"$foe_pair_dir/bin/foe" schema >/dev/null
+"$foe_pair_dir/venv/bin/python" -c 'import foe; print(foe.__version__)'
+```
+
+Run the host application with that virtual environment and pass the absolute
+path of `foe-pair/bin/foe` as its `binary` argument. Retain `source-commit`
+with the installation. The episode log records the binary's content hash in
+`episode/start.runtime.build`. That hash identifies the executable bytes;
+the retained commit identifies the shared source revision.
+
+Pinning the source does not guarantee byte-identical builds on different
+platforms. Optional Python dependencies and host application dependencies
+need their own lockfile. A local invocation of `install.sh` builds its local
+checkout; its `--ref` option only selects a downloaded source archive.
+
 ## Build with Bazel
 
 Bazel is the primary build interface. The repository declares external Bazel
