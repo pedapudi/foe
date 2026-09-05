@@ -1,5 +1,5 @@
 //! Built-in coding tools — `read`, `grep`, `edit`, `bash`, `session`, and
-//! `python` — and the team coordination tools in [`team`].
+//! `compose_tools` — and the team coordination tools in [`team`].
 //!
 //! Each tool implements `foe_core::Tool` and reaches files and processes
 //! only through the capability handles in `CallCtx`. docs/tools.md states
@@ -57,11 +57,11 @@ pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 /// Process sessions the `session` tool may hold alive at once.
 pub const SESSION_MAX_ALIVE: usize = 8;
-/// Absolute path of the interpreter the `python` tool starts.
+/// Absolute path of the interpreter the `compose_tools` tool starts.
 pub const PYTHON_BIN: &str = "/usr/bin/python3";
-/// Longest `python` source, in bytes.
+/// Longest `compose_tools` source, in bytes.
 pub const PYTHON_SOURCE_MAX_BYTES: usize = 64 * 1024;
-/// Inner tool calls one `python` source may dispatch.
+/// Inner tool calls one `compose_tools` source may dispatch.
 pub const PYTHON_INNER_CALL_MAX: u32 = 100;
 /// Address-space limit of the interpreter process, in bytes.
 pub const PYTHON_MEMORY_MAX_BYTES: u64 = 512 << 20;
@@ -80,8 +80,8 @@ pub fn required_executables(tools: &[String]) -> Vec<(&'static str, &'static str
     if tools.iter().any(|name| name == "bash" || name == "session") {
         required.push((SHELL, "built-in bash and session tools"));
     }
-    if tools.iter().any(|name| name == "python") {
-        required.push((PYTHON_BIN, "built-in python tool"));
+    if tools.iter().any(|name| name == foe_core::COMPOSING_TOOL) {
+        required.push((PYTHON_BIN, "built-in tool composer"));
     }
     required
 }

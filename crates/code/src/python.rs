@@ -1,4 +1,4 @@
-//! `python`: one model-written Python source through an isolated interpreter,
+//! `compose_tools`: one model-written Python source through an isolated interpreter,
 //! composing this episode's tools.
 //!
 //! The tool writes a foe-owned shim and the source to the interpreter's
@@ -7,7 +7,7 @@
 //! which records it. The interpreter runs under the executor with a policy
 //! of its own — read on `/usr`, execute on the interpreter, write on
 //! nothing, no network, an empty environment — so the source's only door
-//! to the world is that socket. docs/code-mode.md specifies the source.
+//! to the world is that socket. docs/tool-composition.md specifies the source.
 
 use crate::{
     parse_args, BASH_DEFAULT_TIMEOUT_SECS, PYTHON_BIN, PYTHON_DIAGNOSTIC_MAX_CHARS, PYTHON_INNER_CALL_MAX,
@@ -69,14 +69,15 @@ impl Python {
                      calling this episode's tools. The source defines a zero-argument main() \
                      returning a JSON-serializable value. call_tool(name, args) performs one tool \
                      call and returns {{\"value\": ..., \"is_error\": bool}}; fail(message) ends the \
-                     call as an error; python, block, and return are excluded. Environment, \
+                     call as an error; compose_tools, block, and return are excluded. Environment, \
                      workspace, and network are absent. Bounds: {memory_mib} MiB memory, \
                      {source_kib} KiB source, {PYTHON_INNER_CALL_MAX} inner calls, timeout_seconds \
                      (default {BASH_DEFAULT_TIMEOUT_SECS})."
                 ),
                 instruction: Some(
-                    "Use python when one source calling several tools can return a small derived \
-                     value in place of their full renderings."
+                    "Use compose_tools when later tool calls depend on earlier results, or when \
+                     several large results can be reduced before returning to the model. Issue \
+                     independent small calls at the top level so they can run concurrently."
                         .into(),
                 ),
                 params: json!({
@@ -142,7 +143,7 @@ async fn serve(stream: tokio::net::UnixStream, composer: Arc<dyn Composer>) -> S
             Ok(ShimLine::Call { call }) => {
                 if served.calls >= PYTHON_INNER_CALL_MAX {
                     served.failed =
-                        Some(format!("python: the bound of {PYTHON_INNER_CALL_MAX} inner calls was reached"));
+                        Some(format!("compose_tools: the bound of {PYTHON_INNER_CALL_MAX} inner calls was reached"));
                     let _ = respond(&mut write, json!({"fatal": "inner-call bound"})).await;
                     break;
                 }
@@ -152,12 +153,13 @@ async fn serve(stream: tokio::net::UnixStream, composer: Arc<dyn Composer>) -> S
                     Ok((value, is_error)) => {
                         served.errors += is_error as u32;
                         if !respond(&mut write, json!({"value": value, "is_error": is_error})).await {
-                            served.failed = Some("python: the interpreter closed its dispatch socket mid-call".into());
+                            served.failed =
+                                Some("compose_tools: the interpreter closed its dispatch socket mid-call".into());
                             break;
                         }
                     }
                     Err(e) => {
-                        served.failed = Some(format!("python: recording an inner call failed: {e}"));
+                        served.failed = Some(format!("compose_tools: recording an inner call failed: {e}"));
                         let _ = respond(&mut write, json!({"fatal": "recording failed"})).await;
                         break;
                     }
@@ -172,7 +174,7 @@ async fn serve(stream: tokio::net::UnixStream, composer: Arc<dyn Composer>) -> S
                 break;
             }
             Err(_) => {
-                served.failed = Some("python: a dispatch line from the interpreter did not parse".into());
+                served.failed = Some("compose_tools: a dispatch line from the interpreter did not parse".into());
                 break;
             }
         }
@@ -196,23 +198,25 @@ fn outcome(served: Served, res: ExecResult) -> ToolValue {
     let (calls, errors) = (served.calls, served.errors);
     if let Some(returned) = served.done {
         let bytes = serde_json::to_vec(&returned).map(|b| b.len()).unwrap_or(0);
-        let mut out = format!("[python: {calls} inner call(s), {errors} error(s)]\n");
+        let mut out = format!("[compose_tools: {calls} inner call(s), {errors} error(s)]\n");
         out.push_str(&serde_json::to_string_pretty(&returned).unwrap_or_default());
         diagnostics(&mut out);
         let value = json!({ "returned": returned, "derivation": derivation(true), "stdout": stdout, "stderr": stderr });
         return ToolValue::ok(value, out)
-            .subject(format!("python: {calls} call(s), {errors} error(s), {bytes} bytes returned"));
+            .subject(format!("compose_tools: {calls} call(s), {errors} error(s), {bytes} bytes returned"));
     }
     let timed_out = res.timed_out;
     let exit_code = res.exit_code;
     let message = served.failed.unwrap_or_else(|| match (timed_out, exit_code) {
         (true, _) => {
-            format!("python: timed out after {:.1}s; the process group was killed", res.duration.as_secs_f64())
+            format!("compose_tools: timed out after {:.1}s; the process group was killed", res.duration.as_secs_f64())
         }
-        (false, Some(code)) => format!("python: the interpreter exited with status {code} before main returned"),
-        (false, None) => "python: a signal ended the interpreter before main returned".into(),
+        (false, Some(code)) => {
+            format!("compose_tools: the interpreter exited with status {code} before main returned")
+        }
+        (false, None) => "compose_tools: a signal ended the interpreter before main returned".into(),
     });
-    let mut out = format!("[python: failed after {calls} inner call(s)]\n{message}");
+    let mut out = format!("[compose_tools: failed after {calls} inner call(s)]\n{message}");
     diagnostics(&mut out);
     let value = json!({
         "error": { "message": message, "derivation": derivation(false), "stdout": stdout, "stderr": stderr }
@@ -230,7 +234,7 @@ fn outcome(served: Served, res: ExecResult) -> ToolValue {
         details: json!({ "exit_code": exit_code, "timed_out": timed_out }),
     };
     ToolValue { value, rendered: Some(out), is_error: true, failure: Some(Box::new(failure)), subject: None }
-        .subject(format!("python: {calls} call(s) · {subject}"))
+        .subject(format!("compose_tools: {calls} call(s) · {subject}"))
 }
 
 #[async_trait::async_trait]
@@ -240,28 +244,31 @@ impl Tool for Python {
     }
 
     async fn call(&self, args: Value, ctx: &CallCtx) -> ToolValue {
-        let a: Args = match parse_args("python", args) {
+        let a: Args = match parse_args(foe_core::COMPOSING_TOOL, args) {
             Ok(a) => a,
             Err(e) => return e,
         };
         let Some(executor) = ctx.executor.clone() else {
-            return ToolValue::unavailable("python: dispatched without an executor handle");
+            return ToolValue::unavailable("compose_tools: dispatched without an executor handle");
         };
         let Some(composer) = ctx.composer.clone() else {
             return ToolValue::unavailable(
-                "python: dispatched without a composer; the tool runs only in the agent loop",
+                "compose_tools: dispatched without a composer; the tool runs only in the agent loop",
             );
         };
         if a.source.len() > PYTHON_SOURCE_MAX_BYTES {
             return ToolValue::failed(
                 foe_core::ToolFailureCode::LimitExceeded,
-                format!("python: the source is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}", a.source.len()),
+                format!(
+                    "compose_tools: the source is {} bytes; the bound is {PYTHON_SOURCE_MAX_BYTES}",
+                    a.source.len()
+                ),
                 true,
                 json!({ "limit": "source_bytes", "actual": a.source.len(), "maximum": PYTHON_SOURCE_MAX_BYTES }),
             );
         }
         if !self.bin.is_file() {
-            return ToolValue::unavailable(format!("python: no interpreter at {}", self.bin.display()));
+            return ToolValue::unavailable(format!("compose_tools: no interpreter at {}", self.bin.display()));
         }
         let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
         if let Some(deadline) = ctx.deadline {
@@ -269,11 +276,11 @@ impl Tool for Python {
         }
         let (parent, child) = match std::os::unix::net::UnixStream::pair() {
             Ok(pair) => pair,
-            Err(e) => return ToolValue::error(format!("python: dispatch socket: {e}")),
+            Err(e) => return ToolValue::error(format!("compose_tools: dispatch socket: {e}")),
         };
         let parent = match parent.set_nonblocking(true).and_then(|()| tokio::net::UnixStream::from_std(parent)) {
             Ok(stream) => stream,
-            Err(e) => return ToolValue::error(format!("python: dispatch socket: {e}")),
+            Err(e) => return ToolValue::error(format!("compose_tools: dispatch socket: {e}")),
         };
         let script = format!(
             "{}\n{}\n\n_foe_run()\n",
@@ -291,7 +298,7 @@ impl Tool for Python {
             stdin: Some(script.into_bytes()),
             policy: match interpreter_policy(&self.bin) {
                 Ok(policy) => Some(policy),
-                Err(error) => return ToolValue::error(format!("python: sandbox access: {error}")),
+                Err(error) => return ToolValue::error(format!("compose_tools: sandbox access: {error}")),
             },
             pass_fds: vec![(3, Arc::new(OwnedFd::from(child)))],
         };
@@ -303,8 +310,8 @@ impl Tool for Python {
         let served = serve(parent, composer).await;
         let res = match run.await {
             Ok(Ok(res)) => res,
-            Ok(Err(e)) => return ToolValue::error(format!("python: {e}")),
-            Err(e) => return ToolValue::error(format!("python: executor task failed: {e}")),
+            Ok(Err(e)) => return ToolValue::error(format!("compose_tools: {e}")),
+            Err(e) => return ToolValue::error(format!("compose_tools: executor task failed: {e}")),
         };
         outcome(served, res)
     }

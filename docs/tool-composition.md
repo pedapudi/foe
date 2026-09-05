@@ -1,6 +1,6 @@
-# The python tool
+# Tool composition
 
-The built-in `python` tool runs model-written Python source in an isolated
+The built-in `compose_tools` tool runs model-written Python source in an isolated
 interpreter process whose only capability is calling this episode's tools.
 The runtime records every inner call in the log and shows the model only
 the value the source returned. `crates/code/src/python.rs` implements the
@@ -14,25 +14,31 @@ multi-step survey therefore spends a model request between decisions and
 replays each intermediate result in later requests.
 
 The `bash` tool can avoid some of that cost. A shell pipeline performs
-several operations and emits a narrow result. Its inner operations remain
-shell text, and it can use only the process permissions granted to `bash`.
+several operations and emits a narrow result. The built-in coding workflow
+can start `/usr/bin/python3` through `bash` for workspace scripting. Those
+processes receive the permissions granted to `bash`.
 
-The `python` tool lets the model submit one bounded source that calls the
+The `compose_tools` tool lets the model submit one bounded source that calls the
 episode's tools as functions. The runtime records every inner call and
 exposes only the source's returned value as the outer tool result.
 
-The model's source remains in the conversation as the `python`
+Use `compose_tools` when later calls depend on earlier results or when several
+large results can be reduced before returning to the model. Independent small
+calls stay at the top level, where the runtime can execute read-only calls
+concurrently. The composition interpreter receives no workspace access.
+
+The model's source remains in the conversation as the `compose_tools`
 call's arguments. The tool removes inner results from the conversation. It
 does not remove the source that produced them.
 
-Execution contracts opt in by listing `python` in `tools`. An episode that omits it
+Execution contracts opt in by listing `compose_tools` in `tools`. An episode that omits it
 pays no request-schema or instruction cost. The built-in coding workflow
 does not list it; [the adoption evidence below](#adoption-evidence) states
 what would change that.
 
 ## Outer call schema
 
-The `python` tool has two arguments:
+The `compose_tools` tool has two arguments:
 
 ```json
 { "source": "def main():\n    ...", "timeout_seconds": 60 }
@@ -62,7 +68,7 @@ loads.
 Three control tools are excluded from inner dispatch, refused with an
 error result before any event is written:
 
-- `python`, which prevents interpreter recursion;
+- `compose_tools`, which prevents interpreter recursion;
 - `block`, whose meaning depends on a model-issued top-level call;
 - the synthesized `return` tool, whose meaning depends on the episode's
   completion rule.
@@ -146,7 +152,7 @@ bounds, and the tool description states their values:
 
 ## Dispatch and permissions
 
-The model sees `python` as a built-in tool. The runtime handles it as a
+The model sees `compose_tools` as a built-in tool. The runtime handles it as a
 composite call because an ordinary tool receives capability handles for
 one declared effect, while one source can invoke tools with several
 effects.
@@ -162,7 +168,7 @@ a workflow node's direct tool call, carries no composer, and the tool then
 returns an error.
 
 Every inner call is synchronous and runs in source order. The outer
-`python` call declares the `execs` effect and therefore runs exclusively
+`compose_tools` call declares the `execs` effect and therefore runs exclusively
 with respect to other top-level calls in the same model turn. These rules
 preserve the existing effect order even when the source selects tool
 names or arguments dynamically.
@@ -179,7 +185,7 @@ in consecutive turns still reaches the ordinary looping threshold.
 
 ## Log representation
 
-The model-issued `python` call remains in its `assistant/message`. Before
+The model-issued `compose_tools` call remains in its `assistant/message`. Before
 each inner dispatch the runtime appends one `tool/inner-call` event, and
 the inner call's ordinary `tool/result` follows; the generic event name is
 shared by design with any future composing tool.
@@ -193,7 +199,7 @@ of the inner ones.
 
 ## Contract fingerprint and promotion
 
-The `python` tool specification, its bounds, and the runtime build
+The `compose_tools` specification, its bounds, and the runtime build
 participate in the execution contract fingerprint, as every built-in tool's
 specification does. The Python source is a tool argument and therefore
 belongs to an episode log rather than the contract fingerprint.
@@ -224,7 +230,7 @@ evidence exist.
    smaller derived value. A holdout set measures whether the mechanism
    preserves or improves task score.
 4. **Mixed-workload cost.** Tasks that benefit and tasks that do not run
-   together. Reports separate the fixed request cost of the `python`
+   together. Reports separate the fixed request cost of the `compose_tools`
    schema, source replay, inner canonical bytes, suppressed rendered
    bytes, model calls, latency, and estimated cost.
 5. **Simpler alternative.** The same tasks run with instructions that tell

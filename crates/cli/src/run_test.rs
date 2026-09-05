@@ -248,9 +248,12 @@ fn builtin_coding_declares_its_general_shell_command_surface() {
         builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
             .unwrap();
     let expected: Vec<PathBuf> = BUILTIN_EXECUTE_ROOTS.iter().map(PathBuf::from).collect();
+    assert!(expected.iter().any(|root| Path::new("/usr/bin/python3").starts_with(root)));
     assert_eq!(config.grants.execute, expected);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert_eq!(node.model.as_ref().unwrap().grants.execute, expected);
+        assert!(node.model.as_ref().unwrap().tools.iter().any(|tool| tool == "bash"));
+        assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != foe_core::COMPOSING_TOOL));
     }
 }
 

@@ -1,4 +1,4 @@
-# Spike crate for the evaluator selection gate in docs/code-mode.md.
+# Spike crate for the evaluator selection gate in docs/tool-composition.md.
 # The empty [workspace] table detaches this crate from the repository
 # workspace, so the shipping binary takes no dependency from here.
 [package]

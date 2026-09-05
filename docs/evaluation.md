@@ -320,23 +320,23 @@ its reported usage. The trace evaluator verifies the released output against
 the child log and does not claim that the unsupported cap bounded the child.
 It continues to enforce output reservations for routes that accept the cap.
 
-### Python composition default-adoption assessment
+### Tool composition default-adoption assessment
 
-The Python composition assessment determines whether the built-in `python`
+The tool-composition assessment determines whether the built-in `compose_tools`
 tool belongs in the default coding workflow. It compares three complete
 execution-contract configurations.
 
 - `ordinary-coding-tools` provides the coding tools in the current workflow.
 - `shell-output-narrowing` adds one instruction that directs shell commands to
   emit only the evidence needed for the next decision.
-- `python-tool-composition` adds the built-in `python` tool and its existing
+- `tool-composition` adds the built-in `compose_tools` tool and its existing
   tool instruction.
 
 The comparison measures product configurations. It does not isolate the token
 cost of one instruction from the token cost of one tool schema.
 
 The development task aggregates several configured-tool results. Two attempts
-must complete correctly, invoke `python`, and record at least two inner calls.
+must complete correctly, invoke `compose_tools`, and record at least two inner calls.
 The runner skips the held-back tasks when this activation gate fails.
 
 The held-back set has three tasks. One aggregates configured-tool results that
@@ -357,18 +357,18 @@ successes. An early failure cannot appear efficient by stopping before it
 finishes.
 
 The report records input, output, and cache-read tokens separately. It also
-records model calls, duration, first-request input, Python source bytes, inner
+records model calls, duration, first-request input, composition source bytes, inner
 canonical and rendered bytes, outer Python result bytes, inner errors, and
 tool activation. Suppressed rendered bytes describe the mechanism. Provider
 usage counters are the authority for token-efficiency claims.
 
 Default adoption requires all of these conditions:
 
-- Every Python configuration attempt passes strictly.
-- The Python configuration loses no strict success on any held-back task.
-- Every configured-tool aggregation attempt activates Python composition.
+- Every tool-composition attempt passes strictly.
+- Tool composition loses no strict success on any held-back task.
+- Every configured-tool aggregation attempt activates tool composition.
 - Every attempt reports provider usage.
-- Python composition adds a strict-success gain or reduces total tokens per
+- Tool composition adds a strict-success gain or reduces total tokens per
   strict success by at least 10 percent against the lower-token simpler
   configuration.
 
@@ -391,7 +391,7 @@ credential paths and runtime route metadata.
 
 #### Recorded default-adoption result
 
-The assessment ran on 2026-09-04 against source tree
+The assessment ran on 2026-09-04, before the public tool rename, against source tree
 `git-tree-sha1:b0d62036ec462cf30dcb37e5cc6a7c221fb6d619` and binary
 `sha256:d89b6ed3f06b8d5068c8347b5413a016d268b83cc7aeab2b23c2cc24f2a2a5a7`.
 The model configuration digest was
@@ -409,7 +409,7 @@ configuration made no Python call in either attempt.
 | `python-tool-composition` | 2/2 | 0 | 1,261 | 9,300.0 |
 
 The development activation gate failed, so the runner launched no held-back
-attempt. The result keeps Python composition opt-in for the default coding
+attempt. The result kept tool composition opt-in for the default coding
 workflow. It establishes the cost of offering an unused tool on this task. It
 does not measure tasks where the prompt requires composition or where another
 workload activates the tool naturally.

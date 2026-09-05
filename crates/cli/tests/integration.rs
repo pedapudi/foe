@@ -198,6 +198,26 @@ fn episode_start_records_resolved_permissions() {
         .is_none_or(|entries| entries.iter().all(|entry| entry["path"] != "/bin" && entry["path"] != "/usr/bin")));
 }
 
+/// docs/tool-composition.md "Purpose": workspace Python scripting uses the
+/// ordinary shell execution path under the required sandbox.
+#[test]
+fn required_sandbox_runs_python_through_bash() {
+    let dir = scratch("bash-python");
+    let value = config(&dir, |config| {
+        config["tools"] = json!(["bash"]);
+        config["grants"]["execute"] = json!(["/usr/bin/python3"]);
+        config["sandbox"] = json!({"mode": "required"});
+    });
+    let mut execute = call("tc_python", "bash", r#"{"command":"/usr/bin/python3 -c 'print(6 * 7)'"}"#);
+    execute.push(done("tool"));
+    let responses = vec![execute, vec![text("finished"), done("end")]];
+    let (events, code) = host_run(&dir, &value, responses, |_, _| unreachable!());
+    assert_eq!(code, 0, "{:?}", events.last());
+    let result = events.iter().find(|event| event["type"] == "tool/result" && event["data"]["name"] == "bash").unwrap();
+    assert_eq!(result["data"]["is_error"], false);
+    assert!(result["data"]["rendered"].as_str().unwrap().contains("42"), "{result}");
+}
+
 fn types(events: &[Value]) -> Vec<&str> {
     events.iter().map(|e| e["type"].as_str().unwrap()).collect()
 }

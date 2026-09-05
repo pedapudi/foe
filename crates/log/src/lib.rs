@@ -619,7 +619,7 @@ pub enum ToolFailureCode {
 }
 
 /// Payload of `tool/inner-call`: one tool call a composing tool, such as
-/// the built-in `python` tool, dispatched through the registry while its
+/// the built-in `compose_tools` tool, dispatched through the registry while its
 /// own model-issued call ran. `outer_call_id` names that model-issued call;
 /// `call_id` is the inner call's own id, which its `tool/result` names;
 /// `index` counts the outer call's inner dispatches from 0.

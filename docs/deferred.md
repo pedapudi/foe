@@ -139,11 +139,11 @@ definitions in a file or find the definition of a name without reading whole
 files. Tree-sitter symbols are not implemented. No event type or
 configuration key is reserved.
 
-## Default adoption of the python tool
+## Default adoption of tool composition
 
-The built-in `python` tool lets the model write a short Python script that calls
+The built-in `compose_tools` tool lets the model write a short Python script that calls
 several tools and returns a combined value; inner results remain in the
-log and never re-enter the conversation. [code-mode.md](code-mode.md)
+log and never re-enter the conversation. [tool-composition.md](tool-composition.md)
 specifies the implemented tool and the `tool/inner-call` event. What is
 deferred is default adoption: the built-in coding workflow does not list
 the tool until the task-quality, cost, and simpler-alternative evidence

@@ -181,7 +181,7 @@ each boundary protects.
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
-| [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
+| [docs/tool-composition.md](docs/tool-composition.md) | the `compose_tools` tool: bounded scripts that pass canonical values between granted tools |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | model endpoints, credentials, and `foe login` |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |

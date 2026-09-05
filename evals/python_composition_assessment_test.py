@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Tests for the Python composition assessment fixtures and decision rule."""
+"""Tests for the tool-composition assessment fixtures and decision rule."""
 
 from __future__ import annotations
 
@@ -65,17 +65,19 @@ class FixtureTests(unittest.TestCase):
             }
         ordinary = shaped["ordinary-coding-tools"]
         shell = shaped["shell-output-narrowing"]
-        python = shaped["python-tool-composition"]
-        self.assertNotIn("python", ordinary["tools"])
+        composition = shaped["tool-composition"]
+        self.assertNotIn("compose_tools", ordinary["tools"])
         self.assertEqual(shell["tools"], ordinary["tools"])
-        self.assertEqual(python["tools"], [*ordinary["tools"][:4], "python", *ordinary["tools"][4:]])
+        self.assertEqual(
+            composition["tools"], [*ordinary["tools"][:4], "compose_tools", *ordinary["tools"][4:]]
+        )
         self.assertEqual(set(shell["instructions"]) - set(ordinary["instructions"]), {"40-shell-output"})
-        self.assertEqual(python["instructions"], ordinary["instructions"])
+        self.assertEqual(composition["instructions"], ordinary["instructions"])
         for config in shaped.values():
             self.assertEqual(config["sandbox"], {"mode": "required"})
 
     def test_holdout_prompts_do_not_name_a_composition_mechanism(self) -> None:
-        forbidden = ("call_tool", "composition", "python tool", "shell", "bash")
+        forbidden = ("call_tool", "composition", "compose_tools", "shell", "bash")
         for task in (task for task in TASKS if task.task_set == "holdout"):
             with self.subTest(task=task.name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -128,7 +130,7 @@ class MeasurementTests(unittest.TestCase):
                 "type": "assistant/message",
                 "data": {
                     "tool_calls": [
-                        {"id": "outer", "name": "python", "args": {"source": "def main(): return 3"}}
+                        {"id": "outer", "name": "compose_tools", "args": {"source": "def main(): return 3"}}
                     ]
                 },
             },
@@ -150,7 +152,7 @@ class MeasurementTests(unittest.TestCase):
                 "type": "tool/result",
                 "data": {
                     "call_id": "outer",
-                    "name": "python",
+                    "name": "compose_tools",
                     "value": {"returned": 3},
                     "rendered": "3",
                     "is_error": False,
@@ -158,11 +160,11 @@ class MeasurementTests(unittest.TestCase):
             },
         ]
         measured = mechanism_metrics(events)
-        self.assertEqual(measured["python_calls"], 1)
+        self.assertEqual(measured["composition_calls"], 1)
         self.assertEqual(measured["inner_calls"], 1)
         self.assertEqual(measured["inner_calls_by_tool"], {"read": 1})
         self.assertEqual(measured["inner_rendered_bytes"], 6)
-        self.assertEqual(measured["outer_python_rendered_bytes"], 1)
+        self.assertEqual(measured["outer_composition_rendered_bytes"], 1)
         self.assertEqual(measured["top_level_rendered_bytes"], 1)
 
     def test_schedule_rotates_configuration_order(self) -> None:
@@ -193,7 +195,7 @@ def result(
     *,
     strict: bool = True,
     input_tokens: int = 100,
-    python_calls: int = 0,
+    composition_calls: int = 0,
 ) -> dict:
     return {
         "task": task,
@@ -211,7 +213,11 @@ def result(
         },
         "first_request_input_tokens": 30,
         "duration_seconds": 1.0,
-        "mechanism": {"python_calls": python_calls, "shell_calls": 0, "inner_calls": python_calls * 3},
+        "mechanism": {
+            "composition_calls": composition_calls,
+            "shell_calls": 0,
+            "inner_calls": composition_calls * 3,
+        },
     }
 
 
@@ -222,16 +228,14 @@ class DecisionTests(unittest.TestCase):
         costs = {
             "ordinary-coding-tools": 100,
             "shell-output-narrowing": 90,
-            "python-tool-composition": 75,
+            "tool-composition": 75,
         }
         for configuration in costs:
             for task in tasks:
                 for _ in range(3):
-                    activation = int(
-                        configuration == "python-tool-composition" and task == "regional-capacity-selection"
-                    )
+                    activation = int(configuration == "tool-composition" and task == "regional-capacity-selection")
                     results.append(
-                        result(task, configuration, input_tokens=costs[configuration], python_calls=activation)
+                        result(task, configuration, input_tokens=costs[configuration], composition_calls=activation)
                     )
         return results
 
@@ -245,22 +249,22 @@ class DecisionTests(unittest.TestCase):
 
     def test_material_savings_with_complete_quality_support_adoption(self) -> None:
         report = recommendation(self.held_back_results(), 3)
-        self.assertTrue(report["include_python_by_default"], report["findings"])
+        self.assertTrue(report["include_composition_by_default"], report["findings"])
         self.assertLessEqual(report["total_token_ratio_against_lower_token_simpler_configuration"], 0.90)
 
-    def test_one_python_quality_failure_blocks_adoption(self) -> None:
+    def test_one_composition_quality_failure_blocks_adoption(self) -> None:
         results = self.held_back_results()
-        failed = next(result for result in results if result["configuration"] == "python-tool-composition")
+        failed = next(result for result in results if result["configuration"] == "tool-composition")
         failed["strict_success"] = False
         report = recommendation(results, 3)
-        self.assertFalse(report["include_python_by_default"])
+        self.assertFalse(report["include_composition_by_default"])
         self.assertTrue(any("did not pass every" in finding for finding in report["findings"]))
 
     def test_development_gate_requires_successful_composition(self) -> None:
-        passed = [result("shard-priority-total", "python-tool-composition", python_calls=1) for _ in range(2)]
+        passed = [result("shard-priority-total", "tool-composition", composition_calls=1) for _ in range(2)]
         self.assertEqual(development_gate(passed, 2), (True, []))
         missing = copy.deepcopy(passed)
-        missing[0]["mechanism"]["python_calls"] = 0
+        missing[0]["mechanism"]["composition_calls"] = 0
         self.assertFalse(development_gate(missing, 2)[0])
 
 

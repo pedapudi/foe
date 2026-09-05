@@ -10,7 +10,7 @@ to find the relevant specification, report, or guide.
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
 | [evidence.md](evidence.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
-| [code-mode.md](code-mode.md) | how the `python` tool composes ordinary tools while keeping intermediate results out of the model context |
+| [tool-composition.md](tool-composition.md) | how `compose_tools` passes canonical values between ordinary tools while keeping intermediate results out of model context |
 | [config.md](config.md) | what an execution-contract document may contain and what each key means |
 | [models.md](models.md) | which model endpoints exist, where their credentials live, and how `foe login` sets them up |
 | [log-format.md](log-format.md) | what an episode log contains and how a model request is derived from it |

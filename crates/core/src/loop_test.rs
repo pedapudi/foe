@@ -1158,7 +1158,7 @@ fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
     assert_eq!(parse_tolerant("not json"), json!({}));
 }
 
-/// A tool named `python` that drives the composer it receives: one ordinary
+/// A tool named `compose_tools` that drives the composer it receives: one ordinary
 /// inner call, one whose arguments are not an object, and one naming an
 /// excluded control tool.
 struct ComposeProbe {
@@ -1188,8 +1188,8 @@ impl Tool for ComposeProbe {
     }
 }
 
-/// docs/code-mode.md and docs/log-format.md: the loop hands a composer to
-/// the call named `python` alone; every inner dispatch is recorded as
+/// docs/tool-composition.md and docs/log-format.md: the loop hands a composer to
+/// the call named `compose_tools` alone; every inner dispatch is recorded as
 /// `tool/inner-call` and its ordinary `tool/result`, an inner argument
 /// violation is an error result, derived messages carry the outer result
 /// alone, and the obligations balance through fold validation.

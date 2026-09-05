@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Compare the Python composition tool with two simpler coding configurations."""
+"""Compare tool composition with two simpler coding configurations."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ QUALITY_COMPONENTS = ("artifact_correct", "outcome_correct", "trace_conformant",
 @dataclass(frozen=True)
 class Configuration:
     name: str
-    add_python: bool = False
+    add_composition: bool = False
     add_shell_guidance: bool = False
 
 
@@ -62,7 +62,7 @@ class Task:
 CONFIGURATIONS = (
     Configuration("ordinary-coding-tools"),
     Configuration("shell-output-narrowing", add_shell_guidance=True),
-    Configuration("python-tool-composition", add_python=True),
+    Configuration("tool-composition", add_composition=True),
 )
 
 
@@ -533,8 +533,8 @@ def prepare_config(
         "output_tokens": task.output_tokens,
         "seconds": task.seconds,
     }
-    if configuration.add_python:
-        shaped["tools"].insert(4, "python")
+    if configuration.add_composition:
+        shaped["tools"].insert(4, "compose_tools")
     if configuration.add_shell_guidance:
         shaped["instructions"]["40-shell-output"] = (
             "When several shell operations can answer a question, combine them in one command. End the command "
@@ -553,22 +553,24 @@ def mechanism_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     inner_ids = {item.get("call_id") for item in inner}
     results = [event_data(event) for event in events if event.get("type") == "tool/result"]
     inner_results = [result for result in results if result.get("call_id") in inner_ids]
-    python_ids = {call.get("id") for call in calls if call.get("name") == "python"}
-    python_results = [result for result in results if result.get("call_id") in python_ids]
-    python_sources = [
+    composition_ids = {call.get("id") for call in calls if call.get("name") == "compose_tools"}
+    composition_results = [result for result in results if result.get("call_id") in composition_ids]
+    composition_sources = [
         call.get("args", {}).get("source")
         for call in calls
-        if call.get("name") == "python" and isinstance(call.get("args"), dict)
+        if call.get("name") == "compose_tools" and isinstance(call.get("args"), dict)
     ]
-    python_source_bytes = sum(len(source.encode("utf-8")) for source in python_sources if isinstance(source, str))
+    composition_source_bytes = sum(
+        len(source.encode("utf-8")) for source in composition_sources if isinstance(source, str)
+    )
     inner_rendered_bytes = sum(
         len(result.get("rendered", "").encode("utf-8"))
         for result in inner_results
         if isinstance(result.get("rendered", ""), str)
     )
-    outer_python_rendered_bytes = sum(
+    outer_composition_rendered_bytes = sum(
         len(result.get("rendered", "").encode("utf-8"))
-        for result in python_results
+        for result in composition_results
         if isinstance(result.get("rendered", ""), str)
     )
     by_tool: dict[str, int] = {}
@@ -579,15 +581,15 @@ def mechanism_metrics(events: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "top_level_calls": len(calls),
         "top_level_tools": sorted({call.get("name") for call in calls if isinstance(call.get("name"), str)}),
-        "python_calls": len(python_ids),
+        "composition_calls": len(composition_ids),
         "shell_calls": sum(call.get("name") == "bash" for call in calls),
         "inner_calls": len(inner),
         "inner_errors": sum(result.get("is_error") is True for result in inner_results),
         "inner_calls_by_tool": dict(sorted(by_tool.items())),
-        "python_source_bytes": python_source_bytes,
+        "composition_source_bytes": composition_source_bytes,
         "inner_canonical_bytes": sum(_canonical_bytes(result.get("value")) for result in inner_results),
         "inner_rendered_bytes": inner_rendered_bytes,
-        "outer_python_rendered_bytes": outer_python_rendered_bytes,
+        "outer_composition_rendered_bytes": outer_composition_rendered_bytes,
         "top_level_rendered_bytes": sum(
             len(result.get("rendered", "").encode("utf-8"))
             for result in results
@@ -783,7 +785,9 @@ def aggregate_configuration(results: list[dict[str, Any]], configuration: str) -
                     for result in matching
                     if result["usage"]["input_tokens"] is not None
                 ),
-                "python_activations": sum(result["mechanism"]["python_calls"] > 0 for result in matching),
+                "composition_activations": sum(
+                    result["mechanism"]["composition_calls"] > 0 for result in matching
+                ),
                 "shell_activations": sum(result["mechanism"]["shell_calls"] > 0 for result in matching),
             }
     return {
@@ -807,7 +811,7 @@ def aggregate_configuration(results: list[dict[str, Any]], configuration: str) -
                 if result["first_request_input_tokens"] is not None
             ]
         ),
-        "python_activations": sum(result["mechanism"]["python_calls"] > 0 for result in selected),
+        "composition_activations": sum(result["mechanism"]["composition_calls"] > 0 for result in selected),
         "shell_activations": sum(result["mechanism"]["shell_calls"] > 0 for result in selected),
         "task_results": task_results,
     }
@@ -828,38 +832,42 @@ def recommendation(results: list[dict[str, Any]], holdout_attempts: int) -> dict
         findings.append("The held-back comparison has fewer than three attempts per task.")
     if any(report["attempts"] != expected for report in by_configuration.values()):
         findings.append("The held-back comparison is incomplete.")
-    python_report = by_configuration["python-tool-composition"]
+    composition_report = by_configuration["tool-composition"]
     simpler = [by_configuration["ordinary-coding-tools"], by_configuration["shell-output-narrowing"]]
-    if python_report["strict_successes"] != expected:
-        findings.append("The Python composition configuration did not pass every held-back attempt.")
+    if composition_report["strict_successes"] != expected:
+        findings.append("The tool-composition configuration did not pass every held-back attempt.")
     for task in holdout_tasks:
-        python_successes = python_report["task_results"].get(task.name, {}).get("strict_successes", 0)
+        composition_successes = composition_report["task_results"].get(task.name, {}).get("strict_successes", 0)
         simpler_best = max(report["task_results"].get(task.name, {}).get("strict_successes", 0) for report in simpler)
-        if python_successes < simpler_best:
-            findings.append(f"Python composition reduced task quality on {task.name}.")
+        if composition_successes < simpler_best:
+            findings.append(f"Tool composition reduced task quality on {task.name}.")
     if any(report["usage"]["attempts_with_reported_usage"] != expected for report in by_configuration.values()):
         findings.append("Provider usage is incomplete for at least one held-back configuration.")
-    composition_task = python_report["task_results"].get("regional-capacity-selection", {})
-    if composition_task.get("python_activations") != holdout_attempts:
-        findings.append("Python composition did not activate on every configured-tool aggregation attempt.")
+    composition_task = composition_report["task_results"].get("regional-capacity-selection", {})
+    if composition_task.get("composition_activations") != holdout_attempts:
+        findings.append("Tool composition did not activate on every configured-tool aggregation attempt.")
 
-    python_cost = python_report["total_tokens_per_strict_success"]
+    composition_cost = composition_report["total_tokens_per_strict_success"]
     simpler_costs = [
         report["total_tokens_per_strict_success"]
         for report in simpler
         if report["total_tokens_per_strict_success"] is not None
     ]
-    quality_advantage = python_report["strict_successes"] > max(report["strict_successes"] for report in simpler)
-    efficiency_ratio = python_cost / min(simpler_costs) if python_cost is not None and simpler_costs else None
+    quality_advantage = composition_report["strict_successes"] > max(
+        report["strict_successes"] for report in simpler
+    )
+    efficiency_ratio = (
+        composition_cost / min(simpler_costs) if composition_cost is not None and simpler_costs else None
+    )
     efficiency_advantage = efficiency_ratio is not None and efficiency_ratio <= 0.90
     if not quality_advantage and not efficiency_advantage:
         findings.append(
-            "Python composition added neither a strict-success gain nor a 10 percent total-token reduction "
+            "Tool composition added neither a strict-success gain nor a 10 percent total-token reduction "
             "against the lower-token simpler configuration."
         )
     include = not findings and (quality_advantage or efficiency_advantage)
     return {
-        "include_python_by_default": include,
+        "include_composition_by_default": include,
         "quality_advantage": quality_advantage,
         "total_token_ratio_against_lower_token_simpler_configuration": efficiency_ratio,
         "material_total_token_advantage": efficiency_advantage,
@@ -871,18 +879,18 @@ def development_gate(results: list[dict[str, Any]], attempts: int) -> tuple[bool
     selected = [
         result
         for result in results
-        if result["task_set"] == "development" and result["configuration"] == "python-tool-composition"
+        if result["task_set"] == "development" and result["configuration"] == "tool-composition"
     ]
     findings = []
     if len(selected) != attempts:
         findings.append("The development activation run is incomplete.")
     if not all(result["strict_success"] for result in selected):
-        findings.append("The Python composition configuration failed a development activation attempt.")
+        findings.append("The tool-composition configuration failed a development activation attempt.")
     if not all(
-        result["mechanism"]["python_calls"] > 0 and result["mechanism"]["inner_calls"] >= 2
+        result["mechanism"]["composition_calls"] > 0 and result["mechanism"]["inner_calls"] >= 2
         for result in selected
     ):
-        findings.append("The Python tool did not compose at least two inner calls in every development attempt.")
+        findings.append("The composition tool did not make at least two inner calls in every development attempt.")
     return not findings, findings
 
 
@@ -980,7 +988,7 @@ def main() -> int:
 
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.keep is None:
-        temporary = tempfile.TemporaryDirectory(prefix="foe-python-composition-")
+        temporary = tempfile.TemporaryDirectory(prefix="foe-tool-composition-")
         run_root = Path(temporary.name)
     else:
         keep = args.keep
@@ -1015,7 +1023,7 @@ def main() -> int:
 
     report = {
         "schema_version": 1,
-        "evaluation": "python-composition-default-adoption",
+        "evaluation": "tool-composition-default-adoption",
         "evaluated_foe": evaluated,
         "model_config_sha256": model_digest,
         "development_attempts_per_task": args.development_attempts,
@@ -1029,7 +1037,7 @@ def main() -> int:
         "recommendation": (
             recommendation(results, args.holdout_attempts)
             if development_passed
-            else {"include_python_by_default": False, "findings": development_findings}
+            else {"include_composition_by_default": False, "findings": development_findings}
         ),
         "results": results,
     }

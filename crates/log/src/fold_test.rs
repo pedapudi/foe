@@ -645,7 +645,7 @@ fn an_inner_call_opens_the_tool_call_obligation_and_its_result_is_excluded() {
         inbox(InboxSource::Task, "do it"),
         header(),
         request(1, 2, vec![1], vec![]),
-        assistant(1, "", vec![ToolCall { name: "python".into(), ..call("tc_p") }], false),
+        assistant(1, "", vec![ToolCall { name: "compose_tools".into(), ..call("tc_p") }], false),
         inner_call("tc_p", 0),
         result(1, "tc_p_0", "inner rendered"),
         result(1, "tc_p", "outer rendered"),

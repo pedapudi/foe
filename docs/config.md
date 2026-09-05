@@ -208,7 +208,7 @@ participates in fingerprint.
 
 A name resolves against three sources, checked in this order:
 
-1. Built-in tools: `read`, `grep`, `edit`, `bash`, `session`, `python`,
+1. Built-in tools: `read`, `grep`, `edit`, `bash`, `session`, `compose_tools`,
    `retrieve`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
 3. Entries in `host_tools`.
