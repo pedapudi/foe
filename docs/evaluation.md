@@ -389,6 +389,31 @@ Add `--confirm-spend` and an absolute `--keep` directory to run and retain the
 assessment. Raw configurations and logs remain outside Git because they carry
 credential paths and runtime route metadata.
 
+#### Recorded default-adoption result
+
+The assessment ran on 2026-09-04 against source tree
+`git-tree-sha1:b0d62036ec462cf30dcb37e5cc6a7c221fb6d619` and binary
+`sha256:d89b6ed3f06b8d5068c8347b5413a016d268b83cc7aeab2b23c2cc24f2a2a5a7`.
+The model configuration digest was
+`sha256:c878e94438a9fbc675a2eb033291ea02a64d9e27398753840c5e96cae53d097d`.
+
+All six development attempts passed strict grading with complete provider
+usage and conformant traces under the required sandbox. Each configuration
+made five configured batch calls and one return call per attempt. The Python
+configuration made no Python call in either attempt.
+
+| configuration | strict successes | Python activations | median first-request input tokens | total tokens per strict success |
+|---|---:|---:|---:|---:|
+| `ordinary-coding-tools` | 2/2 | 0 | 1,084 | 8,951.5 |
+| `shell-output-narrowing` | 2/2 | 0 | 1,116 | 9,025.0 |
+| `python-tool-composition` | 2/2 | 0 | 1,261 | 9,300.0 |
+
+The development activation gate failed, so the runner launched no held-back
+attempt. The result keeps Python composition opt-in for the default coding
+workflow. It establishes the cost of offering an unused tool on this task. It
+does not measure tasks where the prompt requires composition or where another
+workload activates the tool naturally.
+
 ### Comparable metrics
 
 Each benchmark report includes these metrics:
