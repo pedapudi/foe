@@ -941,6 +941,10 @@ boundary with every binding obligation closed, including one ending at
 `seed/end`, is appended to as it stands; one cut short mid-line or with a
 binding obligation open is seeded at N equal to its count of complete
 events into a fresh directory beside it, which the run then continues.
+A workflow configuration refuses execution when the resulting log contains
+any `workflow/*` event. Seeding preserves workflow evidence without restoring
+its scheduler. The restrictions are specified in
+[workflow.md](workflow.md#interrupted-execution).
 
 A replay is a seed at N equal to the source log's length, with the model
 responses replayed from `assistant/chunk` events rather than requested.
