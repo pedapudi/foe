@@ -250,6 +250,9 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
     let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
     let state = foe_log::fold::fold(&events).map_err(in_dir)?;
     let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", dir.display()))?;
+    if start.fork_origin.is_some() && state.seeded_through.is_none() {
+        return Err(format!("{}: resuming a seeded log requires seed/end", dir.display()));
+    }
     if state.outcome.is_some() {
         let (dir, id) = (dir.display(), &start.id);
         return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
