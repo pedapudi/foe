@@ -187,6 +187,7 @@ each boundary protects.
 |---|---|
 | [docs/build.md](docs/build.md) | how to install, build with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [docs/design.md](docs/design.md) | what foe guarantees and the structure that delivers it |
+| [docs/runtime-efficiency.md](docs/runtime-efficiency.md) | the proposed internal architecture for reducing repeated runtime work while preserving behavior |
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
