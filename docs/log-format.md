@@ -918,6 +918,8 @@ The destination contains its own canonical spills and rendering archives.
 Reading retained evidence does not open the source episode. A missing file,
 an invalid locator, malformed canonical JSON, or a content mismatch makes
 seeding fail before `seed/end`. The error names the event, file, and rule.
+A destination with `fork_origin` and no `seed/end` records incomplete seeding.
+Opening or resuming that destination is refused before execution.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own
