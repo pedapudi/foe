@@ -58,7 +58,13 @@ sentence on first reading.
   `cli` under 1,650, `transport` under 2,700, `telemetry` under 1,000, and
   `evidence` under 500. The viewer HTML, TypeScript, and CSS use the
   compressed bundle limit in `docs/design.md`. `scripts/loc.sh` enforces every
-  Rust line budget.
+  Rust line budget and fails when this file, `README.md`, or `docs/design.md`
+  quotes a ceiling that differs from the one it holds.
+- A ceiling changes in a commit of its own. That commit states the reason
+  and touches only `AGENTS.md`, `scripts/loc.sh`, `README.md`, and
+  `docs/design.md`, all four, and precedes the commit that needs the room,
+  so every commit in a series passes `scripts/loc.sh`. A feature commit
+  never changes a ceiling. A ceiling may be lowered as well as raised.
 
 ## Commits
 
@@ -82,7 +88,7 @@ sentence on first reading.
 - A merge commit carries nothing beyond the automatic merge. A conflict is
   resolved in an ordinary commit on the branch, and that commit's message
   states what the resolution changed.
-- Every gate runs on the tree that will become `main` before a push: `cargo test
+- Every gate runs on the merged tree before a push: `cargo test
   --workspace`, `scripts/loc.sh`, `scripts/examples.sh`, the Python suite
   in `python/`, and the browser bundle build and test suite in `view/`.
 - `main` requires the continuous-integration checks to pass.

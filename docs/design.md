@@ -1133,11 +1133,15 @@ crates. See [evidence.md](evidence.md).
 
 The model clients in `crates/transport` stay under 2,700 lines. They own the
 HTTP formats, credential sources, endpoint table, and request loop.
-Continuous integration enforces every budget as a test.
+Continuous integration enforces every budget as a test. `scripts/loc.sh`
+holds each ceiling once and fails when this document, `AGENTS.md`, or
+`README.md` quotes a different number.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
-there is to read.
+there is to read. A ceiling moves in either direction only in a commit of
+its own that states the reason, under the rule in `AGENTS.md`; a commit
+that adds behavior fits inside the ceilings as they stand.
 
 ## Status
 
