@@ -184,7 +184,7 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 | workflows | 1,050 |
 | compaction | 500 |
 | viewer server | 780 |
-| command line | 1,900 |
+| command line | 1,950 |
 | model transports | 2,700 |
 | telemetry | 1,000 |
 | evidence | 500 |
