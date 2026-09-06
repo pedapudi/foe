@@ -1862,7 +1862,7 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--viewer", "off"]);
     assert_eq!(
         verify.trim(),
-        "foe: --verify applies to the built-in coding workflow; .foe/contract.json declares its own behavior"
+        "foe: --verify applies to a built-in document; .foe/contract.json declares its own behavior"
     );
 
     let broken = scratch("dangling-repository-contract");
@@ -1880,29 +1880,54 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     assert!(bare.contains(built_in_ran), "without that file the built-in workflow runs: {bare}");
 }
 
-/// docs/design.md "The command line": `foe plan --config builtin:coding`
-/// resolves the document the binary carries as it resolves a file, and
-/// `--json` prints the contract a host reads. A name the binary does not
-/// carry is refused with the names it carries.
+/// docs/design.md "The command line": `foe plan --config builtin:NAME`
+/// resolves a document the binary carries as it resolves a file, and
+/// `--json` prints the contract a host reads. The coding workflow resolves
+/// to a graph and the single document to one model node, both under the
+/// return schema the binary carries, and the two hash apart. A name the
+/// binary does not carry is refused with the names it carries.
 #[test]
 fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     let dir = scratch("plan-builtin");
-    let planned =
-        Command::new(FOE).args(["plan", "--json", "--config", "builtin:coding"]).current_dir(&*dir).output().unwrap();
-    assert!(planned.status.success(), "{}", String::from_utf8_lossy(&planned.stderr));
-    let line = String::from_utf8(planned.stdout).unwrap();
-    assert_eq!(line.lines().count(), 1, "one JSON line");
-    let report: Value = serde_json::from_str(&line).unwrap();
+    let resolved = |name: &str| {
+        let args = ["plan", "--json", "--config", name];
+        let planned = Command::new(FOE).args(args).current_dir(&*dir).output().unwrap();
+        assert!(planned.status.success(), "{name}: {}", String::from_utf8_lossy(&planned.stderr));
+        let line = String::from_utf8(planned.stdout).unwrap();
+        assert_eq!(line.lines().count(), 1, "{name}: one JSON line");
+        serde_json::from_str::<Value>(&line).unwrap()
+    };
+    let required = json!(["summary", "changed_paths", "validation", "unresolved_risks", "learned"]);
+
+    let report = resolved("builtin:coding");
     assert_eq!(report["contract"]["name"], "coding");
     assert_eq!(report["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
     assert!(report["contract"]["task"].is_null(), "a resolved contract carries no task");
     assert!(report["contract_fingerprint"].as_str().unwrap().starts_with("sha256:"));
     assert!(report["workflow"]["terminal"].as_array().is_some(), "the coding workflow is a workflow");
+    let implementation = &report["contract"]["workflow"]["nodes"]["implement-task"]["model"];
+    assert_eq!(implementation["done_when"]["returns"]["required"], required);
+
+    let single = resolved("builtin:single");
+    assert_eq!(single["contract"]["name"], "single");
+    assert_eq!(single["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
+    assert!(single["contract"]["task"].is_null(), "a resolved contract carries no task");
+    assert_eq!(
+        single["execution"],
+        json!({
+            "kind": "root-agent", "nodes": 1, "name": "root-agent", "follows": ["task"], "terminal": true
+        })
+    );
+    assert_eq!(single["contract"]["workflow"], Value::Null, "one episode needs no graph");
+    assert_eq!(single["contract"]["done_when"]["returns"]["required"], required);
+    assert_eq!(single["contract"]["instructions"], implementation["instructions"]);
+    assert_eq!(single["contract"]["tools"], implementation["tools"]);
+    assert_ne!(single["contract_fingerprint"], report["contract_fingerprint"], "the two forms hash apart");
 
     let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();
     assert!(!unknown.status.success(), "an unknown built-in name is refused");
     let message = String::from_utf8_lossy(&unknown.stderr).to_string();
-    assert!(message.contains("the built-in documents are builtin:coding"), "{message}");
+    assert!(message.contains("the built-in documents are builtin:coding, builtin:single"), "{message}");
 }
 
 /// docs/design.md "Execution contracts and fingerprints": every example contract hashes to

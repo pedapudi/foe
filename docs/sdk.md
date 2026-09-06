@@ -185,10 +185,13 @@ foe.builtin(
 The binary carries documents of its own, and `builtin` returns one of them as
 an `ExecutionContract` over a root directory. `builtin("coding", root,
 binary=...)` returns the coding workflow that a command line naming no
-document runs. The package holds no copy of any such document: `builtin` runs
-`foe plan --config builtin:NAME --json`, which prints the document the binary
-carries, so the name, the instructions, the tools, the budgets, and every
-workflow node come from the binary that will run the contract.
+document runs, and `builtin("single", root, binary=...)` returns that
+workflow's implementation episode alone, which declares no workflow and so
+returns a contract whose `workflow` is `None`. The package holds no copy of
+any such document: `builtin` runs `foe plan --config builtin:NAME --json`,
+which prints the document the binary carries, so the name, the instructions,
+the tools, the budgets, and every workflow node come from the binary that
+will run the contract.
 [config.md](config.md) states what `--config` takes, and a name the binary
 does not carry raises `foe.ConfigError` carrying the message the binary
 printed, which names the documents it does carry.
@@ -205,7 +208,8 @@ document does except for that one added grant.
 `verify` gates completion. A host tool becomes the verifier directly. A path
 becomes a configured tool named `check` that runs in `root`, given to the
 document and to every workflow node that runs a model, and the document's
-`done_when` names it.
+`done_when` names it. A return schema the document already declares stays
+beside the verifier, which then checks the returned value.
 
 `retries` is how many times findings are fed back, and applies only when
 `verify` is given. [workflow.md](workflow.md) "Completion" makes a finding
@@ -220,7 +224,9 @@ document's `budget.max_episodes` rises by `retries`, because each re-fire
 runs one further episode. A workflow nested inside another receives the
 same raise on its own completing nodes.
 Without the raise, a single finding ends the run as `blocked` with
-`recovery-exhausted` rather than feeding the finding back.
+`recovery-exhausted` rather than feeding the finding back. A document that
+declares no workflow, such as the single implementation episode, runs one
+episode and feeds a finding back into that episode, so neither bound rises.
 
 `model` configures the endpoint the binary calls, and is the only model
 block the returned document carries: the blocks the binary printed below the

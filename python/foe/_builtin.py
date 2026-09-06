@@ -90,7 +90,8 @@ def builtin(
     `verify` gates completion. A host tool becomes the verifier directly. A
     path becomes a configured tool named `check` that runs in `root`, given
     to the document and to every workflow node that runs a model. The gate
-    itself is the document's `done_when`.
+    itself is the document's `done_when`, and a return schema the document
+    already declares stays beside the verifier.
 
     `retries` is how many times findings re-fire the work, and applies only
     when `verify` is given. docs/workflow.md "Completion" makes a finding
@@ -101,7 +102,9 @@ def builtin(
     model ancestor, whose `max_fires` becomes at least `retries` plus one,
     and the document's `budget.max_episodes` rises by `retries`, because
     each re-fire runs one further episode. Without the raise a single
-    finding ends the run as blocked with `recovery-exhausted`.
+    finding ends the run as blocked with `recovery-exhausted`. A document
+    that declares no workflow runs one episode and feeds a finding back into
+    that episode, so neither bound rises.
 
     `model` configures the endpoint the binary calls, and is the only model
     block the returned document carries: the blocks the binary printed below
@@ -282,12 +285,16 @@ def _gate(fields: dict[str, Any], verify: HostTool | PathLike, root: Path, retri
     """Make `verify` the document's completion gate, as `foe init` does.
 
     The bounds that cap the re-fires a finding causes are raised first, so
-    that the gate the document gains can feed a finding back.
+    that the gate the document gains can feed a finding back. A return
+    schema the document already declares is kept beside the verifier, which
+    docs/config.md `done_when` makes the verifier check: dropping it would
+    take the `return` tool and the citation rule away from the episode.
     """
     _admit_refires(fields, retries)
+    returns = _declared_returns(fields.get("done_when"))
     if isinstance(verify, HostTool):
         fields["tools"] = [*fields["tools"], verify]
-        fields["done_when"] = Verified(verify=verify, retries=retries)
+        fields["done_when"] = Verified(verify=verify, retries=retries, returns=returns)
         return
     path = Path(os.fspath(verify))
     if not path.is_absolute():
@@ -299,7 +306,16 @@ def _gate(fields: dict[str, Any], verify: HostTool | PathLike, root: Path, retri
     _add_verifier(fields, definition)
     for contract in _node_contracts(fields.get("workflow")):
         _add_verifier(contract, definition.to_dict(f"workflow.{_VERIFIER_TOOL}"))
-    fields["done_when"] = Verified(verify=_VERIFIER_TOOL, retries=retries)
+    fields["done_when"] = Verified(verify=_VERIFIER_TOOL, retries=retries, returns=returns)
+
+
+def _declared_returns(done_when: Any) -> type | Mapping[str, Any] | None:
+    """The return schema a completion rule states, if it states one."""
+    if isinstance(done_when, Returns):
+        return done_when.schema
+    if isinstance(done_when, Verified):
+        return done_when.returns
+    return None
 
 
 def _add_verifier(contract: dict[str, Any], definition: ToolDef | dict[str, Any]) -> None:
@@ -328,9 +344,14 @@ def _admit_refires(fields: dict[str, Any], retries: int) -> None:
     docs/workflow.md "Completion" re-fires the nearest model ancestor of the
     node that completed the workflow, and "Bounds" makes `max_fires` cap
     those re-fires and the episode budget cap everything. A node keeps a
-    bound already wide enough.
+    bound already wide enough. A document that declares no workflow runs one
+    episode and feeds a finding back into that episode, so its bounds admit
+    every re-fire as they stand.
     """
-    for workflow in _workflows(fields.get("workflow")):
+    workflows = list(_workflows(fields.get("workflow")))
+    if not workflows:
+        return
+    for workflow in workflows:
         for name in _refired(workflow):
             node = workflow["nodes"][name]
             stated = node.get("max_fires")

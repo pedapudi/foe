@@ -878,9 +878,14 @@ A document in a file carries its own task, which directs the fork.
 What runs is the document `--config` names, else `.foe/contract.json` in the
 working directory, else the built-in coding workflow. `--config` takes a
 file path or the name of a document the binary carries, written
-`builtin:NAME`. The binary carries one document, `builtin:coding`, the
-coding workflow this section describes. Every other name is refused with the
-names the binary carries. A command line naming no document examines the
+`builtin:NAME`. The binary carries two documents. `builtin:coding` is the
+coding workflow this section describes, and it is the default because the
+failure it prevents is a task reported complete on a wrong result.
+`builtin:single` is the plain form: that workflow's implementation episode
+alone, under the same instructions, tools, return schema, grants, and
+sandbox mode, with no assessment episode and no repair episode. It suits a
+task whose result a person reads directly. Every other name is refused with
+the names the binary carries. A command line naming no document examines the
 working directory alone and searches no ancestor directory. A run that reads
 `.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
 standard error, where NAME is the document's `name`. A task given on the
@@ -889,8 +894,8 @@ file: `--host` takes the task of the run from the document, and a built-in
 document carries no task, so `--config builtin:NAME` beside `--host` is
 refused.
 
-`--verify` and `--sandbox` configure a built-in document. A document in a
-file states that behavior in its own keys, so pairing either option with a
+`--verify` and `--sandbox` configure either built-in document. A document in
+a file states that behavior in its own keys, so pairing either option with a
 file document, the discovered one included, is refused. The log records the
 full contract and its fingerprint, so a run is reproducible from its log
 whether or not the command line named the document.
@@ -904,6 +909,16 @@ The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
 contract document.
+
+The single document is built from that same file. The implementation node's
+contract becomes the whole document, under the name `single`, and the CLI
+fills the same values around it. The document declares no workflow, so the
+run is one episode of the direct loop, its lifetime episode count is one, and
+its allowance is that episode's 60-call backstop. With `--verify` the episode
+completes on the verifier's acceptance under the same twelve retries the
+coding workflow receives; a finding re-fires inside the episode, so the
+episode count stays at one. The two documents state the implementation once
+between them and fingerprint apart, so a log names which of them ran.
 
 The implementation and repair episodes have `read`, `grep`, `edit`, and
 `bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
@@ -1207,7 +1222,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,900 lines. It is separate because it serves a person at a terminal
+under 1,950 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

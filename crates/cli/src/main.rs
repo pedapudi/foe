@@ -87,7 +87,8 @@ const OPTS: &[Opt] = &[
         "--config",
         "FILE",
         ".foe/contract.json in the working directory, else builtin:coding",
-        "the contract document to run: a file, or builtin:coding, which --verify and --sandbox configure",
+        "the contract document to run: a file, builtin:coding, the careful default that implements and then \
+         assesses, or builtin:single, the plain form of one implementation episode",
     ),
     opt("", WHAT_RUNS, "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
     opt(
@@ -103,8 +104,8 @@ const OPTS: &[Opt] = &[
         BUILT_IN_ONLY,
         "--verify",
         "PATH",
-        "the built-in workflow has no verifier gate",
-        "an executable verifier whose acceptance completes the built-in workflow",
+        "a built-in document has no verifier gate",
+        "an executable verifier whose acceptance completes the built-in document",
     ),
     opt(
         "",
@@ -173,7 +174,7 @@ const OPTS: &[Opt] = &[
         "--config",
         "FILE",
         "the built-in tools alone",
-        "the contract document to resolve: a file, or builtin:coding",
+        "the contract document to resolve: a file, builtin:coding, or builtin:single",
     ),
     opt("plan", "", "--json", "", "", "print one JSON object instead of the report"),
     opt("plan", "", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
