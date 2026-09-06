@@ -65,6 +65,10 @@ pub enum TransportError {
     Credential { provider: &'static str, key: &'static str, path: PathBuf, reason: String },
     #[error("model.base_url: {url}: {reason}")]
     BaseUrl { url: String, reason: String },
+    #[error("model.service_tier: provider {provider} accepts {}; `{value}` is none of them", accepted.join(", "))]
+    ServiceTier { provider: &'static str, value: String, accepted: &'static [&'static str] },
+    #[error("model.service_tier: provider {provider} sends no service tier; remove the option")]
+    NoServiceTier { provider: &'static str },
     #[error("home directory: {0}; name the credential file in the model block instead")]
     Home(String),
 }
@@ -184,6 +188,16 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
     if let Some(url) = model.option("base_url") {
         Url::parse(url).map_err(|reason| TransportError::BaseUrl { url: url.to_string(), reason })?;
     }
+    if let Some(value) = model.option("service_tier") {
+        match provider.service_tier {
+            Some(tier) if tier.values.contains(&value) => {}
+            Some(tier) => {
+                let (provider, value) = (provider.name, value.to_string());
+                return Err(TransportError::ServiceTier { provider, value, accepted: tier.values });
+            }
+            None => return Err(TransportError::NoServiceTier { provider: provider.name }),
+        }
+    }
     Ok(Plan { provider, model, credential_path })
 }
 
@@ -225,7 +239,7 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
                 model.model.clone(),
                 max,
                 model.option("reasoning_effort").map(str::to_string),
-                model.option("service_tier").map(str::to_string),
+                service_tier(provider, model),
             )),
             base(provider.default_base_url)?.join(provider.path),
         ),
@@ -240,6 +254,14 @@ fn build_http(plan: &Plan) -> Result<Arc<dyn Transport>, TransportError> {
         auth,
         format,
     }))
+}
+
+/// The request field and value a route carries the service tier in, when
+/// the block names one. [`plan_with_home`] has already checked the value
+/// against the provider's accepted values.
+fn service_tier(provider: &'static Provider, model: &ModelConfig) -> Option<(&'static str, String)> {
+    let tier = provider.service_tier?;
+    Some((tier.field, model.option("service_tier")?.to_string()))
 }
 
 /// Vertex AI publishes Anthropic models behind the Messages format and
@@ -629,6 +651,29 @@ mod tests {
             }
             assert!(plan.describe().starts_with(&format!("{name}/m: ")), "{}", plan.describe());
         }
+    }
+
+    /// docs/models.md "The `model` block": the provider table decides which
+    /// tier values a provider accepts, and a provider that carries no tier
+    /// refuses the option by name.
+    #[test]
+    fn the_provider_table_decides_which_service_tiers_resolve() {
+        let home = fake_home("tier");
+        let mut config = model("openai");
+        config.options.insert("service_tier".into(), "flex".into());
+        assert_eq!(plan_with_home(&config, &home).unwrap().model.option("service_tier"), Some("flex"));
+
+        config.options.insert("service_tier".into(), "instant".into());
+        let err = plan_with_home(&config, &home).unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "model.service_tier: provider openai accepts auto, default, flex, priority; `instant` is none of them"
+        );
+
+        let mut carries_none = model("anthropic");
+        carries_none.options.insert("service_tier".into(), "priority".into());
+        let err = plan_with_home(&carries_none, &home).unwrap_err().to_string();
+        assert_eq!(err, "model.service_tier: provider anthropic sends no service tier; remove the option");
     }
 
     #[test]

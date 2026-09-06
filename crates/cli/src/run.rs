@@ -311,9 +311,8 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
             None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
         };
         if let Some(tier) = &options.service_tier {
-            if !matches!(tier.as_str(), "default" | "priority") {
-                return Err(format!("--service-tier {tier}: expected default or priority"));
-            }
+            // The provider table holds the accepted values, so resolution
+            // rejects an unknown one naming the provider.
             model.options.insert("service_tier".into(), tier.clone());
         }
         return builtin_contract_document(

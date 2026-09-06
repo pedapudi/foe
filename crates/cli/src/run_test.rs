@@ -188,6 +188,9 @@ fn builtin_coding_selects_an_explicit_sandbox_mode() {
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
+/// The command line carries the tier the caller typed into every episode
+/// of the built-in workflow. The provider table judges the value, so the
+/// command line refuses none of them.
 #[test]
 fn builtin_coding_selects_an_explicit_service_tier() {
     let options = Options {
@@ -204,8 +207,9 @@ fn builtin_coding_selects_an_explicit_service_tier() {
         assert_eq!(contract.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     }
 
-    let invalid = Options { service_tier: Some("fastest".into()), ..options };
-    assert_eq!(load_contract_document(&invalid).unwrap_err(), "--service-tier fastest: expected default or priority");
+    let other = Options { service_tier: Some("flex".into()), ..options };
+    let config = load_contract_document(&other).unwrap();
+    assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("flex"));
 }
 
 #[test]

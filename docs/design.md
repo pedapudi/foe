@@ -910,10 +910,14 @@ xhigh effort for assessment and repair. An explicit reasoning effort applies
 to all three episodes. Other models carry the root model options into every
 stage.
 
-`--service-tier TIER` sets the model request's `service_tier` field to
-`default` or `priority` for all three episodes. When the option is absent, the
-default model file's value remains in effect. Otherwise the provider applies
-its own default.
+`--service-tier TIER` asks the provider to process the model requests of all
+three episodes in the named tier. A tier is one provider's vocabulary, so the
+command line accepts any value and the provider table judges it: each row
+names the request field the tier travels in and every value that provider
+accepts, and a provider whose row carries no tier refuses the option.
+[models.md](models.md) lists the values per provider. When the option is
+absent, the default model file's value remains in effect. Otherwise the
+provider applies its own default.
 
 `--key-file` names the provider credential file explicitly. It supplies an API
 key file, OAuth token state, or managed-cloud credential according to the
