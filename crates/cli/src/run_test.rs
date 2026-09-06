@@ -165,6 +165,147 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
 }
 
+/// The single document under a model, which is what a run of
+/// `--config builtin:single` builds.
+fn single(
+    task: String,
+    model: ModelConfig,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    builtin_contract_document(BUILTIN_SINGLE, task, Some(model), verify, sandbox)
+}
+
+/// docs/design.md "The command line": the single document runs one
+/// implementation episode and no assessment, and states that episode with
+/// the return schema, tools, grants, sandbox mode, and instructions the
+/// coding workflow's implementation node states.
+#[test]
+fn builtin_single_runs_the_implementation_episode_alone() {
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let document = single("task".into(), model.clone(), None, None).unwrap();
+    resolve(&document).expect("the single document resolves before an episode starts");
+    assert_eq!(document.name, "single");
+    assert!(document.workflow.is_none(), "one episode needs no graph");
+    assert_eq!(document.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
+    assert_eq!(document.budget.max_episodes, 1);
+    assert_eq!(document.budget.max_concurrent, 1);
+    assert!(document.tool_defs.is_empty(), "without --verify the document defines no tool");
+
+    let coding = coding("task".into(), model, None, None).unwrap();
+    let implementation = coding.workflow.as_ref().unwrap().nodes["implement-task"].model.as_ref().unwrap();
+    assert_eq!(document.instructions, implementation.instructions);
+    assert_eq!(document.tools, implementation.tools);
+    assert_eq!(document.grants, coding.grants);
+    assert_eq!(document.sandbox.mode, coding.sandbox.mode);
+    let returns = document.done_when.as_ref().unwrap().returns.as_ref().unwrap();
+    assert_eq!(returns, implementation.done_when.as_ref().unwrap().returns.as_ref().unwrap());
+    assert!(document.done_when.as_ref().unwrap().verify.is_none(), "without --verify nothing gates the return");
+}
+
+/// docs/design.md "The command line": `--verify` gates the single episode
+/// on the verifier's acceptance, with the retry allowance the coding
+/// workflow receives, and `--sandbox` selects the mode as it does there.
+#[test]
+fn builtin_single_takes_the_verifier_and_the_sandbox_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = crate::tests::scratch("foe-cli-single", "built-in-checker");
+    let script = dir.join("check");
+    std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let document = single("task".into(), model.clone(), Some(&script), Some("off")).unwrap();
+    resolve(&document).expect("the guarded single document resolves");
+    assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
+    assert!(document.tools.iter().any(|tool| tool == "check"));
+    let gate = document.done_when.as_ref().unwrap();
+    assert_eq!(gate.verify.as_deref(), Some("check"));
+    assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
+    assert!(gate.returns.is_some(), "the typed return stays declared beside the verifier");
+    assert_eq!(document.budget.max_episodes, 1, "a finding re-fires inside the one episode");
+    assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
+
+    let error = single("task".into(), model, None, Some("wide-open")).unwrap_err();
+    assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
+}
+
+/// The recorded fingerprint of each document the binary carries, over the
+/// fixed runtime and host of [`recorded_runtime`] and [`fixed_host`]. A
+/// retained trajectory identifies the document that produced it by this
+/// value, so the two forms hash apart and neither hash moves unless the
+/// document, the harness text, or the built-in tool specifications change.
+/// `crates/cli/tests/integration.rs` records the same for every example
+/// document.
+#[rustfmt::skip]
+const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 2] = [
+    ("coding", "sha256:932e6eec5d4766355ed7f8c6b911e9d61f8c695bfe1815c98f2c2236e4a2ce2a"),
+    ("single", "sha256:907f05d0330dbc5edeee38a3fe1b7d283aa2d01fc42d3a02b2cf802f6156964b"),
+];
+
+/// The runtime the recorded fingerprints were computed under. The real one
+/// hashes the running binary, so it differs on every build; pinning it here
+/// leaves the document as the only thing the recorded hashes measure.
+fn recorded_runtime() -> foe_log::RuntimeInfo {
+    foe_log::RuntimeInfo { version: "0.2.0".into(), build: "sha256:recorded".into() }
+}
+
+/// The document with the two values that depend on the host replaced by
+/// fixed ones, at every depth: the environment description, which names the
+/// working directory and the executables found at the standard paths, and
+/// the execute grant, whose roots collapse to one entry on a host where
+/// `/bin` names the same directory as `/usr/bin`. Everything else a
+/// fingerprint covers is the document itself.
+fn fixed_host(document: &ContractDocument) -> ContractDocument {
+    fn walk(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                if let Some(instructions) = fields.get_mut("instructions") {
+                    if instructions.get("environment").is_some() {
+                        instructions["environment"] = serde_json::json!("a fixed environment description");
+                    }
+                }
+                if let Some(grants) = fields.get_mut("grants") {
+                    if grants.get("execute").is_some() {
+                        grants["execute"] = serde_json::json!(["/usr/bin"]);
+                    }
+                }
+                fields.values_mut().for_each(walk);
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(document).expect("a document serializes");
+    walk(&mut value);
+    serde_json::from_value(value).expect("the fixed document parses")
+}
+
+/// docs/design.md "Execution contracts and fingerprints": each built-in
+/// document hashes to the fingerprint recorded for it, and the two forms
+/// hash apart.
+#[test]
+fn every_built_in_document_hashes_to_its_recorded_fingerprint() {
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_BUILTIN_FINGERPRINTS.into_iter().collect();
+    assert_eq!(BUILTIN_DOCUMENTS.len(), recorded.len(), "every built-in document has a recorded fingerprint");
+    let mut found = Vec::new();
+    let mut changed = Vec::new();
+    for name in BUILTIN_DOCUMENTS {
+        let task = "the task the recording ignores".into();
+        let document = builtin_contract_document(name, task, Some(model.clone()), None, None).unwrap();
+        let resolved = resolve(&fixed_host(&document)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let hash = compute(&resolved, &extra_builtin_specs(), &recorded_runtime())
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+            .hash;
+        if hash != recorded[name] {
+            changed.push(format!("({name:?}, {hash:?})"));
+        }
+        found.push(hash);
+    }
+    assert!(changed.is_empty(), "built-in document fingerprints changed:\n    {}", changed.join(",\n    "));
+    assert_ne!(found[0], found[1], "the coding workflow and the single document hash apart");
+}
+
 #[test]
 fn builtin_coding_selects_an_explicit_sandbox_mode() {
     let model = ModelConfig::new("openai-codex", "gpt-5.6-sol");
@@ -203,7 +344,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
 fn explicit_config_owns_its_sandbox_mode() {
     let options = Options { config: Some("unused.json".into()), sandbox: Some("off".into()), ..Options::default() };
     let error = load_contract_document(&options).unwrap_err();
-    assert_eq!(error, "--sandbox applies to the built-in coding workflow; unused.json declares its own behavior");
+    assert_eq!(error, "--sandbox applies to a built-in document; unused.json declares its own behavior");
 }
 
 /// A contract document, with the `model` block given when there is one.
@@ -282,7 +423,8 @@ fn config_takes_a_built_in_name_beside_a_file_path() {
     assert_eq!(file.describe(), "/tmp/contract.json");
     assert_eq!(
         contract_source("builtin:parser").unwrap_err(),
-        "--config builtin:parser: no built-in document has that name; the built-in documents are builtin:coding"
+        "--config builtin:parser: no built-in document has that name; the built-in documents are \
+         builtin:coding, builtin:single"
     );
 }
 
@@ -346,7 +488,7 @@ fn the_run_options_of_the_built_in_workflow_apply_under_its_name() {
     let refused = Options { config: Some("unused.json".into()), ..options(Some(script), None, None) };
     assert_eq!(
         load_contract_document(&refused).unwrap_err(),
-        "--verify applies to the built-in coding workflow; unused.json declares its own behavior"
+        "--verify applies to a built-in document; unused.json declares its own behavior"
     );
 }
 

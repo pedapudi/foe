@@ -185,10 +185,13 @@ foe.builtin(
 The binary carries documents of its own, and `builtin` returns one of them as
 an `ExecutionContract` over a root directory. `builtin("coding", root,
 binary=...)` returns the coding workflow that a command line naming no
-document runs. The package holds no copy of any such document: `builtin` runs
-`foe plan --config builtin:NAME --json`, which prints the document the binary
-carries, so the name, the instructions, the tools, the budgets, and every
-workflow node come from the binary that will run the contract.
+document runs, and `builtin("single", root, binary=...)` returns that
+workflow's implementation episode alone, which declares no workflow and so
+returns a contract whose `workflow` is `None`. The package holds no copy of
+any such document: `builtin` runs `foe plan --config builtin:NAME --json`,
+which prints the document the binary carries, so the name, the instructions,
+the tools, the budgets, and every workflow node come from the binary that
+will run the contract.
 [config.md](config.md) states what `--config` takes, and a name the binary
 does not carry raises `foe.ConfigError` carrying the message the binary
 printed, which names the documents it does carry.

@@ -95,9 +95,9 @@ pub struct Options {
     pub model: Option<String>,
     /// Provider service tier of the `model` block the command line supplies.
     pub service_tier: Option<String>,
-    /// An executable verifier for the built-in coding workflow.
+    /// An executable verifier for a built-in document.
     pub verify: Option<PathBuf>,
-    /// Kernel confinement mode for the built-in coding workflow.
+    /// Kernel confinement mode for a built-in document.
     pub sandbox: Option<String>,
     pub log_dir: Option<PathBuf>,
     /// The source log directory of `--from DIR[@SEQ]`.
@@ -401,8 +401,11 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<Placement, String> {
 /// The name of the coding workflow the binary carries.
 pub(crate) const BUILTIN_CODING: &str = "coding";
 
+/// The name of the single implementation episode the binary carries.
+pub(crate) const BUILTIN_SINGLE: &str = "single";
+
 /// Every document the binary carries, each selected as `builtin:NAME`.
-pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING];
+pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING, BUILTIN_SINGLE];
 
 /// What marks a `--config` value as the name of a document the binary
 /// carries rather than a file path.
@@ -484,10 +487,7 @@ fn load_contract_document(options: &Options) -> Result<(ContractDocument, bool),
     };
     if options.verify.is_some() || options.sandbox.is_some() {
         let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
-        return Err(format!(
-            "{option} applies to the built-in coding workflow; {} declares its own behavior",
-            path.display()
-        ));
+        return Err(format!("{option} applies to a built-in document; {} declares its own behavior", path.display()));
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_contract::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -561,9 +561,10 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// admits no other. A model block reads the credential file its own options
 /// name, and the provider's convention path otherwise. `verify` names an
 /// executable verifier: it becomes a `tool_defs` entry named `check` available to every
-/// episode. The root completion gate applies to both the assessment's accept
-/// branch and the repair branch. Without a verifier, the assessment's typed
-/// choice governs completion.
+/// episode. In the coding workflow the root completion gate applies to both
+/// the assessment's accept branch and the repair branch, and without a
+/// verifier the assessment's typed choice governs completion. In the single
+/// document the gate applies to the one episode it runs.
 pub(crate) fn builtin_contract_document(
     name: &str,
     task: String,
@@ -574,6 +575,7 @@ pub(crate) fn builtin_contract_document(
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     match name {
         BUILTIN_CODING => coding_contract_document(&cwd, task, model, verify, sandbox),
+        BUILTIN_SINGLE => single_contract_document(&cwd, task, model, verify, sandbox),
         other => Err(format!("builtin:{other}: no built-in document has that name")),
     }
 }
@@ -640,27 +642,85 @@ pub(crate) fn coding_contract_document(
     document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
     document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(repair_model);
     if let Some(mode) = sandbox {
-        if !matches!(mode, "best-effort" | "required" | "off") {
-            return Err(format!("--sandbox {mode}: expected best-effort, required, or off"));
-        }
-        document["sandbox"] = serde_json::json!({ "mode": mode });
+        document["sandbox"] = sandbox_block(mode)?;
     }
     if let Some(check) = verify {
-        let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
-        let def = serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": root });
+        let def = verifier_def(check, root)?;
         document["budget"]["max_episodes"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 4);
-        document["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-        document["tool_defs"] = serde_json::json!({ "check": def });
+        add_verifier(&mut document, &def);
         for node in ["implement-task", "assess-task", "repair-task"] {
-            let contract = &mut document["workflow"]["nodes"][node]["model"];
-            contract["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
-            contract["tool_defs"] = serde_json::json!({ "check": def });
+            add_verifier(&mut document["workflow"]["nodes"][node]["model"], &def);
         }
         for node in ["assess-task", "repair-task"] {
             document["workflow"]["nodes"][node]["max_fires"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES + 1);
         }
         document["done_when"] = serde_json::json!({ "verify": "check", "retries": BUILTIN_VERIFIER_RETRIES });
         return serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"));
+    }
+    serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
+}
+
+/// The `tool_defs` entry `--verify PATH` adds to a built-in document under
+/// the name `check`, running in `root`. The path is canonicalized so that
+/// the document names the executable a run captures.
+fn verifier_def(check: &Path, root: &Path) -> Result<serde_json::Value, String> {
+    let check = check.canonicalize().map_err(|e| format!("--verify {}: {e}", check.display()))?;
+    Ok(serde_json::json!({ "exec": check, "description": BUILTIN_VERIFIER_DESCRIPTION, "cwd": root }))
+}
+
+/// Gives one contract of a built-in document the verifier as a tool named
+/// `check`, appended to its tool list and defined in its `tool_defs`.
+fn add_verifier(contract: &mut serde_json::Value, def: &serde_json::Value) {
+    contract["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
+    contract["tool_defs"] = serde_json::json!({ "check": def });
+}
+
+/// The `sandbox` block `--sandbox MODE` states. The three modes are the ones
+/// docs/config.md `sandbox` defines, and any other value is refused before a
+/// document is built.
+fn sandbox_block(mode: &str) -> Result<serde_json::Value, String> {
+    match mode {
+        "best-effort" | "required" | "off" => Ok(serde_json::json!({ "mode": mode })),
+        other => Err(format!("--sandbox {other}: expected best-effort, required, or off")),
+    }
+}
+
+/// One implementation episode over `root` and no assessment: the coding
+/// workflow's implementation node lifted out of the same embedded document
+/// and made the whole contract, so the instructions, tools, and return
+/// schema of the two forms cannot differ. The document declares no workflow,
+/// and the resulting contract fingerprints apart from the coding workflow.
+/// `verify` gates that one episode, with the retry allowance the coding
+/// workflow receives; a finding re-fires inside the episode, so the lifetime
+/// episode count stays at one.
+pub(crate) fn single_contract_document(
+    root: &Path,
+    task: String,
+    mut model: Option<ModelConfig>,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    if let Some(model) = &mut model {
+        apply_builtin_model_defaults(model);
+    }
+    let template: serde_json::Value =
+        serde_json::from_str(BUILTIN_CONTRACT_DOCUMENT).map_err(|e| format!("built-in contract template: {e}"))?;
+    let mut document = template["workflow"]["nodes"]["implement-task"]["model"].clone();
+    document["version"] = serde_json::json!(foe_contract::document::CONTRACT_FORMAT_VERSION);
+    document["name"] = serde_json::json!(BUILTIN_SINGLE);
+    document["instructions"]["environment"] = serde_json::json!(builtin_environment(root, Path::is_file));
+    document["model"] = serde_json::json!(model);
+    document["grants"] = serde_json::json!({ "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS });
+    document["budget"] =
+        serde_json::json!({ "model_calls": BUILTIN_IMPLEMENTATION_CALLS, "max_episodes": 1, "max_concurrent": 1 });
+    document["task"] = serde_json::json!(task);
+    if let Some(mode) = sandbox {
+        document["sandbox"] = sandbox_block(mode)?;
+    }
+    if let Some(check) = verify {
+        add_verifier(&mut document, &verifier_def(check, root)?);
+        document["done_when"]["verify"] = serde_json::json!("check");
+        document["done_when"]["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
     }
     serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
 }
