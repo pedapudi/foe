@@ -309,6 +309,38 @@ def test_tool_defs_and_child_contracts_serialize() -> None:
     }
 
 
+def test_a_workflow_is_carried_into_the_document_unchanged() -> None:
+    workflow = {
+        "nodes": {
+            "survey": {"tool": "grep", "args": {"pattern": "TODO"}},
+            "report": {"model": {"name": "report"}, "follows": ["survey"], "terminal": True},
+        }
+    }
+    contract = foe.ExecutionContract(
+        name="declared-workflow",
+        instructions={"role": "You are the ceiling of a workflow."},
+        tools=["read", "grep"],
+        grants=foe.Grants(read=["/src"]),
+        budget=foe.Budget(model_calls=6),
+        workflow=workflow,
+    )
+    assert contract.to_dict()["workflow"] == workflow
+    assert json.loads(contract.to_json("Survey the package."))["workflow"] == workflow
+
+
+def test_a_workflow_without_nodes_is_an_error() -> None:
+    with pytest.raises(foe.ConfigError) as caught:
+        foe.ExecutionContract(
+            name="empty-workflow",
+            instructions={"role": "You are the ceiling of a workflow."},
+            tools=["read"],
+            grants=foe.Grants(read=["/src"]),
+            budget=foe.Budget(model_calls=6),
+            workflow={"nodes": {}},
+        )
+    assert "workflow" in str(caught.value)
+
+
 def test_fingerprint_runs_plan_and_returns_the_hash(fake_binary: Path) -> None:
     contract = make_contract()
     fingerprint = contract.fingerprint(fake_binary)

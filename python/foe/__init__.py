@@ -6,10 +6,12 @@ over the binary's standard input and output, and returns a typed outcome.
 It executes no tool of its own: a host tool is routed to the callable the
 embedding contract supplies. The host supplies a model backend when the
 document has no `model` block. When the document has a `model` block, the
-binary calls the configured endpoint. Nothing in the package reads an
-environment variable.
+binary calls the configured endpoint. The documents the binary carries reach
+a host through `builtin`, which reads one from the binary; the package holds
+no copy of any of them. Nothing in the package reads an environment variable.
 """
 
+from ._builtin import builtin
 from ._capabilities import Exec, ExecResult, ReadFS, WriteFS
 from ._errors import BinaryError, CapabilityError, CompatibilityError, ConfigError, ProtocolError
 from ._host import EventCallback, Handle, ModelBackend, Viewer, run_config, serve, start_config
@@ -57,6 +59,7 @@ __all__ = [
     "Verified",
     "Viewer",
     "WriteFS",
+    "builtin",
     "run_config",
     "schema_for",
     "serve",
