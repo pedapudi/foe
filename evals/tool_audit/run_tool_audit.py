@@ -473,10 +473,10 @@ def run_episode(
     responder: host_runtime.Responder,
 ) -> list[dict[str, Any]]:
     config_path = case_dir / "config.json"
-    log_dir = case_dir / "episode"
+    log_parent = case_dir / "episode"
     config_path.write_text(json.dumps(shaped, indent=2) + "\n", encoding="utf-8")
     try:
-        status = host_runtime.run(binary, config_path, log_dir, responder)
+        status, log_dir = host_runtime.run(binary, config_path, log_parent, responder)
     except (OSError, RuntimeError) as error:
         raise HarnessError(f"foe could not run the mistake episode: {error}") from error
     if status != 0:

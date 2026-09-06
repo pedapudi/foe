@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import evaluate
 import host_runtime
+from foe_build import announced_log_dir
 import prepared_candidate_responses
 import task_responses
 from operational_digest import digest
@@ -75,26 +76,38 @@ def run_episode(
     log_dir: Path,
     responder: host_runtime.Responder | None = None,
 ) -> int:
-    """Run one headless episode and return its outcome status."""
+    """Run one episode without a viewer, leave its log tree in `log_dir`, and return its status.
+
+    The binary creates the episode's own directory under the one `--log-dir`
+    names, so the run names a sibling of `log_dir` and the created directory
+    is moved to `log_dir` afterwards. The attempt layout (README "Attempt
+    directories"), the operational digest, and the evidence bundle all
+    address `log_dir` as the episode's own directory.
+    """
+    log_parent = log_dir.with_name(f"{log_dir.name}-runs")
     if responder is not None:
         try:
-            status = host_runtime.run(foe, contract, log_dir, responder)
+            status, created = host_runtime.run(foe, contract, log_parent, responder)
         except (OSError, RuntimeError) as error:
             raise PipelineError(f"the host-owned episode failed: {error}") from error
-        if not (log_dir / "episode.jsonl").is_file():
+        if not (created / "episode.jsonl").is_file():
             raise PipelineError("the host-owned episode wrote no log")
-        return status
-    result = subprocess.run(
-        [str(foe), "--config", str(contract), "--log-dir", str(log_dir), "--viewer", "off"],
-        text=True,
-        capture_output=True,
-        timeout=1_800,
-        check=False,
-    )
-    if not (log_dir / "episode.jsonl").is_file():
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
-        raise PipelineError(f"the episode wrote no log: {detail}")
-    return result.returncode
+    else:
+        result = subprocess.run(
+            [str(foe), "--config", str(contract), "--log-dir", str(log_parent), "--viewer", "off"],
+            text=True,
+            capture_output=True,
+            timeout=1_800,
+            check=False,
+        )
+        created = announced_log_dir(result.stderr, log_parent)
+        if not (created / "episode.jsonl").is_file():
+            detail = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+            raise PipelineError(f"the episode wrote no log: {detail}")
+        status = result.returncode
+    shutil.move(str(created), str(log_dir))
+    log_parent.rmdir()
+    return status
 
 
 def read_events(log_dir: Path) -> list[dict[str, Any]]:

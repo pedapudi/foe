@@ -312,15 +312,22 @@ class FoeAgent(BaseInstalledAgent):
 
         logs = PurePosixPath(self.environment_logs_dir)
         episode = (logs / "foe-episode").as_posix()
+        episode_parent = (logs / "foe-episode-runs").as_posix()
         stdout = (logs / "foe.stdout").as_posix()
         stderr = (logs / "foe.stderr").as_posix()
         exit_code = (logs / "foe-exit-code").as_posix()
+        # The run creates its own directory for the episode under the one
+        # --log-dir names and prints it. The trial retains that directory
+        # under a fixed name, which every reader of the trial expects.
         command = (
             "set +e; "
             f"{shlex.quote(REMOTE_BINARY)} --config {shlex.quote(REMOTE_PROGRAM)} "
-            f"--viewer off --log-dir {shlex.quote(episode)} "
+            f"--viewer off --log-dir {shlex.quote(episode_parent)} "
             f"> {shlex.quote(stdout)} 2> {shlex.quote(stderr)}; "
             "foe_status=$?; "
+            f"created=$(sed -n 's/^foe: log //p' {shlex.quote(stderr)} | head -n 1); "
+            f'test -n "$created" && mv "$created" {shlex.quote(episode)} '
+            f"&& rmdir {shlex.quote(episode_parent)} 2>/dev/null; "
             f"printf '%s\\n' \"$foe_status\" > {shlex.quote(exit_code)}; "
             "printf '%s\\n' \"$foe_status\""
         )
