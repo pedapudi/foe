@@ -261,6 +261,33 @@ fn every_form_documents_every_option_it_accepts() {
     }
 }
 
+/// docs/design.md "The command line": the running form's help lists each of
+/// its options once, under the heading its row names, and `--host` above
+/// every heading because it selects a different way to run.
+#[test]
+fn the_running_help_lists_every_option_under_one_group() {
+    let text = help_of(&FORMS[0]);
+    let listed = |flag: &str| text.lines().filter(|line| line.trim_start().starts_with(flag)).count();
+    for o in OPTS.iter().filter(|o| o.command.is_empty()) {
+        let named = GROUPS.iter().filter(|group| **group == o.group).count();
+        match o.flag {
+            "--host" => assert_eq!(o.group, "", "--host stands above the groups"),
+            flag => assert_eq!(named, 1, "{flag} names {named} of the groups the help prints"),
+        }
+        assert_eq!(listed(o.flag), 1, "{} is listed {} times:\n{text}", o.flag, listed(o.flag));
+    }
+    assert_eq!(listed("--help"), 1);
+    for group in GROUPS {
+        assert!(text.contains(&format!("\n{group}:\n")), "the help prints no `{group}` heading:\n{text}");
+    }
+    let headings: Vec<&str> = text.lines().filter(|line| GROUPS.contains(&line.trim_end_matches(':'))).collect();
+    assert_eq!(headings.len(), GROUPS.len(), "each heading is printed once: {headings:?}");
+    for form in FORMS.iter().filter(|form| !form.name.is_empty()) {
+        let other = help_of(form);
+        assert!(!GROUPS.iter().any(|group| other.contains(group)), "`foe {}` prints no group", form.name);
+    }
+}
+
 /// docs/design.md "The command line": `--verify` gates completion of either
 /// assessment branch at the workflow root.
 #[test]

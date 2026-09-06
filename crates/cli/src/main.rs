@@ -22,22 +22,35 @@ use std::process::{ExitCode, Stdio};
 type Text = &'static str;
 
 /// One option, and the form that accepts it: the command word of that form,
-/// the flag, the value placeholder, empty for a switch, what applies when
-/// the option is absent, and what it does. `absent` is the literal
-/// `required` when the form refuses to run without the option, otherwise the
-/// default in words, or empty when a switch that is simply off has nothing
-/// to say.
+/// the heading its help screen lists the option under, the flag, the value
+/// placeholder, empty for a switch, what applies when the option is absent,
+/// and what it does. `absent` is the literal `required` when the form
+/// refuses to run without the option, otherwise the default in words, or
+/// empty when a switch that is simply off has nothing to say. An empty
+/// `group` lists the option above every heading.
 struct Opt {
     command: Text,
+    group: Text,
     flag: Text,
     value: Text,
     absent: Text,
     meaning: Text,
 }
 
-const fn opt(command: Text, flag: Text, value: Text, absent: Text, meaning: Text) -> Opt {
-    Opt { command, flag, value, absent, meaning }
+const fn opt(command: Text, group: Text, flag: Text, value: Text, absent: Text, meaning: Text) -> Opt {
+    Opt { command, group, flag, value, absent, meaning }
 }
+
+/// The headings the running form's help lists its options under, in order.
+/// Each says what the options beneath it decide, so a reader looking for one
+/// decision reads one group. Every running option names exactly one, except
+/// `--host`, which selects a different way to run rather than adjusting a
+/// run and is listed above them all.
+const WHAT_RUNS: Text = "what runs";
+const BUILT_IN_ONLY: Text = "built-in documents only";
+const THE_MODEL: Text = "the model, when the document names none";
+const WATCHING: Text = "how you watch it";
+const GROUPS: &[Text] = &[WHAT_RUNS, BUILT_IN_ONLY, THE_MODEL, WATCHING];
 
 /// One command form: the word that selects it, empty for the bare running
 /// form; its positional arguments in usage shape, where a bracketed word is
@@ -70,30 +83,16 @@ const FORMS: &[Form] = &[
 const OPTS: &[Opt] = &[
     opt(
         "",
+        WHAT_RUNS,
         "--config",
         "FILE",
         ".foe/contract.json in the working directory, else builtin:coding",
         "the contract document to run: a file, or builtin:coding, which --verify and --sandbox configure",
     ),
-    opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
+    opt("", WHAT_RUNS, "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
     opt(
         "",
-        "--service-tier",
-        "TIER",
-        "the model configuration's value",
-        "the provider's request service tier; docs/models.md lists the values each provider accepts",
-    ),
-    opt(
-        "",
-        "--verify",
-        "PATH",
-        "the built-in workflow has no verifier gate",
-        "an executable verifier whose acceptance completes the built-in workflow",
-    ),
-    opt("", "--sandbox", "MODE", "best-effort", "kernel confinement mode: best-effort, required, or off"),
-    opt("", "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
-    opt(
-        "",
+        WHAT_RUNS,
         "--from",
         "DIR[@SEQ]",
         "a fresh episode",
@@ -101,6 +100,32 @@ const OPTS: &[Opt] = &[
     ),
     opt(
         "",
+        BUILT_IN_ONLY,
+        "--verify",
+        "PATH",
+        "the built-in workflow has no verifier gate",
+        "an executable verifier whose acceptance completes the built-in workflow",
+    ),
+    opt(
+        "",
+        BUILT_IN_ONLY,
+        "--sandbox",
+        "MODE",
+        "best-effort",
+        "kernel confinement mode: best-effort, required, or off",
+    ),
+    opt("", THE_MODEL, "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
+    opt(
+        "",
+        THE_MODEL,
+        "--service-tier",
+        "TIER",
+        "the model configuration's value",
+        "the provider's request service tier; docs/models.md lists the values each provider accepts",
+    ),
+    opt(
+        "",
+        WATCHING,
         "--viewer",
         "MODE",
         "open, and off under --host",
@@ -108,38 +133,55 @@ const OPTS: &[Opt] = &[
     ),
     opt(
         "",
+        WATCHING,
         "--conversation",
         "",
         "",
         "show the conversation and execution tree on standard output; --viewer applies as given",
     ),
-    opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
-    opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
+    opt(
+        "",
+        "",
+        "--host",
+        "",
+        "",
+        "answer model requests over the protocol on standard input; --config carries the task",
+    ),
+    opt("login", "", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
     opt(
         "login",
+        "",
         "--key-file",
         "PATH",
         "the key this command asks for, written under ~/.config/foe/credentials/",
         "record this file as the provider's credential, asking nothing",
     ),
-    opt("init", "--repository", "PATH", "required", "the repository to write .foe/contract.json and .foe/verify for"),
-    opt("login", "--status", "", "", "print the default model and every configured credential path"),
-    opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
-    opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
+    opt(
+        "init",
+        "",
+        "--repository",
+        "PATH",
+        "required",
+        "the repository to write .foe/contract.json and .foe/verify for",
+    ),
+    opt("login", "", "--status", "", "", "print the default model and every configured credential path"),
+    opt("view", "", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
+    opt("view", "", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
     opt(
         "plan",
+        "",
         "--config",
         "FILE",
         "the built-in tools alone",
         "the contract document to resolve: a file, or builtin:coding",
     ),
-    opt("plan", "--json", "", "", "print one JSON object instead of the report"),
-    opt("plan", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
-    opt("telemetry", "--json", "", "", "print that payload as JSON instead of a summary"),
+    opt("plan", "", "--json", "", "", "print one JSON object instead of the report"),
+    opt("plan", "", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
+    opt("telemetry", "", "--json", "", "", "print that payload as JSON instead of a summary"),
 ];
 
 /// The `--help` row, accepted by every form and listed in every help screen.
-const HELP: Opt = opt("*", "--help", "", "", "print this help and exit");
+const HELP: Opt = opt("*", "", "--help", "", "", "print this help and exit");
 
 /// Spellings the running form does not accept, each with the option that
 /// says the same thing. A command line using one is refused by its own name,
@@ -231,10 +273,23 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
     Ok(out)
 }
 
+/// One option's line in a help screen: the flag with its value placeholder,
+/// what the option does, and what applies when it is absent.
+fn row(o: &Opt) -> String {
+    let flag = format!("{} {}", o.flag, o.value);
+    let absent = match o.absent {
+        "" => String::new(),
+        "required" => " (required)".to_string(),
+        text => format!(" (default: {text})"),
+    };
+    format!("  {:<24}{}{}\n", flag.trim_end(), o.meaning, absent)
+}
+
 /// `foe <command> --help`: the usage line, what the form does, and every
-/// option with its meaning and what applies when it is absent. For the
-/// running form this is `foe --help`, which adds the other command words,
-/// because a bare `foe` is the running form.
+/// option with its meaning and what applies when it is absent, listed under
+/// the heading its row names. For the running form this is `foe --help`,
+/// which adds the other command words, because a bare `foe` is the running
+/// form.
 fn help(form: &'static Form) -> String {
     let mut line = format!("usage: foe {} {}", form.name, form.args);
     for o in OPTS.iter().filter(|o| o.command == form.name) {
@@ -244,14 +299,14 @@ fn help(form: &'static Form) -> String {
     }
     let line = line.split_whitespace().collect::<Vec<&str>>().join(" ");
     let mut out = format!("{line}\n\n{}\n\noptions:\n", form.about);
-    for o in accepted(form) {
-        let flag = format!("{} {}", o.flag, o.value);
-        let absent = match o.absent {
-            "" => String::new(),
-            "required" => " (required)".to_string(),
-            text => format!(" (default: {text})"),
-        };
-        writeln!(out, "  {:<24}{}{}", flag.trim_end(), o.meaning, absent).ok();
+    for o in accepted(form).filter(|o| o.group.is_empty()) {
+        out.push_str(&row(o));
+    }
+    for group in GROUPS.iter().filter(|group| accepted(form).any(|o| o.group == **group)) {
+        writeln!(out, "\n{group}:").ok();
+        for o in accepted(form).filter(|o| o.group == *group) {
+            out.push_str(&row(o));
+        }
     }
     if form.name.is_empty() {
         out.push_str("\ncommands:\n");

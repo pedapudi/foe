@@ -769,14 +769,25 @@ foe telemetry LOG... [--json]                            print what telemetry em
 
 One declarative table in `crates/cli/src/main.rs` names every form, its
 positional shape, and each option it accepts with that option's value
-placeholder, its default, and its meaning. The parser and both help screens
-read that table and nothing else, so an option the parser accepts is
-documented and an option the table omits is refused. `foe --help`, which
+placeholder, its default, its meaning, and the heading its help lists it
+under. The parser and both help screens read that table and nothing else, so
+an option the parser accepts is documented and an option the table omits is
+refused. The running form's help lists its options under four headings, each
+saying what the options beneath it decide: what runs, holding `--config`,
+`--log-dir`, and `--from`; built-in documents only, holding `--verify` and
+`--sandbox`; the model when the document names none, holding `--model` and
+`--service-tier`; and how you watch it, holding `--viewer` and
+`--conversation`. `--host` is listed above all four, because it selects a
+different way to run rather than adjusting a run. Every other form names no
+heading on any row, so its help prints one list. `foe --help`, which
 `foe help` repeats, prints the running form's options and every other
 command word; `foe <command> --help`, which `foe help <command>` repeats,
 prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
-reprinting every form.
+reprinting every form. The table also holds the spellings the running form
+dropped — `--fork`, `--at`, `--no-open`, `--headless`, and `--key-file` —
+so each is refused by its own name with the option that says the same
+thing.
 
 By default, a run writes one JSON outcome line to standard output when the
 episode ends. This also applies to interactive terminals. A shell reads it
