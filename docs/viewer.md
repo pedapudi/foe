@@ -29,10 +29,22 @@ Existing recorded messages are displayed when execution resumes.
 Final string values appear as text; strings containing JSON objects or arrays
 use the same rendering as structured values. Object fields have labels and nested
 indentation, and arrays appear as separated values. Markdown remains
-readable source text. Terminal wrapping determines line width.
+readable source text.
 Colors distinguish headings in an interactive terminal; redirected output
 uses plain text with Unicode connectors. Control characters other than
 line feeds and tabs are removed.
+
+Body text is wrapped to the terminal width, read from the window size of
+standard output; 80 columns are assumed when standard output has no window
+size. A line breaks at a space, and a word is split only when the word
+alone exceeds the width. A continuation line repeats the leading whitespace
+of its source line and, for a list item, the width of the item's marker, so
+that continuation text aligns with the item's text. Every emitted line,
+including a wrapped continuation and the blank line that ends a block,
+begins with the connector cells of the active episodes and a two-column
+gutter before the text. A connector cell is never split. The text column is
+at least 20 characters wide, so a deeply nested episode can exceed the
+terminal width.
 
 The display retains read offsets and episode labels, and reads logs through
 the viewer crate. It does not alter execution or retained evidence.

@@ -417,6 +417,7 @@ name = "foe-view"
 version = "0.2.0"
 dependencies = [
  "foe-log",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

@@ -53,7 +53,7 @@ fn append(dir: &Path, events: &[EventData]) {
 /// docs/viewer.md: the terminal conversation hides tool traffic and internal input.
 #[test]
 fn conversation_includes_only_visible_messages() {
-    let mut terminal = Terminal::new(Vec::new(), false);
+    let mut terminal = Terminal::new(Vec::new(), false, 80);
     terminal.event("lead", &start("lead")).unwrap();
     let mut inbox = InboxItem {
         source: InboxSource::Task,
@@ -83,8 +83,8 @@ fn conversation_includes_only_visible_messages() {
         }
     }
     let output = String::from_utf8(terminal.output).unwrap();
-    assert!(output.contains("lead · You\n│ Visible task"), "{output}");
-    assert!(output.contains("Visible response\n│ with a second line"), "{output}");
+    assert!(output.contains("lead · You\n│   Visible task"), "{output}");
+    assert!(output.contains("Visible response\n│   with a second line"), "{output}");
     assert_eq!(output.matches("· Assistant").count(), 1);
     for hidden in ["hidden-", "import pytest", "tool_calls", "<first>", "\x1b"] {
         assert!(!output.contains(hidden), "{output}");
@@ -102,7 +102,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
     append(&child, &[start("reviewer"), message("Reviewing changes."), spawn("helper")]);
     append(&grandchild, &[start("helper"), message("Checking details.")]);
     append(&sibling, &[start("tester"), message("Running checks.")]);
-    let mut terminal = Terminal::new(Vec::new(), false);
+    let mut terminal = Terminal::new(Vec::new(), false, 80);
     terminal.poll(root.path()).unwrap();
     let before = terminal.output.clone();
     terminal.poll(root.path()).unwrap();
@@ -126,7 +126,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
         assert!(output.find(first).unwrap() < output.find(second).unwrap(), "{first} before {second}: {output}");
     }
     assert!(output.contains("reviewer → lead · Completed"), "{output}");
-    assert!(output.contains("summary:\n  Ready."), "{output}");
+    assert!(output.contains("summary:\n    Ready."), "{output}");
     assert_eq!(output.matches("Review complete.").count(), 1);
     let finished = terminal.output.clone();
     terminal.poll(root.path()).unwrap();
@@ -137,7 +137,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
 #[test]
 fn polling_waits_for_complete_lines_and_discovers_children_later() {
     let root = tempfile::tempdir().unwrap();
-    let mut terminal = Terminal::new(Vec::new(), false);
+    let mut terminal = Terminal::new(Vec::new(), false, 80);
     terminal.poll(root.path()).unwrap();
     append(root.path(), &[start("lead"), spawn("worker")]);
     terminal.poll(root.path()).unwrap();
@@ -154,15 +154,50 @@ fn polling_waits_for_complete_lines_and_discovers_children_later() {
     assert_eq!(String::from_utf8_lossy(&terminal.output).matches("Arrived later.").count(), 1);
 }
 
+/// docs/viewer.md: wrapped continuations and blank lines carry the lane connectors.
+#[test]
+fn long_lines_wrap_inside_the_lanes() {
+    let mut terminal = Terminal::new(Vec::new(), false, 40);
+    terminal.event("lead", &start("lead")).unwrap();
+    terminal.event("lead", &spawn("worker")).unwrap();
+    terminal.event("worker", &start("worker")).unwrap();
+    let text = "A sentence long enough to wrap twice at forty columns inside two lanes.\n\
+                - A list item whose continuation keeps the item's indentation\n  indented continuation\n\
+                Supercalifragilisticexpialidociousantidisestablishmentarianism";
+    terminal.event("worker", &message(text)).unwrap();
+    let output = String::from_utf8(terminal.output).unwrap();
+    let body: Vec<&str> = output.lines().skip_while(|line| !line.contains("worker · Assistant")).skip(1).collect();
+    assert_eq!(
+        body,
+        [
+            "│ │   A sentence long enough to wrap",
+            "│ │   twice at forty columns inside two",
+            "│ │   lanes.",
+            "│ │   - A list item whose continuation",
+            "│ │     keeps the item's indentation",
+            "│ │     indented continuation",
+            "│ │   Supercalifragilisticexpialidocious",
+            "│ │   antidisestablishmentarianism",
+            "│ │",
+        ],
+        "{output}"
+    );
+    assert!(body.iter().all(|line| line.chars().count() <= 40), "{output}");
+    assert_eq!(wrap("", 10), [""]);
+    assert_eq!(wrap("1. one two three", 8), ["1. one", "   two", "   three"]);
+    assert_eq!(wrap("• bullet text", 8), ["• bullet", "  text"]);
+    assert_eq!(wrap("• bullets", 3), ["•", "  b", "  u", "  l", "  l", "  e", "  t", "  s"]);
+}
+
 /// docs/viewer.md: recorded text cannot introduce terminal control sequences.
 #[test]
 fn terminal_controls_are_removed_and_color_is_optional() {
-    let mut terminal = Terminal::new(Vec::new(), true);
+    let mut terminal = Terminal::new(Vec::new(), true, 80);
     terminal.event("lead", &start("lead")).unwrap();
     terminal.event("lead", &message("Safe\x1b[2J\r\x08\u{009b}31mtext\n\tIndented")).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
     assert!(output.contains("\x1b[1;36mlead · Assistant\x1b[0m"));
-    assert!(output.contains("Safe[2J31mtext\n│ \tIndented"));
+    assert!(output.contains("Safe[2J31mtext\n│   \tIndented"));
     assert!(!output.contains("\x1b[2J"));
     assert_eq!(display_value(&json!({"empty": [], "count": 0})), "count:\n  0\n\nempty:\n  []");
     assert_eq!(display_value(&json!("{\"summary\":\"Ready.\"}")), "summary:\n  Ready.");
@@ -177,7 +212,7 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
         Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Seconds },
         Outcome::Failed { error: "Model response failed.".into() },
     ] {
-        let mut terminal = Terminal::new(Vec::new(), false);
+        let mut terminal = Terminal::new(Vec::new(), false, 80);
         terminal.finish(&Ok(outcome.clone())).unwrap();
         let output = String::from_utf8(terminal.output).unwrap();
         let (label, body) = result_text(&outcome);
@@ -193,6 +228,6 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
             Ok(())
         }
     }
-    let error = Terminal::new(Closed, false).finish(&Err("Run failed.".into())).unwrap_err();
+    let error = Terminal::new(Closed, false, 80).finish(&Err("Run failed.".into())).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }

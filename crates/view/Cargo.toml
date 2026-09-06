@@ -13,6 +13,8 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net"] }
+# Reads the terminal window size for the conversation display.
+rustix = { version = "1", features = ["termios"] }
 
 [dev-dependencies]
 tempfile.workspace = true
