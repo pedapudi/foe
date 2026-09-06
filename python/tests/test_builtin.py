@@ -256,6 +256,64 @@ def test_an_absent_root_and_a_relative_verifier_are_refused(tmp_path: Path) -> N
         foe.builtin("coding", root, binary=BINARY, verify="verify")
 
 
+def test_the_single_document_is_the_implementation_episode_over_the_root(tmp_path: Path) -> None:
+    """The single document reaches the package as the binary carries it.
+
+    It declares no workflow, so the returned contract carries none, and the
+    package's fingerprint is the one the binary computes for the printed
+    document once the root joins its execute grant, as it is for the coding
+    workflow above. The two built-in documents fingerprint apart.
+    """
+    root = _root(tmp_path)
+    contract = foe.builtin("single", root, binary=BINARY)
+    document = _plan("builtin:single", root)["contract"]
+    document["grants"]["execute"] = [*document["grants"]["execute"], str(root)]
+    document["version"] = foe.CONFIG_VERSION
+    document["task"] = "fingerprint"
+    rooted = tmp_path / "rooted-single.json"
+    rooted.write_text(json.dumps(document), encoding="utf-8")
+
+    assert contract.workflow is None
+    written = contract.to_dict()
+    assert written["name"] == "single"
+    assert "workflow" not in written
+    assert written["grants"]["read"] == [str(root)]
+    assert written["grants"]["execute"][-1] == str(root)
+    assert contract.fingerprint(BINARY) == _plan(str(rooted), root)["contract_fingerprint"]
+    assert contract.fingerprint(BINARY) != foe.builtin("coding", root, binary=BINARY).fingerprint(BINARY)
+
+
+def test_the_single_document_runs_as_one_episode(tmp_path: Path) -> None:
+    """The single contract runs to a typed return, with no node of a workflow."""
+    root = _root(tmp_path)
+    contract = foe.builtin("single", root, binary=BINARY)
+    task = "Report that the repository needs no change."
+    outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
+    assert isinstance(outcome, foe.Completed), outcome
+    events = (episode / "episode.jsonl").read_text(encoding="utf-8")
+    assert '"type":"workflow/node-start"' not in events
+
+
+def test_a_finding_re_fires_inside_the_single_episode(tmp_path: Path) -> None:
+    """A gated single document feeds a finding back without a further episode.
+
+    docs/config.md `done_when` feeds findings to the model of the episode
+    that produced the candidate, and that episode is the whole run here, so
+    the bounds stay where the binary set them. The log records one
+    `verification/result` per authoritative run: the finding and then the
+    acceptance.
+    """
+    root = _root(tmp_path)
+    contract = foe.builtin("single", root, binary=BINARY, verify=_verifier(root, findings=1))
+    assert contract.budget.max_episodes == 1
+    task = "Report that the repository needs no change."
+    outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
+    assert isinstance(outcome, foe.Completed), outcome
+    judged = [line for line in (episode / "episode.jsonl").read_text(encoding="utf-8").splitlines()
+              if json.loads(line)["type"] == "verification/result"]
+    assert len(judged) == 2
+
+
 def test_the_returned_contract_runs_under_run_config(tmp_path: Path) -> None:
     """The document the package returns runs, with this host answering the model."""
     root = _root(tmp_path)
