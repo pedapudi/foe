@@ -220,6 +220,10 @@ class ExecutionContract:
     and raises `ConfigError` naming the key and the rule. A contract that
     constructs can be serialized with `to_json`, hashed with `fingerprint`, and
     run with `run` or `start`.
+
+    `workflow` is the workflow declaration docs/workflow.md specifies. The
+    package models the contract keys and carries a workflow as given, so a
+    contract read from a document the binary prints keeps every node.
     """
 
     def __init__(
@@ -235,6 +239,7 @@ class ExecutionContract:
         child_contracts: Mapping[str, ExecutionContract] | None = None,
         model: Model | None = None,
         sandbox: str | None = None,
+        workflow: Mapping[str, Any] | None = None,
     ) -> None:
         if not name:
             raise ConfigError("name: must not be empty")
@@ -244,6 +249,8 @@ class ExecutionContract:
             raise ConfigError("tools: at least one tool is required")
         if sandbox is not None and sandbox not in ("best-effort", "required", "off"):
             raise ConfigError(f"sandbox.mode: {sandbox!r} is not one of best-effort, required, off")
+        if workflow is not None and not (isinstance(workflow, Mapping) and workflow.get("nodes")):
+            raise ConfigError("workflow: docs/workflow.md requires an object whose `nodes` holds at least one node")
         self.name = name
         self.instructions: dict[str, str] = dict(instructions)
         self.grants = grants
@@ -253,6 +260,7 @@ class ExecutionContract:
         self.child_contracts: dict[str, ExecutionContract] = dict(child_contracts or {})
         self.model = model
         self.sandbox = sandbox
+        self.workflow: dict[str, Any] | None = dict(workflow) if workflow is not None else None
 
         listed: list[str | HostTool] = list(tools)
         if isinstance(done_when, Verified) and isinstance(done_when.verify, HostTool):
@@ -340,6 +348,8 @@ class ExecutionContract:
             doc["sandbox"] = {"mode": self.sandbox}
         if self.child_contracts:
             doc["child_contracts"] = {k: p.to_dict(child=True) for k, p in sorted(self.child_contracts.items())}
+        if self.workflow is not None:
+            doc["workflow"] = self.workflow
         if task is not None:
             doc["task"] = task
         return doc

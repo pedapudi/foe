@@ -125,6 +125,7 @@ foe.ExecutionContract(
     child_contracts: Mapping[str, foe.ExecutionContract] | None = None,
     model: foe.Model | None = None,
     sandbox: str | None = None,
+    workflow: Mapping[str, Any] | None = None,
 )
 ```
 
@@ -136,6 +137,13 @@ binary calls; when None the key is omitted and the host answers every model
 request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
 runtime's default applies.
+
+`workflow` is the workflow declaration [workflow.md](workflow.md) specifies,
+given as the object the document carries. The package models the contract
+keys and carries the workflow as given, so a contract that declares one
+keeps every node, and the runtime performs the checks over the nodes.
+Construction requires only that the object hold at least one entry under
+`nodes`.
 
 Construction validates what can be known without a process and raises
 `foe.ConfigError` with a message that names the key and the rule. The
