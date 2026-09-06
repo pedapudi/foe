@@ -263,7 +263,10 @@ next: foe "describe what this repository does"
 
 A bare `foe "task"` reads the default model file when `--model` is absent.
 `--model PROVIDER/MODEL` on the command line replaces it for one run, and
-`--key-file PATH` names the key file explicitly.
+`--key-file PATH` names the key file explicitly. A document named by
+`--config` that declares no `model` block takes its block from those two
+options and `--service-tier` in the same way; a document that declares one
+refuses all three.
 
 When the selected model is `gpt-5.6-sol` through `openai` or
 `openai-codex`, login writes `"reasoning_effort": "low"` into the default

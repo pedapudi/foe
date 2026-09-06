@@ -927,6 +927,17 @@ an explicitly named file and sends no authentication header when none is
 named. The home directory comes from the passwd database, never from the
 environment.
 
+`--model`, `--key-file`, and `--service-tier` describe one `model` block
+between them, and the document under `--config` decides whether they apply.
+A document that declares a `model` block owns its model, so each of the
+three is refused. A document that declares no `model` block has stated that
+it names no model, so the three supply one exactly as they do for the
+built-in document; without any of them such a document runs under a host.
+The block they supply changes no fingerprint, which covers what a model can
+observe rather than the transport that reaches it. `--verify` and
+`--sandbox` are refused with `--config` whatever the document declares,
+because a document carries its own completion gate and sandbox mode.
+
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with
 mode 0600. It sets the default model when none is set. [models.md](models.md)

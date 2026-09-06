@@ -92,7 +92,7 @@ pub struct Options {
     pub task: Option<String>,
     pub config: Option<PathBuf>,
     pub model: Option<String>,
-    /// Provider service tier for the built-in coding workflow.
+    /// Provider service tier of the `model` block the command line supplies.
     pub service_tier: Option<String>,
     pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
@@ -298,23 +298,12 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
 
 /// The contract document to run: the document named by `--config`, with the
 /// command-line task replacing its own, or the built-in coding workflow
-/// for a bare task.
+/// for a bare task. A document that declares no `model` block takes one
+/// from the model options, which a document declaring a block refuses.
 fn load_contract_document(options: &Options) -> Result<ContractDocument, String> {
     let Some(path) = &options.config else {
         let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let mut model = match &options.model {
-            Some(spec) => {
-                let (provider, model) =
-                    spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
-                ModelConfig::new(provider, model)
-            }
-            None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
-        };
-        if let Some(tier) = &options.service_tier {
-            // The provider table holds the accepted values, so resolution
-            // rejects an unknown one naming the provider.
-            model.options.insert("service_tier".into(), tier.clone());
-        }
+        let model = command_line_model(options)?;
         return builtin_contract_document(
             task,
             model,
@@ -323,14 +312,8 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
             options.sandbox.as_deref(),
         );
     };
-    if options.verify.is_some() || options.sandbox.is_some() || options.service_tier.is_some() {
-        let option = if options.verify.is_some() {
-            "--verify"
-        } else if options.sandbox.is_some() {
-            "--sandbox"
-        } else {
-            "--service-tier"
-        };
+    if options.verify.is_some() || options.sandbox.is_some() {
+        let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
         return Err(format!(
             "{option} applies to the built-in coding workflow; a contract document declares its own behavior"
         ));
@@ -340,7 +323,57 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
     if let Some(task) = &options.task {
         config.task = task.clone();
     }
+    if let Some(option) = model_option_given(options) {
+        if config.model.is_some() {
+            return Err(format!("{option}: the contract document declares its own `model` block"));
+        }
+        let mut model = command_line_model(options)?;
+        if let Some(key_file) = &options.key_file {
+            name_credential_file(&mut model, key_file)?;
+        }
+        config.model = Some(model);
+    }
     Ok(config)
+}
+
+/// The first model option the command line names, when it names one. The
+/// three describe one `model` block between them, so one name is enough to
+/// report which of them the document refuses.
+fn model_option_given(options: &Options) -> Option<&'static str> {
+    options
+        .model
+        .is_some()
+        .then_some("--model")
+        .or(options.key_file.is_some().then_some("--key-file"))
+        .or(options.service_tier.is_some().then_some("--service-tier"))
+}
+
+/// The `model` block the command line describes: `--model PROVIDER/MODEL`
+/// or the default model `foe login` wrote, carrying `--service-tier` when
+/// given. The provider table holds the accepted tier values, so resolution
+/// rejects a value the provider does not accept and names the provider.
+fn command_line_model(options: &Options) -> Result<ModelConfig, String> {
+    let mut model = match &options.model {
+        Some(spec) => {
+            let (provider, model) =
+                spec.split_once('/').ok_or("--model takes PROVIDER/MODEL, for example anthropic/claude-opus-5")?;
+            ModelConfig::new(provider, model)
+        }
+        None => default_model()?.ok_or(NO_DEFAULT_MODEL)?,
+    };
+    if let Some(tier) = &options.service_tier {
+        model.options.insert("service_tier".into(), tier.clone());
+    }
+    Ok(model)
+}
+
+/// Names the provider credential file the block reads, in place of the
+/// convention path under `~/.config/foe/credentials/`.
+fn name_credential_file(model: &mut ModelConfig, key_file: &Path) -> Result<(), String> {
+    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
+    let option = credential_option(&model.provider);
+    model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
+    Ok(())
 }
 
 /// Applies implementation model settings measured for the built-in coding
@@ -399,9 +432,7 @@ pub(crate) fn coding_contract_document(
     if let Some(model) = &mut model {
         apply_builtin_model_defaults(model);
         if let Some(key_file) = key_file {
-            let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-            let option = credential_option(&model.provider);
-            model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
+            name_credential_file(model, key_file)?;
         }
     }
     let mut assessment_model = model.clone();
