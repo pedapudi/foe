@@ -90,7 +90,8 @@ fn builtin_environment(cwd: &Path, present: impl Fn(&Path) -> bool) -> String {
 #[derive(Debug, Default)]
 pub struct Options {
     pub task: Option<String>,
-    pub config: Option<PathBuf>,
+    /// The `--config` value: a built-in document name or a file path.
+    pub config: Option<String>,
     pub model: Option<String>,
     /// Provider service tier of the `model` block the command line supplies.
     pub service_tier: Option<String>,
@@ -296,21 +297,75 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
     Ok((dest, ChildLaunch { episode_id: new_id, ..launch }))
 }
 
-/// The contract document to run: the document named by `--config`, with the
-/// command-line task replacing its own, or the built-in coding workflow
-/// for a bare task. A document that declares no `model` block takes one
-/// from the model options, which a document declaring a block refuses.
+/// The name of the coding workflow the binary carries.
+pub(crate) const BUILTIN_CODING: &str = "coding";
+
+/// Every document the binary carries, each selected as `builtin:NAME`.
+pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING];
+
+/// What marks a `--config` value as the name of a document the binary
+/// carries rather than a file path.
+pub(crate) const BUILTIN_PREFIX: &str = "builtin:";
+
+/// The document a run or a plan resolves.
+#[derive(Debug)]
+pub(crate) enum ContractSource {
+    /// A document the binary carries, by its name after `builtin:`.
+    Builtin(&'static str),
+    /// A document in a file.
+    File(PathBuf),
+}
+
+impl ContractSource {
+    /// What a message calls the source: the `--config` value naming it.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::Builtin(name) => format!("builtin:{name}"),
+            Self::File(path) => path.display().to_string(),
+        }
+    }
+}
+
+/// Reads a `--config` value. A `builtin:` prefix names a document the binary
+/// carries, and every other value is a file path.
+pub(crate) fn contract_source(value: &str) -> Result<ContractSource, String> {
+    let Some(name) = value.strip_prefix(BUILTIN_PREFIX) else { return Ok(ContractSource::File(value.into())) };
+    match BUILTIN_DOCUMENTS.iter().find(|carried| **carried == name) {
+        Some(name) => Ok(ContractSource::Builtin(name)),
+        None => Err(format!(
+            "--config builtin:{name}: no built-in document has that name; the built-in documents are {}",
+            BUILTIN_DOCUMENTS.iter().map(|carried| format!("builtin:{carried}")).collect::<Vec<_>>().join(", ")
+        )),
+    }
+}
+
+/// The contract document to run: the document `--config` names, else the
+/// built-in coding workflow. A task on the command line replaces the
+/// document's own task. A document in a file that declares no `model`
+/// block takes one from the model options, which a document declaring a
+/// block refuses.
 fn load_contract_document(options: &Options) -> Result<ContractDocument, String> {
-    let Some(path) = &options.config else {
-        let task = options.task.clone().ok_or(USAGE_BARE)?;
-        let model = command_line_model(options)?;
-        return builtin_contract_document(
-            task,
-            model,
-            options.key_file.as_deref(),
-            options.verify.as_deref(),
-            options.sandbox.as_deref(),
-        );
+    let source = match &options.config {
+        Some(value) => contract_source(value)?,
+        None => ContractSource::Builtin(BUILTIN_CODING),
+    };
+    let path = match source {
+        ContractSource::Builtin(name) => {
+            let task = options.task.clone().ok_or(match options.config.is_some() {
+                true => USAGE_BUILTIN,
+                false => USAGE_BARE,
+            })?;
+            let model = command_line_model(options)?;
+            return builtin_contract_document(
+                name,
+                task,
+                Some(model),
+                options.key_file.as_deref(),
+                options.verify.as_deref(),
+                options.sandbox.as_deref(),
+            );
+        }
+        ContractSource::File(path) => path,
     };
     if options.verify.is_some() || options.sandbox.is_some() {
         let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
@@ -318,7 +373,7 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
             "{option} applies to the built-in coding workflow; a contract document declares its own behavior"
         ));
     }
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_contract::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if let Some(task) = &options.task {
         config.task = task.clone();
@@ -385,6 +440,7 @@ pub(crate) fn apply_builtin_model_defaults(model: &mut ModelConfig) {
 }
 
 const USAGE_BARE: &str = "a task or --config FILE is required";
+const USAGE_BUILTIN: &str = "a task is required: a built-in document takes the task from the command line";
 const NO_DEFAULT_MODEL: &str =
     "no model: run `foe login <provider>` once to set a default, or give --model PROVIDER/MODEL";
 
@@ -399,21 +455,39 @@ const BUILTIN_VERIFIER_DESCRIPTION: &str = "The task's verifier. It runs in the 
 finding per line, and exits 0 whether or not it found any; printing nothing is acceptance. An ordinary call takes \
 {\"args\": []}; the authoritative run after completion receives the completion value as JSON on standard input.";
 
-/// The built-in coding workflow. `--key-file` names the API key file
-/// explicitly; without it the provider's convention path is read.
-/// `verify` names an executable verifier: it becomes a `tool_defs` entry
-/// named `check` available to every episode. The root completion gate applies
-/// to both the assessment's accept branch and the repair branch. Without a
-/// verifier, the assessment's typed choice governs completion.
-fn builtin_contract_document(
+/// The document the binary carries under `name`, over the working directory.
+/// Every name in `BUILTIN_DOCUMENTS` has an arm here, and `contract_source`
+/// admits no other. `--key-file` names the API key file explicitly; without
+/// it the provider's convention path is read. `verify` names an executable
+/// verifier: it becomes a `tool_defs` entry named `check` available to every
+/// episode. The root completion gate applies to both the assessment's accept
+/// branch and the repair branch. Without a verifier, the assessment's typed
+/// choice governs completion.
+pub(crate) fn builtin_contract_document(
+    name: &str,
     task: String,
-    model: ModelConfig,
+    model: Option<ModelConfig>,
     key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
-    coding_contract_document(&cwd, task, Some(model), key_file, verify, sandbox)
+    match name {
+        BUILTIN_CODING => coding_contract_document(&cwd, task, model, key_file, verify, sandbox),
+        other => Err(format!("builtin:{other}: no built-in document has that name")),
+    }
+}
+
+/// The task `foe plan` gives a built-in document, whose own `task` key is
+/// required. A run replaces it with the task on its command line.
+const BUILTIN_PLAN_TASK: &str = "Placeholder task. A run of a built-in document takes its task from the command line.";
+
+/// A built-in document as `foe plan` resolves it: over the working directory,
+/// under the default model `foe login` recorded, and without the verifier and
+/// sandbox mode that only a run selects. The resolved contract carries no
+/// task, so the placeholder text reaches neither a model nor a fingerprint.
+pub(crate) fn builtin_plan_document(name: &str) -> Result<ContractDocument, String> {
+    builtin_contract_document(name, BUILTIN_PLAN_TASK.into(), default_model()?, None, None, None)
 }
 
 /// The same coding workflow over an explicit root directory, which becomes

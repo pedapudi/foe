@@ -1795,6 +1795,31 @@ fn the_recorded_builtins_are_the_ones_the_binary_links() {
     assert_eq!(rows, mine, "the built-in list this test records has parted from the one the binary links");
 }
 
+/// docs/design.md "The command line": `foe plan --config builtin:coding`
+/// resolves the document the binary carries as it resolves a file, and
+/// `--json` prints the contract a host reads. A name the binary does not
+/// carry is refused with the names it carries.
+#[test]
+fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
+    let dir = scratch("plan-builtin");
+    let planned =
+        Command::new(FOE).args(["plan", "--json", "--config", "builtin:coding"]).current_dir(&*dir).output().unwrap();
+    assert!(planned.status.success(), "{}", String::from_utf8_lossy(&planned.stderr));
+    let line = String::from_utf8(planned.stdout).unwrap();
+    assert_eq!(line.lines().count(), 1, "one JSON line");
+    let report: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(report["contract"]["name"], "coding");
+    assert_eq!(report["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
+    assert!(report["contract"]["task"].is_null(), "a resolved contract carries no task");
+    assert!(report["contract_fingerprint"].as_str().unwrap().starts_with("sha256:"));
+    assert!(report["workflow"]["terminal"].as_array().is_some(), "the coding workflow is a workflow");
+
+    let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();
+    assert!(!unknown.status.success(), "an unknown built-in name is refused");
+    let message = String::from_utf8_lossy(&unknown.stderr).to_string();
+    assert!(message.contains("the built-in documents are builtin:coding"), "{message}");
+}
+
 /// docs/design.md "Execution contracts and fingerprints": every example contract hashes to
 /// the fingerprint recorded for it.
 #[test]

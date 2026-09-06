@@ -761,7 +761,7 @@ foe --config FILE --host [--log-dir DIR]                 run under a host; stdou
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
@@ -824,8 +824,20 @@ forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
 
-A task given with `--config` replaces the document's own `task`. A task given
-without `--config` uses a built-in coding workflow. An implementation episode
+What runs is the document `--config` names, else the built-in coding
+workflow. `--config` takes a file path or the name of a document the binary
+carries, written `builtin:NAME`. The binary carries one document,
+`builtin:coding`, the coding workflow this section describes; every other
+name is refused with the names the binary carries. A task given on the
+command line replaces the document's own `task`. `--verify` and `--sandbox`
+configure a built-in document, whether `--config` names it or the command
+line omits `--config`. A document in a file states that behavior in its own
+keys, so a command line pairing either option with a file document is
+refused. A host passes a document file: `--host` takes the task of the run
+from the document, and a built-in document carries no task, so `--config
+builtin:NAME` beside `--host` is refused.
+
+An implementation episode
 changes the current directory. A fresh assessment episode independently checks
 the task and implementation claim. It either accepts the artifacts or activates
 a fresh repair episode with its typed findings.
@@ -857,8 +869,9 @@ completion. With `--verify`, both corrective nodes may fire thirteen times.
 The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
-workflow. The default is `best-effort`. A contract document declares
-its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
+workflow. The default is `best-effort`. A contract document in a file
+declares its own `sandbox.mode`, so `--sandbox` accompanies a built-in
+document alone.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. All three episodes receive the recorded
@@ -935,7 +948,7 @@ it names no model, so the three supply one exactly as they do for the
 built-in document; without any of them such a document runs under a host.
 The block they supply changes no fingerprint, which covers what a model can
 observe rather than the transport that reaches it. `--verify` and
-`--sandbox` are refused with `--config` whatever the document declares,
+`--sandbox` are refused with a document in a file whatever it declares,
 because a document carries its own completion gate and sandbox mode.
 
 `foe login` configures one provider. It asks for the endpoint-specific values

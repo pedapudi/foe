@@ -1,11 +1,21 @@
 use super::*;
 
+/// The built-in coding document under a model, which is what a run of
+/// `--config builtin:coding` and a run with no `--config` both build.
+fn coding(
+    task: String,
+    model: ModelConfig,
+    key_file: Option<&Path>,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    builtin_contract_document(BUILTIN_CODING, task, Some(model), key_file, verify, sandbox)
+}
+
 #[test]
 fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol() {
     for provider in ["openai", "openai-codex"] {
-        let config =
-            builtin_contract_document("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None, None)
-                .unwrap();
+        let config = coding("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None, None).unwrap();
         assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("low"));
         let workflow = config.workflow.as_ref().unwrap();
         for node in ["assess-task", "repair-task"] {
@@ -19,7 +29,7 @@ fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol()
 fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     let mut explicit = ModelConfig::new("openai-codex", "gpt-5.6-sol");
     explicit.options.insert("reasoning_effort".into(), "high".into());
-    let config = builtin_contract_document("task".into(), explicit, None, None, None).unwrap();
+    let config = coding("task".into(), explicit, None, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
@@ -27,9 +37,7 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
         assert_eq!(contract.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     }
 
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), None);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         let contract = node.model.as_ref().unwrap();
@@ -44,25 +52,13 @@ fn builtin_key_file_uses_the_providers_credential_option() {
     std::fs::write(&credential, "{}\n").unwrap();
     let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
 
-    let codex = builtin_contract_document(
-        "task".into(),
-        ModelConfig::new("openai-codex", "gpt-5.6-sol"),
-        Some(&credential),
-        None,
-        None,
-    )
-    .unwrap();
+    let codex =
+        coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), Some(&credential), None, None).unwrap();
     assert_eq!(codex.model.as_ref().unwrap().option("token_file"), Some(canonical.as_str()));
     assert_eq!(codex.model.as_ref().unwrap().option("api_key_file"), None);
 
-    let openai = builtin_contract_document(
-        "task".into(),
-        ModelConfig::new("openai", "gpt-5.6-sol"),
-        Some(&credential),
-        None,
-        None,
-    )
-    .unwrap();
+    let openai =
+        coding("task".into(), ModelConfig::new("openai", "gpt-5.6-sol"), Some(&credential), None, None).unwrap();
     assert_eq!(openai.model.as_ref().unwrap().option("api_key_file"), Some(canonical.as_str()));
 }
 
@@ -73,9 +69,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
     assert_eq!(BUILTIN_ASSESSMENT_CALLS, 60);
     assert_eq!(BUILTIN_REPAIR_CALLS, 60);
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None).unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(
         config.budget.model_calls,
@@ -151,7 +145,7 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let model = ModelConfig::new("anthropic", "claude-opus-5");
-    let config = builtin_contract_document("task".into(), model.clone(), None, Some(&script), None).unwrap();
+    let config = coding("task".into(), model.clone(), None, Some(&script), None).unwrap();
     resolve(&config).expect("the guarded built-in workflow resolves");
     let canonical = script.canonicalize().unwrap();
     assert_eq!(config.tool_defs["check"].exec, canonical);
@@ -174,17 +168,17 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
 
-    let plain = builtin_contract_document("task".into(), model, None, None, None).unwrap();
+    let plain = coding("task".into(), model, None, None, None).unwrap();
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
 }
 
 #[test]
 fn builtin_coding_selects_an_explicit_sandbox_mode() {
     let model = ModelConfig::new("openai-codex", "gpt-5.6-sol");
-    let config = builtin_contract_document("task".into(), model.clone(), None, None, Some("off")).unwrap();
+    let config = coding("task".into(), model.clone(), None, None, Some("off")).unwrap();
     assert_eq!(serde_json::to_value(config.sandbox.mode).unwrap(), "off");
 
-    let error = builtin_contract_document("task".into(), model, None, None, Some("wide-open")).unwrap_err();
+    let error = coding("task".into(), model, None, None, Some("wide-open")).unwrap_err();
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
@@ -214,8 +208,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
 
 #[test]
 fn explicit_config_owns_its_sandbox_mode() {
-    let options =
-        Options { config: Some(PathBuf::from("unused.json")), sandbox: Some("off".into()), ..Options::default() };
+    let options = Options { config: Some("unused.json".into()), sandbox: Some("off".into()), ..Options::default() };
     let error = load_contract_document(&options).unwrap_err();
     assert_eq!(
         error,
@@ -224,7 +217,8 @@ fn explicit_config_owns_its_sandbox_mode() {
 }
 
 /// A contract document, with the `model` block given when there is one.
-fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> PathBuf {
+/// The return value is the `--config` value naming it.
+fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> String {
     let mut value = serde_json::json!({
         "version": 4,
         "name": "document",
@@ -240,7 +234,7 @@ fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> PathB
     }
     let path = dir.join("config.json");
     std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-    path
+    path.to_string_lossy().into_owned()
 }
 
 /// docs/design.md "The command line": a document that declares no `model`
@@ -288,6 +282,87 @@ fn explicit_config_owns_its_model_options() {
     }
 }
 
+/// docs/design.md "The command line": `--config` takes the name of a
+/// document the binary carries beside a file path, and a name the binary
+/// does not carry is refused with the names it carries.
+#[test]
+fn config_takes_a_built_in_name_beside_a_file_path() {
+    let named = contract_source("builtin:coding").unwrap();
+    assert!(matches!(named, ContractSource::Builtin("coding")));
+    assert_eq!(named.describe(), "builtin:coding");
+    let file = contract_source("/tmp/contract.json").unwrap();
+    assert!(matches!(&file, ContractSource::File(path) if path == Path::new("/tmp/contract.json")));
+    assert_eq!(file.describe(), "/tmp/contract.json");
+    assert_eq!(
+        contract_source("builtin:parser").unwrap_err(),
+        "--config builtin:parser: no built-in document has that name; the built-in documents are builtin:coding"
+    );
+}
+
+/// A built-in document has no task of its own, so a command line naming one
+/// without a task is refused, and the refusal states where the task comes
+/// from.
+#[test]
+fn a_built_in_name_without_a_task_is_refused() {
+    let options = Options { config: Some("builtin:coding".into()), ..Options::default() };
+    assert_eq!(load_contract_document(&options).unwrap_err(), USAGE_BUILTIN);
+    assert_eq!(USAGE_BUILTIN, "a task is required: a built-in document takes the task from the command line");
+    assert_eq!(load_contract_document(&Options::default()).unwrap_err(), USAGE_BARE);
+}
+
+/// docs/design.md "The command line": `--config builtin:coding` runs the
+/// document that a command line omitting `--config` runs, so the two
+/// documents and their fingerprints are one.
+#[test]
+fn the_built_in_name_and_the_omitted_option_select_one_document() {
+    let options = |config: Option<&str>| Options {
+        task: Some("task".into()),
+        config: config.map(str::to_string),
+        model: Some("anthropic/claude-opus-5".into()),
+        ..Options::default()
+    };
+    let named = load_contract_document(&options(Some("builtin:coding"))).unwrap();
+    let omitted = load_contract_document(&options(None)).unwrap();
+    assert_eq!(serde_json::to_value(&named).unwrap(), serde_json::to_value(&omitted).unwrap());
+    let hash = |document: &ContractDocument| fingerprint(&resolve(document).unwrap()).unwrap().hash;
+    assert_eq!(hash(&named), hash(&omitted));
+}
+
+/// docs/design.md "The command line": `--verify` and `--sandbox` configure
+/// a built-in document under its name exactly as they configure it when
+/// `--config` is absent, and a document in a file states that behavior in
+/// its own keys. `--service-tier` reaches the `model` block of the named
+/// document as it reaches the block of the omitted one.
+#[test]
+fn the_run_options_of_the_built_in_workflow_apply_under_its_name() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = crate::tests::scratch("foe-cli-run", "named-run-options");
+    let script = dir.join("check");
+    std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let options = |verify, sandbox, service_tier: Option<&str>| Options {
+        task: Some("task".into()),
+        config: Some("builtin:coding".into()),
+        model: Some("openai-codex/gpt-5.6-sol".into()),
+        verify,
+        sandbox,
+        service_tier: service_tier.map(str::to_string),
+        ..Options::default()
+    };
+    let document =
+        load_contract_document(&options(Some(script.clone()), Some("off".into()), Some("priority"))).unwrap();
+    assert_eq!(document.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
+    assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
+    assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
+    assert_eq!(document.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+
+    let refused = Options { config: Some("unused.json".into()), ..options(Some(script), None, None) };
+    assert_eq!(
+        load_contract_document(&refused).unwrap_err(),
+        "--verify applies to the built-in coding workflow; a contract document declares its own behavior"
+    );
+}
+
 #[test]
 fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
     let text = builtin_environment(Path::new("/work"), |path| path == Path::new("/usr/bin/git"));
@@ -299,9 +374,7 @@ fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
 
 #[test]
 fn builtin_coding_declares_its_general_shell_command_surface() {
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
     let expected: Vec<PathBuf> = BUILTIN_EXECUTE_ROOTS.iter().map(PathBuf::from).collect();
     assert!(expected.iter().any(|root| Path::new("/usr/bin/python3").starts_with(root)));
     assert_eq!(config.grants.execute, expected);
@@ -314,9 +387,7 @@ fn builtin_coding_declares_its_general_shell_command_surface() {
 
 #[test]
 fn builtin_coding_can_retrieve_shortened_tool_results() {
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
     assert_eq!(config.tools, ["read", "grep", "edit", "bash"]);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != "retrieve"));
@@ -351,7 +422,7 @@ fn invalid_host_verifier_schema_starts_no_episode() {
     )
     .unwrap();
     let error = run(Options {
-        config: Some(config_path),
+        config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.to_path_buf()),
         host: true,
         headless: true,
@@ -401,7 +472,7 @@ fn independently_resumed_child_rejects_a_changed_executable() {
     .unwrap();
     std::fs::write(&tool, "second").unwrap();
     let error = run(Options {
-        config: Some(config_path),
+        config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.clone()),
         host: true,
         headless: true,
