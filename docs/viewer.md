@@ -5,10 +5,10 @@
 `foe --conversation` shows conversation text and the execution tree on
 standard output. The flag is off by default, including in interactive
 terminals. It chooses what standard output shows and changes nothing else
-about a run: the browser viewer binds and serves unless `--headless` is
-given, `--no-open` decides whether a browser opens on it, and the viewer
-address goes to standard error when serving starts. `--conversation` cannot
-be combined with `--host`.
+about a run: `--viewer` decides whether the browser viewer serves and
+whether a browser opens on it, `--conversation` composes with each of its
+three values, and the viewer address goes to standard error when serving
+starts. `--conversation` cannot be combined with `--host`.
 
 The display appends blocks to terminal scrollback. Each active episode has
 a column of tree connectors. A branch opens a column; its return joins

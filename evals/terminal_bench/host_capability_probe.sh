@@ -10,20 +10,25 @@ fi
 binary=$1
 config=$2
 log_dir=$3
+# The run creates its own directory for the episode under the one --log-dir
+# names and prints it. The probe retains that directory under the path its
+# caller named, which is what the probe report reads.
+log_parent="$log_dir.runs"
 channel_dir="/tmp/foe-capability-host.$$"
 to_runtime="$channel_dir/to-runtime"
 from_runtime="$channel_dir/from-runtime"
+foe_stderr="$channel_dir/foe.stderr"
 mkdir "$channel_dir"
 mkfifo "$to_runtime" "$from_runtime"
 
 cleanup() {
-    rm -f "$to_runtime" "$from_runtime"
+    rm -f "$to_runtime" "$from_runtime" "$foe_stderr"
     rmdir "$channel_dir"
 }
 trap cleanup EXIT
 
-"$binary" --config "$config" --host --log-dir "$log_dir" \
-    <"$to_runtime" >"$from_runtime" &
+"$binary" --config "$config" --host --log-dir "$log_parent" \
+    <"$to_runtime" >"$from_runtime" 2>"$foe_stderr" &
 runtime_pid=$!
 exec 3>"$to_runtime"
 
@@ -99,4 +104,12 @@ while IFS= read -r event; do
 done <"$from_runtime"
 
 exec 3>&-
-wait "$runtime_pid"
+status=0
+wait "$runtime_pid" || status=$?
+cat "$foe_stderr" >&2
+created=$(sed -n 's/^foe: log //p' "$foe_stderr" | head -n 1)
+if [ -n "$created" ]; then
+    mv "$created" "$log_dir"
+    rmdir "$log_parent" 2>/dev/null || true
+fi
+exit "$status"

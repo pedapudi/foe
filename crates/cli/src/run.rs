@@ -95,20 +95,19 @@ pub struct Options {
     pub model: Option<String>,
     /// Provider service tier of the `model` block the command line supplies.
     pub service_tier: Option<String>,
-    pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
     /// Kernel confinement mode for the built-in coding workflow.
     pub sandbox: Option<String>,
     pub log_dir: Option<PathBuf>,
-    pub no_open: bool,
-    pub headless: bool,
+    /// The source log directory of `--from DIR[@SEQ]`.
+    pub from: Option<PathBuf>,
+    /// The boundary `--from DIR@SEQ` names: source events with `seq` in
+    /// `[1, at)` are copied. Absent when the value carried no boundary.
+    pub at: Option<u64>,
+    pub viewer: Viewer,
     pub conversation: bool,
     pub host: bool,
-    /// Source log directory to seed the new episode from, with the
-    /// boundary: source events with `seq` in `[1, at)` are copied.
-    pub fork: Option<PathBuf>,
-    pub at: Option<u64>,
 }
 
 /// The built-in tools implemented outside the registry: the coding tools
@@ -160,6 +159,32 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| format!("runtime: {e}"))
 }
 
+/// What a run does about the browser viewer. `--host` gives standard output
+/// to the log, which leaves nothing for a browser to be opened from, so it
+/// runs `Off` whatever the command line asked for.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Viewer {
+    /// Serve the viewer and open the browser on it.
+    #[default]
+    Open,
+    /// Serve the viewer and leave opening it to the person.
+    Serve,
+    /// Serve no viewer.
+    Off,
+}
+
+impl Viewer {
+    /// Reads a `--viewer` value, naming the three it accepts on any other.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "open" => Ok(Self::Open),
+            "serve" => Ok(Self::Serve),
+            "off" => Ok(Self::Off),
+            other => Err(format!("--viewer {other}: expected open, serve, or off")),
+        }
+    }
+}
+
 /// The compaction policy a `context` block with `compact: true` resolves
 /// to, with the window taken from the block or from the provider table for
 /// the model named. `None` when the contract never compacts. An unknown
@@ -182,10 +207,13 @@ fn known_window(model: &ModelConfig) -> Option<u64> {
     foe_transport::context_window(model)
 }
 
+/// The file a parent process writes beside a child's log, naming the child.
+pub(crate) const CHILD_LAUNCH: &str = "child-launch.json";
+
 /// Who this episode is. A child reads the launch metadata its parent wrote;
 /// a root draws a fresh id.
 fn read_child_launch(log_dir: Option<&Path>) -> Result<ChildLaunch, String> {
-    let file = log_dir.map(|d| d.join("child-launch.json")).filter(|f| f.is_file());
+    let file = log_dir.map(|d| d.join(CHILD_LAUNCH)).filter(|f| f.is_file());
     let Some(file) = file else { return Ok(ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() }) };
     let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
@@ -197,46 +225,125 @@ fn fresh_id() -> String {
     format!("ep_{}", hex::encode(&digest[..4]))
 }
 
-/// Where the episode's log lives and who the episode is: a fresh directory
-/// seeded from `--fork`, an existing log continued or repaired, or a new
-/// log. docs/log-format.md "Seeding" states the fork and resume flows.
-fn episode_directory(
-    options: &Options,
-    contract_fingerprint: &str,
-    task: &str,
-) -> Result<(PathBuf, ChildLaunch), String> {
-    if let Some(source) = &options.fork {
-        let at = options.at.expect("the parser pairs --fork with --at");
-        return fork(source, at, options.log_dir.clone(), task);
+/// Where the episode's log lives, who the episode is, and one line about how
+/// the directory was reached, which the run prints under the directory.
+type Placement = (PathBuf, ChildLaunch, Option<String>);
+
+/// Where the episode's log lives and who the episode is: the episode
+/// `--from DIR` continues, an episode forked from a prefix of that source, or
+/// a fresh directory. docs/design.md "The command line" holds the table of
+/// what each `--from` value selects, and docs/log-format.md "Seeding" holds
+/// the seeding rules a fork obeys.
+fn episode_directory(options: &Options, fingerprint: &str, task: &Task) -> Result<Placement, String> {
+    let Some(source) = options.from.as_deref() else {
+        let launch = read_child_launch(options.log_dir.as_deref())?;
+        return Ok((fresh_directory(options.log_dir.as_deref(), &launch.episode_id), launch, None));
+    };
+    let dest = options.log_dir.as_deref();
+    if let Some(at) = options.at {
+        return fork(source, at, dest, task.directive());
     }
-    if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
-        return resume(dir, contract_fingerprint);
+    let (start, ended, events) = source_state(source)?;
+    let (named, earlier) = (source.display(), format!("--from {}@SEQ", source.display()));
+    match (ended, options.task.is_some()) {
+        (false, false) => resume(source, fingerprint),
+        (false, true) => Err(format!(
+            "{named}: episode {} has not ended, and a continued episode keeps the task it started with; give \
+             {earlier} to fork it with a new task",
+            start.id
+        )),
+        (true, false) => Err(format!(
+            "{named}: episode {} ended; give a task to continue from its whole conversation, or {earlier} to fork \
+             it earlier",
+            start.id
+        )),
+        (true, true) => fork(source, events, dest, task.directive()),
     }
-    let launch = read_child_launch(options.log_dir.as_deref())?;
-    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
-    Ok((dir, launch))
 }
 
-/// Seeds a fresh episode from a prefix of the log in `source` and appends
-/// the running form's task as a `system` inbox item: the one `task` item
-/// per log is the copied one at seq 1, and `system` is the runtime's
-/// channel for text the model must see.
-fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, ChildLaunch), String> {
-    let launch = ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() };
-    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
-    let in_dest = |e: LogError| format!("{}: {e}", dest.display());
-    if dest.join(foe_log::fold::LOG_FILE).is_file() {
-        return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
+/// The task this run carries, and where it came from. A task the source log
+/// of `--from` recorded is what that episode already ran, so a fork of it
+/// reruns the copied conversation rather than receiving the task again.
+struct Task {
+    text: String,
+    recorded: bool,
+}
+
+impl Task {
+    /// The task a fork appends as a live directive, which is every task
+    /// except one the source log recorded.
+    fn directive(&self) -> Option<&str> {
+        (!self.recorded).then_some(self.text.as_str())
     }
+}
+
+/// What the source log of `--from` records: its `episode/start`, whether the
+/// episode ended, and how many events it holds, which is the boundary a fork
+/// from the end of the conversation takes.
+fn source_state(source: &Path) -> Result<(EpisodeStart, bool, u64), String> {
+    source_log(source)?;
+    let in_source = |e: LogError| format!("{}: {e}", source.display());
+    let events = foe_log::fold::read_all(source).map_err(in_source)?;
+    let state = foe_log::fold::fold(&events).map_err(in_source)?;
+    let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", source.display()))?;
+    Ok((start, state.outcome.is_some(), events.len() as u64))
+}
+
+/// Refuses a `--from` value under which no log exists, naming the file: a
+/// directory `--log-dir` names holds episode directories rather than a log,
+/// so it is the value most likely to be given by mistake.
+fn source_log(source: &Path) -> Result<(), String> {
+    let log = source.join(foe_log::fold::LOG_FILE);
+    if log.is_file() {
+        return Ok(());
+    }
+    let (source, log) = (source.display(), log.display());
+    Err(format!("--from {source}: {log} does not exist; --from takes one episode's own directory, which a run names as `foe: log PATH`"))
+}
+
+/// The task the source log recorded, which fills the place a built-in
+/// document leaves empty when the command line names no task.
+fn recorded_task(options: &Options) -> Result<Option<String>, String> {
+    match options.from.as_deref().filter(|_| options.task.is_none()) {
+        Some(source) => source_state(source).map(|(start, _, _)| Some(start.task)),
+        None => Ok(None),
+    }
+}
+
+/// The directory a fresh episode writes into: the episode id under the parent
+/// directory, which is `--log-dir` when given and `.foe` otherwise. A
+/// directory holding launch metadata is the episode's own directory instead,
+/// because the parent process that wrote that file chose the directory and
+/// the episode id together.
+fn fresh_directory(log_dir: Option<&Path>, episode_id: &str) -> PathBuf {
+    match log_dir {
+        Some(dir) if dir.join(CHILD_LAUNCH).is_file() => dir.to_path_buf(),
+        Some(parent) => parent.join(episode_id),
+        None => PathBuf::from(".foe").join(episode_id),
+    }
+}
+
+/// Seeds a fresh episode from a prefix of the log in `source` and appends a
+/// `directive`, the task the command line gave, as a `system` inbox item: the
+/// one `task` item per log is the copied one at seq 1, and `system` is the
+/// runtime's channel for text the model must see. Without a directive the
+/// fork reruns the copied conversation from the boundary.
+fn fork(source: &Path, at: u64, dest: Option<&Path>, directive: Option<&str>) -> Result<Placement, String> {
+    source_log(source)?;
+    let launch = ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() };
+    let dest = fresh_directory(dest, &launch.episode_id);
+    let in_dest = |e: LogError| format!("{}: {e}", dest.display());
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
     let header = SeedHeader { new_id: launch.episode_id.clone(), parent_id: None, team_id: None, contract: None };
-    foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
+    foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--from {}: {e}", source.display()))?;
     let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
-    let content = vec![ContentBlock::Text { text: task.to_string() }];
-    let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
-    writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
+    if let Some(task) = directive {
+        let content = vec![ContentBlock::Text { text: task.to_string() }];
+        let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
+        writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
+    }
     writer.sync().map_err(in_dest)?;
-    Ok((dest, launch))
+    Ok((dest, launch, Some(format!("fork of {} at seq {at}", source.display()))))
 }
 
 /// Continues the episode whose log is in `dir` under the same contract. A
@@ -246,7 +353,7 @@ fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(Pa
 /// which the run then continues. A prepared seeded log, ending at
 /// `seed/end`, is continued as it stands with no fingerprint comparison,
 /// because a seeded `episode/start` records its source's contract.
-fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunch), String> {
+fn resume(dir: &Path, contract_fingerprint: &str) -> Result<Placement, String> {
     let dir = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
     let in_dir = |e: LogError| format!("{}: {e}", dir.display());
     let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
@@ -254,10 +361,6 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
     let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", dir.display()))?;
     if start.fork_origin.is_some() && state.seeded_through.is_none() {
         return Err(format!("{}: resuming a seeded log requires seed/end", dir.display()));
-    }
-    if state.outcome.is_some() {
-        let (dir, id) = (dir.display(), &start.id);
-        return Err(format!("{dir}: episode {id} already ended; a finished log is forked, not resumed: foe \"task\" --fork {dir} --at SEQ"));
     }
     let spawned_start = start.parent_id.is_some() && start.effective_budget.is_some();
     let mut launch = read_child_launch(Some(&dir))?;
@@ -274,11 +377,9 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
         let (dir, recorded) = (dir.display(), &start.contract_fingerprint);
         return Err(format!("{dir}: resuming requires the contract that ran: the log records fingerprint {recorded}; the given contract document resolves to {contract_fingerprint}"));
     }
-    if prepared {
-        return Ok((dir, launch));
-    }
-    if !torn && foe_log::fold::open_obligations(&events).is_empty() {
-        return Ok((dir, launch));
+    if prepared || (!torn && foe_log::fold::open_obligations(&events).is_empty()) {
+        let note = format!("continues episode {} in place", launch.episode_id);
+        return Ok((dir, launch, Some(note)));
     }
     let new_id = fresh_id();
     let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
@@ -290,12 +391,11 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
         contract: None,
     };
     foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
-    eprintln!(
-        "foe: {} stopped mid-line or mid-obligation; episode {new_id} continues it in {}",
-        dir.display(),
-        dest.display()
+    let note = format!(
+        "continues episode {}, which stopped mid-line or mid-obligation, as episode {new_id}",
+        launch.episode_id
     );
-    Ok((dest, ChildLaunch { episode_id: new_id, ..launch }))
+    Ok((dest, ChildLaunch { episode_id: new_id, ..launch }, Some(note)))
 }
 
 /// The name of the coding workflow the binary carries.
@@ -349,12 +449,13 @@ pub(crate) fn contract_source(value: &str) -> Result<ContractSource, String> {
 
 /// The contract document to run: the document `--config` names, else the
 /// repository document in the working directory, else the built-in coding
-/// workflow. A task on the command line replaces the document's own task.
-/// Reading the repository document is announced on standard error, because
-/// the command line did not name it. A document in a file that declares no
-/// `model` block takes one from the model options, which a document
-/// declaring a block refuses.
-fn load_contract_document(options: &Options) -> Result<ContractDocument, String> {
+/// workflow. A task on the command line replaces the document's own. A
+/// built-in document carries no task, and under `--from` the task the source
+/// log recorded fills that place. Reading the repository document is
+/// announced on standard error, because the command line did not name it. A
+/// document in a file that declares no `model` block takes one from the
+/// model options, which a document declaring a block refuses.
+fn load_contract_document(options: &Options) -> Result<(ContractDocument, bool), String> {
     let discovered = options.config.is_none() && Path::new(REPOSITORY_CONTRACT).symlink_metadata().is_ok();
     let source = match &options.config {
         Some(value) => contract_source(value)?,
@@ -363,19 +464,21 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
     };
     let path = match source {
         ContractSource::Builtin(name) => {
-            let task = options.task.clone().ok_or(match options.config.is_some() {
+            let recorded = recorded_task(options)?;
+            let from_log = recorded.is_some();
+            let task = options.task.clone().or(recorded).ok_or(match options.config.is_some() {
                 true => USAGE_BUILTIN,
                 false => USAGE_BARE,
             })?;
             let model = command_line_model(options)?;
-            return builtin_contract_document(
+            let document = builtin_contract_document(
                 name,
                 task,
                 Some(model),
-                options.key_file.as_deref(),
                 options.verify.as_deref(),
                 options.sandbox.as_deref(),
-            );
+            )?;
+            return Ok((document, from_log));
         }
         ContractSource::File(path) => path,
     };
@@ -398,25 +501,16 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
         if config.model.is_some() {
             return Err(format!("{option}: the contract document declares its own `model` block"));
         }
-        let mut model = command_line_model(options)?;
-        if let Some(key_file) = &options.key_file {
-            name_credential_file(&mut model, key_file)?;
-        }
-        config.model = Some(model);
+        config.model = Some(command_line_model(options)?);
     }
-    Ok(config)
+    Ok((config, false))
 }
 
 /// The first model option the command line names, when it names one. The
-/// three describe one `model` block between them, so one name is enough to
+/// two describe one `model` block between them, so one name is enough to
 /// report which of them the document refuses.
 fn model_option_given(options: &Options) -> Option<&'static str> {
-    options
-        .model
-        .is_some()
-        .then_some("--model")
-        .or(options.key_file.is_some().then_some("--key-file"))
-        .or(options.service_tier.is_some().then_some("--service-tier"))
+    options.model.is_some().then_some("--model").or(options.service_tier.is_some().then_some("--service-tier"))
 }
 
 /// The `model` block the command line describes: `--model PROVIDER/MODEL`
@@ -436,15 +530,6 @@ fn command_line_model(options: &Options) -> Result<ModelConfig, String> {
         model.options.insert("service_tier".into(), tier.clone());
     }
     Ok(model)
-}
-
-/// Names the provider credential file the block reads, in place of the
-/// convention path under `~/.config/foe/credentials/`.
-fn name_credential_file(model: &mut ModelConfig, key_file: &Path) -> Result<(), String> {
-    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-    let option = credential_option(&model.provider);
-    model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
-    Ok(())
 }
 
 /// Applies implementation model settings measured for the built-in coding
@@ -473,9 +558,9 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 
 /// The document the binary carries under `name`, over the working directory.
 /// Every name in `BUILTIN_DOCUMENTS` has an arm here, and `contract_source`
-/// admits no other. `--key-file` names the API key file explicitly; without
-/// it the provider's convention path is read. `verify` names an executable
-/// verifier: it becomes a `tool_defs` entry named `check` available to every
+/// admits no other. A model block reads the credential file its own options
+/// name, and the provider's convention path otherwise. `verify` names an
+/// executable verifier: it becomes a `tool_defs` entry named `check` available to every
 /// episode. The root completion gate applies to both the assessment's accept
 /// branch and the repair branch. Without a verifier, the assessment's typed
 /// choice governs completion.
@@ -483,13 +568,12 @@ pub(crate) fn builtin_contract_document(
     name: &str,
     task: String,
     model: Option<ModelConfig>,
-    key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     match name {
-        BUILTIN_CODING => coding_contract_document(&cwd, task, model, key_file, verify, sandbox),
+        BUILTIN_CODING => coding_contract_document(&cwd, task, model, verify, sandbox),
         other => Err(format!("builtin:{other}: no built-in document has that name")),
     }
 }
@@ -503,7 +587,7 @@ const BUILTIN_PLAN_TASK: &str = "Placeholder task. A run of a built-in document 
 /// sandbox mode that only a run selects. The resolved contract carries no
 /// task, so the placeholder text reaches neither a model nor a fingerprint.
 pub(crate) fn builtin_plan_document(name: &str) -> Result<ContractDocument, String> {
-    builtin_contract_document(name, BUILTIN_PLAN_TASK.into(), default_model()?, None, None, None)
+    builtin_contract_document(name, BUILTIN_PLAN_TASK.into(), default_model()?, None, None)
 }
 
 /// The same coding workflow over an explicit root directory, which becomes
@@ -514,16 +598,12 @@ pub(crate) fn coding_contract_document(
     root: &Path,
     task: String,
     mut model: Option<ModelConfig>,
-    key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let explicit_reasoning = model.as_ref().is_some_and(|m| m.option("reasoning_effort").is_some());
     if let Some(model) = &mut model {
         apply_builtin_model_defaults(model);
-        if let Some(key_file) = key_file {
-            name_credential_file(model, key_file)?;
-        }
     }
     let mut assessment_model = model.clone();
     if let Some(assessment) = &mut assessment_model {
@@ -585,10 +665,6 @@ pub(crate) fn coding_contract_document(
     serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
 }
 
-fn credential_option(provider: &str) -> &'static str {
-    foe_transport::provider_info(provider).map(|value| value.auth.option_key()).unwrap_or("api_key_file")
-}
-
 #[cfg(test)]
 #[path = "run_test.rs"]
 mod tests;
@@ -616,13 +692,13 @@ fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String>
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
-    let mut config = load_contract_document(&options)?;
+    let (mut config, recorded) = load_contract_document(&options)?;
     prepare_model(&mut config)?;
-    let task = config.task.clone();
+    let task = Task { text: config.task.clone(), recorded };
     let inherited = options
         .log_dir
         .as_deref()
-        .filter(|dir| dir.join("child-launch.json").is_file())
+        .filter(|dir| dir.join(CHILD_LAUNCH).is_file())
         .map(|dir| read_child_launch(Some(dir)))
         .transpose()?
         .filter(|launch| launch.parent_id.is_some())
@@ -635,7 +711,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     .map_err(|e| format!("config: {e}"))?;
     let fingerprint = fingerprint(&contract)?;
-    let (log_dir, launch) = episode_directory(&options, &fingerprint.hash, &task)?;
+    let (log_dir, launch, note) = episode_directory(&options, &fingerprint.hash, &task)?;
+    let task = task.text;
     if let Some(expected) = &launch.expected_contract_fingerprint {
         if expected != &fingerprint.hash {
             return Err(format!(
@@ -646,6 +723,10 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    announce_log_directory(&log_dir);
+    if let Some(note) = note {
+        eprintln!("foe: {note}");
+    }
     let executables = match &inherited {
         Some(inherited) => CapturedExecutableTree::from_inherited(&contract, inherited),
         None => CapturedExecutableTree::materialize(&contract, &log_dir),
@@ -696,7 +777,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let viewer_url = viewer.as_ref().map(foe_view::Bound::url);
     if let Some(bound) = &viewer {
         unconfined.policy_mut().add_bind_port(bound.addr.port());
-        if !options.no_open {
+        if options.viewer == Viewer::Open {
             crate::open_browser(&bound.url());
         }
     }
@@ -705,7 +786,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let transport = match &contract.model {
         Some(model) => Some(built_in_transport(model)?),
         None if options.host => None,
-        None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
+        None => return Err("no model: give --model, add a `model` block, or run under --host".into()),
     };
     let confined = unconfined.enter().map_err(|e| e.to_string())?;
     let start = EpisodeStart {
@@ -766,9 +847,20 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 }
 
 /// Whether a run serves the browser viewer: every running form does except
-/// under `--host`, whose standard output is the log, and `--headless`.
+/// under `--host`, whose standard output is the log, and `--viewer off`.
 fn serves_viewer(options: &Options) -> bool {
-    !(options.host || options.headless)
+    !(options.host || options.viewer == Viewer::Off)
+}
+
+/// The fixed prefix of the line a run writes on standard error to name the
+/// directory it created for this episode's log. A caller reads the directory
+/// from that line rather than reconstructing the episode id.
+const LOG_DIRECTORY_LINE: &str = "foe: log ";
+
+/// Names the created log directory, before the episode starts and before
+/// anything the episode itself reports.
+fn announce_log_directory(dir: &Path) {
+    eprintln!("{LOG_DIRECTORY_LINE}{}", dir.display());
 }
 
 /// What the episode needs from the work done before the process restricted

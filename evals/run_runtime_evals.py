@@ -184,12 +184,12 @@ def run_case(
     expected_exit: int = 0,
 ) -> tuple[Path, list[str]]:
     case_dir = run_root / name
-    log_dir = case_dir / "episode"
+    log_parent = case_dir / "episode"
     try:
         case_dir.mkdir()
         config_path = case_dir / "config.json"
         write_config(config_path, config)
-        status = host_runtime.run(binary, config_path, log_dir, responder)
+        status, log_dir = host_runtime.run(binary, config_path, log_parent, responder)
     except (OSError, RuntimeError) as error:
         raise HarnessError(f"the {name} case could not be launched: {error}") from error
     findings = []

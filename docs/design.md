@@ -753,13 +753,13 @@ access of its own.
 The binary has one running form and five forms that run nothing.
 
 ```
-foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
-foe "task" --headless                                    run; no browser viewer; print the outcome
+foe "task" [--config FILE] [--log-dir DIR]               run; serve the viewer; print the outcome; --log-dir holds the created episode directory
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
+foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
-foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
+foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
-foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
+foe login [PROVIDER [--model MODEL] [--key-file PATH]] [--status]   configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
 foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
@@ -769,14 +769,25 @@ foe telemetry LOG... [--json]                            print what telemetry em
 
 One declarative table in `crates/cli/src/main.rs` names every form, its
 positional shape, and each option it accepts with that option's value
-placeholder, its default, and its meaning. The parser and both help screens
-read that table and nothing else, so an option the parser accepts is
-documented and an option the table omits is refused. `foe --help`, which
+placeholder, its default, its meaning, and the heading its help lists it
+under. The parser and both help screens read that table and nothing else, so
+an option the parser accepts is documented and an option the table omits is
+refused. The running form's help lists its options under four headings, each
+saying what the options beneath it decide: what runs, holding `--config`,
+`--log-dir`, and `--from`; built-in documents only, holding `--verify` and
+`--sandbox`; the model when the document names none, holding `--model` and
+`--service-tier`; and how you watch it, holding `--viewer` and
+`--conversation`. `--host` is listed above all four, because it selects a
+different way to run rather than adjusting a run. Every other form names no
+heading on any row, so its help prints one list. `foe --help`, which
 `foe help` repeats, prints the running form's options and every other
 command word; `foe <command> --help`, which `foe help <command>` repeats,
 prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
-reprinting every form.
+reprinting every form. The table also holds the spellings the running form
+dropped — `--fork`, `--at`, `--no-open`, `--headless`, and `--key-file` —
+so each is refused by its own name with the option that says the same
+thing.
 
 By default, a run writes one JSON outcome line to standard output when the
 episode ends. This also applies to interactive terminals. A shell reads it
@@ -790,23 +801,31 @@ with `--host`.
 The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
 for `failed`. Diagnostics go to standard error. The log goes to the file.
 
-The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A workflow launch over a directory with
+Every run creates a directory of its own for the log, named by the episode
+id, under `--log-dir` when the command line gives one and under `.foe` in
+the current directory otherwise. Two runs given the same directory therefore
+keep separate logs. The run prints the directory it created on standard
+error as `foe: log PATH`, and a caller reads the directory from that line
+rather than assembling it. `foe view DIR` renders a directory of episodes
+side by side, so the directory a series of runs shares is also what the
+viewer takes. A directory holding `child-launch.json`, which a parent
+process writes for a child, is the child's own directory rather than a
+parent of one, because the parent chose the directory and the episode id
+together. A workflow launch over a directory with
 recorded `workflow/*` events is refused before queued tasks or nodes start.
 The restriction also applies to forks containing those events. Execution without a workflow
 can continue under the log's episode id. A log ending at `seed/end`
 — a prepared fork — or at an event boundary with every binding obligation
 closed continues in place. An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean
-boundary into a fresh directory beside it, named on standard error, which
-the run then continues. Resuming requires the execution contract that ran.
+boundary into a fresh directory beside it, which the run then continues and
+names on standard error. Resuming requires the execution contract that ran.
 A configuration whose fingerprint differs from the log's
 `episode/start.contract_fingerprint` is refused with both fingerprints
 named. A log ending at `seed/end` is
 exempt from the resume comparison. An ordinary seeded `episode/start`
 records its source's contract. A spawned child instead checks the expected
-fingerprint in its launch metadata before reaching resume. A finished log — one with
-`episode/end` — accepts nothing and is forked instead. A `child-launch.json`
+fingerprint in its launch metadata before reaching resume. A `child-launch.json`
 beside the log, which a parent writes for a child, supplies the child's
 id, its parent, its team lead, its expected contract fingerprint, and its
 effective runtime allowance.
@@ -817,19 +836,44 @@ contract in that event, so resume compares the recorded child fingerprint before
 continuing it. An ordinary command-line fork preserves its source contract in
 the start event and remains exempt from that comparison at `seed/end`.
 
-`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
-log's events below SEQ under the seeding rules of
-[log-format.md](log-format.md): the new episode draws a fresh id, its
-`episode/start.fork_origin` names the source episode and the boundary, and
-the task the launch carries — the positional task, or the document's task
-under `--config` — is appended as a `system` inbox item after `seed/end`,
-since the one `task` item per log is the copied one. The boundary's
-validity is the seeding API's rule, surfaced as the seeding error states
-it. The fork's directory is `--log-dir` when given, refused when it
-already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
-forks from one prefix — is a caller-side loop over this form;
+`--from DIR[@SEQ]` continues or forks the episode whose log is in DIR. DIR
+is one episode's own directory, the one a run names as `foe: log PATH`; a
+directory holding no `episode.jsonl`, such as the one `--log-dir` names, is
+refused with the missing file named. What the run does is a function of the
+source log's state and of whether the command line gives a task of its own.
+
+| command | source log | result |
+|---|---|---|
+| `foe --from DIR` | has not ended | continues that episode: same id, same task, same contract required, recorded allowance restored |
+| `foe --from DIR` | ended | refused: the episode ended, so a task to continue from its whole conversation or `@SEQ` to fork earlier |
+| `foe "task" --from DIR` | has not ended | refused: a continued episode keeps its task, so `@SEQ` to fork with a new one |
+| `foe "task" --from DIR` | ended | forks at the end of the conversation: the whole conversation as context, the new task as the directive |
+| `foe "task" --from DIR@SEQ` | either | forks at SEQ: the events below SEQ as context, the new task as the directive |
+| `foe --from DIR@SEQ` | either | forks at SEQ under the task the source recorded, a rerun from that point |
+
+Without `@SEQ` the run continues one episode and refuses anything that would
+change it. With `@SEQ` the run always makes a new episode. Which of the
+three the run chose is printed on standard error under the log directory.
+
+A fork is seeded from the source log's events below SEQ under the seeding
+rules of [log-format.md](log-format.md): the new episode draws a fresh id,
+its `episode/start.fork_origin` names the source episode and the boundary,
+and the task the launch carries is appended as a `system` inbox item after
+`seed/end`, since the one `task` item per log is the copied one. The task
+the source recorded is the exception, because the copied prefix already
+carries it; such a run reruns the conversation from the boundary and appends
+nothing. The boundary's validity is the seeding API's rule, surfaced as the
+seeding error states it. A fork restores the conversation up to the boundary
+and nothing else: the filesystem is whatever it is when the fork runs, so a
+fork over changed files sees the changed files. The fork's directory is a
+fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
+several forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
+
+A built-in document carries no task of its own, so `foe --from DIR` and
+`foe --from DIR@SEQ` without one take the task the source log recorded.
+A document in a file carries its own task, which directs the fork.
 
 What runs is the document `--config` names, else `.foe/contract.json` in the
 working directory, else the built-in coding workflow. `--config` takes a
@@ -946,28 +990,36 @@ accepts, and a provider whose row carries no tier refuses the option.
 absent, the default model file's value remains in effect. Otherwise the
 provider applies its own default.
 
-`--key-file` names the provider credential file explicitly. It supplies an API
-key file, OAuth token state, or managed-cloud credential according to the
-selected provider. Without it, a required convention file under
+A credential file is named where a model is configured rather than on the
+running command line. `foe login PROVIDER --key-file PATH` records the file
+for later runs, and a document's `model` block names one for a single
+contract, through the credential option its provider defines: an API key
+file, OAuth token state, or a managed-cloud credential, according to the
+provider. Where no option names a file, a required convention file under
 `~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
 an explicitly named file and sends no authentication header when none is
 named. The home directory comes from the passwd database, never from the
 environment.
 
-`--model`, `--key-file`, and `--service-tier` describe one `model` block
-between them, and the document under `--config` decides whether they apply.
-A document that declares a `model` block owns its model, so each of the
-three is refused. A document that declares no `model` block has stated that
-it names no model, so the three supply one exactly as they do for the
-built-in document; without any of them such a document runs under a host.
-The block they supply changes no fingerprint, which covers what a model can
-observe rather than the transport that reaches it. `--verify` and
-`--sandbox` are refused with a document in a file whatever it declares,
-because a document carries its own completion gate and sandbox mode.
+`--model` and `--service-tier` describe one `model` block between them, and
+the document under `--config` decides whether they apply. A document that
+declares a `model` block owns its model, so both are refused. A document
+that declares no `model` block has stated that it names no model, so the two
+supply one exactly as they do for the built-in document; without either such
+a document runs under a host. The block they supply changes no fingerprint,
+which covers what a model can observe rather than the transport that reaches
+it. `--verify` and `--sandbox` are refused with a document in a file
+whatever it declares, because a document carries its own completion gate and
+sandbox mode.
 
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with
-mode 0600. It sets the default model when none is set. [models.md](models.md)
+mode 0600. It sets the default model when none is set.
+`foe login PROVIDER --key-file PATH` asks nothing and records PATH as the
+file that provider's credential is read from, by naming it in the default
+model block through the provider's credential option. That command needs a
+model of the provider: `--model MODEL` names one, and a recorded default of
+the same provider supplies one otherwise. [models.md](models.md)
 specifies the providers, validation, and flows.
 
 `foe init --repository PATH` writes a starting execution contract to
@@ -992,9 +1044,10 @@ this command writes is the file a later run in that repository root uses
 when its command line names no document, under the rule "The command line"
 states. The report the command prints states every one of these decisions.
 
-Without `--headless` or `--host`, the binary serves the viewer on
+Under `--viewer open` or `--viewer serve`, and without `--host`, the binary
+serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
-`/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
+`/usr/bin/xdg-open` under `--viewer open`, and keeps serving for
 three seconds after the outcome is written so that an open page receives
 the final events. `foe view DIR --serve` serves a finished directory for as
 long as the process runs.
@@ -1154,7 +1207,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,750 lines. It is separate because it serves a person at a terminal
+under 1,900 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

@@ -100,30 +100,50 @@ fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
     value
 }
 
+/// The episode directory a run announced, which is what a caller reads its
+/// log from. docs/design.md "The command line" fixes the line.
+fn announced_log(stderr: &str) -> PathBuf {
+    let named = stderr.lines().find_map(|line| line.strip_prefix("foe: log "));
+    PathBuf::from(named.unwrap_or_else(|| panic!("the run announced no log directory:\n{stderr}")))
+}
+
 /// Runs the binary under `--host`, answering each `model/request` with the
 /// next scripted response and each `host/tool-call` through `answer`.
 /// Returns every event the binary wrote and its exit code.
 fn host_run(
     dir: &Path,
     config: &Value,
-    mut responses: Vec<Vec<Value>>,
+    responses: Vec<Vec<Value>>,
     answer: impl Fn(&str, &Value) -> Value,
 ) -> (Vec<Value>, i32) {
+    let (events, code, _) = host_run_with_log(dir, config, responses, answer);
+    (events, code)
+}
+
+/// `host_run`, and additionally the episode directory the run announced,
+/// under which its children's logs live.
+fn host_run_with_log(
+    dir: &Path,
+    config: &Value,
+    mut responses: Vec<Vec<Value>>,
+    answer: impl Fn(&str, &Value) -> Value,
+) -> (Vec<Value>, i32, PathBuf) {
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(config).unwrap()).unwrap();
-    let log_dir = dir.join("log");
     let mut child = Command::new(FOE)
         .arg("--config")
         .arg(&config_path)
         .arg("--host")
         .arg("--log-dir")
-        .arg(&log_dir)
+        .arg(dir.join("log"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     let mut stdin = child.stdin.take().unwrap();
     let stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut stderr = child.stderr.take().unwrap();
     let mut events = Vec::new();
     let mut send = |mut line: Value, tag: Option<&Value>| {
         if let Some(id) = tag {
@@ -166,10 +186,13 @@ fn host_run(
     }
     drop(stdin);
     let code = child.wait().unwrap().code().unwrap();
+    let mut err = String::new();
+    std::io::Read::read_to_string(&mut stderr, &mut err).unwrap();
+    let log_dir = announced_log(&err);
     let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
     let written: Vec<Value> = file.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_eq!(written, events, "standard output is the log, line for line");
-    (events, code)
+    (events, code, log_dir)
 }
 
 /// docs/log-format.md "Lifecycle": episode/start records the complete
@@ -348,17 +371,17 @@ fn a_child_records_and_enforces_its_effective_budget() {
 fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(config).unwrap()).unwrap();
-    let log_dir = dir.join("log");
-    let code = Command::new(FOE)
+    let run = Command::new(FOE)
         .arg("--config")
         .arg(&config_path)
         .arg("--log-dir")
-        .arg(&log_dir)
-        .arg("--headless")
-        .status()
-        .unwrap()
-        .code()
+        .arg(dir.join("log"))
+        .arg("--viewer")
+        .arg("off")
+        .output()
         .unwrap();
+    let code = run.status.code().unwrap();
+    let log_dir = announced_log(&String::from_utf8_lossy(&run.stderr));
     fn read(dir: &Path, logs: &mut Vec<Vec<Value>>) {
         let file = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
         logs.push(file.lines().map(|l| serde_json::from_str(l).unwrap()).collect());
@@ -623,7 +646,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     let mut child = vec![text("proposing")];
     child.extend(call("tc_1", "return", r#"{"value": {"experiment": "swap", "branch": "accept"}}"#));
     child.push(done("tool"));
-    let (events, code) = host_run(&dir, &config, vec![child], |name, args| match name {
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, vec![child], |name, args| match name {
         "list" => json!({ "targets": ["a", "b"] }),
         "derive" => {
             assert_eq!(args["experiment"], "swap", "the pointer binding resolved");
@@ -642,7 +665,7 @@ fn a_workflow_fires_tool_model_and_tool_nodes_and_completes() {
     assert_eq!(spawn["data"]["contract"], "propose");
     let start = events.iter().find(|e| e["type"] == "workflow/node-start" && e["data"]["node"] == "propose").unwrap();
     let child_id = start["data"]["child_id"].as_str().unwrap();
-    let child_log = dir.join("log/children").join(child_id).join("episode.jsonl");
+    let child_log = log_dir.join("children").join(child_id).join("episode.jsonl");
     let child: Vec<Value> =
         std::fs::read_to_string(&child_log).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     let launch: Value =
@@ -688,13 +711,13 @@ fn a_spawned_child_can_run_its_workflow_model_node() {
     delegate.push(done("tool"));
     let child = vec![text("workflow result"), done("end")];
     let finish = vec![text("finished"), done("end")];
-    let (events, code) = host_run(&dir, &config, vec![delegate, child, finish], |_, _| Value::Null);
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, vec![delegate, child, finish], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(events.last().unwrap()["data"]["outcome"], json!({ "kind": "completed", "value": "finished" }));
     let reserved = events.iter().find(|e| e["type"] == "budget/reserve").unwrap();
     assert_eq!(reserved["data"]["reserved"]["episodes"], 2, "the child's subtree holds its model node");
     let spawn = events.iter().find(|e| e["type"] == "spawn/start").unwrap();
-    let worker_log = dir.join("log/children").join(spawn["data"]["child_id"].as_str().unwrap()).join("episode.jsonl");
+    let worker_log = log_dir.join("children").join(spawn["data"]["child_id"].as_str().unwrap()).join("episode.jsonl");
     let worker: Vec<Value> =
         std::fs::read_to_string(worker_log).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
     let node = worker.iter().find(|e| e["type"] == "workflow/node-start").unwrap();
@@ -923,11 +946,11 @@ fn a_child_tool_inherits_no_contract_tree_descriptor() {
     run_probe.push(done("tool"));
     let responses =
         vec![delegate, run_probe, vec![text("probe finished"), done("end")], vec![text("done"), done("end")]];
-    let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, responses, |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     let child_id =
         events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
-    let child = child_events(&dir, child_id);
+    let child = child_events(&log_dir, child_id);
     let result = child.iter().find(|event| event["type"] == "tool/result" && event["data"]["name"] == "probe").unwrap();
     assert_eq!(result["data"]["value"]["exit_code"], 0, "{result}");
     assert!(
@@ -974,7 +997,7 @@ fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
     let responses =
         vec![delete, delegate, vec![text("child ready"), done("end")], vec![text("root ready"), done("end")]];
     let source = latent.clone();
-    let (events, code) = host_run(&dir, &config, responses, move |name, _| {
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, responses, move |name, _| {
         assert_eq!(name, "delete");
         std::fs::remove_file(&source).unwrap();
         json!({"removed": true})
@@ -983,10 +1006,10 @@ fn a_child_starts_after_an_ungranted_descendant_executable_source_is_deleted() {
     assert!(!latent.exists());
     let child_id =
         events.iter().find(|event| event["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
-    let child = child_events(&dir, child_id);
+    let child = child_events(&log_dir, child_id);
     assert_eq!(child.last().unwrap()["data"]["outcome"], json!({"kind": "completed", "value": "child ready"}));
     let launch: Value = serde_json::from_slice(
-        &std::fs::read(dir.join("log/children").join(child_id).join("child-launch.json")).unwrap(),
+        &std::fs::read(log_dir.join("children").join(child_id).join("child-launch.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(child[0]["data"]["contract_fingerprint"], launch["expected_contract_fingerprint"]);
@@ -1067,7 +1090,8 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
         chunks.push(done("tool"));
         chunks
     };
-    let (events, code) = host_run(&dir, &config, vec![widen(), widen()], |_, _| json!({ "ok": true }));
+    let (events, code, log_dir) =
+        host_run_with_log(&dir, &config, vec![widen(), widen()], |_, _| json!({ "ok": true }));
     assert_eq!(code, 2);
     let outcome = &events.last().unwrap()["data"]["outcome"];
     assert_eq!(outcome["code"], "recovery-exhausted");
@@ -1080,7 +1104,7 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
         .map(|e| e["data"]["label"].as_str().unwrap())
         .collect();
     assert_eq!(labels, ["widen", "widen"]);
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2, "one child per model firing");
+    assert_eq!(std::fs::read_dir(log_dir.join("children")).unwrap().count(), 2, "one child per model firing");
 }
 
 /// The built-in coding workflow's shape, as `foe "task" --verify PATH`
@@ -1157,8 +1181,8 @@ fn workflow_return(value: Value) -> Vec<Value> {
     chunks
 }
 
-fn child_events(dir: &Path, child_id: &str) -> Vec<Value> {
-    let file = dir.join("log/children").join(child_id).join("episode.jsonl");
+fn child_events(log_dir: &Path, child_id: &str) -> Vec<Value> {
+    let file = log_dir.join("children").join(child_id).join("episode.jsonl");
     std::fs::read_to_string(file).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect()
 }
 
@@ -1204,12 +1228,12 @@ fn a_workflow_child_can_release_a_task_lifetime_session() {
     start.extend(call("tc_start", "session", &args));
     start.push(done("tool"));
     let finish = vec![text("service started"), done("end")];
-    let (events, code) = host_run(&dir, &config, vec![start, finish], |_, _| Value::Null);
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, vec![start, finish], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
 
     let node = events.iter().find(|event| event["type"] == "workflow/node-start").unwrap();
     let child_id = node["data"]["child_id"].as_str().unwrap();
-    let child = child_events(&dir, child_id);
+    let child = child_events(&log_dir, child_id);
     let release = child
         .iter()
         .find(|event| {
@@ -1224,7 +1248,7 @@ fn a_workflow_child_can_release_a_task_lifetime_session() {
     assert_eq!(pid as i64, process_group);
     assert!(Path::new(&format!("/proc/{pid}")).exists(), "the process survived the root foe invocation");
 
-    let spill = dir.join("log/children").join(child_id).join("spill");
+    let spill = log_dir.join("children").join(child_id).join("spill");
     let outputs: Vec<_> = std::fs::read_dir(spill).unwrap().flatten().map(|entry| entry.path()).collect();
     let stdout = outputs.iter().find(|path| path.extension().is_some_and(|ext| ext == "stdout")).unwrap();
     let stderr = outputs.iter().find(|path| path.extension().is_some_and(|ext| ext == "stderr")).unwrap();
@@ -1247,7 +1271,7 @@ fn accepted_assessment_is_verified_at_the_workflow_root() {
     let config = coding_workflow(&dir, Some(&script));
     let implement = vec![text("implemented the change"), done("end")];
     let assessment = workflow_return(json!({ "branch": "accept", "summary": "independently assessed" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
@@ -1268,7 +1292,7 @@ fn accepted_assessment_is_verified_at_the_workflow_root() {
         format!("sha256:{}", hex::encode(sha2::Sha256::digest(std::fs::read(&script).unwrap())))
     };
     assert_eq!(evidence["data"]["verifier_fingerprint"], json!(hashed));
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(log_dir.join("children")).unwrap().count(), 2);
 }
 
 /// The same accepted branch completes from the assessment's typed value when
@@ -1279,14 +1303,14 @@ fn without_a_verifier_the_assessment_runs() {
     let config = coding_workflow(&dir, None);
     let implement = vec![text("implemented"), done("end")];
     let assessment = workflow_return(json!({ "branch": "accept", "summary": "assessed" }));
-    let (events, code) = host_run(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
+    let (events, code, log_dir) = host_run_with_log(&dir, &config, vec![implement, assessment], |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     assert_eq!(
         events.last().unwrap()["data"]["outcome"],
         json!({ "kind": "completed", "value": { "branch": "accept", "summary": "assessed" } })
     );
     assert_eq!(node_starts(&events), [("implement-task".into(), 1), ("assess-task".into(), 1)]);
-    assert_eq!(std::fs::read_dir(dir.join("log/children")).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(log_dir.join("children")).unwrap().count(), 2);
 }
 
 /// docs/design.md "The command line": a repair branch carries the assessment
@@ -1812,14 +1836,17 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
         value["grants"] = json!({ "read": ["/no/such/repository-root"] });
     });
     std::fs::write(dir.join(".foe/contract.json"), serde_json::to_vec_pretty(&document).unwrap()).unwrap();
-    let refused_key_file = ["--model", "openai/gpt-5.6-sol", "--key-file", "/no/such/key.json", "--headless"];
+    // A sandbox mode none of the three matches is refused by the built-in
+    // document alone; a document in a file refuses `--sandbox` outright.
+    let refused_mode = ["--model", "openai/gpt-5.6-sol", "--sandbox", "nonsense", "--viewer", "off"];
+    let built_in_ran = "--sandbox nonsense: expected best-effort, required, or off";
     let run = |directory: &Path, args: &[&str]| {
         let output = Command::new(FOE).args(args).current_dir(directory).output().unwrap();
         assert!(!output.status.success(), "`foe {}` was expected to fail before an episode starts", args.join(" "));
         String::from_utf8(output.stderr).unwrap()
     };
 
-    let discovered = run(&dir, &["do the thing", "--headless"]);
+    let discovered = run(&dir, &["do the thing", "--viewer", "off"]);
     assert!(discovered.contains("foe: using .foe/contract.json, workflow repository-document"), "{discovered}");
     assert!(
         discovered.contains("/no/such/repository-root"),
@@ -1827,12 +1854,12 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     );
 
     let mut named = vec!["do the thing", "--config", "builtin:coding"];
-    named.extend(refused_key_file);
+    named.extend(refused_mode);
     let named = run(&dir, &named);
     assert!(!named.contains("using .foe/contract.json"), "a built-in name outranks the repository document: {named}");
-    assert!(named.contains("--key-file /no/such/key.json"), "{named}");
+    assert!(named.contains(built_in_ran), "{named}");
 
-    let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--headless"]);
+    let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--viewer", "off"]);
     assert_eq!(
         verify.trim(),
         "foe: --verify applies to the built-in coding workflow; .foe/contract.json declares its own behavior"
@@ -1841,18 +1868,16 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     let broken = scratch("dangling-repository-contract");
     std::fs::create_dir(broken.join(".foe")).unwrap();
     std::os::unix::fs::symlink("/no/such/contract.json", broken.join(".foe/contract.json")).unwrap();
-    let mut dangling = vec!["do the thing"];
-    dangling.extend(refused_key_file);
-    let dangling = run(&broken, &dangling);
+    let dangling = run(&broken, &["do the thing", "--viewer", "off"]);
     assert!(dangling.contains(".foe/contract.json: No such file"), "a broken entry is reported: {dangling}");
-    assert!(!dangling.contains("--key-file"), "the built-in workflow does not replace it: {dangling}");
+    assert!(!dangling.contains(built_in_ran), "the built-in workflow does not replace it: {dangling}");
 
     let empty = scratch("no-repository-contract");
     let mut bare = vec!["do the thing"];
-    bare.extend(refused_key_file);
+    bare.extend(refused_mode);
     let bare = run(&empty, &bare);
     assert!(!bare.contains("using .foe/contract.json"), "{bare}");
-    assert!(bare.contains("--key-file /no/such/key.json"), "without that file the built-in workflow runs: {bare}");
+    assert!(bare.contains(built_in_ran), "without that file the built-in workflow runs: {bare}");
 }
 
 /// docs/design.md "The command line": `foe plan --config builtin:coding`
@@ -2039,19 +2064,162 @@ fn interrupted_log(dir: &Path) -> (PathBuf, PathBuf, String, u64) {
     });
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
-    let log_dir = dir.join("log");
     let mut first = vec![text("I will ask.")];
     first.extend(call("tc_1", "ask_host", "{}"));
     first.push(done("tool"));
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
-    let (events, code, _) = drive(&config_path, &extra, vec![first], Some("host/tool-call"), false);
+    let parent = dir.join("log");
+    let extra = ["--log-dir", parent.to_str().unwrap()];
+    let (events, code, err) = drive(&config_path, &extra, vec![first], Some("host/tool-call"), false);
     assert_eq!(code, None, "the launch was killed, not ended");
+    let log_dir = announced_log(&err);
     assert_eq!(types(&events).last(), Some(&"assistant/message"), "the tool call is open in the log");
     let written = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap().lines().count() as u64;
     let mut file = std::fs::OpenOptions::new().append(true).open(log_dir.join("episode.jsonl")).unwrap();
     file.write_all(b"{\"seq\":99,\"time\":").unwrap();
     let episode_id = events[0]["data"]["id"].as_str().unwrap().to_string();
     (config_path, log_dir, episode_id, written)
+}
+
+/// docs/design.md "The command line": `--log-dir DIR` names the directory
+/// the episode's own directory is created under, so two runs under one
+/// directory keep separate logs, and each run names what it created on
+/// standard error.
+#[test]
+fn each_run_creates_its_own_directory_under_the_one_named() {
+    let dir = scratch("log-parent");
+    let config = config(&dir, |_| {});
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let parent = dir.join("runs");
+    let extra = ["--log-dir", parent.to_str().unwrap()];
+    let mut created = Vec::new();
+    for _ in 0..2 {
+        let responses = vec![vec![text("done"), done("end")]];
+        let (events, code, err) = drive(&config_path, &extra, responses, None, false);
+        assert_eq!(code, Some(0), "{err}");
+        let log_dir = announced_log(&err);
+        assert_eq!(log_dir.parent(), Some(parent.as_path()), "the directory named is the parent");
+        assert_eq!(log_dir.file_name().unwrap().to_str(), events[0]["data"]["id"].as_str());
+        assert!(log_dir.join("episode.jsonl").is_file(), "the announced directory holds the log");
+        created.push(log_dir);
+    }
+    assert_ne!(created[0], created[1], "a second run under the same directory collides with nothing");
+}
+
+/// A configuration whose `model` block reaches a scripted loopback endpoint,
+/// so a run without `--host` completes from fixed responses and a command
+/// line may carry a task of its own.
+fn scripted_model_config(dir: &Path, server: &Server) -> Value {
+    let key_file = dir.join("endpoint.key");
+    std::fs::write(&key_file, "fixture-key\n").unwrap();
+    config(dir, |value| {
+        value["model"] = json!({
+            "provider": "openai", "model": "gpt-5.6-sol",
+            "base_url": server.origin(), "api_key_file": key_file
+        });
+    })
+}
+
+/// Every event of one episode log, in order.
+fn log_events(dir: &Path) -> Vec<Value> {
+    let file = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
+    file.lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+}
+
+/// Runs the built binary with the given arguments, returning its exit code
+/// and its standard error.
+fn cli_run(dir: &Path, args: &[&str]) -> (i32, String) {
+    let run = Command::new(FOE).args(args).current_dir(dir).output().unwrap();
+    (run.status.code().unwrap(), String::from_utf8_lossy(&run.stderr).into_owned())
+}
+
+/// docs/design.md "The command line": `--from DIR` over a finished episode
+/// refuses to continue it and names what to do instead, and a task on the
+/// command line forks that episode at the end of its conversation, carrying
+/// the whole conversation as context and the new task as the directive.
+#[test]
+fn a_finished_episode_refuses_to_continue_and_forks_under_a_new_task() {
+    let dir = scratch("from-finished");
+    let server = Server::start(vec![
+        Reply::event_stream(&response_event_stream("the first outcome", 11, 4, 0)),
+        Reply::event_stream(&response_event_stream("the fork's outcome", 11, 4, 0)),
+    ]);
+    let config_path = dir.join("config.json");
+    let value = scripted_model_config(&dir, &server);
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let (config, parent) = (config_path.to_str().unwrap(), dir.join("runs"));
+    let first = ["--config", config, "--log-dir", parent.to_str().unwrap(), "--viewer", "off"];
+    let (code, err) = cli_run(&dir, &first);
+    assert_eq!(code, 0, "{err}");
+    let source = announced_log(&err);
+    let named = source.to_str().unwrap();
+
+    let (code, err) = cli_run(&dir, &["--config", config, "--from", named, "--viewer", "off"]);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("ended; give a task to continue from its whole conversation"), "{err}");
+    assert!(err.contains(&format!("--from {named}@SEQ")), "the refusal names how to fork earlier: {err}");
+
+    let forked = ["continue from there", "--config", config, "--from", named, "--viewer", "off"];
+    let mut argv = forked.to_vec();
+    argv.extend(["--log-dir", parent.to_str().unwrap()]);
+    let (code, err) = cli_run(&dir, &argv);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains(&format!("fork of {named} at seq")), "the mode is announced: {err}");
+    let events = log_events(&announced_log(&err));
+    let source_id = log_events(&source)[0]["data"]["id"].as_str().unwrap().to_string();
+    assert_eq!(events[0]["data"]["fork_origin"]["episode_id"], json!(source_id));
+    let kinds = types(&events);
+    let seeded = kinds.iter().position(|kind| *kind == "seed/end").expect("the fork is seeded");
+    assert_eq!(events[seeded + 1]["data"]["source"], "system", "the new task follows seed/end");
+    assert_eq!(events[seeded + 1]["data"]["content"][0]["text"], "continue from there");
+    assert_eq!(events.last().unwrap()["data"]["outcome"]["value"], "the fork's outcome");
+}
+
+/// docs/design.md "The command line": `--from DIR` over an episode that has
+/// not ended refuses a task of its own, because a continued episode keeps the
+/// task it started with, and `--from DIR@SEQ` forks it at that boundary into
+/// a new episode whatever the source log's state.
+#[test]
+fn an_unfinished_episode_refuses_a_new_task_and_forks_at_a_boundary() {
+    let dir = scratch("from-unfinished");
+    let server = Server::start(vec![Reply::event_stream(&response_event_stream("the rerun outcome", 11, 4, 0))]);
+    let config_path = dir.join("config.json");
+    let value = scripted_model_config(&dir, &server);
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let planned = plan(&config_path);
+    let source = dir.join("source");
+    std::fs::create_dir(&source).unwrap();
+    let start = json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
+        "id": "ep_unfinished", "parent_id": null, "fork_origin": null, "team_id": null,
+        "contract": planned["contract"], "contract_fingerprint": planned["contract_fingerprint"],
+        "task": "do the thing", "runtime": { "version": "0", "build": "unknown" },
+        "sandbox": { "mode": "best-effort", "landlock_abi": 0, "resolved_permissions": {},
+            "process_boundary": { "kind": "process-group", "subtree_cleanup": "observational" } } } });
+    let item = json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
+        "source": "task", "content": [ { "type": "text", "text": "do the thing" } ],
+        "from": null, "message_id": null } });
+    std::fs::write(source.join("episode.jsonl"), format!("{start}\n{item}\n")).unwrap();
+    let (config, named) = (config_path.to_str().unwrap(), source.to_str().unwrap());
+
+    let refused = ["something else", "--config", config, "--from", named, "--viewer", "off"];
+    let (code, err) = cli_run(&dir, &refused);
+    assert_eq!(code, 1, "{err}");
+    assert!(err.contains("has not ended, and a continued episode keeps the task it started with"), "{err}");
+
+    let boundary = format!("{named}@2");
+    let parent = dir.join("runs");
+    let parent = parent.to_str().unwrap();
+    let rerun = ["--config", config, "--from", &boundary, "--log-dir", parent, "--viewer", "off"];
+    let (code, err) = cli_run(&dir, &rerun);
+    assert_eq!(code, 0, "{err}");
+    assert!(err.contains(&format!("fork of {named} at seq 2")), "the mode is announced: {err}");
+    let events = log_events(&announced_log(&err));
+    assert_eq!(events[0]["data"]["fork_origin"], json!({ "episode_id": "ep_unfinished", "seq": 2 }));
+    assert_ne!(events[0]["data"]["id"], "ep_unfinished", "a boundary always makes a new episode");
+    let kinds = types(&events);
+    let seeded = kinds.iter().position(|kind| *kind == "seed/end").expect("the fork is seeded");
+    assert_eq!(events[seeded + 1]["data"]["content"][0]["text"], "do the thing", "the document's task directs it");
+    assert_eq!(events.last().unwrap()["data"]["outcome"]["value"], "the rerun outcome");
 }
 
 /// docs/log-format.md "Seeding": launching over an interrupted log
@@ -2064,15 +2232,16 @@ fn an_interrupted_episode_resumes_and_completes() {
     let dir = scratch("resume");
     let (config_path, log_dir, source_id, written) = interrupted_log(&dir);
     let responses = vec![vec![text("resumed and finished"), done("end")]];
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let extra = ["--from", log_dir.to_str().unwrap()];
     let (events, code, err) = drive(&config_path, &extra, responses, None, true);
     assert_eq!(code, Some(0), "{err}");
-    assert!(err.contains("continues it in"), "the continuation directory is announced: {err}");
+    assert!(err.contains("stopped mid-line or mid-obligation"), "the continuation is announced: {err}");
     let start = &events[0]["data"];
     let new_id = start["id"].as_str().unwrap();
     assert_ne!(new_id, source_id, "the continuation is a fresh episode");
     assert_eq!(start["fork_origin"], json!({ "episode_id": source_id, "seq": written }));
-    assert!(dir.join(new_id).join("episode.jsonl").is_file(), "the copy lives beside the interrupted log");
+    let beside = log_dir.parent().unwrap().join(new_id);
+    assert!(beside.join("episode.jsonl").is_file(), "the copy lives beside the interrupted log");
     let kinds = types(&events);
     assert!(kinds.contains(&"seed/end"), "the continuation is seeded: {kinds:?}");
     let orphan = events.iter().find(|e| e["type"] == "tool/result").unwrap()["data"].clone();
@@ -2104,7 +2273,7 @@ fn resuming_under_a_different_contract_is_refused_with_both_fingerprints() {
     });
     let differing_path = dir.join("differing.json");
     std::fs::write(&differing_path, serde_json::to_vec_pretty(&differing).unwrap()).unwrap();
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let extra = ["--from", log_dir.to_str().unwrap()];
     let (events, code, err) = drive(&differing_path, &extra, vec![], None, false);
     assert_eq!((events.len(), code), (0, Some(1)));
     assert!(err.contains("resuming requires the contract that ran"), "{err}");
@@ -2136,9 +2305,10 @@ fn a_cleanly_stopped_log_continues_in_place() {
         "from": null, "message_id": null } });
     std::fs::write(log_dir.join("episode.jsonl"), format!("{start}\n{item}\n")).unwrap();
     let responses = vec![vec![text("continued to the end"), done("end")]];
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
+    let extra = ["--from", log_dir.to_str().unwrap()];
     let (events, code, err) = drive(&config_path, &extra, responses, None, false);
     assert_eq!(code, Some(0), "{err}");
+    assert!(err.contains("continues episode ep_prior in place"), "the mode is announced: {err}");
     assert_eq!(events[0]["data"]["id"], "ep_prior", "the same episode continues");
     assert!(!types(&events).contains(&"seed/end"), "no copy is seeded");
     let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
@@ -2146,20 +2316,21 @@ fn a_cleanly_stopped_log_continues_in_place() {
     assert_eq!(last["type"], "episode/end", "the episode ended in the original directory");
 }
 
-/// docs/design.md "The command line": `--fork SOURCE_DIR --at SEQ` seeds a
-/// fresh episode from the source's prefix and runs it under the task the
-/// launch carries, delivered as a `system` inbox item after `seed/end`.
+/// docs/design.md "The command line": `--from SOURCE_DIR@SEQ` seeds a fresh
+/// episode from the source's prefix and runs it under the task the launch
+/// carries, delivered as a `system` inbox item after `seed/end`.
 #[test]
 fn a_fork_runs_a_new_task_over_the_prior_context() {
     let dir = scratch("fork");
     let config = config(&dir, |_| {});
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
-    let log_dir = dir.join("log");
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
-    let (events, code, _) =
+    let parent = dir.join("log");
+    let extra = ["--log-dir", parent.to_str().unwrap()];
+    let (events, code, err) =
         drive(&config_path, &extra, vec![vec![text("the first outcome"), done("end")]], None, false);
     assert_eq!(code, Some(0));
+    let log_dir = announced_log(&err);
     let source_id = events[0]["data"]["id"].as_str().unwrap().to_string();
     let boundary = events.iter().find(|e| e["type"] == "assistant/message").unwrap()["seq"].as_u64().unwrap() + 1;
     let mut forked = config.clone();
@@ -2167,11 +2338,12 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
     let forked_path = dir.join("forked.json");
     std::fs::write(&forked_path, serde_json::to_vec_pretty(&forked).unwrap()).unwrap();
     let fork_dir = dir.join("fork");
-    let at = boundary.to_string();
-    let extra = ["--fork", log_dir.to_str().unwrap(), "--at", &at, "--log-dir", fork_dir.to_str().unwrap()];
+    let at = format!("{}@{boundary}", log_dir.display());
+    let extra = ["--from", &at, "--log-dir", fork_dir.to_str().unwrap()];
     let responses = vec![vec![text("the fork's outcome"), done("end")]];
     let (events, code, err) = drive(&forked_path, &extra, responses, None, true);
     assert_eq!(code, Some(0), "{err}");
+    assert!(err.contains(&format!("fork of {} at seq {boundary}", log_dir.display())), "{err}");
     let start = &events[0]["data"];
     assert_ne!(start["id"].as_str().unwrap(), source_id, "the fork is a fresh episode");
     assert_eq!(start["fork_origin"], json!({ "episode_id": source_id, "seq": boundary }));
@@ -2239,20 +2411,22 @@ fn a_spawned_fork_records_child_contract_evidence() {
     assert_eq!(events[0]["data"]["fork_origin"], json!({"episode_id": "ep_source", "seq": 2}));
 }
 
-/// The seeding API's boundary rule is surfaced verbatim when `--at` names
-/// a cut outside the source log.
+/// The seeding API's boundary rule is surfaced verbatim when `--from DIR@SEQ`
+/// names a cut outside the source log.
 #[test]
 fn a_fork_boundary_outside_the_source_log_is_refused() {
     let dir = scratch("fork-bad-seq");
     let config = config(&dir, |_| {});
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
-    let log_dir = dir.join("log");
-    let extra = [&["--log-dir"][..], &[log_dir.to_str().unwrap()][..]].concat();
-    let (_, code, _) = drive(&config_path, &extra, vec![vec![text("done"), done("end")]], None, false);
+    let parent = dir.join("log");
+    let extra = ["--log-dir", parent.to_str().unwrap()];
+    let (_, code, err) = drive(&config_path, &extra, vec![vec![text("done"), done("end")]], None, false);
     assert_eq!(code, Some(0));
+    let log_dir = announced_log(&err);
     let fork_dir = dir.join("fork");
-    let extra = ["--fork", log_dir.to_str().unwrap(), "--at", "999", "--log-dir", fork_dir.to_str().unwrap()];
+    let source = format!("{}@999", log_dir.display());
+    let extra = ["--from", &source, "--log-dir", fork_dir.to_str().unwrap()];
     let (events, code, err) = drive(&config_path, &extra, vec![], None, false);
     assert_eq!((events.len(), code), (0, Some(1)));
     assert!(err.contains("seed boundary lies within the source log"), "{err}");

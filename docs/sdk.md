@@ -291,7 +291,8 @@ below states what each choice means.
 
 The package writes the document to a temporary file, creates `log_dir`
 when it does not exist, and launches
-`foe --config FILE --host --log-dir DIR`. The temporary file is removed
+`foe --config FILE --host --log-dir DIR`. The binary creates the episode's
+own directory under that one and names it in `handle.log_dir`. The temporary file is removed
 when the binary exits. `on_event` receives every line the binary writes,
 parsed into a `foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`,
 and `version`; the callback runs on the event loop and should return
@@ -310,7 +311,9 @@ request; the package has no opinion about its value.
   `foe.Runtime` with the `version` and `build` the binary stated in
   `episode/start`; `build` is `sha256:<hex>` of the running binary, or the
   word `unknown` when the binary could not read its own image;
-- `handle.episode_id`, `handle.log_dir`, `handle.outcome`, and
+- `handle.episode_id`, `handle.log_dir` — the directory the binary created
+  for this episode, which is the episode id under the directory `log_dir`
+  named, and None until `episode/start` — `handle.outcome`, and
   `handle.done`.
 
 Both `pid` and `runtime` hold their values before the episode's first

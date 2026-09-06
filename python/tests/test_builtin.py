@@ -75,6 +75,24 @@ def _verifier(root: Path, findings: int) -> Path:
     return verifier
 
 
+def _run(contract: foe.ExecutionContract, task: str, backend: foe.ModelBackend, log_dir: Path) -> tuple[foe.Outcome, Path]:
+    """Run one document and return its outcome and the episode directory.
+
+    `log_dir` is the directory the binary creates the episode's own directory
+    under, which docs/design.md "The command line" states for `--log-dir`.
+    """
+
+    async def scenario() -> tuple[foe.Outcome, Path]:
+        handle = await foe.start_config(
+            contract.to_dict(task), model_backend=backend, binary=BINARY, log_dir=log_dir
+        )
+        outcome = await handle.wait()
+        assert handle.log_dir is not None
+        return outcome, handle.log_dir
+
+    return asyncio.run(scenario())
+
+
 def _fires(log_dir: Path, node: str) -> int:
     """How many times a workflow node started, from the episode log."""
     started = 0
@@ -195,16 +213,10 @@ def test_a_finding_that_the_next_attempt_resolves_completes_the_run(tmp_path: Pa
     """One finding re-fires the completing node, and the second attempt is accepted."""
     root = _root(tmp_path)
     contract = foe.builtin("coding", root, binary=BINARY, verify=_verifier(root, findings=1))
-    outcome = asyncio.run(
-        foe.run_config(
-            contract.to_dict("Report that the repository needs no change."),
-            model_backend=_reads_then_returns(root / "notes.txt"),
-            binary=BINARY,
-            log_dir=tmp_path / "episode",
-        )
-    )
+    task = "Report that the repository needs no change."
+    outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
     assert isinstance(outcome, foe.Completed), outcome
-    assert _fires(tmp_path / "episode", "assess-task") == 2
+    assert _fires(episode, "assess-task") == 2
 
 
 def test_a_finding_that_never_clears_blocks_after_the_stated_retries(tmp_path: Path) -> None:
@@ -217,17 +229,11 @@ def test_a_finding_that_never_clears_blocks_after_the_stated_retries(tmp_path: P
     root = _root(tmp_path)
     retries = 3
     contract = foe.builtin("coding", root, binary=BINARY, verify=_verifier(root, findings=99), retries=retries)
-    outcome = asyncio.run(
-        foe.run_config(
-            contract.to_dict("Report that the repository needs no change."),
-            model_backend=_reads_then_returns(root / "notes.txt"),
-            binary=BINARY,
-            log_dir=tmp_path / "episode",
-        )
-    )
+    task = "Report that the repository needs no change."
+    outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
     assert isinstance(outcome, foe.Blocked), outcome
     assert outcome.code == "verification-unsatisfiable"
-    assert _fires(tmp_path / "episode", "assess-task") == retries + 1
+    assert _fires(episode, "assess-task") == retries + 1
 
 
 def test_a_host_tool_verifier_gates_the_document(tmp_path: Path) -> None:
@@ -254,16 +260,10 @@ def test_the_returned_contract_runs_under_run_config(tmp_path: Path) -> None:
     """The document the package returns runs, with this host answering the model."""
     root = _root(tmp_path)
     contract = foe.builtin("coding", root, binary=BINARY)
-    outcome = asyncio.run(
-        foe.run_config(
-            contract.to_dict("Report that the repository needs no change."),
-            model_backend=_reads_then_returns(root / "notes.txt"),
-            binary=BINARY,
-            log_dir=tmp_path / "episode",
-        )
-    )
+    task = "Report that the repository needs no change."
+    outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
     assert isinstance(outcome, foe.Completed), outcome
-    events = (tmp_path / "episode" / "episode.jsonl").read_text(encoding="utf-8")
+    events = (episode / "episode.jsonl").read_text(encoding="utf-8")
     assert '"type":"workflow/node-end"' in events
 
 

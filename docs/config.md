@@ -559,8 +559,10 @@ credential then reads `~/.config/foe/credentials/<provider>.json`, the file
 `foe login` writes. `compatible-http` reads only an explicitly named key file
 and sends no authentication header when the option is absent. An explicit
 `api_key_file`, `token_file`, or `credentials_file` replaces a convention
-path. A resolved path is written into the block that
-`episode/start.contract` records. Nothing is read from the environment.
+path, and is where a document that needs a credential of its own names one:
+the running command line has no credential option. A resolved path is
+written into the block that `episode/start.contract` records. Nothing is
+read from the environment.
 
 One block per provider:
 

@@ -24,6 +24,11 @@ error and terminates the episode with `failed`.
 foe --config <path> --host [--log-dir <path>]
 ```
 
+`--log-dir` names the directory the episode's own directory is created
+under, as it does for every run, and the run prints the directory it created
+on standard error. A host reads the log from standard output and needs
+neither.
+
 `--host` selects this protocol. Standard output then carries the log, and
 standard input carries the host's answers. Without `--host`, standard output
 carries one JSON outcome line at the end by default. `--conversation` selects

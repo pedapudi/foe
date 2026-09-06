@@ -51,12 +51,12 @@ fn parse(line: &str) -> Result<Command, String> {
 fn conversation_is_an_explicit_running_option() {
     let Ok(Command::Run(default)) = parse("a-task") else { panic!() };
     assert!(!default.conversation);
-    for input in ["a-task --conversation", "--config c.json --conversation --headless"] {
+    for input in ["a-task --conversation", "--config c.json --conversation --viewer off"] {
         let Ok(Command::Run(options)) = parse(input) else { panic!("{input}") };
         assert!(options.conversation);
     }
-    let Ok(Command::Run(options)) = parse("a-task --conversation --no-open") else { panic!() };
-    assert!(options.conversation && options.no_open && !options.headless);
+    let Ok(Command::Run(options)) = parse("a-task --conversation --viewer serve") else { panic!() };
+    assert!(options.conversation && options.viewer == run::Viewer::Serve);
     let error = parse("--config c.json --host --conversation").err().unwrap();
     assert_eq!(error, "--conversation cannot be combined with --host");
     assert!(parse("view logs --conversation").is_err());
@@ -67,21 +67,31 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(matches!(parse("plan --schema"), Ok(Command::Schema)));
     assert!(matches!(parse("plan --config c.json --json"), Ok(Command::Plan { json: true, .. })));
     assert!(matches!(parse("plan"), Ok(Command::Plan { config: None, json: false, .. })));
-    assert!(matches!(parse("login"), Ok(Command::Login { provider: None, model: None, status: false })));
-    assert!(matches!(parse("login --status"), Ok(Command::Login { provider: None, status: true, .. })));
-    let Ok(Command::Login { provider, model, .. }) = parse("login anthropic --model m") else { panic!() };
+    assert!(matches!(
+        parse("login"),
+        Ok(Command::Login(login::Options { provider: None, model: None, status: false, .. }))
+    ));
+    assert!(matches!(parse("login --status"), Ok(Command::Login(login::Options { provider: None, status: true, .. }))));
+    let Ok(Command::Login(login::Options { provider, model, .. })) = parse("login anthropic --model m") else {
+        panic!()
+    };
     assert_eq!((provider.as_deref(), model.as_deref()), (Some("anthropic"), Some("m")));
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) =
-        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --headless --no-open")
+    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --service-tier priority --sandbox off --viewer off")
     else {
         panic!()
     };
-    assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
+    assert_eq!((options.task.as_deref(), options.viewer), (Some("fix"), run::Viewer::Off));
     assert_eq!(options.sandbox.as_deref(), Some("off"));
     assert_eq!(options.service_tier.as_deref(), Some("priority"));
+    let Ok(Command::Run(options)) = parse("--from /logs/ep_1 --config c.json") else { panic!() };
+    assert_eq!((options.from.as_deref(), options.at), (Some(Path::new("/logs/ep_1")), None));
+    let Ok(Command::Run(options)) = parse("redo --from /logs/ep_1@12") else { panic!() };
+    assert_eq!((options.from.as_deref(), options.at), (Some(Path::new("/logs/ep_1")), Some(12)));
+    let Ok(Command::Run(options)) = parse("redo --from /logs/at@noon") else { panic!() };
+    assert_eq!(options.from.as_deref(), Some(Path::new("/logs/at@noon")), "only a digit suffix is a boundary");
     assert!(parse("plan --json").is_err(), "--json takes --config");
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
     assert!(parse("plan --config c.json --evidence ev").is_err(), "plan rejects removed adoption options");
@@ -133,12 +143,12 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
 fn golden(line: &str) -> String {
     match parse(line) {
         Ok(Command::Run(o)) => format!(
-            "run task={:?} config={:?} model={:?} key_file={:?} log_dir={:?} no_open={} headless={} host={}",
-            o.task, o.config, o.model, o.key_file, o.log_dir, o.no_open, o.headless, o.host
+            "run task={:?} config={:?} model={:?} log_dir={:?} from={:?} at={:?} viewer={:?} host={}",
+            o.task, o.config, o.model, o.log_dir, o.from, o.at, o.viewer, o.host
         ),
         Ok(Command::Init { repository }) => format!("init repository={repository:?}"),
-        Ok(Command::Login { provider, model, status }) => {
-            format!("login provider={provider:?} model={model:?} status={status}")
+        Ok(Command::Login(login::Options { provider, model, key_file, status })) => {
+            format!("login provider={provider:?} model={model:?} key_file={key_file:?} status={status}")
         }
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
         Ok(Command::Plan { config, json }) => format!("plan config={config:?} json={json}"),
@@ -155,29 +165,43 @@ fn golden(line: &str) -> String {
 #[test]
 fn representative_invocations_parse_to_known_values() {
     let cases = [
-        ("fix", "run task=Some(\"fix\") config=None model=None key_file=None log_dir=None no_open=false headless=false host=false"),
         (
-            "fix --config c.json --model p/m --key-file k.txt --log-dir logs --no-open --headless",
-            "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") key_file=Some(\"k.txt\") \
-             log_dir=Some(\"logs\") no_open=true headless=true host=false",
+            "fix",
+            "run task=Some(\"fix\") config=None model=None log_dir=None from=None at=None viewer=Open \
+             host=false",
+        ),
+        (
+            "fix --config c.json --model p/m --log-dir logs --viewer serve",
+            "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") log_dir=Some(\"logs\") from=None \
+             at=None viewer=Serve host=false",
         ),
         (
             "--config c.json --host --log-dir logs",
-            "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") no_open=false \
-             headless=false host=true",
+            "run task=None config=Some(\"c.json\") model=None log_dir=Some(\"logs\") from=None \
+             at=None viewer=Off host=true",
         ),
         ("--config builtin:coding --host", "error"),
+        ("fix --viewer watch", "error"),
+        (
+            "redo --from /logs/ep_1@12",
+            "run task=Some(\"redo\") config=None model=None log_dir=None \
+             from=Some(\"/logs/ep_1\") at=Some(12) viewer=Open host=false",
+        ),
         (
             "fix --config builtin:coding",
-            "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None key_file=None log_dir=None \
-             no_open=false headless=false host=false",
+            "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None log_dir=None \
+             from=None at=None viewer=Open host=false",
         ),
         ("init --repository repo", "init repository=\"repo\""),
         ("init", "error"),
         ("init --repository repo extra", "error"),
-        ("login", "login provider=None model=None status=false"),
-        ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") status=false"),
-        ("login --status", "login provider=None model=None status=true"),
+        ("login", "login provider=None model=None key_file=None status=false"),
+        ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") key_file=None status=false"),
+        (
+            "login openai --key-file /keys/openai.json",
+            "login provider=Some(\"openai\") model=None key_file=Some(\"/keys/openai.json\") status=false",
+        ),
+        ("login --status", "login provider=None model=None key_file=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
         ("plan", "plan config=None json=false"),
@@ -189,7 +213,11 @@ fn representative_invocations_parse_to_known_values() {
         ("plan --schema", "schema"),
         ("plan --schema --json", "error"),
         // A word that once selected a removed form is a task like any other.
-        ("tools", "run task=Some(\"tools\") config=None model=None key_file=None log_dir=None no_open=false headless=false host=false"),
+        (
+            "tools",
+            "run task=Some(\"tools\") config=None model=None log_dir=None from=None at=None \
+             viewer=Open host=false",
+        ),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),
         ("", "error"),
     ];
@@ -233,6 +261,33 @@ fn every_form_documents_every_option_it_accepts() {
     }
 }
 
+/// docs/design.md "The command line": the running form's help lists each of
+/// its options once, under the heading its row names, and `--host` above
+/// every heading because it selects a different way to run.
+#[test]
+fn the_running_help_lists_every_option_under_one_group() {
+    let text = help_of(&FORMS[0]);
+    let listed = |flag: &str| text.lines().filter(|line| line.trim_start().starts_with(flag)).count();
+    for o in OPTS.iter().filter(|o| o.command.is_empty()) {
+        let named = GROUPS.iter().filter(|group| **group == o.group).count();
+        match o.flag {
+            "--host" => assert_eq!(o.group, "", "--host stands above the groups"),
+            flag => assert_eq!(named, 1, "{flag} names {named} of the groups the help prints"),
+        }
+        assert_eq!(listed(o.flag), 1, "{} is listed {} times:\n{text}", o.flag, listed(o.flag));
+    }
+    assert_eq!(listed("--help"), 1);
+    for group in GROUPS {
+        assert!(text.contains(&format!("\n{group}:\n")), "the help prints no `{group}` heading:\n{text}");
+    }
+    let headings: Vec<&str> = text.lines().filter(|line| GROUPS.contains(&line.trim_end_matches(':'))).collect();
+    assert_eq!(headings.len(), GROUPS.len(), "each heading is printed once: {headings:?}");
+    for form in FORMS.iter().filter(|form| !form.name.is_empty()) {
+        let other = help_of(form);
+        assert!(!GROUPS.iter().any(|group| other.contains(group)), "`foe {}` prints no group", form.name);
+    }
+}
+
 /// docs/design.md "The command line": `--verify` gates completion of either
 /// assessment branch at the workflow root.
 #[test]
@@ -273,6 +328,25 @@ fn the_top_level_help_names_every_command() {
     }
     assert!(text.contains("run `foe <command> --help`"), "`foe --help` does not point at the command help");
     assert_eq!(golden("help login"), "help login", "`foe help <command>` is that command's help");
+}
+
+/// docs/design.md "The command line": a spelling the running form dropped is
+/// refused by its own name, with the option that says the same thing now.
+#[test]
+fn a_dropped_spelling_names_what_replaced_it() {
+    let cases = [
+        ("fix --fork /logs/ep_1", "--from DIR@SEQ"),
+        ("fix --at 12", "--from DIR@SEQ"),
+        ("fix --no-open", "--viewer serve"),
+        ("fix --headless", "--viewer off"),
+    ];
+    for (line, replacement) in cases {
+        let error = parse(line).err().unwrap_or_default();
+        assert!(error.contains("no longer takes"), "`foe {line}`: {error}");
+        assert!(error.contains(replacement), "`foe {line}`: {error}");
+    }
+    let elsewhere = parse("view logs --fork /logs/ep_1").err().unwrap_or_default();
+    assert!(elsewhere.starts_with("unknown option --fork"), "another form knows nothing of it: {elsewhere}");
 }
 
 /// An unknown option names itself and the help that would have listed it,

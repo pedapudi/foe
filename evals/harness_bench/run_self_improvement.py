@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_build import clean_source_tree, require_evaluated_foe, sha256_file
+from foe_build import announced_log_dir, clean_source_tree, require_evaluated_foe, sha256_file
 
 
 LIMITS = {"model_calls": 12, "input_tokens": 300_000, "output_tokens": 20_000, "seconds": 1_200}
@@ -310,15 +310,16 @@ def main() -> int:
     checker(check, candidate)
     contract_path = root / "contract.json"
     write_json(contract_path, config(candidate, evidence, check, model))
-    log_dir = root / "episode"
+    log_parent = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_dir), "--headless"],
+        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_parent), "--viewer", "off"],
         text=True,
         capture_output=True,
         timeout=LIMITS["seconds"] + 30,
         check=False,
     )
+    log_dir = announced_log_dir(result.stderr, log_parent)
     measured, outcome = episode_measurement(log_dir)
     record = {
         **preview,

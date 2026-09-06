@@ -1,10 +1,11 @@
 //! `foe login`: configure a provider's credential and the default model.
 //!
 //! ```text
-//! foe login                      list providers, with whether each is configured
-//! foe login <provider>           configure it, then set the default model if none is set
-//! foe login <provider> --model M set the default model explicitly
-//! foe login --status             show the default model and every configured credential path
+//! foe login                        list providers, with whether each is configured
+//! foe login <provider>             configure it, then set the default model if none is set
+//! foe login <provider> --model M   set the default model explicitly
+//! foe login <provider> --key-file P record P as that provider's credential, asking nothing
+//! foe login --status               show the default model and every configured credential path
 //! ```
 //!
 //! Everything is written under `~/.config/foe/`: one credentials file per
@@ -29,13 +30,16 @@ use foe_transport::paths;
 use foe_transport::providers::{Provider, Verify, PROVIDERS};
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Debug, Default)]
 pub struct Options {
     pub provider: Option<String>,
     pub model: Option<String>,
+    /// A credential file to record for the provider, in place of asking for
+    /// one and writing it under `~/.config/foe/credentials/`.
+    pub key_file: Option<PathBuf>,
     pub status: bool,
 }
 
@@ -85,6 +89,12 @@ async fn conversation(session: &mut Session<'_>, options: Options) -> Result<Exi
     };
     let provider = foe_transport::provider_info(&name)
         .ok_or_else(|| format!("provider `{name}` is unknown; run `foe login` to list the known providers"))?;
+    if let Some(key_file) = &options.key_file {
+        record_key_file(session, provider, key_file, options.model)?;
+        say(session, "")?;
+        say(session, &format!("next: {NEXT_COMMAND}"))?;
+        return Ok(ExitCode::SUCCESS);
+    }
     let extra = configure(session, provider).await?;
     let path = paths::default_model_path(&session.home);
     if options.model.is_some() || !path.is_file() {
@@ -101,6 +111,42 @@ async fn conversation(session: &mut Session<'_>, options: Options) -> Result<Exi
     say(session, "")?;
     say(session, &format!("next: {NEXT_COMMAND}"))?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Records a credential file the provider is to read, asking nothing:
+/// `foe login PROVIDER --key-file PATH`. The file is named in the default
+/// model block, which every run without its own `model` block reads, so the
+/// command needs a model of that provider: `--model` names one, and a
+/// recorded default of the same provider supplies one otherwise.
+fn record_key_file(
+    session: &mut Session,
+    provider: &'static Provider,
+    key_file: &Path,
+    model: Option<String>,
+) -> Result<(), String> {
+    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
+    let recorded = default_model_in(&session.home)?.filter(|block| block.provider == provider.name);
+    let mut block = match (model, recorded) {
+        (Some(model), recorded) => {
+            let mut block = ModelConfig::new(provider.name, model);
+            block.options = recorded.map(|recorded| recorded.options).unwrap_or_default();
+            block
+        }
+        (None, Some(recorded)) => recorded,
+        (None, None) => {
+            let name = provider.name;
+            return Err(format!(
+                "`foe login {name} --key-file` records the credential of a default model, and none of {name} is \
+                 recorded; name one with --model MODEL"
+            ));
+        }
+    };
+    block.options.insert(provider.auth.option_key().to_string(), key_file.to_string_lossy().into_owned());
+    crate::run::apply_builtin_model_defaults(&mut block);
+    write_default_model(&session.home, &block)?;
+    say(session, &format!("{}: reads the credential in {}", provider.name, key_file.display()))?;
+    let path = paths::default_model_path(&session.home);
+    say(session, &format!("default model: {}/{} ({})", block.provider, block.model, path.display()))
 }
 
 // ---- listing and status -------------------------------------------------------

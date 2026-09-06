@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_build import clean_source_tree, require_evaluated_foe, sha256_file
+from foe_build import announced_log_dir, clean_source_tree, require_evaluated_foe, sha256_file
 
 from collect_diagnostics import collect_from_corpus, encoded_evidence
 from foe_agent_support import build_contract, estimate_usage_cost
@@ -1465,15 +1465,16 @@ def main(argv: list[str] | None = None) -> int:
             temporary.cleanup()
         return 2
 
-    episode = root / "episode"
+    episode_parent = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(binary), "--config", str(contract), "--headless", "--log-dir", str(episode)],
+        [str(binary), "--config", str(contract), "--viewer", "off", "--log-dir", str(episode_parent)],
         text=True,
         capture_output=True,
         timeout=SECONDS + 30,
         check=False,
     )
+    episode = announced_log_dir(result.stderr, episode_parent)
     changed_status = subprocess.run(
         ["/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"],
         cwd=candidate,

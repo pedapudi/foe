@@ -35,7 +35,7 @@ fi
 mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-budget-exhausted.XXXXXX")
 project_dir="$run_dir/project"
-log_dir="$run_dir/episode"
+log_parent="$run_dir/episode"
 mkdir -p "$project_dir/src"
 
 # The project the configuration points at: more modules than the budget
@@ -51,7 +51,12 @@ python3 "$repo_dir/examples/support/materialize.py" \
 
 status=0
 /usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
-  "$binary" "$config" "$log_dir" "$example_dir/responses.py" >"$run_dir/outcome.json" || status=$?
+  "$binary" "$config" "$log_parent" "$example_dir/responses.py" >"$run_dir/outcome.json" 2>"$run_dir/foe.err" || status=$?
+cat "$run_dir/foe.err" >&2
+# The run creates its own directory for the episode under the one named
+# and prints it on standard error, which docs/design.md "The command line"
+# fixes.
+log_dir=$(sed -n 's/^foe: log //p' "$run_dir/foe.err" | head -n 1)
 cat "$run_dir/outcome.json"
 
 python3 - "$log_dir/episode.jsonl" "$status" <<'ASSERTIONS'

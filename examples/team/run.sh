@@ -35,7 +35,7 @@ fi
 mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-team-demo.XXXXXX")
 project_dir="$run_dir/project"
-log_dir="$run_dir/episode"
+log_parent="$run_dir/episode"
 mkdir -p "$project_dir/src" "$project_dir/tests"
 
 cat > "$project_dir/src/cli.py" <<'EOF'
@@ -110,8 +110,15 @@ EOF
   /home/user/project "$project_dir"
 
 echo "Running the team demo in $run_dir"
+status=0
 /usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
-  "$binary" "$run_dir/config.json" "$log_dir" "$example_dir/responses.py"
+  "$binary" "$run_dir/config.json" "$log_parent" "$example_dir/responses.py" 2>"$run_dir/foe.err" || status=$?
+cat "$run_dir/foe.err" >&2
+[ "$status" -eq 0 ] || exit "$status"
+# The run creates its own directory for the episode under the one named
+# and prints it on standard error, which docs/design.md "The command line"
+# fixes.
+log_dir=$(sed -n 's/^foe: log //p' "$run_dir/foe.err" | head -n 1)
 
 grep -q 'usage: cli.py \[--dry-run\]' "$project_dir/src/cli.py"
 (cd "$project_dir" && /usr/bin/python3 -B tests/check.py)

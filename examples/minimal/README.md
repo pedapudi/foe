@@ -59,7 +59,7 @@ target/foe-minimal-demo.XXXXXX/
 ├── project/
 │   ├── brackets.py           bracket_depth, returning the wrong depth
 │   └── test_brackets.py      three tests, of which test_nested_brackets fails
-└── episode/episode.jsonl
+└── episode/<episode-id>/episode.jsonl
 ```
 
 The runner refuses to continue when `test_nested_brackets` passes before the
