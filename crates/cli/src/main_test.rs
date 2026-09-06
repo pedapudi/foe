@@ -82,6 +82,12 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
     assert_eq!(options.sandbox.as_deref(), Some("off"));
     assert_eq!(options.service_tier.as_deref(), Some("priority"));
+    let Ok(Command::Run(options)) = parse("--from /logs/ep_1 --config c.json") else { panic!() };
+    assert_eq!((options.from.as_deref(), options.at), (Some(Path::new("/logs/ep_1")), None));
+    let Ok(Command::Run(options)) = parse("redo --from /logs/ep_1@12") else { panic!() };
+    assert_eq!((options.from.as_deref(), options.at), (Some(Path::new("/logs/ep_1")), Some(12)));
+    let Ok(Command::Run(options)) = parse("redo --from /logs/at@noon") else { panic!() };
+    assert_eq!(options.from.as_deref(), Some(Path::new("/logs/at@noon")), "only a digit suffix is a boundary");
     assert!(parse("plan --json").is_err(), "--json takes --config");
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
     assert!(parse("plan --config c.json --evidence ev").is_err(), "plan rejects removed adoption options");
@@ -273,6 +279,19 @@ fn the_top_level_help_names_every_command() {
     }
     assert!(text.contains("run `foe <command> --help`"), "`foe --help` does not point at the command help");
     assert_eq!(golden("help login"), "help login", "`foe help <command>` is that command's help");
+}
+
+/// docs/design.md "The command line": a spelling the running form dropped is
+/// refused by its own name, with the option that says the same thing now.
+#[test]
+fn a_dropped_spelling_names_what_replaced_it() {
+    for line in ["fix --fork /logs/ep_1", "fix --at 12"] {
+        let error = parse(line).err().unwrap_or_default();
+        assert!(error.contains("no longer takes"), "`foe {line}`: {error}");
+        assert!(error.contains("--from DIR@SEQ"), "`foe {line}`: {error}");
+    }
+    let elsewhere = parse("view logs --fork /logs/ep_1").err().unwrap_or_default();
+    assert!(elsewhere.starts_with("unknown option --fork"), "another form knows nothing of it: {elsewhere}");
 }
 
 /// An unknown option names itself and the help that would have listed it,

@@ -335,8 +335,9 @@ credentials by running a host-supplied model backend in a separate process.
   foe has no published SWE-bench Verified or Terminal-Bench result, so its
   success rate on broad autonomous tasks is unknown.
 - **Follow-ups fork rather than extend.** An interrupted episode resumes
-  through the running form, and `--fork` seeds a fresh episode from any log
-  prefix, but a finished episode is never extended. The persistent products
+  through the running form, and `--from DIR@SEQ` seeds a fresh episode from
+  any log prefix, but a finished episode is never extended. The persistent
+  products
   and harnesses in the survey offer a follow-up message on a finished
   session; in foe such a follow-up is a forked new episode.
 - **No workspace checkpoint tied to a fork.** Log-prefix seeding preserves
@@ -445,7 +446,7 @@ Exo's useful mechanisms fit foe when each mechanism preserves a fresh,
 bounded episode and a fixed contract fingerprint.
 
 1. **Forks tied to workspace state.** Log-prefix seeding is exposed through
-   the running form's `--fork`. Record a caller-supplied workspace snapshot
+   the running form's `--from`. Record a caller-supplied workspace snapshot
    or baseline identifier in the new episode. Refuse the fork when the
    restored workspace does not match that identifier.
 2. **Content-addressed spill values.** Add a content hash to every spill
@@ -687,7 +688,7 @@ The five items below are in priority order. Each names the gap it closes.
    `read` and `edit`. Compare exact-text and hash-anchored editing on a paired
    model evaluation before changing the default edit representation.
 2. **Make forks reproduce workspace state.** Record a workspace snapshot or
-   baseline identifier for each `--fork` launch, reject a mismatch, and hash every spilled value.
+   baseline identifier for each `--from` launch, reject a mismatch, and hash every spilled value.
    This closes the largest evidence gap revealed by Exo.
 3. **Enforce structural resource limits.** Use root-held leases for
    whole-tree episode and concurrency caps. Apply cgroup limits for CPU,

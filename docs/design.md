@@ -757,7 +757,7 @@ foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; 
 foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --headless                                    run; no browser viewer; print the outcome
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
-foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
+foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
@@ -814,8 +814,7 @@ A configuration whose fingerprint differs from the log's
 named. A log ending at `seed/end` is
 exempt from the resume comparison. An ordinary seeded `episode/start`
 records its source's contract. A spawned child instead checks the expected
-fingerprint in its launch metadata before reaching resume. A finished log — one with
-`episode/end` — accepts nothing and is forked instead. A `child-launch.json`
+fingerprint in its launch metadata before reaching resume. A `child-launch.json`
 beside the log, which a parent writes for a child, supplies the child's
 id, its parent, its team lead, its expected contract fingerprint, and its
 effective runtime allowance.
@@ -826,19 +825,44 @@ contract in that event, so resume compares the recorded child fingerprint before
 continuing it. An ordinary command-line fork preserves its source contract in
 the start event and remains exempt from that comparison at `seed/end`.
 
-`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
-log's events below SEQ under the seeding rules of
-[log-format.md](log-format.md): the new episode draws a fresh id, its
-`episode/start.fork_origin` names the source episode and the boundary, and
-the task the launch carries — the positional task, or the document's task
-under `--config` — is appended as a `system` inbox item after `seed/end`,
-since the one `task` item per log is the copied one. The boundary's
-validity is the seeding API's rule, surfaced as the seeding error states
-it. The fork's directory is `--log-dir` when given, refused when it
-already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
-forks from one prefix — is a caller-side loop over this form;
+`--from DIR[@SEQ]` continues or forks the episode whose log is in DIR. DIR
+is one episode's own directory, the one a run names as `foe: log PATH`; a
+directory holding no `episode.jsonl`, such as the one `--log-dir` names, is
+refused with the missing file named. What the run does is a function of the
+source log's state and of whether the command line gives a task of its own.
+
+| command | source log | result |
+|---|---|---|
+| `foe --from DIR` | has not ended | continues that episode: same id, same task, same contract required, recorded allowance restored |
+| `foe --from DIR` | ended | refused: the episode ended, so a task to continue from its whole conversation or `@SEQ` to fork earlier |
+| `foe "task" --from DIR` | has not ended | refused: a continued episode keeps its task, so `@SEQ` to fork with a new one |
+| `foe "task" --from DIR` | ended | forks at the end of the conversation: the whole conversation as context, the new task as the directive |
+| `foe "task" --from DIR@SEQ` | either | forks at SEQ: the events below SEQ as context, the new task as the directive |
+| `foe --from DIR@SEQ` | either | forks at SEQ under the task the source recorded, a rerun from that point |
+
+Without `@SEQ` the run continues one episode and refuses anything that would
+change it. With `@SEQ` the run always makes a new episode. Which of the
+three the run chose is printed on standard error under the log directory.
+
+A fork is seeded from the source log's events below SEQ under the seeding
+rules of [log-format.md](log-format.md): the new episode draws a fresh id,
+its `episode/start.fork_origin` names the source episode and the boundary,
+and the task the launch carries is appended as a `system` inbox item after
+`seed/end`, since the one `task` item per log is the copied one. The task
+the source recorded is the exception, because the copied prefix already
+carries it; such a run reruns the conversation from the boundary and appends
+nothing. The boundary's validity is the seeding API's rule, surfaced as the
+seeding error states it. A fork restores the conversation up to the boundary
+and nothing else: the filesystem is whatever it is when the fork runs, so a
+fork over changed files sees the changed files. The fork's directory is a
+fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
+several forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
+
+A built-in document carries no task of its own, so `foe --from DIR` and
+`foe --from DIR@SEQ` without one take the task the source log recorded.
+A document in a file carries its own task, which directs the fork.
 
 What runs is the document `--config` names, else `.foe/contract.json` in the
 working directory, else the built-in coding workflow. `--config` takes a

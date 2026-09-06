@@ -15,7 +15,7 @@ reason, so that a reader does not propose them again without new evidence.
 A candidate slate runs several forks from one prefix, so that the shared
 prefix is materialized once and the branches are causally independent, and
 then selects among their outcomes. Forking itself is implemented: the
-running form's `--fork SOURCE_DIR --at SEQ` seeds a new episode from a
+running form's `--from SOURCE_DIR@SEQ` seeds a new episode from a
 prefix of an existing log, under "Seeding" in
 [log-format.md](log-format.md). A slate today is a caller-side loop over
 that form: N launches from one source and boundary produce N independent

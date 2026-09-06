@@ -193,7 +193,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
         service_tier: Some("priority".into()),
         ..Options::default()
     };
-    let config = load_contract_document(&options).unwrap();
+    let (config, _) = load_contract_document(&options).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
@@ -202,7 +202,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
     }
 
     let other = Options { service_tier: Some("flex".into()), ..options };
-    let config = load_contract_document(&other).unwrap();
+    let (config, _) = load_contract_document(&other).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("flex"));
 }
 
@@ -251,14 +251,14 @@ fn a_document_without_a_model_block_takes_the_command_line_model() {
         key_file: Some(credential.clone()),
         ..Options::default()
     };
-    let config = load_contract_document(&options).unwrap();
+    let (config, _) = load_contract_document(&options).unwrap();
     let model = config.model.as_ref().unwrap();
     assert_eq!((model.provider.as_str(), model.model.as_str()), ("openai", "gpt-5.6-sol"));
     assert_eq!(model.option("service_tier"), Some("flex"));
     assert_eq!(model.option("api_key_file"), credential.canonicalize().unwrap().to_str());
 
     let none_given = Options { config: Some(path), ..Options::default() };
-    assert!(load_contract_document(&none_given).unwrap().model.is_none(), "the document still names no model");
+    assert!(load_contract_document(&none_given).unwrap().0.model.is_none(), "the document still names no model");
 }
 
 /// A document that declares a `model` block owns the model, so each of the
@@ -318,8 +318,8 @@ fn the_built_in_name_and_the_omitted_option_select_one_document() {
         model: Some("anthropic/claude-opus-5".into()),
         ..Options::default()
     };
-    let named = load_contract_document(&options(Some("builtin:coding"))).unwrap();
-    let omitted = load_contract_document(&options(None)).unwrap();
+    let (named, _) = load_contract_document(&options(Some("builtin:coding"))).unwrap();
+    let (omitted, _) = load_contract_document(&options(None)).unwrap();
     assert_eq!(serde_json::to_value(&named).unwrap(), serde_json::to_value(&omitted).unwrap());
     let hash = |document: &ContractDocument| fingerprint(&resolve(document).unwrap()).unwrap().hash;
     assert_eq!(hash(&named), hash(&omitted));
@@ -347,7 +347,7 @@ fn the_run_options_of_the_built_in_workflow_apply_under_its_name() {
         ..Options::default()
     };
     let document =
-        load_contract_document(&options(Some(script.clone()), Some("off".into()), Some("priority"))).unwrap();
+        load_contract_document(&options(Some(script.clone()), Some("off".into()), Some("priority"))).unwrap().0;
     assert_eq!(document.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
     assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
     assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
@@ -442,6 +442,49 @@ fn conversation_keeps_the_viewer_unless_headless_or_host() {
     assert!(!serves_viewer(&Options { conversation: true, headless: true, ..Options::default() }));
     assert!(!serves_viewer(&Options { host: true, ..Options::default() }));
     assert!(serves_viewer(&Options::default()));
+}
+
+/// docs/design.md "The command line": a `--from DIR@SEQ` run whose task the
+/// source log recorded reruns the copied conversation from the boundary, so
+/// the seeded log carries no directive of its own; every other task is
+/// appended after `seed/end` as a live `system` item.
+#[test]
+fn a_fork_appends_every_task_except_the_one_the_source_recorded() {
+    let dir = crate::tests::scratch("foe-cli-run", "fork-directive");
+    let source = dir.join("source");
+    std::fs::create_dir(&source).unwrap();
+    let start = serde_json::json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
+        "id": "ep_source", "parent_id": null, "fork_origin": null, "team_id": null,
+        "contract": {}, "contract_fingerprint": "sha256:source", "task": "the recorded task",
+        "runtime": { "version": "0", "build": "unknown" },
+        "sandbox": { "mode": "off", "landlock_abi": 0, "resolved_permissions": {},
+            "process_boundary": { "kind": "process-group", "subtree_cleanup": "observational" } } } });
+    let item = serde_json::json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
+        "source": "task", "content": [{ "type": "text", "text": "the recorded task" }],
+        "from": null, "message_id": null } });
+    std::fs::write(source.join(foe_log::fold::LOG_FILE), format!("{start}\n{item}\n")).unwrap();
+
+    let recorded = Task { text: "the recorded task".into(), recorded: true };
+    assert_eq!(recorded.directive(), None);
+    let (reran, _, note) = fork(&source, 2, Some(&dir.join("rerun")), recorded.directive()).unwrap();
+    assert!(note.unwrap().contains("fork of"), "the mode is announced");
+    let events = foe_log::fold::read_all(&reran).unwrap();
+    assert!(matches!(events.last().unwrap().data, EventData::SeedEnd {}), "no directive follows the copied prefix");
+
+    let given = Task { text: "a new task".into(), recorded: false };
+    let (directed, _, _) = fork(&source, 2, Some(&dir.join("directed")), given.directive()).unwrap();
+    let events = foe_log::fold::read_all(&directed).unwrap();
+    let EventData::InboxItem(item) = &events.last().unwrap().data else { panic!("the task is appended") };
+    assert_eq!(item.source, InboxSource::System);
+    assert_eq!(item.content, vec![ContentBlock::Text { text: "a new task".into() }]);
+
+    // The parent of episode directories holds no log of its own, and is
+    // refused by the name of the file it lacks, before anything is created.
+    let parent = fork(&dir, 2, Some(&dir.join("misnamed")), given.directive()).unwrap_err();
+    assert!(parent.contains(&format!("{} does not exist", dir.join(foe_log::fold::LOG_FILE).display())), "{parent}");
+    assert!(parent.contains("`foe: log PATH`"), "the refusal names the line a run prints: {parent}");
+    assert_eq!(source_state(&dir).unwrap_err(), parent, "the same rule applies without a boundary");
+    assert!(!dir.join("misnamed").exists());
 }
 
 /// docs/design.md "Contract construction": a child resumed without its

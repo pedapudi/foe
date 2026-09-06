@@ -98,9 +98,14 @@ const OPTS: &[Opt] = &[
         "an executable verifier whose acceptance completes the built-in workflow",
     ),
     opt("", "--sandbox", "MODE", "best-effort", "kernel confinement mode: best-effort, required, or off"),
-    opt("", "--log-dir", "DIR", ".foe/<episode-id>", "where the episode log is written"),
-    opt("", "--fork", "SOURCE_DIR", "", "seed the log from a prefix of SOURCE_DIR's log; the task is the fork's task"),
-    opt("", "--at", "SEQ", "", "the --fork boundary: source events with seq below SEQ are copied"),
+    opt("", "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
+    opt(
+        "",
+        "--from",
+        "DIR[@SEQ]",
+        "a fresh episode",
+        "continue the episode logged in DIR, or with @SEQ fork it at that seq into a new episode",
+    ),
     opt("", "--no-open", "", "", "serve the viewer without opening a browser on it"),
     opt("", "--headless", "", "", "run without the browser viewer"),
     opt(
@@ -130,6 +135,11 @@ const OPTS: &[Opt] = &[
 
 /// The `--help` row, accepted by every form and listed in every help screen.
 const HELP: Opt = opt("*", "--help", "", "", "print this help and exit");
+
+/// Spellings the running form does not accept, each with the option that
+/// says the same thing. A command line using one is refused by its own name,
+/// because what it asked for is still available under another spelling.
+const RETIRED: &[(Text, Text)] = &[("--fork", "--from DIR@SEQ"), ("--at", "--from DIR@SEQ")];
 
 /// How a message names a form: `foe` alone for the bare running form.
 fn spelled(form: &Form) -> String {
@@ -191,6 +201,10 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
         }
         let Some(o) = accepted(form).find(|o| o.flag == arg.as_str()) else {
             let it = spelled(form);
+            let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg.as_str());
+            if let Some((_, replacement)) = retired {
+                return Err(format!("`{it}` no longer takes {arg}; write {replacement} instead"));
+            }
             return Err(format!("unknown option {arg} for `{it}`; run `{it} --help` for the options it takes"));
         };
         let value = match o.value.is_empty() {
@@ -300,6 +314,16 @@ fn command(argv: &[String]) -> Result<Command, String> {
             status: args.switch("--status"),
         },
         _ => {
+            // `--from DIR@SEQ` names a boundary; a value whose last `@` is
+            // followed by anything else is a path in full.
+            let boundary = |text: &str| text.rsplit_once('@').and_then(|(d, n)| Some((d.to_string(), n.parse().ok()?)));
+            let (from, at) = match args.value("--from") {
+                Some(text) => match boundary(&text) {
+                    Some((dir, at)) => (Some(PathBuf::from(dir)), Some(at)),
+                    None => (Some(PathBuf::from(text)), None),
+                },
+                None => (None, None),
+            };
             let options = run::Options {
                 task: args.positional.pop(),
                 config: args.value("--config"),
@@ -313,17 +337,14 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 headless: args.switch("--headless"),
                 conversation: args.switch("--conversation"),
                 host: args.switch("--host"),
-                fork: args.value("--fork").map(PathBuf::from),
-                at: args.value("--at").map(|t| t.parse().map_err(|_| format!("--at: {t} is not a seq"))).transpose()?,
+                from,
+                at,
             };
             if options.host && options.conversation {
                 return Err("--conversation cannot be combined with --host".into());
             }
-            if options.fork.is_some() != options.at.is_some() {
-                return Err("--fork SOURCE_DIR and --at SEQ come together; run `foe --help`".into());
-            }
-            if options.task.is_none() && options.config.is_none() {
-                return Err("give a task or --config FILE; run `foe --help`".into());
+            if options.task.is_none() && options.config.is_none() && options.from.is_none() {
+                return Err("give a task, --config FILE, or --from DIR; run `foe --help`".into());
             }
             if options.host && (options.task.is_some() || options.config.is_none()) {
                 return Err("--host takes the task from --config FILE".into());

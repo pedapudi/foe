@@ -928,12 +928,16 @@ new episode's team fold. A fold reads team events only when the log's own
 `episode/start.team_id` matches or the log is itself the lead.
 
 The command line reaches seeding in two ways. The running form's
-`--fork SOURCE_DIR --at SEQ` seeds a fresh directory from the source's
-prefix at N equal to SEQ and runs it: the new `episode/start` draws a
+`--from SOURCE_DIR@SEQ` seeds a fresh directory from the source's
+prefix at N equal to SEQ and runs it, and a task given with
+`--from SOURCE_DIR` over a log that ended does the same at N equal to the
+log's length: the new `episode/start` draws a
 fresh id, its `fork_origin` names the source, and the task the launch
 carries is appended as a live `system` inbox item after `seed/end`,
 because rule 1 copies the `task` item and the format admits one per log.
-Launching over a log directory without `episode/end` resumes that episode
+A run whose task the source log recorded appends nothing, because the copied
+prefix already carries that task.
+`--from SOURCE_DIR` without a boundary resumes that episode
 under the execution contract that ran it. The launch is
 refused, with both fingerprints named, when the given configuration's
 fingerprint differs from `episode/start.contract_fingerprint`. A log ending at
