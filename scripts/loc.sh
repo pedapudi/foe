@@ -1,22 +1,46 @@
 #!/usr/bin/env bash
-# Counts Rust source lines in the budgeted crates, excluding tests and generated code.
-# Eleven budgets: 6,250 over the kernel; 1,575 over contract; 1,900 over tools;
-# 800 over team coordination; 1,050 over workflow; 500 over context; 600 over
-# view; 1,650 over cli; 2,700 over transport; 1,000 over telemetry; and 500
-# over evidence. Tools and team coordination stay under 2,700 together.
-# The kernel combines log and core. Contract defines execution-contract
-# documents, resolution, and fingerprints. Evidence verifies portable bundles.
-# The kernel is budgeted apart from contract because it measures the machine.
-# Contract measures the data model. A document that gains a key must not buy
-# room in the loop.
-# The viewer is budgeted apart because it delivers a record of a run rather
-# than running one, and its browser bundle is bounded by size instead, in view/.
-# The command line is budgeted apart because it serves a person at a terminal
-# rather than an episode. Telemetry is budgeted apart because it reads a
-# finished log rather than producing one, and nothing in the runtime may
-# depend on it. See docs/design.md "Size".
+# Counts Rust source lines in the budgeted crates, excluding tests and
+# generated code, and fails when a surface exceeds its ceiling. The reasons
+# each surface is budgeted apart are in docs/design.md "Size".
+#
+# The two tables below are the only places a ceiling is written in this
+# script. The first holds one ceiling per surface. The second holds a ceiling
+# over a group of surfaces, so that splitting a surface into two crates does
+# not raise the total allowance. AGENTS.md, README.md, and docs/design.md
+# quote the same ceilings, and the second half of this script fails when any
+# of them quotes a different number, so a ceiling changes in one commit that
+# touches all four files.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# surface | ceiling | README table row label | crates whose lines are summed
+budgets='
+kernel    | 6250 | kernel               | log core
+contract  | 1575 | execution contracts  | contract
+tools     | 1900 | coding tools         | code
+team      |  800 | team coordination    | team
+workflow  | 1050 | workflows            | workflow
+context   |  500 | compaction           | context
+view      |  600 | viewer server        | view
+cli       | 1650 | command line         | cli
+transport | 2700 | model transports     | transport
+telemetry | 1000 | telemetry            | telemetry
+evidence  |  500 | evidence             | evidence
+'
+
+# group | ceiling | surfaces whose totals are summed | phrase every document
+# uses to name the group. A group ceiling is stated in prose rather than in
+# the README table, so the same phrase locates it in all three documents.
+groups='
+tools+team | 2700 | tools team | Coding tools and team coordination together
+'
+
+# rows TABLE: prints TABLE with each field trimmed, one row per line, fields
+# separated by a tab.
+rows() {
+  printf '%s\n' "$1" | sed -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*|[[:space:]]*/\t/g' -e 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 count() {
   find "crates/$1/src" -name '*.rs' ! -path '*/tests/*' ! -name '*_test.rs' ! -name 'generated*' \
       -exec awk '
@@ -30,35 +54,83 @@ count() {
           }
           END { print lines + 0 }' {} +
 }
-kernel=0
-for c in log core; do
-  n=$(count "$c")
-  printf '%-8s %6d\n' "$c" "$n"; kernel=$((kernel + n))
+
+status=0
+declare -A measured
+
+while IFS=$'\t' read -r surface ceiling _label crates; do
+  total=0
+  for crate in $crates; do
+    n=$(count "$crate")
+    total=$((total + n))
+    case $crates in *' '*) printf '%-10s %6d\n' "$crate" "$n" ;; esac
+  done
+  measured[$surface]=$total
+  printf '%-10s %6d  (budget %d)\n' "$surface" "$total" "$ceiling"
+  if [ "$total" -gt "$ceiling" ]; then
+    echo "scripts/loc.sh: $surface has $total lines; the ceiling is $ceiling" >&2
+    status=1
+  fi
+done < <(rows "$budgets")
+
+while IFS=$'\t' read -r group ceiling surfaces _phrase; do
+  total=0
+  for surface in $surfaces; do
+    total=$((total + measured[$surface]))
+  done
+  printf '%-10s %6d  (budget %d)\n' "$group" "$total" "$ceiling"
+  if [ "$total" -gt "$ceiling" ]; then
+    echo "scripts/loc.sh: $group has $total lines; the ceiling is $ceiling" >&2
+    status=1
+  fi
+done < <(rows "$groups")
+
+# quote FILE ANCHOR WINDOW: prints every ceiling FILE states for one surface
+# or group, one per line and without thousands separators. ANCHOR is the text
+# that names it and WINDOW is what may stand between that text and the
+# number. In the README table the ceiling is the first number after the row
+# label. In prose it is the first number after the anchor and the word
+# "under" within one sentence. The file is folded to a single line with runs
+# of whitespace collapsed first, so a sentence wrapped across lines, with or
+# without indentation, still matches.
+prose='[^.0-9]*under '
+quote() {
+  tr '\n' ' ' < "$1" | tr -s ' ' | grep -oE "$2$3[0-9][0-9,]*" | grep -oE '[0-9][0-9,]*$' | tr -d , || true
+}
+
+# agrees FILE NAME CEILING ANCHOR WINDOW: reports FILE when it states no
+# ceiling for NAME or states one other than CEILING.
+agrees() {
+  local quoted n
+  quoted=$(quote "$1" "$4" "$5")
+  if [ -z "$quoted" ]; then
+    echo "$1: does not state the $2 ceiling; scripts/loc.sh holds $3" >&2
+    status=1
+  fi
+  for n in $quoted; do
+    if [ "$n" != "$3" ]; then
+      echo "$1: states $n for $2; scripts/loc.sh holds $3" >&2
+      status=1
+    fi
+  done
+}
+
+for file in AGENTS.md README.md docs/design.md; do
+  while IFS=$'\t' read -r surface ceiling label crates; do
+    if [ "$file" = README.md ]; then
+      agrees "$file" "$surface" "$ceiling" "\\| $label " '[^0-9]*'
+      continue
+    fi
+    if [ "$surface" = kernel ]; then
+      anchor='`log` and `core`'
+    else
+      anchor="\`(crates/)?$crates\`"
+    fi
+    agrees "$file" "$surface" "$ceiling" "$anchor" "$prose"
+  done < <(rows "$budgets")
+  while IFS=$'\t' read -r group ceiling surfaces phrase; do
+    agrees "$file" "$group" "$ceiling" "$phrase" "$prose"
+  done < <(rows "$groups")
 done
-printf '%-8s %6d  (budget 6250)\n' kernel "$kernel"
-contract=$(count contract)
-printf '%-8s %6d  (budget 1575)\n' contract "$contract"
-tools=$(count code)
-printf '%-8s %6d  (budget 1900)\n' tools "$tools"
-team=$(count team)
-printf '%-8s %6d  (budget 800)\n' team "$team"
-coordination=$((tools + team))
-printf '%-8s %6d  (budget 2700)\n' tools+team "$coordination"
-workflow=$(count workflow)
-printf '%-8s %6d  (budget 1050)\n' workflow "$workflow"
-context=$(count context)
-printf '%-8s %6d  (budget 500)\n' context "$context"
-view=$(count view)
-printf '%-8s %6d  (budget 600)\n' view "$view"
-cli=$(count cli)
-printf '%-8s %6d  (budget 1650)\n' cli "$cli"
-transport=$(count transport)
-printf '%-8s %6d  (budget 2700)\n' transport "$transport"
-telemetry=$(count telemetry)
-printf '%-8s %6d  (budget 1000)\n' telemetry "$telemetry"
-evidence=$(count evidence)
-printf '%-8s %6d  (budget 500)\n' evidence "$evidence"
-[ "$kernel" -le 6250 ] && [ "$contract" -le 1575 ] && [ "$tools" -le 1900 ] && [ "$team" -le 800 ] \
-  && [ "$coordination" -le 2700 ] && [ "$workflow" -le 1050 ] \
-  && [ "$context" -le 500 ] && [ "$view" -le 600 ] && [ "$cli" -le 1650 ] && [ "$transport" -le 2700 ] \
-  && [ "$telemetry" -le 1000 ] && [ "$evidence" -le 500 ]
+
+exit "$status"

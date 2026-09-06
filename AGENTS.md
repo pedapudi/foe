@@ -53,11 +53,18 @@ sentence on first reading.
 - Rust line budgets exclude tests, generated code, blank lines, and
   comment-only lines. `log` and `core` form the kernel and stay under 6,250
   lines together. `contract` stays under 1,575 and `code` under 1,900. `team`
-  stays under 800, and `code` plus `team` stay under 2,700. `workflow` stays
-  under 1,050, `context` under 500, `view` under 600, `cli` under 1,650,
-  `transport` under 2,700, `telemetry` under 1,000, and `evidence` under 500.
-  The viewer HTML, TypeScript, and CSS use the compressed bundle limit in
-  `docs/design.md`. `scripts/loc.sh` enforces every Rust line budget.
+  stays under 800. Coding tools and team coordination together stay under
+  2,700. `workflow` stays under 1,050, `context` under 500, `view` under 600,
+  `cli` under 1,650, `transport` under 2,700, `telemetry` under 1,000, and
+  `evidence` under 500. The viewer HTML, TypeScript, and CSS use the
+  compressed bundle limit in `docs/design.md`. `scripts/loc.sh` enforces every
+  Rust line budget and fails when this file, `README.md`, or `docs/design.md`
+  quotes a ceiling that differs from the one it holds.
+- A ceiling changes in a commit of its own. That commit states the reason
+  and touches only `AGENTS.md`, `scripts/loc.sh`, `README.md`, and
+  `docs/design.md`, all four, and precedes the commit that needs the room,
+  so every commit in a series passes `scripts/loc.sh`. A feature commit
+  never changes a ceiling. A ceiling may be lowered as well as raised.
 
 ## Commits
 
@@ -65,7 +72,26 @@ sentence on first reading.
   imperative, then the reason when it is not obvious.
 - No trailers of any kind. No co-author lines. No links to sessions or
   tools. No mention of any AI system anywhere in the repository.
+- A commit that touches more than five files, or that renames anything,
+  carries a body. The body states the resulting behavior, the reason, the
+  compatibility impact, and the validation performed.
+- A rename is its own commit and changes no behavior.
+- A commit that breaks compatibility names the error an old input now
+  receives and the document that records the break.
 - Never force-push. Never commit to `main` from a worktree; open a branch.
+- Work happens on a branch. A branch reaches `main` in one of two ways: it
+  is rebased onto `main`, or it is merged into `main` through a pull
+  request. Squash merge is the default for a branch an agent produced.
+- `main` is never merged into a branch that is then pushed as `main`.
+- A series is integrated once. The branch it came from is deleted after
+  integration.
+- A merge commit carries nothing beyond the automatic merge. A conflict is
+  resolved in an ordinary commit on the branch, and that commit's message
+  states what the resolution changed.
+- Every gate runs on the merged tree before a push: `cargo test
+  --workspace`, `scripts/loc.sh`, `scripts/examples.sh`, the Python suite
+  in `python/`, and the browser bundle build and test suite in `view/`.
+- `main` requires the continuous-integration checks to pass.
 
 ## Verification
 

@@ -7,7 +7,8 @@ reserved for it. A reserved event type has a variant in `crates/log/src/lib.rs`
 so that a log format version 3 reader parses a later log. The current runtime
 emits none of these reserved events.
 A feature with nothing reserved is listed so that a reader does not search
-for it.
+for it. The final section lists features the design rejects, with the
+reason, so that a reader does not propose them again without new evidence.
 
 ## Candidate slates
 
@@ -243,3 +244,22 @@ vectors verified against real token structure, which cannot be taken from
 documentation alone; until then GitHub tokens are matched by prefix and
 length like every other provider prefix. No event type or configuration
 key is reserved.
+
+## Considered and rejected
+
+### An executable model transport
+
+An executable model transport is a separate process that the runtime would
+start once per model request to perform the call, holding its own
+credential and answering in the `model/request` and `model/chunk` shapes of
+[protocol.md](protocol.md) over standard input and output. foe does not
+offer one. A model call is made by one of the HTTP clients built into the
+binary, specified in [models.md](models.md), or by the host over the
+protocol when no `model` block is present. A transport process would be a
+second captured-executable path beside configured tools and verifiers, and
+the one sandboxed executable that both reads a credential and opens
+outbound TCP; a configured tool with `network: true` opens TCP and reads no
+key file. Its optional presence would also select the binary's contents at
+build time, doubling the release matrix. No event type or configuration key
+is reserved; a `model` block whose `provider` is not in the provider table
+receives an error that lists the known names.

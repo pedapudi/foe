@@ -174,9 +174,11 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 | telemetry | 1,000 |
 | evidence | 500 |
 
-Coding tools and team coordination also stay under 2,700 lines together. The
+Coding tools and team coordination together stay under 2,700 lines. The
 separate budgets keep growth in one surface from enlarging another.
-`scripts/loc.sh` enforces all eleven. Continuous integration also limits the
+`scripts/loc.sh` enforces all eleven ceilings and the combined one, and
+fails when this table, `AGENTS.md`, or `docs/design.md` quotes a ceiling it
+does not hold. Continuous integration also limits the
 compressed browser bundle to 150 KB and the stripped release binary with that
 bundle embedded to 8 MiB. [docs/design.md](docs/design.md#size) explains what
 each boundary protects.

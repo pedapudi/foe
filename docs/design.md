@@ -1084,10 +1084,11 @@ claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
 The coding tools in `crates/code` stay under 1,900 lines. Team coordination
-in `crates/team` stays under 800 lines. Their combined budget is 2,700 lines.
-The separate limits keep coordination independent of filesystem and process
-tools. The combined limit prevents a crate boundary from increasing the total
-implementation allowance. The workflow executor in `crates/workflow`
+in `crates/team` stays under 800 lines. Coding tools and team coordination
+together stay under 2,700 lines. The separate limits keep coordination
+independent of filesystem and process tools. The combined limit prevents a
+crate boundary from increasing the total implementation allowance. The
+workflow executor in `crates/workflow`
 stays under 1,050 lines. It schedules the graph, bounds text entering model
 nodes, and routes failures through recovery. Inspection of a configured
 contract tree remains in `foe_contract::inspect`, beside the model it analyses.
@@ -1132,11 +1133,15 @@ crates. See [evidence.md](evidence.md).
 
 The model clients in `crates/transport` stay under 2,700 lines. They own the
 HTTP formats, credential sources, endpoint table, and request loop.
-Continuous integration enforces every budget as a test.
+Continuous integration enforces every budget as a test. `scripts/loc.sh`
+holds each ceiling once and fails when this document, `AGENTS.md`, or
+`README.md` quotes a different number.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
-there is to read.
+there is to read. A ceiling moves in either direction only in a commit of
+its own that states the reason, under the rule in `AGENTS.md`; a commit
+that adds behavior fits inside the ceilings as they stand.
 
 ## Status
 
