@@ -1084,10 +1084,11 @@ claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
 The coding tools in `crates/code` stay under 1,900 lines. Team coordination
-in `crates/team` stays under 800 lines. Their combined budget is 2,700 lines.
-The separate limits keep coordination independent of filesystem and process
-tools. The combined limit prevents a crate boundary from increasing the total
-implementation allowance. The workflow executor in `crates/workflow`
+in `crates/team` stays under 800 lines. Coding tools and team coordination
+together stay under 2,700 lines. The separate limits keep coordination
+independent of filesystem and process tools. The combined limit prevents a
+crate boundary from increasing the total implementation allowance. The
+workflow executor in `crates/workflow`
 stays under 1,050 lines. It schedules the graph, bounds text entering model
 nodes, and routes failures through recovery. Inspection of a configured
 contract tree remains in `foe_contract::inspect`, beside the model it analyses.
