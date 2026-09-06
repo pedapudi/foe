@@ -761,7 +761,7 @@ foe --config FILE --host [--log-dir DIR]                 run under a host; stdou
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
@@ -824,11 +824,30 @@ forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
 
-A task given with `--config` replaces the document's own `task`. A task given
-without `--config` uses a built-in coding workflow. An implementation episode
-changes the current directory. A fresh assessment episode independently checks
-the task and implementation claim. It either accepts the artifacts or activates
-a fresh repair episode with its typed findings.
+What runs is the document `--config` names, else `.foe/contract.json` in the
+working directory, else the built-in coding workflow. `--config` takes a
+file path or the name of a document the binary carries, written
+`builtin:NAME`. The binary carries one document, `builtin:coding`, the
+coding workflow this section describes. Every other name is refused with the
+names the binary carries. A command line naming no document examines the
+working directory alone and searches no ancestor directory. A run that reads
+`.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
+standard error, where NAME is the document's `name`. A task given on the
+command line replaces the document's own `task`. A host passes a document
+file: `--host` takes the task of the run from the document, and a built-in
+document carries no task, so `--config builtin:NAME` beside `--host` is
+refused.
+
+`--verify` and `--sandbox` configure a built-in document. A document in a
+file states that behavior in its own keys, so pairing either option with a
+file document, the discovered one included, is refused. The log records the
+full contract and its fingerprint, so a run is reproducible from its log
+whether or not the command line named the document.
+
+An implementation episode changes the current directory. A fresh assessment
+episode independently checks the task and implementation claim. It either
+accepts the artifacts or activates a fresh repair episode with its typed
+findings.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
@@ -857,8 +876,9 @@ completion. With `--verify`, both corrective nodes may fire thirteen times.
 The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
-workflow. The default is `best-effort`. A contract document declares
-its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
+workflow. The default is `best-effort`. A contract document in a file
+declares its own `sandbox.mode`, so `--sandbox` accompanies a built-in
+document alone.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. All three episodes receive the recorded
@@ -935,7 +955,7 @@ it names no model, so the three supply one exactly as they do for the
 built-in document; without any of them such a document runs under a host.
 The block they supply changes no fingerprint, which covers what a model can
 observe rather than the transport that reaches it. `--verify` and
-`--sandbox` are refused with `--config` whatever the document declares,
+`--sandbox` are refused with a document in a file whatever it declares,
 because a document carries its own completion gate and sandbox mode.
 
 `foe login` configures one provider. It asks for the endpoint-specific values
@@ -960,10 +980,10 @@ default. The placeholder verifier rejects every completion candidate with
 one finding naming the file a person must replace, so a run against the
 untouched document ends blocked rather than completed, and the verifier's
 capture at contract construction keeps the active episode judging by the
-captured bytes while a future run reads the file as it then exists. The
-runtime reads configuration from no well-known location: only `foe init`
-and the document it writes name these paths, and the report the command
-prints states every one of these decisions.
+captured bytes while a future run reads the file as it then exists. The file
+this command writes is the file a later run in that repository root uses
+when its command line names no document, under the rule "The command line"
+states. The report the command prints states every one of these decisions.
 
 Without `--headless` and without `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
@@ -1127,7 +1147,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,650 lines. It is separate because it serves a person at a terminal
+under 1,725 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

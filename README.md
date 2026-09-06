@@ -75,10 +75,12 @@ foe "describe what this repository does"
 ```
 
 The first command asks for an API key, checks it, stores it under
-`~/.config/foe/`, and sets the default model. The second runs the built-in
-coding configuration against the current directory. The runtime supports
-API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
-and managed-cloud endpoints.
+`~/.config/foe/`, and sets the default model. The second runs a task against
+the current directory. What it runs is the document `--config` names, else
+`.foe/contract.json` in the working directory, else the built-in coding
+workflow, which `--config builtin:coding` names explicitly. The runtime
+supports API-key endpoints, OAuth-backed coding endpoints, compatible HTTP
+endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
@@ -169,7 +171,7 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 | workflows | 1,050 |
 | compaction | 500 |
 | viewer server | 600 |
-| command line | 1,650 |
+| command line | 1,725 |
 | model transports | 2,700 |
 | telemetry | 1,000 |
 | evidence | 500 |

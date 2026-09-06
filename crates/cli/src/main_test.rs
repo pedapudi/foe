@@ -75,6 +75,16 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(parse("").is_err());
 }
 
+/// A host takes the task of its run from the document, and a built-in
+/// document carries no task of its own, so the parser refuses the pair and
+/// states the rule.
+#[test]
+fn a_built_in_name_is_refused_beside_host() {
+    let Err(error) = parse("--config builtin:coding --host") else { panic!("a built-in name serves no host") };
+    assert_eq!(error, "--host takes the task from a document file; a built-in name carries no task");
+    assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(_))), "a document file still serves a host");
+}
+
 #[test]
 fn the_schema_is_json_and_names_every_key_of_the_document() {
     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
@@ -140,6 +150,12 @@ fn representative_invocations_parse_to_known_values() {
             "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") no_open=false \
              headless=false host=true",
         ),
+        ("--config builtin:coding --host", "error"),
+        (
+            "fix --config builtin:coding",
+            "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None key_file=None log_dir=None \
+             no_open=false headless=false host=false",
+        ),
         ("init --repository repo", "init repository=\"repo\""),
         ("init", "error"),
         ("init --repository repo extra", "error"),
@@ -150,6 +166,7 @@ fn representative_invocations_parse_to_known_values() {
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
         ("plan", "plan config=None json=false"),
         ("plan --config c.json", "plan config=Some(\"c.json\") json=false"),
+        ("plan --config builtin:coding", "plan config=Some(\"builtin:coding\") json=false"),
         ("plan --config c.json --json", "plan config=Some(\"c.json\") json=true"),
         ("plan --config c.json --states st --evidence ev", "error"),
         ("plan --config c.json --states st", "error"),

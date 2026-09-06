@@ -22,6 +22,16 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved contract, its fingerprint, and every tool definition the contract's
 reachable tree can invoke, without running anything.
 
+What a run uses is the document `--config` names, else `.foe/contract.json`
+in the working directory, else the built-in coding workflow the binary
+carries. `--config` takes a file path or the name of a built-in document,
+written `builtin:NAME`: `builtin:coding` is that coding workflow, and
+`foe plan --config builtin:coding` resolves it as it resolves a file. A run
+that reads `.foe/contract.json` because its command line named no document
+prints one line on standard error naming the file and the document's `name`.
+docs/design.md "The command line" states the rule and what the built-in
+coding workflow does.
+
 `foe init --repository PATH` writes a starting document for a repository to
 `PATH/.foe/contract.json`, with a placeholder verifier at `PATH/.foe/verify`
 that rejects every completion candidate until a person replaces it with a

@@ -68,7 +68,13 @@ const FORMS: &[Form] = &[
 /// is not accepted, and one present here is documented. `--help` is accepted
 /// by every form and so appears once, under no command.
 const OPTS: &[Opt] = &[
-    opt("", "--config", "FILE", "the built-in coding workflow", "the contract document to run"),
+    opt(
+        "",
+        "--config",
+        "FILE",
+        ".foe/contract.json in the working directory, else builtin:coding",
+        "the contract document to run: a file, or builtin:coding, which --verify and --sandbox configure",
+    ),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
     opt(
         "",
@@ -103,7 +109,13 @@ const OPTS: &[Opt] = &[
     opt("login", "--status", "", "", "print the default model and every configured credential path"),
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
     opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
-    opt("plan", "--config", "FILE", "the built-in tools alone", "the contract document to resolve"),
+    opt(
+        "plan",
+        "--config",
+        "FILE",
+        "the built-in tools alone",
+        "the contract document to resolve: a file, or builtin:coding",
+    ),
     opt("plan", "--json", "", "", "print one JSON object instead of the report"),
     opt("plan", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
     opt("telemetry", "--json", "", "", "print that payload as JSON instead of a summary"),
@@ -220,7 +232,7 @@ enum Command {
     Init { repository: PathBuf },
     Login { provider: Option<String>, model: Option<String>, status: bool },
     View { dir: PathBuf, serve: bool, port: u16 },
-    Plan { config: Option<PathBuf>, json: bool },
+    Plan { config: Option<String>, json: bool },
     Schema,
     Telemetry { logs: Vec<String>, json: bool },
     Help(&'static Form),
@@ -257,7 +269,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
         },
         "plan" => {
             let (schema, json) = (args.switch("--schema"), args.switch("--json"));
-            let config = args.value("--config").map(PathBuf::from);
+            let config = args.value("--config");
             if schema && (config.is_some() || json) {
                 return Err("`foe plan --schema` prints the schema and takes no other option".into());
             }
@@ -283,7 +295,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
         _ => {
             let options = run::Options {
                 task: args.positional.pop(),
-                config: args.value("--config").map(PathBuf::from),
+                config: args.value("--config"),
                 model: args.value("--model"),
                 service_tier: args.value("--service-tier"),
                 key_file: args.value("--key-file").map(PathBuf::from),
@@ -304,6 +316,9 @@ fn command(argv: &[String]) -> Result<Command, String> {
             }
             if options.host && (options.task.is_some() || options.config.is_none()) {
                 return Err("--host takes the task from --config FILE".into());
+            }
+            if options.host && options.config.as_deref().is_some_and(|c| c.starts_with(run::BUILTIN_PREFIX)) {
+                return Err("--host takes the task from a document file; a built-in name carries no task".into());
             }
             Command::Run(options)
         }
@@ -329,7 +344,7 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     match command {
         Command::Help(form) => printed(&help(form)),
         Command::Schema => printed(SCHEMA),
-        Command::Plan { config, json } => plan(config.as_deref(), json),
+        Command::Plan { config, json } => plan(config, json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Init { repository } => printed(&init::init(&repository)?),
         Command::Login { provider, model, status } => login(provider, model, status),
@@ -374,12 +389,22 @@ fn load(config: &Path) -> Result<foe_contract::document::ResolvedContract, Strin
 /// forms report the resolved tools with the source each name resolved in
 /// and the tools reachable from the root. Without `--json`, a
 /// workflow is followed by the report docs/workflow.md "Firing" describes.
-fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
+/// `--config` names a file or a built-in document, and a built-in document
+/// resolves here exactly as it resolves for a run of the same name.
+fn plan(config: Option<String>, json: bool) -> Result<ExitCode, String> {
     let Some(config) = config else {
         let builtins = std::iter::once(block_spec(false)).chain(run::extra_builtin_specs());
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
     };
-    let contract = load(config)?;
+    let source = run::contract_source(&config)?;
+    let named = source.describe();
+    let contract = match &source {
+        run::ContractSource::Builtin(name) => {
+            let document = run::builtin_plan_document(name)?;
+            foe_contract::document::resolve(&document).map_err(|e| format!("{named}: {e}"))?
+        }
+        run::ContractSource::File(path) => load(path)?,
+    };
     let fingerprint = run::fingerprint(&contract)?;
     let value = contract.to_value();
     let model_endpoint = contract.model.as_ref().map(|_| run::describe_model_endpoint(&contract));
@@ -419,7 +444,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         } else {
             print!("{}", plan::root_agent_report(&contract));
         }
-        print!("tools\n{}", tool_rows(config, &contract)?);
+        print!("tools\n{}", tool_rows(&named, &contract)?);
         print!("{}", plan::reachable_tools_report(&reachable_tools));
         print!("{}", plan::permissions_report(&resolved_permissions));
         print!("{}", plan::warnings_report(&warnings));
@@ -436,10 +461,11 @@ fn tool_row(spec: &foe_contract::ToolSpec, source: &str) -> String {
     format!("{:<10} {:<10} {:<7} {first}\n", spec.name, source, effect.unwrap_or_default())
 }
 
-/// The resolved tools of the root contract, one row each.
-fn tool_rows(config: &Path, contract: &foe_contract::document::ResolvedContract) -> Result<String, String> {
+/// The resolved tools of the root contract, one row each. `source` is what
+/// `--config` named, which an error repeats.
+fn tool_rows(source: &str, contract: &foe_contract::document::ResolvedContract) -> Result<String, String> {
     let extra = run::extra_builtin_specs();
-    let specs = resolve_specs(contract, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
+    let specs = resolve_specs(contract, &extra).map_err(|e| format!("{source}: {e}"))?;
     let sources = plan::tool_sources(contract, &extra)?;
     let named = |i: usize| match sources.get(i) {
         Some(Source::Builtin) => "built-in",

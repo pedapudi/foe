@@ -1795,6 +1795,91 @@ fn the_recorded_builtins_are_the_ones_the_binary_links() {
     assert_eq!(rows, mine, "the built-in list this test records has parted from the one the binary links");
 }
 
+/// docs/design.md "The command line": a command line naming no document
+/// runs `.foe/contract.json` in the working directory and says so on
+/// standard error, `--config builtin:coding` runs the document the binary
+/// carries instead, the options of the built-in workflow stay refused with
+/// the discovered document, a broken entry at the path is reported instead
+/// of being passed over for the built-in workflow, and a working directory
+/// without that file is unchanged. Every case here is decided before an
+/// episode starts, so none reaches a model.
+#[test]
+fn a_repository_document_runs_when_the_command_line_names_none() {
+    let dir = scratch("repository-contract");
+    std::fs::create_dir(dir.join(".foe")).unwrap();
+    let document = config(&dir, |value| {
+        value["name"] = json!("repository-document");
+        value["grants"] = json!({ "read": ["/no/such/repository-root"] });
+    });
+    std::fs::write(dir.join(".foe/contract.json"), serde_json::to_vec_pretty(&document).unwrap()).unwrap();
+    let refused_key_file = ["--model", "openai/gpt-5.6-sol", "--key-file", "/no/such/key.json", "--headless"];
+    let run = |directory: &Path, args: &[&str]| {
+        let output = Command::new(FOE).args(args).current_dir(directory).output().unwrap();
+        assert!(!output.status.success(), "`foe {}` was expected to fail before an episode starts", args.join(" "));
+        String::from_utf8(output.stderr).unwrap()
+    };
+
+    let discovered = run(&dir, &["do the thing", "--headless"]);
+    assert!(discovered.contains("foe: using .foe/contract.json, workflow repository-document"), "{discovered}");
+    assert!(
+        discovered.contains("/no/such/repository-root"),
+        "the discovered document is the one resolved: {discovered}"
+    );
+
+    let mut named = vec!["do the thing", "--config", "builtin:coding"];
+    named.extend(refused_key_file);
+    let named = run(&dir, &named);
+    assert!(!named.contains("using .foe/contract.json"), "a built-in name outranks the repository document: {named}");
+    assert!(named.contains("--key-file /no/such/key.json"), "{named}");
+
+    let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--headless"]);
+    assert_eq!(
+        verify.trim(),
+        "foe: --verify applies to the built-in coding workflow; .foe/contract.json declares its own behavior"
+    );
+
+    let broken = scratch("dangling-repository-contract");
+    std::fs::create_dir(broken.join(".foe")).unwrap();
+    std::os::unix::fs::symlink("/no/such/contract.json", broken.join(".foe/contract.json")).unwrap();
+    let mut dangling = vec!["do the thing"];
+    dangling.extend(refused_key_file);
+    let dangling = run(&broken, &dangling);
+    assert!(dangling.contains(".foe/contract.json: No such file"), "a broken entry is reported: {dangling}");
+    assert!(!dangling.contains("--key-file"), "the built-in workflow does not replace it: {dangling}");
+
+    let empty = scratch("no-repository-contract");
+    let mut bare = vec!["do the thing"];
+    bare.extend(refused_key_file);
+    let bare = run(&empty, &bare);
+    assert!(!bare.contains("using .foe/contract.json"), "{bare}");
+    assert!(bare.contains("--key-file /no/such/key.json"), "without that file the built-in workflow runs: {bare}");
+}
+
+/// docs/design.md "The command line": `foe plan --config builtin:coding`
+/// resolves the document the binary carries as it resolves a file, and
+/// `--json` prints the contract a host reads. A name the binary does not
+/// carry is refused with the names it carries.
+#[test]
+fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
+    let dir = scratch("plan-builtin");
+    let planned =
+        Command::new(FOE).args(["plan", "--json", "--config", "builtin:coding"]).current_dir(&*dir).output().unwrap();
+    assert!(planned.status.success(), "{}", String::from_utf8_lossy(&planned.stderr));
+    let line = String::from_utf8(planned.stdout).unwrap();
+    assert_eq!(line.lines().count(), 1, "one JSON line");
+    let report: Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(report["contract"]["name"], "coding");
+    assert_eq!(report["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
+    assert!(report["contract"]["task"].is_null(), "a resolved contract carries no task");
+    assert!(report["contract_fingerprint"].as_str().unwrap().starts_with("sha256:"));
+    assert!(report["workflow"]["terminal"].as_array().is_some(), "the coding workflow is a workflow");
+
+    let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();
+    assert!(!unknown.status.success(), "an unknown built-in name is refused");
+    let message = String::from_utf8_lossy(&unknown.stderr).to_string();
+    assert!(message.contains("the built-in documents are builtin:coding"), "{message}");
+}
+
 /// docs/design.md "Execution contracts and fingerprints": every example contract hashes to
 /// the fingerprint recorded for it.
 #[test]
