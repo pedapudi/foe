@@ -86,10 +86,11 @@ gutter before the text. A connector cell is never split. The text column is
 at least 20 characters wide, so a deeply nested episode can exceed the
 terminal width.
 
-The final block shows the outcome and, when the viewer serves, ends with
-the line `Viewer: URL`, written whole without wrapping, so the address is
-visible at the end of scrollback. The viewer stays reachable for three
-seconds after the final block is written.
+The final block shows the outcome and ends with the line `Viewer: foe view
+PATH`, written whole without wrapping, where PATH is the episode directory.
+The live viewer address goes to standard error when the run starts and the
+served page leaves with the process, three seconds after the final block
+is written, so the command is the reference that outlives the run.
 
 The display retains read offsets and episode labels, and reads logs through
 the viewer crate. It does not alter execution or retained evidence.

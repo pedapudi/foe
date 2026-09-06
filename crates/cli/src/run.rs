@@ -878,7 +878,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let executor = runtime()?;
     let outcome = executor.block_on(async {
         let outcome = match options.conversation {
-            true => foe_view::conversation(&telemetry_log_dir, viewer_url.clone(), episode(setup)).await,
+            true => foe_view::conversation(&telemetry_log_dir, episode(setup)).await,
             false => episode(setup).await,
         };
         // The viewer stays reachable after the display has written the
@@ -897,6 +897,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     if !options.host && !options.conversation {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);
+        // The live viewer leaves with the process; the command outlives it.
+        eprintln!("foe: view the episode with foe view {}", telemetry_log_dir.display());
     }
     Ok(ExitCode::from(match outcome {
         Outcome::Completed { .. } => 0,

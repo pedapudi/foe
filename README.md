@@ -125,7 +125,7 @@ foe --config hello.json --conversation
 ```
 
 This opt-in display hides tool requests and responses, shows completed
-messages as they arrive, and repeats the viewer address after the outcome.
+messages as they arrive, and ends with the `foe view` command for the episode.
 The browser viewer serves as usual. JSON remains the default output. See [the terminal display specification](docs/viewer.md#terminal-conversation).
 
 `examples/` holds thirteen examples, each of which runs. Every one builds a
