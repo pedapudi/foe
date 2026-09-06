@@ -72,7 +72,7 @@ const OPTS: &[Opt] = &[
         "",
         "--config",
         "FILE",
-        "builtin:coding",
+        ".foe/contract.json in the working directory, else builtin:coding",
         "the contract document to run: a file, or builtin:coding, which --verify and --sandbox configure",
     ),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),

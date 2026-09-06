@@ -307,6 +307,13 @@ pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING];
 /// carries rather than a file path.
 pub(crate) const BUILTIN_PREFIX: &str = "builtin:";
 
+/// The document a run reads when the command line names none, relative to
+/// the working directory. No ancestor directory is examined. Any entry at
+/// the path selects it, a dangling symbolic link or a directory included,
+/// so a broken file is reported and never replaced by the built-in
+/// workflow in silence.
+pub(crate) const REPOSITORY_CONTRACT: &str = ".foe/contract.json";
+
 /// The document a run or a plan resolves.
 #[derive(Debug)]
 pub(crate) enum ContractSource {
@@ -340,13 +347,17 @@ pub(crate) fn contract_source(value: &str) -> Result<ContractSource, String> {
 }
 
 /// The contract document to run: the document `--config` names, else the
-/// built-in coding workflow. A task on the command line replaces the
-/// document's own task. A document in a file that declares no `model`
-/// block takes one from the model options, which a document declaring a
-/// block refuses.
+/// repository document in the working directory, else the built-in coding
+/// workflow. A task on the command line replaces the document's own task.
+/// Reading the repository document is announced on standard error, because
+/// the command line did not name it. A document in a file that declares no
+/// `model` block takes one from the model options, which a document
+/// declaring a block refuses.
 fn load_contract_document(options: &Options) -> Result<ContractDocument, String> {
+    let discovered = options.config.is_none() && Path::new(REPOSITORY_CONTRACT).symlink_metadata().is_ok();
     let source = match &options.config {
         Some(value) => contract_source(value)?,
+        None if discovered => ContractSource::File(REPOSITORY_CONTRACT.into()),
         None => ContractSource::Builtin(BUILTIN_CODING),
     };
     let path = match source {
@@ -370,11 +381,15 @@ fn load_contract_document(options: &Options) -> Result<ContractDocument, String>
     if options.verify.is_some() || options.sandbox.is_some() {
         let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
         return Err(format!(
-            "{option} applies to the built-in coding workflow; a contract document declares its own behavior"
+            "{option} applies to the built-in coding workflow; {} declares its own behavior",
+            path.display()
         ));
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut config = foe_contract::document::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    if discovered {
+        eprintln!("foe: using {REPOSITORY_CONTRACT}, workflow {}", config.name);
+    }
     if let Some(task) = &options.task {
         config.task = task.clone();
     }

@@ -1,9 +1,9 @@
 //! `foe init --repository PATH`: write a repository's starting execution
 //! contract to `PATH/.foe/contract.json` and a placeholder verifier to
-//! `PATH/.foe/verify`. The runtime reads configuration from no well-known
-//! location: only this command and the document it writes name these paths,
-//! and the document names the verifier by absolute path like any configured
-//! tool.
+//! `PATH/.foe/verify`. A later run started in that directory reads the
+//! contract when its command line names no document, which docs/design.md
+//! "The command line" states. The document names the verifier by absolute
+//! path like any configured tool.
 
 use crate::plan::{configuration_warnings, ConfigurationWarning};
 use crate::run;

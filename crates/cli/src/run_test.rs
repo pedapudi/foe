@@ -210,10 +210,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
 fn explicit_config_owns_its_sandbox_mode() {
     let options = Options { config: Some("unused.json".into()), sandbox: Some("off".into()), ..Options::default() };
     let error = load_contract_document(&options).unwrap_err();
-    assert_eq!(
-        error,
-        "--sandbox applies to the built-in coding workflow; a contract document declares its own behavior"
-    );
+    assert_eq!(error, "--sandbox applies to the built-in coding workflow; unused.json declares its own behavior");
 }
 
 /// A contract document, with the `model` block given when there is one.
@@ -359,7 +356,7 @@ fn the_run_options_of_the_built_in_workflow_apply_under_its_name() {
     let refused = Options { config: Some("unused.json".into()), ..options(Some(script), None, None) };
     assert_eq!(
         load_contract_document(&refused).unwrap_err(),
-        "--verify applies to the built-in coding workflow; a contract document declares its own behavior"
+        "--verify applies to the built-in coding workflow; unused.json declares its own behavior"
     );
 }
 

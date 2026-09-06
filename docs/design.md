@@ -824,23 +824,30 @@ forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
 
-What runs is the document `--config` names, else the built-in coding
-workflow. `--config` takes a file path or the name of a document the binary
-carries, written `builtin:NAME`. The binary carries one document,
-`builtin:coding`, the coding workflow this section describes; every other
-name is refused with the names the binary carries. A task given on the
-command line replaces the document's own `task`. `--verify` and `--sandbox`
-configure a built-in document, whether `--config` names it or the command
-line omits `--config`. A document in a file states that behavior in its own
-keys, so a command line pairing either option with a file document is
-refused. A host passes a document file: `--host` takes the task of the run
-from the document, and a built-in document carries no task, so `--config
-builtin:NAME` beside `--host` is refused.
+What runs is the document `--config` names, else `.foe/contract.json` in the
+working directory, else the built-in coding workflow. `--config` takes a
+file path or the name of a document the binary carries, written
+`builtin:NAME`. The binary carries one document, `builtin:coding`, the
+coding workflow this section describes. Every other name is refused with the
+names the binary carries. A command line naming no document examines the
+working directory alone and searches no ancestor directory. A run that reads
+`.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
+standard error, where NAME is the document's `name`. A task given on the
+command line replaces the document's own `task`. A host passes a document
+file: `--host` takes the task of the run from the document, and a built-in
+document carries no task, so `--config builtin:NAME` beside `--host` is
+refused.
 
-An implementation episode
-changes the current directory. A fresh assessment episode independently checks
-the task and implementation claim. It either accepts the artifacts or activates
-a fresh repair episode with its typed findings.
+`--verify` and `--sandbox` configure a built-in document. A document in a
+file states that behavior in its own keys, so pairing either option with a
+file document, the discovered one included, is refused. The log records the
+full contract and its fingerprint, so a run is reproducible from its log
+whether or not the command line named the document.
+
+An implementation episode changes the current directory. A fresh assessment
+episode independently checks the task and implementation claim. It either
+accepts the artifacts or activates a fresh repair episode with its typed
+findings.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
@@ -973,10 +980,10 @@ default. The placeholder verifier rejects every completion candidate with
 one finding naming the file a person must replace, so a run against the
 untouched document ends blocked rather than completed, and the verifier's
 capture at contract construction keeps the active episode judging by the
-captured bytes while a future run reads the file as it then exists. The
-runtime reads configuration from no well-known location: only `foe init`
-and the document it writes name these paths, and the report the command
-prints states every one of these decisions.
+captured bytes while a future run reads the file as it then exists. The file
+this command writes is the file a later run in that repository root uses
+when its command line names no document, under the rule "The command line"
+states. The report the command prints states every one of these decisions.
 
 Without `--headless` and without `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with

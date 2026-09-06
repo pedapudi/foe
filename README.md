@@ -77,10 +77,10 @@ foe "describe what this repository does"
 The first command asks for an API key, checks it, stores it under
 `~/.config/foe/`, and sets the default model. The second runs a task against
 the current directory. What it runs is the document `--config` names, else
-the built-in coding workflow, which `--config builtin:coding` names
-explicitly. The runtime supports
-API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
-and managed-cloud endpoints.
+`.foe/contract.json` in the working directory, else the built-in coding
+workflow, which `--config builtin:coding` names explicitly. The runtime
+supports API-key endpoints, OAuth-backed coding endpoints, compatible HTTP
+endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
