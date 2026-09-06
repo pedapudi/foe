@@ -47,6 +47,12 @@ struct Terminal<W> {
     lanes: Vec<(String, String)>,
 }
 
+/// One line of a body: a section title, bold in color mode, or text.
+enum Row {
+    Title(String),
+    Text(String),
+}
+
 impl<W: Write> Terminal<W> {
     fn new(output: W, color: bool, width: usize) -> Self {
         Self { output, color, width, offsets: BTreeMap::new(), lanes: Vec::new() }
@@ -104,7 +110,7 @@ impl<W: Write> Terminal<W> {
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n");
-                self.block(i, item.from.as_deref().unwrap_or("You"), &body)?;
+                self.block(i, item.from.as_deref().unwrap_or("You"), &[Row::Text(body)])?;
             }
             EventData::AssistantMessage(message) if !message.text.trim().is_empty() => {
                 let i = self.lane(id);
@@ -147,7 +153,7 @@ impl<W: Write> Terminal<W> {
         }
     }
 
-    fn block(&mut self, lane: usize, label: &str, body: &str) -> io::Result<()> {
+    fn block(&mut self, lane: usize, label: &str, body: &[Row]) -> io::Result<()> {
         let mut prefix = self.prefix();
         prefix[lane] = "● ";
         self.heading(&prefix.concat(), &format!("{} · {label}", self.lanes[lane].1))?;
@@ -164,14 +170,21 @@ impl<W: Write> Terminal<W> {
         self.heading(&prefix.concat(), label)
     }
 
-    /// Writes the text under the current lanes, then one blank line. Every
+    /// Writes the rows under the current lanes, then one blank line. Every
     /// emitted line starts with the connector cells and the gutter, so a
     /// wrapped continuation or a blank line never breaks a vertical line.
-    fn body(&mut self, body: &str) -> io::Result<()> {
+    fn body(&mut self, rows: &[Row]) -> io::Result<()> {
         let prefix = self.prefix().concat();
         let room = self.width.saturating_sub(prefix.chars().count() + GUTTER.len()).max(MIN_TEXT_WIDTH);
-        for line in clean(body).lines().chain(once("")).flat_map(|line| wrap(line, room)) {
-            writeln!(self.output, "{}", format!("{prefix}{GUTTER}{line}").trim_end())?;
+        for row in rows.iter().chain(once(&Row::Text(String::new()))) {
+            let (text, title) = match row {
+                Row::Title(text) => (text, true),
+                Row::Text(text) => (text, false),
+            };
+            for line in clean(text).trim_end_matches('\n').split('\n').flat_map(|line| wrap(line, room)) {
+                let line = if title && self.color { format!("\x1b[1m{line}\x1b[0m") } else { line };
+                writeln!(self.output, "{}", format!("{prefix}{GUTTER}{line}").trim_end())?;
+            }
         }
         Ok(())
     }
@@ -179,7 +192,7 @@ impl<W: Write> Terminal<W> {
     fn finish(&mut self, result: &Result<Outcome, String>) -> io::Result<()> {
         let (label, body) = match result {
             Ok(outcome) => result_text(outcome),
-            Err(error) => ("Failed", error.clone()),
+            Err(error) => ("Failed", vec![Row::Text(error.clone())]),
         };
         self.heading("● ", &format!("Final · {label}"))?;
         self.lanes.clear();
@@ -225,31 +238,120 @@ fn marker_width(text: &str) -> usize {
     }
 }
 
-fn result_text(outcome: &Outcome) -> (&'static str, String) {
+fn result_text(outcome: &Outcome) -> (&'static str, Vec<Row>) {
     match outcome {
         Outcome::Completed { value } => ("Completed", display_value(value)),
-        Outcome::Blocked { code, message } => ("Blocked", format!("{code:?}: {message}")),
-        Outcome::Exhausted { limit } => ("Exhausted", format!("Budget exhausted: {limit:?}")),
-        Outcome::Failed { error } => ("Failed", error.clone()),
+        Outcome::Blocked { code, message } => ("Blocked", vec![Row::Text(format!("{}: {message}", wire(code)))]),
+        Outcome::Exhausted { limit } => ("Exhausted", vec![Row::Text(format!("Budget exhausted: {}", wire(limit)))]),
+        Outcome::Failed { error } => ("Failed", vec![Row::Text(error.clone())]),
     }
 }
 
-fn display_value(value: &Value) -> String {
+/// Rows for a value. A string holding a JSON object or array is displayed
+/// as that object or array. An object opens with its `summary` paragraph
+/// and gives every other field a titled section; a field holding an empty
+/// string, array, or object is omitted.
+fn display_value(value: &Value) -> Vec<Row> {
     if let Value::String(text) = value {
         if let Ok(parsed @ (Value::Object(_) | Value::Array(_))) = serde_json::from_str(text) {
             return display_value(&parsed);
         }
     }
+    let Value::Object(fields) = value else {
+        return lines("", value, 0).into_iter().map(Row::Text).collect();
+    };
+    let summary = fields.get("summary").and_then(Value::as_str);
+    let mut rows: Vec<Row> =
+        summary.filter(|text| !text.is_empty()).map(|text| Row::Text(text.into())).into_iter().collect();
+    for (key, value) in fields.iter().filter(|(key, value)| (*key != "summary" || summary.is_none()) && !empty(value)) {
+        if !rows.is_empty() {
+            rows.push(Row::Text(String::new()));
+        }
+        rows.push(Row::Title(title(key)));
+        rows.extend(lines(key, value, 0).into_iter().map(Row::Text));
+    }
+    rows
+}
+
+/// Lines for `value`, indented by `indent` columns: an array as one bullet
+/// per item, an object as `key: value` lines with a nested array or object
+/// indented under its key, and a scalar as its text. `key` names the field
+/// the value belongs to.
+fn lines(key: &str, value: &Value, indent: usize) -> Vec<String> {
+    let pad = " ".repeat(indent);
+    match value {
+        Value::Array(items) => items.iter().flat_map(|item| bullet(key, item, indent)).collect(),
+        Value::Object(fields) => fields
+            .iter()
+            .filter(|(_, value)| !empty(value))
+            .flat_map(|(key, value)| match value {
+                Value::Array(_) | Value::Object(_) => {
+                    once(format!("{pad}{key}:")).chain(lines(key, value, indent + 2)).collect::<Vec<_>>()
+                }
+                _ => vec![format!("{pad}{key}: {}", scalar(value))],
+            })
+            .collect(),
+        _ => scalar(value).lines().map(|line| format!("{pad}{line}")).collect(),
+    }
+}
+
+/// One bullet for an item of the array field `key`. An item of `learned`
+/// holding `claim` and `seq` is the claim with the log sequence it cites.
+/// Another object item puts its scalar fields on the bullet line and nests
+/// the rest beneath.
+fn bullet(key: &str, item: &Value, indent: usize) -> Vec<String> {
+    let pad = " ".repeat(indent);
+    let body = match item {
+        Value::Object(fields) if key == "learned" && fields.contains_key("claim") && fields.contains_key("seq") => {
+            vec![format!("{} (seq {})", scalar(&fields["claim"]), fields["seq"])]
+        }
+        Value::Object(fields) => {
+            let (scalars, nested): (Vec<_>, Vec<_>) = fields
+                .iter()
+                .filter(|(_, value)| !empty(value))
+                .partition(|(_, value)| !matches!(value, Value::Array(_) | Value::Object(_)));
+            let head = scalars.iter().map(|(key, value)| format!("{key}: {}", scalar(value))).collect::<Vec<_>>();
+            once(head.join(", "))
+                .chain(nested.iter().flat_map(|(key, value)| once(format!("{key}:")).chain(lines(key, value, 2))))
+                .collect()
+        }
+        _ => lines(key, item, 0),
+    };
+    body.iter().enumerate().map(|(i, line)| format!("{pad}{} {line}", if i == 0 { "-" } else { " " })).collect()
+}
+
+/// A blocked code or limit as the log spells it.
+fn wire(value: &impl serde::Serialize) -> String {
+    match serde_json::to_value(value) {
+        Ok(Value::String(name)) => name,
+        Ok(other) => other.to_string(),
+        Err(_) => String::from("unknown"),
+    }
+}
+
+fn empty(value: &Value) -> bool {
+    match value {
+        Value::String(text) => text.is_empty(),
+        Value::Array(items) => items.is_empty(),
+        Value::Object(fields) => fields.is_empty(),
+        Value::Null => true,
+        _ => false,
+    }
+}
+
+fn scalar(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
-        Value::Object(fields) if !fields.is_empty() => fields
-            .iter()
-            .map(|(key, value)| format!("{key}:\n  {}", display_value(value).replace('\n', "\n  ")))
-            .collect::<Vec<_>>()
-            .join("\n\n"),
-        Value::Array(items) if !items.is_empty() => items.iter().map(display_value).collect::<Vec<_>>().join("\n\n"),
-        _ => value.to_string(),
+        other => other.to_string(),
     }
+}
+
+/// The section title for a field: underscores become spaces and the first
+/// letter is capitalized.
+fn title(key: &str) -> String {
+    let spaced = key.replace('_', " ");
+    let mut chars = spaced.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
 fn clean(text: &str) -> String {

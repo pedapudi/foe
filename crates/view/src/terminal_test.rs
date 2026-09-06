@@ -41,6 +41,15 @@ fn returned(child: &str, text: &str) -> EventData {
     EventData::SpawnEnd { child_id: child.into(), outcome: Outcome::Completed { value: json!(text) } }
 }
 
+/// Rows joined by line feeds, a title in brackets.
+fn rendered(value: Value) -> String {
+    let rows = display_value(&value).into_iter().map(|row| match row {
+        Row::Title(title) => format!("[{title}]"),
+        Row::Text(text) => text,
+    });
+    rows.collect::<Vec<_>>().join("\n")
+}
+
 fn append(dir: &Path, events: &[EventData]) {
     std::fs::create_dir_all(dir).unwrap();
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("episode.jsonl")).unwrap();
@@ -126,7 +135,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
         assert!(output.find(first).unwrap() < output.find(second).unwrap(), "{first} before {second}: {output}");
     }
     assert!(output.contains("reviewer → lead · Completed"), "{output}");
-    assert!(output.contains("summary:\n    Ready."), "{output}");
+    assert!(output.contains("Final · Completed\n  Ready.\n\n  Checks\n  - Review\n  - Tests\n"), "{output}");
     assert_eq!(output.matches("Review complete.").count(), 1);
     let finished = terminal.output.clone();
     terminal.poll(root.path()).unwrap();
@@ -199,9 +208,47 @@ fn terminal_controls_are_removed_and_color_is_optional() {
     assert!(output.contains("\x1b[1;36mlead · Assistant\x1b[0m"));
     assert!(output.contains("Safe[2J31mtext\n│   \tIndented"));
     assert!(!output.contains("\x1b[2J"));
-    assert_eq!(display_value(&json!({"empty": [], "count": 0})), "count:\n  0\n\nempty:\n  []");
-    assert_eq!(display_value(&json!("{\"summary\":\"Ready.\"}")), "summary:\n  Ready.");
-    assert_eq!(display_value(&json!(["First", "Second"])), "First\n\nSecond");
+    assert_eq!(rendered(json!({"empty": [], "count": 0})), "[Count]\n0");
+    assert_eq!(rendered(json!("{\"summary\":\"Ready.\"}")), "Ready.");
+    assert_eq!(rendered(json!(["First", "Second"])), "- First\n- Second");
+}
+
+/// docs/viewer.md: a completed object opens with its summary and gives every other field a titled section.
+#[test]
+fn completed_values_read_as_titled_sections() {
+    let coding = json!({
+        "summary": "Added the missing return.",
+        "changed_paths": ["src/brackets.py"],
+        "validation": ["python3 -m unittest passes", "grep finds the new return"],
+        "unresolved_risks": [],
+        "learned": [{"claim": "The tests fail before the change.", "seq": 7}],
+        "findings": []
+    });
+    assert_eq!(
+        rendered(coding.clone()),
+        "Added the missing return.\n\n[Changed paths]\n- src/brackets.py\n\n[Learned]\n\
+         - The tests fail before the change. (seq 7)\n\n[Validation]\n- python3 -m unittest passes\n\
+         - grep finds the new return"
+    );
+    let generic = json!({
+        "count": 0,
+        "name": "",
+        "items": [{"kind": "x", "note": "", "tags": ["t1"]}, ["p", "q"], "plain\nsecond line"],
+        "nested": {"key": "value", "list": ["a", "b"], "deep": {"n": 1}, "none": {}}
+    });
+    assert_eq!(
+        rendered(generic),
+        "[Count]\n0\n\n[Items]\n- kind: x\n  tags:\n    - t1\n- - p\n  - q\n- plain\n  second line\n\n\
+         [Nested]\ndeep:\n  n: 1\nkey: value\nlist:\n  - a\n  - b"
+    );
+    assert_eq!(rendered(json!("Plain text\nwith a second line")), "Plain text\nwith a second line");
+    assert_eq!(rendered(json!({"learned": [{"claim": "No sequence."}]})), "[Learned]\n- claim: No sequence.");
+    assert_eq!(rendered(json!({})), "");
+    let mut terminal = Terminal::new(Vec::new(), true, 80);
+    terminal.finish(&Ok(Outcome::Completed { value: coding })).unwrap();
+    let output = String::from_utf8(terminal.output).unwrap();
+    assert!(output.contains("\n  \x1b[1mChanged paths\x1b[0m\n  - src/brackets.py\n"), "{output}");
+    assert!(output.contains("\n  Added the missing return.\n\n"), "{output}");
 }
 
 /// docs/viewer.md: every outcome has a readable final result.
@@ -215,9 +262,9 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
         let mut terminal = Terminal::new(Vec::new(), false, 80);
         terminal.finish(&Ok(outcome.clone())).unwrap();
         let output = String::from_utf8(terminal.output).unwrap();
-        let (label, body) = result_text(&outcome);
-        assert!(output.contains(&format!("Final · {label}")));
-        assert!(output.contains(&body));
+        let (label, rows) = result_text(&outcome);
+        let [Row::Text(body)] = rows.as_slice() else { panic!("{label} has one line") };
+        assert!(output.contains(&format!("Final · {label}\n  {body}\n")), "{output}");
     }
     struct Closed;
     impl Write for Closed {

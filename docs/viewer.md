@@ -26,13 +26,24 @@ available message from that child. Independent episodes can be displayed
 in discovery order; the display does not claim a global event order.
 Existing recorded messages are displayed when execution resumes.
 
-Final string values appear as text; strings containing JSON objects or arrays
-use the same rendering as structured values. Object fields have labels and nested
-indentation, and arrays appear as separated values. Markdown remains
-readable source text.
-Colors distinguish headings in an interactive terminal; redirected output
-uses plain text with Unicode connectors. Control characters other than
-line feeds and tabs are removed.
+A string value appears as text; a string holding a JSON object or array is
+displayed as that object or array. An object opens with its `summary` field
+as a paragraph without a label. Every other field is a section, in
+alphabetical order, whose title is the field name with underscores replaced
+by spaces and the first letter capitalized. An array of strings is a bullet
+list. An array of objects has one bullet per object, with the object's
+scalar fields on the bullet line as `key: value` and its nested fields
+indented beneath. An item of the `learned` field of the built-in coding
+workflow, an object with `claim` and `seq`, is displayed as the claim
+followed by ` (seq N)`, where N is the log sequence the claim cites. A
+nested object is displayed as `key: value` lines, with a nested array or
+object indented under its key. A field holding an empty string, array, or
+object is omitted. Markdown remains readable source text. A blocked,
+exhausted, or failed outcome is one labeled heading followed by its
+message.
+Colors distinguish headings in an interactive terminal, and section titles
+are bold; redirected output uses plain text with Unicode connectors.
+Control characters other than line feeds and tabs are removed.
 
 Body text is wrapped to the terminal width, read from the window size of
 standard output; 80 columns are assumed when standard output has no window
