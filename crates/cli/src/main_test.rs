@@ -216,12 +216,14 @@ fn sandbox_help_names_every_supported_mode() {
     assert!(text.contains("kernel confinement mode: best-effort, required, or off"));
 }
 
-/// docs/design.md "The command line": a built-in run may request either
-/// service tier that the command-line vocabulary defines.
+/// docs/design.md "The command line": the tier vocabulary belongs to the
+/// provider, so the help sends a reader to the per-provider values rather
+/// than fixing a list of its own.
 #[test]
-fn service_tier_help_names_every_supported_value() {
+fn service_tier_help_points_at_the_per_provider_values() {
     let text = help_of(&FORMS[0]);
-    assert!(text.contains("request service tier: default or priority"));
+    assert!(text.contains("the provider's request service tier"), "{text}");
+    assert!(text.contains("docs/models.md lists the values each provider accepts"), "{text}");
 }
 
 /// `foe --help` and `foe help` are the same screen, and it names every

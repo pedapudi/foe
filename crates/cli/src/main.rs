@@ -70,7 +70,13 @@ const FORMS: &[Form] = &[
 const OPTS: &[Opt] = &[
     opt("", "--config", "FILE", "the built-in coding workflow", "the contract document to run"),
     opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
-    opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
+    opt(
+        "",
+        "--service-tier",
+        "TIER",
+        "the model configuration's value",
+        "the provider's request service tier; docs/models.md lists the values each provider accepts",
+    ),
     opt(
         "",
         "--key-file",

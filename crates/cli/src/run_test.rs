@@ -188,6 +188,9 @@ fn builtin_coding_selects_an_explicit_sandbox_mode() {
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
+/// The command line carries the tier the caller typed into every episode
+/// of the built-in workflow. The provider table judges the value, so the
+/// command line refuses none of them.
 #[test]
 fn builtin_coding_selects_an_explicit_service_tier() {
     let options = Options {
@@ -204,8 +207,9 @@ fn builtin_coding_selects_an_explicit_service_tier() {
         assert_eq!(contract.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     }
 
-    let invalid = Options { service_tier: Some("fastest".into()), ..options };
-    assert_eq!(load_contract_document(&invalid).unwrap_err(), "--service-tier fastest: expected default or priority");
+    let other = Options { service_tier: Some("flex".into()), ..options };
+    let config = load_contract_document(&other).unwrap();
+    assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("flex"));
 }
 
 #[test]
@@ -219,18 +223,69 @@ fn explicit_config_owns_its_sandbox_mode() {
     );
 }
 
+/// A contract document, with the `model` block given when there is one.
+fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> PathBuf {
+    let mut value = serde_json::json!({
+        "version": 4,
+        "name": "document",
+        "instructions": {"role": "test"},
+        "tools": [],
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "off"},
+        "task": "test"
+    });
+    if let Some(model) = model {
+        value["model"] = model;
+    }
+    let path = dir.join("config.json");
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    path
+}
+
+/// docs/design.md "The command line": a document that declares no `model`
+/// block takes one from the model options, exactly as the built-in
+/// document does, and stays without one when they are absent.
 #[test]
-fn explicit_config_owns_its_service_tier() {
+fn a_document_without_a_model_block_takes_the_command_line_model() {
+    let dir = crate::tests::scratch("foe-cli-run", "model-less-document");
+    let credential = dir.join("credential.json");
+    std::fs::write(&credential, "{}\n").unwrap();
+    let path = contract_document_file(dir.as_ref(), None);
+
     let options = Options {
-        config: Some(PathBuf::from("unused.json")),
-        service_tier: Some("priority".into()),
+        config: Some(path.clone()),
+        model: Some("openai/gpt-5.6-sol".into()),
+        service_tier: Some("flex".into()),
+        key_file: Some(credential.clone()),
         ..Options::default()
     };
-    let error = load_contract_document(&options).unwrap_err();
-    assert_eq!(
-        error,
-        "--service-tier applies to the built-in coding workflow; a contract document declares its own behavior"
-    );
+    let config = load_contract_document(&options).unwrap();
+    let model = config.model.as_ref().unwrap();
+    assert_eq!((model.provider.as_str(), model.model.as_str()), ("openai", "gpt-5.6-sol"));
+    assert_eq!(model.option("service_tier"), Some("flex"));
+    assert_eq!(model.option("api_key_file"), credential.canonicalize().unwrap().to_str());
+
+    let none_given = Options { config: Some(path), ..Options::default() };
+    assert!(load_contract_document(&none_given).unwrap().model.is_none(), "the document still names no model");
+}
+
+/// A document that declares a `model` block owns the model, so each of the
+/// three options that would supply one is refused.
+#[test]
+fn explicit_config_owns_its_model_options() {
+    let dir = crate::tests::scratch("foe-cli-run", "document-model-block");
+    let path = contract_document_file(dir.as_ref(), Some(serde_json::json!({"provider": "openai", "model": "m"})));
+    let given = [
+        ("--model", Options { model: Some("anthropic/claude-opus-5".into()), ..Options::default() }),
+        ("--key-file", Options { key_file: Some(dir.join("credential.json")), ..Options::default() }),
+        ("--service-tier", Options { service_tier: Some("priority".into()), ..Options::default() }),
+    ];
+    for (option, options) in given {
+        let options = Options { config: Some(path.clone()), ..options };
+        let error = load_contract_document(&options).unwrap_err();
+        assert_eq!(error, format!("{option}: the contract document declares its own `model` block"));
+    }
 }
 
 #[test]

@@ -910,10 +910,14 @@ xhigh effort for assessment and repair. An explicit reasoning effort applies
 to all three episodes. Other models carry the root model options into every
 stage.
 
-`--service-tier TIER` sets the model request's `service_tier` field to
-`default` or `priority` for all three episodes. When the option is absent, the
-default model file's value remains in effect. Otherwise the provider applies
-its own default.
+`--service-tier TIER` asks the provider to process the model requests of all
+three episodes in the named tier. A tier is one provider's vocabulary, so the
+command line accepts any value and the provider table judges it: each row
+names the request field the tier travels in and every value that provider
+accepts, and a provider whose row carries no tier refuses the option.
+[models.md](models.md) lists the values per provider. When the option is
+absent, the default model file's value remains in effect. Otherwise the
+provider applies its own default.
 
 `--key-file` names the provider credential file explicitly. It supplies an API
 key file, OAuth token state, or managed-cloud credential according to the
@@ -922,6 +926,17 @@ selected provider. Without it, a required convention file under
 an explicitly named file and sends no authentication header when none is
 named. The home directory comes from the passwd database, never from the
 environment.
+
+`--model`, `--key-file`, and `--service-tier` describe one `model` block
+between them, and the document under `--config` decides whether they apply.
+A document that declares a `model` block owns its model, so each of the
+three is refused. A document that declares no `model` block has stated that
+it names no model, so the three supply one exactly as they do for the
+built-in document; without any of them such a document runs under a host.
+The block they supply changes no fingerprint, which covers what a model can
+observe rather than the transport that reaches it. `--verify` and
+`--sandbox` are refused with `--config` whatever the document declares,
+because a document carries its own completion gate and sandbox mode.
 
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with

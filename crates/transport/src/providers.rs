@@ -33,6 +33,19 @@ impl WireFormat {
     }
 }
 
+/// The request field a provider carries the service tier in, with every
+/// value that field accepts.
+#[derive(Debug, Clone, Copy)]
+pub struct ServiceTier {
+    /// The request-body field the `service_tier` option becomes.
+    pub field: &'static str,
+    pub values: &'static [&'static str],
+}
+
+/// The tier of the providers speaking the Responses API.
+const RESPONSES_TIER: ServiceTier =
+    ServiceTier { field: "service_tier", values: &["auto", "default", "flex", "priority"] };
+
 /// How `foe login` proves a credential works.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verify {
@@ -66,6 +79,9 @@ pub struct Provider {
     pub windows: &'static [(&'static str, u64)],
     /// Sent with every request, before the credential headers.
     pub headers: &'static [(&'static str, &'static str)],
+    /// Where the `service_tier` option travels. A row with `None` sends no
+    /// tier, and resolution refuses the option for it.
+    pub service_tier: Option<ServiceTier>,
     pub verify: Verify,
 }
 
@@ -103,6 +119,7 @@ pub static PROVIDERS: &[Provider] = &[
         presets: &["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"],
         windows: &[("claude-", CLAUDE)],
         headers: &[("anthropic-version", "2023-06-01")],
+        service_tier: None,
         verify: Verify::GetJson("/v1/models"),
     },
     Provider {
@@ -117,6 +134,7 @@ pub static PROVIDERS: &[Provider] = &[
         presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
         windows: &[("gpt-6", 1_050_000), ("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[],
+        service_tier: Some(RESPONSES_TIER),
         verify: Verify::GetJson("/models"),
     },
     Provider {
@@ -131,6 +149,7 @@ pub static PROVIDERS: &[Provider] = &[
         presets: &[],
         windows: &[],
         headers: &[],
+        service_tier: None,
         verify: Verify::None,
     },
     Provider {
@@ -151,6 +170,7 @@ pub static PROVIDERS: &[Provider] = &[
         ],
         // OpenRouter attributes traffic to the application named here.
         headers: &[("HTTP-Referer", "https://github.com/pedapudi/foe"), ("X-Title", "foe")],
+        service_tier: None,
         verify: Verify::GetJson("/key"),
     },
     Provider {
@@ -169,6 +189,7 @@ pub static PROVIDERS: &[Provider] = &[
         presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
         windows: &[("gpt-6", 1_050_000), ("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
+        service_tier: Some(RESPONSES_TIER),
         verify: Verify::None,
     },
     Provider {
@@ -186,6 +207,7 @@ pub static PROVIDERS: &[Provider] = &[
         presets: &["gemini-2.5-pro", "gemini-2.5-flash", "claude-opus-5"],
         windows: &[("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
         headers: &[],
+        service_tier: None,
         verify: Verify::MintToken,
     },
 ];
@@ -219,6 +241,23 @@ mod tests {
         }
         assert_eq!(find("anthropic").map(|p| p.path), Some("/v1/messages"));
         assert!(find("unknown").is_none());
+    }
+
+    /// A declared tier is what a request carries, so it needs a field to
+    /// travel in and at least one value a configuration may name.
+    #[test]
+    fn a_declared_service_tier_names_a_field_and_its_values() {
+        for provider in PROVIDERS {
+            let Some(tier) = provider.service_tier else { continue };
+            assert!(!tier.field.is_empty(), "{}: the tier field is named", provider.name);
+            assert!(!tier.values.is_empty(), "{}: the tier has accepted values", provider.name);
+        }
+        for name in ["openai", "openai-codex"] {
+            let tier = find(name).unwrap().service_tier.unwrap();
+            assert_eq!(tier.field, "service_tier");
+            assert!(tier.values.contains(&"priority"), "{name}: the tier values include priority");
+        }
+        assert!(find("anthropic").unwrap().service_tier.is_none());
     }
 
     #[test]

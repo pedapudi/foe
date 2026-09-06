@@ -80,8 +80,16 @@ Every provider-specific option is a flat string. The options by provider:
 | `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
 | `base_url` | every HTTP provider | replaces the default endpoint; required for `compatible-http` |
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
-| `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
+| `service_tier` | `openai`, `openai-codex` | the tier the provider processes the request in: `auto`, `default`, `flex`, or `priority`, sent as the `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
+
+A service tier is one provider's vocabulary, so the provider table carries
+both halves of it: the request field the value travels in, and every value
+that provider accepts. Resolving a `model` block checks the configured value
+against that row and names the provider and its accepted values when the
+value is none of them. A provider whose row carries no tier, which is every
+provider absent from the `service_tier` row of the table above, refuses the
+option by name.
 
 The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
 Codex backend used by `openai-codex` rejects that field, so foe omits it on
@@ -255,7 +263,10 @@ next: foe "describe what this repository does"
 
 A bare `foe "task"` reads the default model file when `--model` is absent.
 `--model PROVIDER/MODEL` on the command line replaces it for one run, and
-`--key-file PATH` names the key file explicitly.
+`--key-file PATH` names the key file explicitly. A document named by
+`--config` that declares no `model` block takes its block from those two
+options and `--service-tier` in the same way; a document that declares one
+refuses all three.
 
 When the selected model is `gpt-5.6-sol` through `openai` or
 `openai-codex`, login writes `"reasoning_effort": "low"` into the default
@@ -266,11 +277,12 @@ the effective reasoning effort.
 ## Formats and credential sources
 
 The transport crate pairs wire formats with credential sources through one
-provider table. A provider is one row of twelve fields: the name a configuration
+provider table. A provider is one row of thirteen fields: the name a configuration
 writes, the title and one-line description `foe login` prints, the wire
 format, the credential source, the default base URL, the path appended to
 it, the options the `model` block must carry, the models `foe login`
-offers, the context windows by model-name prefix, any fixed headers, and
+offers, the context windows by model-name prefix, any fixed headers, the
+service tier's request field and accepted values, and
 how `foe login` proves a credential works. The binary includes every format,
 credential source, and provider row.
 
@@ -306,6 +318,7 @@ Provider {
     presets: &["example-large", "example-small"],
     windows: &[("example-", 128_000)],
     headers: &[],
+    service_tier: None,
     verify: Verify::GetJson("/models"),
 },
 ```
