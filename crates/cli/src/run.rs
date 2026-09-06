@@ -39,8 +39,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// How long the viewer stays reachable after the episode ends, so that an
-/// open page receives the final events.
+/// How long the viewer stays reachable after the episode ends and the
+/// outcome is displayed, so that an open page receives the final events.
 const VIEWER_GRACE: Duration = Duration::from_secs(3);
 
 const BUILTIN_IMPLEMENTATION_CALLS: u64 = 60;
@@ -689,10 +689,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         unconfined.policy_mut().add_write_root(dir, "telemetry capture directory");
     }
-    let viewer = match options.host || options.headless || options.conversation {
-        true => None,
-        false => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
+    let viewer = match serves_viewer(&options) {
+        true => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
+        false => None,
     };
+    let viewer_url = viewer.as_ref().map(foe_view::Bound::url);
     if let Some(bound) = &viewer {
         unconfined.policy_mut().add_bind_port(bound.addr.port());
         if !options.no_open {
@@ -735,11 +736,16 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     };
     let executor = runtime()?;
     let outcome = executor.block_on(async {
-        if options.conversation {
-            foe_view::conversation(&telemetry_log_dir, episode(setup)).await
-        } else {
-            episode(setup).await
+        let outcome = match options.conversation {
+            true => foe_view::conversation(&telemetry_log_dir, viewer_url.clone(), episode(setup)).await,
+            false => episode(setup).await,
+        };
+        // The viewer stays reachable after the display has written the
+        // final block, so that an open page receives the final events.
+        if viewer_url.is_some() && outcome.is_ok() {
+            tokio::time::sleep(VIEWER_GRACE).await;
         }
+        outcome
     });
     // Episode cleanup finishes before shutdown. An idle standard-input read
     // must not prevent the command from reporting an outcome or recording error.
@@ -757,6 +763,12 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         Outcome::Blocked { .. } => 2,
         Outcome::Exhausted { .. } => 3,
     }))
+}
+
+/// Whether a run serves the browser viewer: every running form does except
+/// under `--host`, whose standard output is the log, and `--headless`.
+fn serves_viewer(options: &Options) -> bool {
+    !(options.host || options.headless)
 }
 
 /// What the episode needs from the work done before the process restricted
@@ -834,10 +846,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         spawner: (!contract.grants.spawn.is_empty()).then(|| spawner.clone()),
         sessions: Some(sessions.clone()),
     };
-    let server = match viewer {
-        Some(bound) => Some(bound.serve(&log_dir).await.map_err(|e| e.to_string())?),
-        None => None,
-    };
+    if let Some(bound) = viewer {
+        bound.serve(&log_dir).await.map_err(|e| e.to_string())?;
+    }
     let workflow = contract.workflow.clone();
     let registry = Arc::new(registry);
     let children = Some(router.clone());
@@ -884,8 +895,5 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         None => loop_::run(params).await,
     }
     .map_err(|e| e.to_string())?;
-    if server.is_some() {
-        tokio::time::sleep(VIEWER_GRACE).await;
-    }
     Ok(outcome)
 }

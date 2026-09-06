@@ -4,8 +4,11 @@
 
 `foe --conversation` shows conversation text and the execution tree on
 standard output. The flag is off by default, including in interactive
-terminals. It selects the terminal display in place of the browser viewer.
-`--conversation` cannot be combined with `--host`.
+terminals. It chooses what standard output shows and changes nothing else
+about a run: the browser viewer binds and serves unless `--headless` is
+given, `--no-open` decides whether a browser opens on it, and the viewer
+address goes to standard error when serving starts. `--conversation` cannot
+be combined with `--host`.
 
 The display appends blocks to terminal scrollback. Each active episode has
 a column of tree connectors. A branch opens a column; its return joins
@@ -56,6 +59,11 @@ begins with the connector cells of the active episodes and a two-column
 gutter before the text. A connector cell is never split. The text column is
 at least 20 characters wide, so a deeply nested episode can exceed the
 terminal width.
+
+The final block shows the outcome and, when the viewer serves, ends with
+the line `Viewer: URL`, written whole without wrapping, so the address is
+visible at the end of scrollback. The viewer stays reachable for three
+seconds after the final block is written.
 
 The display retains read offsets and episode labels, and reads logs through
 the viewer crate. It does not alter execution or retained evidence.

@@ -55,6 +55,8 @@ fn conversation_is_an_explicit_running_option() {
         let Ok(Command::Run(options)) = parse(input) else { panic!("{input}") };
         assert!(options.conversation);
     }
+    let Ok(Command::Run(options)) = parse("a-task --conversation --no-open") else { panic!() };
+    assert!(options.conversation && options.no_open && !options.headless);
     let error = parse("--config c.json --host --conversation").err().unwrap();
     assert_eq!(error, "--conversation cannot be combined with --host");
     assert!(parse("view logs --conversation").is_err());

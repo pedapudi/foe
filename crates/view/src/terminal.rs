@@ -15,9 +15,14 @@ const MIN_TEXT_WIDTH: usize = 20;
 /// The width assumed when standard output has no window size.
 const DEFAULT_WIDTH: usize = 80;
 
-/// Displays recorded messages while `run` executes, followed by its outcome.
-/// Output failures disable the display while execution continues to settle.
-pub async fn conversation(dir: &Path, run: impl Future<Output = Result<Outcome, String>>) -> Result<Outcome, String> {
+/// Displays recorded messages while `run` executes, followed by its outcome
+/// and, when `viewer` names a served page, that address. Output failures
+/// disable the display while execution continues to settle.
+pub async fn conversation(
+    dir: &Path,
+    viewer: Option<String>,
+    run: impl Future<Output = Result<Outcome, String>>,
+) -> Result<Outcome, String> {
     let width = rustix::termios::tcgetwinsize(io::stdout()).map_or(0, |size| usize::from(size.ws_col));
     let width = if width == 0 { DEFAULT_WIDTH } else { width };
     let mut terminal = Terminal::new(io::stdout(), io::stdout().is_terminal(), width);
@@ -33,7 +38,7 @@ pub async fn conversation(dir: &Path, run: impl Future<Output = Result<Outcome, 
             }
         }
     };
-    if let Err(error) = terminal.poll(dir).and(terminal.finish(&result)) {
+    if let Err(error) = terminal.poll(dir).and(terminal.finish(&result, viewer.as_deref())) {
         eprintln!("foe conversation: {error}");
     }
     result
@@ -189,7 +194,9 @@ impl<W: Write> Terminal<W> {
         Ok(())
     }
 
-    fn finish(&mut self, result: &Result<Outcome, String>) -> io::Result<()> {
+    /// Writes the final block: the outcome, then the viewer address on one
+    /// unwrapped line so that it can be copied whole.
+    fn finish(&mut self, result: &Result<Outcome, String>, viewer: Option<&str>) -> io::Result<()> {
         let (label, body) = match result {
             Ok(outcome) => result_text(outcome),
             Err(error) => ("Failed", vec![Row::Text(error.clone())]),
@@ -197,6 +204,9 @@ impl<W: Write> Terminal<W> {
         self.heading("● ", &format!("Final · {label}"))?;
         self.lanes.clear();
         self.body(&body)?;
+        if let Some(url) = viewer {
+            writeln!(self.output, "{GUTTER}Viewer: {url}")?;
+        }
         self.output.flush()
     }
 }

@@ -121,7 +121,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
     append(root.path(), &[returned("reviewer", "Review passed."), returned("tester", "Tests passed.")]);
     terminal.poll(root.path()).unwrap();
     terminal
-        .finish(&Ok(Outcome::Completed { value: json!({"summary": "Ready.", "checks": ["Review", "Tests"]}) }))
+        .finish(&Ok(Outcome::Completed { value: json!({"summary": "Ready.", "checks": ["Review", "Tests"]}) }), None)
         .unwrap();
     let output = String::from_utf8(terminal.output.clone()).unwrap();
     assert!(output.contains("├─╮ Branch: reviewer"), "{output}");
@@ -245,10 +245,11 @@ fn completed_values_read_as_titled_sections() {
     assert_eq!(rendered(json!({"learned": [{"claim": "No sequence."}]})), "[Learned]\n- claim: No sequence.");
     assert_eq!(rendered(json!({})), "");
     let mut terminal = Terminal::new(Vec::new(), true, 80);
-    terminal.finish(&Ok(Outcome::Completed { value: coding })).unwrap();
+    terminal.finish(&Ok(Outcome::Completed { value: coding }), Some("http://127.0.0.1:1/?token=a")).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
     assert!(output.contains("\n  \x1b[1mChanged paths\x1b[0m\n  - src/brackets.py\n"), "{output}");
     assert!(output.contains("\n  Added the missing return.\n\n"), "{output}");
+    assert!(output.ends_with("\n\n  Viewer: http://127.0.0.1:1/?token=a\n"), "{output}");
 }
 
 /// docs/viewer.md: every outcome has a readable final result.
@@ -260,7 +261,7 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
         Outcome::Failed { error: "Model response failed.".into() },
     ] {
         let mut terminal = Terminal::new(Vec::new(), false, 80);
-        terminal.finish(&Ok(outcome.clone())).unwrap();
+        terminal.finish(&Ok(outcome.clone()), None).unwrap();
         let output = String::from_utf8(terminal.output).unwrap();
         let (label, rows) = result_text(&outcome);
         let [Row::Text(body)] = rows.as_slice() else { panic!("{label} has one line") };
@@ -275,6 +276,6 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
             Ok(())
         }
     }
-    let error = Terminal::new(Closed, false, 80).finish(&Err("Run failed.".into())).unwrap_err();
+    let error = Terminal::new(Closed, false, 80).finish(&Err("Run failed.".into()), None).unwrap_err();
     assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
 }
