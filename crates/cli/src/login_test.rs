@@ -144,7 +144,7 @@ fn an_explicit_model_skips_the_prompt_and_a_second_login_keeps_the_default() {
     let mut output = Vec::new();
     let endpoints = Endpoints { base_url: Some(server.base.clone()), ..Endpoints::default() };
     let mut session = make_session(&home, &mut input, &mut output, endpoints);
-    let options = Options { provider: Some("openai".into()), model: Some("gpt-5-mini".into()), status: false };
+    let options = Options { provider: Some("openai".into()), model: Some("gpt-5-mini".into()), ..Options::default() };
     run(&mut session, options).unwrap();
     assert_eq!(default_model_in(&home).unwrap().unwrap().model, "gpt-5-mini");
     // A second provider leaves the default alone and no model prompt appears.
@@ -164,6 +164,56 @@ fn an_explicit_model_skips_the_prompt_and_a_second_login_keeps_the_default() {
     assert!(text.contains("default model  openai/gpt-5-mini"), "{text}");
     assert!(text.contains("credentials/openai.json") && text.contains("credentials/openrouter.json"), "{text}");
     assert!(!text.contains("sk-one") && !text.contains("sk-two"), "{text}");
+}
+
+/// docs/design.md "The command line": `foe login PROVIDER --key-file PATH`
+/// records a credential file without asking for a key, by naming it in the
+/// default model block that a run without a `model` block of its own reads.
+#[test]
+fn a_key_file_is_recorded_without_a_prompt() {
+    let home = home("recorded-key-file");
+    let key_file = home.join("openai.key");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(&key_file, "sk-recorded\n").unwrap();
+    let canonical = key_file.canonicalize().unwrap().to_string_lossy().into_owned();
+
+    // Without a recorded default of that provider the command names --model.
+    let mut input = Cursor::new(Vec::new());
+    let mut output = Vec::new();
+    let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
+    let named = Options { provider: Some("openai".into()), key_file: Some(key_file.clone()), ..Options::default() };
+    let error = run(&mut session, named).unwrap_err();
+    assert!(error.contains("name one with --model MODEL"), "{error}");
+
+    let mut input = Cursor::new(Vec::new());
+    let mut output = Vec::new();
+    let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
+    let options = Options {
+        provider: Some("openai".into()),
+        model: Some("gpt-5-mini".into()),
+        key_file: Some(key_file.clone()),
+        ..Options::default()
+    };
+    run(&mut session, options).unwrap();
+    let block = default_model_in(&home).unwrap().unwrap();
+    assert_eq!((block.provider.as_str(), block.model.as_str()), ("openai", "gpt-5-mini"));
+    assert_eq!(block.option("api_key_file"), Some(canonical.as_str()));
+    let text = String::from_utf8(output).unwrap();
+    assert!(text.contains(&canonical), "the recorded path is reported: {text}");
+    assert!(!text.contains("Paste your"), "nothing is asked: {text}");
+    assert!(!home.join(".config/foe/credentials/openai.json").exists(), "no key is copied");
+
+    // A recorded default of the same provider supplies the model name.
+    let other = home.join("second.key");
+    std::fs::write(&other, "sk-second\n").unwrap();
+    let mut input = Cursor::new(Vec::new());
+    let mut output = Vec::new();
+    let mut session = make_session(&home, &mut input, &mut output, Endpoints::default());
+    let again = Options { provider: Some("openai".into()), key_file: Some(other.clone()), ..Options::default() };
+    run(&mut session, again).unwrap();
+    let block = default_model_in(&home).unwrap().unwrap();
+    assert_eq!(block.model, "gpt-5-mini", "the recorded model stands");
+    assert_eq!(block.option("api_key_file"), other.canonicalize().unwrap().to_str());
 }
 
 #[test]

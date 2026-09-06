@@ -754,12 +754,12 @@ The binary has one running form and five forms that run nothing.
 
 ```
 foe "task" [--config FILE] [--log-dir DIR]               run; serve the viewer; print the outcome; --log-dir holds the created episode directory
-foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
 foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
-foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
+foe login [PROVIDER [--model MODEL] [--key-file PATH]] [--status]   configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
 foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
@@ -979,28 +979,36 @@ accepts, and a provider whose row carries no tier refuses the option.
 absent, the default model file's value remains in effect. Otherwise the
 provider applies its own default.
 
-`--key-file` names the provider credential file explicitly. It supplies an API
-key file, OAuth token state, or managed-cloud credential according to the
-selected provider. Without it, a required convention file under
+A credential file is named where a model is configured rather than on the
+running command line. `foe login PROVIDER --key-file PATH` records the file
+for later runs, and a document's `model` block names one for a single
+contract, through the credential option its provider defines: an API key
+file, OAuth token state, or a managed-cloud credential, according to the
+provider. Where no option names a file, a required convention file under
 `~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
 an explicitly named file and sends no authentication header when none is
 named. The home directory comes from the passwd database, never from the
 environment.
 
-`--model`, `--key-file`, and `--service-tier` describe one `model` block
-between them, and the document under `--config` decides whether they apply.
-A document that declares a `model` block owns its model, so each of the
-three is refused. A document that declares no `model` block has stated that
-it names no model, so the three supply one exactly as they do for the
-built-in document; without any of them such a document runs under a host.
-The block they supply changes no fingerprint, which covers what a model can
-observe rather than the transport that reaches it. `--verify` and
-`--sandbox` are refused with a document in a file whatever it declares,
-because a document carries its own completion gate and sandbox mode.
+`--model` and `--service-tier` describe one `model` block between them, and
+the document under `--config` decides whether they apply. A document that
+declares a `model` block owns its model, so both are refused. A document
+that declares no `model` block has stated that it names no model, so the two
+supply one exactly as they do for the built-in document; without either such
+a document runs under a host. The block they supply changes no fingerprint,
+which covers what a model can observe rather than the transport that reaches
+it. `--verify` and `--sandbox` are refused with a document in a file
+whatever it declares, because a document carries its own completion gate and
+sandbox mode.
 
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with
-mode 0600. It sets the default model when none is set. [models.md](models.md)
+mode 0600. It sets the default model when none is set.
+`foe login PROVIDER --key-file PATH` asks nothing and records PATH as the
+file that provider's credential is read from, by naming it in the default
+model block through the provider's credential option. That command needs a
+model of the provider: `--model MODEL` names one, and a recorded default of
+the same provider supplies one otherwise. [models.md](models.md)
 specifies the providers, validation, and flows.
 
 `foe init --repository PATH` writes a starting execution contract to

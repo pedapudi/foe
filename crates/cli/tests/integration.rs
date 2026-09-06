@@ -1836,7 +1836,10 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
         value["grants"] = json!({ "read": ["/no/such/repository-root"] });
     });
     std::fs::write(dir.join(".foe/contract.json"), serde_json::to_vec_pretty(&document).unwrap()).unwrap();
-    let refused_key_file = ["--model", "openai/gpt-5.6-sol", "--key-file", "/no/such/key.json", "--viewer", "off"];
+    // A sandbox mode none of the three matches is refused by the built-in
+    // document alone; a document in a file refuses `--sandbox` outright.
+    let refused_mode = ["--model", "openai/gpt-5.6-sol", "--sandbox", "nonsense", "--viewer", "off"];
+    let built_in_ran = "--sandbox nonsense: expected best-effort, required, or off";
     let run = |directory: &Path, args: &[&str]| {
         let output = Command::new(FOE).args(args).current_dir(directory).output().unwrap();
         assert!(!output.status.success(), "`foe {}` was expected to fail before an episode starts", args.join(" "));
@@ -1851,10 +1854,10 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     );
 
     let mut named = vec!["do the thing", "--config", "builtin:coding"];
-    named.extend(refused_key_file);
+    named.extend(refused_mode);
     let named = run(&dir, &named);
     assert!(!named.contains("using .foe/contract.json"), "a built-in name outranks the repository document: {named}");
-    assert!(named.contains("--key-file /no/such/key.json"), "{named}");
+    assert!(named.contains(built_in_ran), "{named}");
 
     let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--viewer", "off"]);
     assert_eq!(
@@ -1865,18 +1868,16 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     let broken = scratch("dangling-repository-contract");
     std::fs::create_dir(broken.join(".foe")).unwrap();
     std::os::unix::fs::symlink("/no/such/contract.json", broken.join(".foe/contract.json")).unwrap();
-    let mut dangling = vec!["do the thing"];
-    dangling.extend(refused_key_file);
-    let dangling = run(&broken, &dangling);
+    let dangling = run(&broken, &["do the thing", "--viewer", "off"]);
     assert!(dangling.contains(".foe/contract.json: No such file"), "a broken entry is reported: {dangling}");
-    assert!(!dangling.contains("--key-file"), "the built-in workflow does not replace it: {dangling}");
+    assert!(!dangling.contains(built_in_ran), "the built-in workflow does not replace it: {dangling}");
 
     let empty = scratch("no-repository-contract");
     let mut bare = vec!["do the thing"];
-    bare.extend(refused_key_file);
+    bare.extend(refused_mode);
     let bare = run(&empty, &bare);
     assert!(!bare.contains("using .foe/contract.json"), "{bare}");
-    assert!(bare.contains("--key-file /no/such/key.json"), "without that file the built-in workflow runs: {bare}");
+    assert!(bare.contains(built_in_ran), "without that file the built-in workflow runs: {bare}");
 }
 
 /// docs/design.md "The command line": `foe plan --config builtin:coding`

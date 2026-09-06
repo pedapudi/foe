@@ -5,17 +5,16 @@ use super::*;
 fn coding(
     task: String,
     model: ModelConfig,
-    key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
-    builtin_contract_document(BUILTIN_CODING, task, Some(model), key_file, verify, sandbox)
+    builtin_contract_document(BUILTIN_CODING, task, Some(model), verify, sandbox)
 }
 
 #[test]
 fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol() {
     for provider in ["openai", "openai-codex"] {
-        let config = coding("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None, None).unwrap();
+        let config = coding("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None).unwrap();
         assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("low"));
         let workflow = config.workflow.as_ref().unwrap();
         for node in ["assess-task", "repair-task"] {
@@ -29,7 +28,7 @@ fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol()
 fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     let mut explicit = ModelConfig::new("openai-codex", "gpt-5.6-sol");
     explicit.options.insert("reasoning_effort".into(), "high".into());
-    let config = coding("task".into(), explicit, None, None, None).unwrap();
+    let config = coding("task".into(), explicit, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
@@ -37,7 +36,7 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
         assert_eq!(contract.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     }
 
-    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), None);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         let contract = node.model.as_ref().unwrap();
@@ -45,21 +44,15 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     }
 }
 
+/// docs/design.md "The command line": the built-in document carries the
+/// credential options of the model block it is given, so a credential file
+/// recorded by `foe login` reaches the run through that block.
 #[test]
-fn builtin_key_file_uses_the_providers_credential_option() {
-    let dir = crate::tests::scratch("foe-cli-run", "builtin-credential");
-    let credential = dir.join("credential.json");
-    std::fs::write(&credential, "{}\n").unwrap();
-    let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
-
-    let codex =
-        coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), Some(&credential), None, None).unwrap();
-    assert_eq!(codex.model.as_ref().unwrap().option("token_file"), Some(canonical.as_str()));
-    assert_eq!(codex.model.as_ref().unwrap().option("api_key_file"), None);
-
-    let openai =
-        coding("task".into(), ModelConfig::new("openai", "gpt-5.6-sol"), Some(&credential), None, None).unwrap();
-    assert_eq!(openai.model.as_ref().unwrap().option("api_key_file"), Some(canonical.as_str()));
+fn builtin_coding_carries_the_credential_options_of_its_model_block() {
+    let mut model = ModelConfig::new("openai", "gpt-5.6-sol");
+    model.options.insert("api_key_file".into(), "/keys/openai.json".into());
+    let document = coding("task".into(), model, None, None).unwrap();
+    assert_eq!(document.model.as_ref().unwrap().option("api_key_file"), Some("/keys/openai.json"));
 }
 
 /// docs/design.md "The command line": a bare task reserves independent
@@ -69,7 +62,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
     assert_eq!(BUILTIN_ASSESSMENT_CALLS, 60);
     assert_eq!(BUILTIN_REPAIR_CALLS, 60);
-    let config = coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None).unwrap();
+    let config = coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None).unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(
         config.budget.model_calls,
@@ -145,7 +138,7 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let model = ModelConfig::new("anthropic", "claude-opus-5");
-    let config = coding("task".into(), model.clone(), None, Some(&script), None).unwrap();
+    let config = coding("task".into(), model.clone(), Some(&script), None).unwrap();
     resolve(&config).expect("the guarded built-in workflow resolves");
     let canonical = script.canonicalize().unwrap();
     assert_eq!(config.tool_defs["check"].exec, canonical);
@@ -168,17 +161,17 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
 
-    let plain = coding("task".into(), model, None, None, None).unwrap();
+    let plain = coding("task".into(), model, None, None).unwrap();
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
 }
 
 #[test]
 fn builtin_coding_selects_an_explicit_sandbox_mode() {
     let model = ModelConfig::new("openai-codex", "gpt-5.6-sol");
-    let config = coding("task".into(), model.clone(), None, None, Some("off")).unwrap();
+    let config = coding("task".into(), model.clone(), None, Some("off")).unwrap();
     assert_eq!(serde_json::to_value(config.sandbox.mode).unwrap(), "off");
 
-    let error = coding("task".into(), model, None, None, Some("wide-open")).unwrap_err();
+    let error = coding("task".into(), model, None, Some("wide-open")).unwrap_err();
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
@@ -248,28 +241,25 @@ fn a_document_without_a_model_block_takes_the_command_line_model() {
         config: Some(path.clone()),
         model: Some("openai/gpt-5.6-sol".into()),
         service_tier: Some("flex".into()),
-        key_file: Some(credential.clone()),
         ..Options::default()
     };
     let (config, _) = load_contract_document(&options).unwrap();
     let model = config.model.as_ref().unwrap();
     assert_eq!((model.provider.as_str(), model.model.as_str()), ("openai", "gpt-5.6-sol"));
     assert_eq!(model.option("service_tier"), Some("flex"));
-    assert_eq!(model.option("api_key_file"), credential.canonicalize().unwrap().to_str());
 
     let none_given = Options { config: Some(path), ..Options::default() };
     assert!(load_contract_document(&none_given).unwrap().0.model.is_none(), "the document still names no model");
 }
 
 /// A document that declares a `model` block owns the model, so each of the
-/// three options that would supply one is refused.
+/// two options that would supply one is refused.
 #[test]
 fn explicit_config_owns_its_model_options() {
     let dir = crate::tests::scratch("foe-cli-run", "document-model-block");
     let path = contract_document_file(dir.as_ref(), Some(serde_json::json!({"provider": "openai", "model": "m"})));
     let given = [
         ("--model", Options { model: Some("anthropic/claude-opus-5".into()), ..Options::default() }),
-        ("--key-file", Options { key_file: Some(dir.join("credential.json")), ..Options::default() }),
         ("--service-tier", Options { service_tier: Some("priority".into()), ..Options::default() }),
     ];
     for (option, options) in given {
@@ -371,7 +361,7 @@ fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
 
 #[test]
 fn builtin_coding_declares_its_general_shell_command_surface() {
-    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     let expected: Vec<PathBuf> = BUILTIN_EXECUTE_ROOTS.iter().map(PathBuf::from).collect();
     assert!(expected.iter().any(|root| Path::new("/usr/bin/python3").starts_with(root)));
     assert_eq!(config.grants.execute, expected);
@@ -384,7 +374,7 @@ fn builtin_coding_declares_its_general_shell_command_surface() {
 
 #[test]
 fn builtin_coding_can_retrieve_shortened_tool_results() {
-    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None).unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     assert_eq!(config.tools, ["read", "grep", "edit", "bash"]);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != "retrieve"));

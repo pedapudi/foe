@@ -85,13 +85,6 @@ const OPTS: &[Opt] = &[
     ),
     opt(
         "",
-        "--key-file",
-        "PATH",
-        "the provider's file under ~/.config/foe/credentials/",
-        "the provider credential file to use",
-    ),
-    opt(
-        "",
         "--verify",
         "PATH",
         "the built-in workflow has no verifier gate",
@@ -122,6 +115,13 @@ const OPTS: &[Opt] = &[
     ),
     opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
     opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
+    opt(
+        "login",
+        "--key-file",
+        "PATH",
+        "the key this command asks for, written under ~/.config/foe/credentials/",
+        "record this file as the provider's credential, asking nothing",
+    ),
     opt("init", "--repository", "PATH", "required", "the repository to write .foe/contract.json and .foe/verify for"),
     opt("login", "--status", "", "", "print the default model and every configured credential path"),
     opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
@@ -145,10 +145,15 @@ const HELP: Opt = opt("*", "--help", "", "", "print this help and exit");
 /// says the same thing. A command line using one is refused by its own name,
 /// because what it asked for is still available under another spelling.
 const RETIRED: &[(Text, Text)] = &[
-    ("--fork", "--from DIR@SEQ"),
-    ("--at", "--from DIR@SEQ"),
-    ("--no-open", "--viewer serve"),
-    ("--headless", "--viewer off"),
+    ("--fork", "write --from DIR@SEQ instead"),
+    ("--at", "write --from DIR@SEQ instead"),
+    ("--no-open", "write --viewer serve instead"),
+    ("--headless", "write --viewer off instead"),
+    (
+        "--key-file",
+        "record the credential once with `foe login PROVIDER --key-file PATH`, or name it in the document's \
+         `model` block",
+    ),
 ];
 
 /// How a message names a form: `foe` alone for the bare running form.
@@ -212,8 +217,8 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
         let Some(o) = accepted(form).find(|o| o.flag == arg.as_str()) else {
             let it = spelled(form);
             let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg.as_str());
-            if let Some((_, replacement)) = retired {
-                return Err(format!("`{it}` no longer takes {arg}; write {replacement} instead"));
+            if let Some((_, advice)) = retired {
+                return Err(format!("`{it}` no longer takes {arg}; {advice}"));
             }
             return Err(format!("unknown option {arg} for `{it}`; run `{it} --help` for the options it takes"));
         };
@@ -261,7 +266,7 @@ fn help(form: &'static Form) -> String {
 enum Command {
     Run(run::Options),
     Init { repository: PathBuf },
-    Login { provider: Option<String>, model: Option<String>, status: bool },
+    Login(login::Options),
     View { dir: PathBuf, serve: bool, port: u16 },
     Plan { config: Option<String>, json: bool },
     Schema,
@@ -318,11 +323,12 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 .map(PathBuf::from)
                 .ok_or("`foe init` takes --repository PATH; run `foe init --help`")?,
         },
-        "login" => Command::Login {
+        "login" => Command::Login(login::Options {
             provider: args.positional.pop(),
             model: args.value("--model"),
+            key_file: args.value("--key-file").map(PathBuf::from),
             status: args.switch("--status"),
-        },
+        }),
         _ => {
             // `--from DIR@SEQ` names a boundary; a value whose last `@` is
             // followed by anything else is a path in full.
@@ -344,7 +350,6 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 config: args.value("--config"),
                 model: args.value("--model"),
                 service_tier: args.value("--service-tier"),
-                key_file: args.value("--key-file").map(PathBuf::from),
                 verify: args.value("--verify").map(PathBuf::from),
                 sandbox: args.value("--sandbox"),
                 log_dir: args.value("--log-dir").map(PathBuf::from),
@@ -396,14 +401,10 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Plan { config, json } => plan(config, json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Init { repository } => printed(&init::init(&repository)?),
-        Command::Login { provider, model, status } => login(provider, model, status),
+        Command::Login(options) => login::login(options),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),
         Command::Run(options) => run::run(options),
     }
-}
-
-fn login(provider: Option<String>, model: Option<String>, status: bool) -> Result<ExitCode, String> {
-    login::login(login::Options { provider, model, status })
 }
 
 /// Starts the user's browser on a URL. A running form calls this before the

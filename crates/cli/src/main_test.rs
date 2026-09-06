@@ -67,15 +67,19 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(matches!(parse("plan --schema"), Ok(Command::Schema)));
     assert!(matches!(parse("plan --config c.json --json"), Ok(Command::Plan { json: true, .. })));
     assert!(matches!(parse("plan"), Ok(Command::Plan { config: None, json: false, .. })));
-    assert!(matches!(parse("login"), Ok(Command::Login { provider: None, model: None, status: false })));
-    assert!(matches!(parse("login --status"), Ok(Command::Login { provider: None, status: true, .. })));
-    let Ok(Command::Login { provider, model, .. }) = parse("login anthropic --model m") else { panic!() };
+    assert!(matches!(
+        parse("login"),
+        Ok(Command::Login(login::Options { provider: None, model: None, status: false, .. }))
+    ));
+    assert!(matches!(parse("login --status"), Ok(Command::Login(login::Options { provider: None, status: true, .. }))));
+    let Ok(Command::Login(login::Options { provider, model, .. })) = parse("login anthropic --model m") else {
+        panic!()
+    };
     assert_eq!((provider.as_deref(), model.as_deref()), (Some("anthropic"), Some("m")));
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) =
-        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --viewer off")
+    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --service-tier priority --sandbox off --viewer off")
     else {
         panic!()
     };
@@ -139,12 +143,12 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
 fn golden(line: &str) -> String {
     match parse(line) {
         Ok(Command::Run(o)) => format!(
-            "run task={:?} config={:?} model={:?} key_file={:?} log_dir={:?} from={:?} at={:?} viewer={:?} host={}",
-            o.task, o.config, o.model, o.key_file, o.log_dir, o.from, o.at, o.viewer, o.host
+            "run task={:?} config={:?} model={:?} log_dir={:?} from={:?} at={:?} viewer={:?} host={}",
+            o.task, o.config, o.model, o.log_dir, o.from, o.at, o.viewer, o.host
         ),
         Ok(Command::Init { repository }) => format!("init repository={repository:?}"),
-        Ok(Command::Login { provider, model, status }) => {
-            format!("login provider={provider:?} model={model:?} status={status}")
+        Ok(Command::Login(login::Options { provider, model, key_file, status })) => {
+            format!("login provider={provider:?} model={model:?} key_file={key_file:?} status={status}")
         }
         Ok(Command::View { dir, serve, port }) => format!("view dir={dir:?} serve={serve} port={port}"),
         Ok(Command::Plan { config, json }) => format!("plan config={config:?} json={json}"),
@@ -163,37 +167,41 @@ fn representative_invocations_parse_to_known_values() {
     let cases = [
         (
             "fix",
-            "run task=Some(\"fix\") config=None model=None key_file=None log_dir=None from=None at=None viewer=Open \
+            "run task=Some(\"fix\") config=None model=None log_dir=None from=None at=None viewer=Open \
              host=false",
         ),
         (
-            "fix --config c.json --model p/m --key-file k.txt --log-dir logs --viewer serve",
-            "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") key_file=Some(\"k.txt\") \
-             log_dir=Some(\"logs\") from=None at=None viewer=Serve host=false",
+            "fix --config c.json --model p/m --log-dir logs --viewer serve",
+            "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") log_dir=Some(\"logs\") from=None \
+             at=None viewer=Serve host=false",
         ),
         (
             "--config c.json --host --log-dir logs",
-            "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") from=None \
+            "run task=None config=Some(\"c.json\") model=None log_dir=Some(\"logs\") from=None \
              at=None viewer=Off host=true",
         ),
         ("--config builtin:coding --host", "error"),
         ("fix --viewer watch", "error"),
         (
             "redo --from /logs/ep_1@12",
-            "run task=Some(\"redo\") config=None model=None key_file=None log_dir=None \
+            "run task=Some(\"redo\") config=None model=None log_dir=None \
              from=Some(\"/logs/ep_1\") at=Some(12) viewer=Open host=false",
         ),
         (
             "fix --config builtin:coding",
-            "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None key_file=None log_dir=None \
+            "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None log_dir=None \
              from=None at=None viewer=Open host=false",
         ),
         ("init --repository repo", "init repository=\"repo\""),
         ("init", "error"),
         ("init --repository repo extra", "error"),
-        ("login", "login provider=None model=None status=false"),
-        ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") status=false"),
-        ("login --status", "login provider=None model=None status=true"),
+        ("login", "login provider=None model=None key_file=None status=false"),
+        ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") key_file=None status=false"),
+        (
+            "login openai --key-file /keys/openai.json",
+            "login provider=Some(\"openai\") model=None key_file=Some(\"/keys/openai.json\") status=false",
+        ),
+        ("login --status", "login provider=None model=None key_file=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),
         ("view logs --serve --port 8080", "view dir=\"logs\" serve=true port=8080"),
         ("plan", "plan config=None json=false"),
@@ -207,7 +215,7 @@ fn representative_invocations_parse_to_known_values() {
         // A word that once selected a removed form is a task like any other.
         (
             "tools",
-            "run task=Some(\"tools\") config=None model=None key_file=None log_dir=None from=None at=None \
+            "run task=Some(\"tools\") config=None model=None log_dir=None from=None at=None \
              viewer=Open host=false",
         ),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),

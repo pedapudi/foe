@@ -95,7 +95,6 @@ pub struct Options {
     pub model: Option<String>,
     /// Provider service tier of the `model` block the command line supplies.
     pub service_tier: Option<String>,
-    pub key_file: Option<PathBuf>,
     /// An executable verifier for the built-in coding workflow.
     pub verify: Option<PathBuf>,
     /// Kernel confinement mode for the built-in coding workflow.
@@ -476,7 +475,6 @@ fn load_contract_document(options: &Options) -> Result<(ContractDocument, bool),
                 name,
                 task,
                 Some(model),
-                options.key_file.as_deref(),
                 options.verify.as_deref(),
                 options.sandbox.as_deref(),
             )?;
@@ -503,25 +501,16 @@ fn load_contract_document(options: &Options) -> Result<(ContractDocument, bool),
         if config.model.is_some() {
             return Err(format!("{option}: the contract document declares its own `model` block"));
         }
-        let mut model = command_line_model(options)?;
-        if let Some(key_file) = &options.key_file {
-            name_credential_file(&mut model, key_file)?;
-        }
-        config.model = Some(model);
+        config.model = Some(command_line_model(options)?);
     }
     Ok((config, false))
 }
 
 /// The first model option the command line names, when it names one. The
-/// three describe one `model` block between them, so one name is enough to
+/// two describe one `model` block between them, so one name is enough to
 /// report which of them the document refuses.
 fn model_option_given(options: &Options) -> Option<&'static str> {
-    options
-        .model
-        .is_some()
-        .then_some("--model")
-        .or(options.key_file.is_some().then_some("--key-file"))
-        .or(options.service_tier.is_some().then_some("--service-tier"))
+    options.model.is_some().then_some("--model").or(options.service_tier.is_some().then_some("--service-tier"))
 }
 
 /// The `model` block the command line describes: `--model PROVIDER/MODEL`
@@ -541,15 +530,6 @@ fn command_line_model(options: &Options) -> Result<ModelConfig, String> {
         model.options.insert("service_tier".into(), tier.clone());
     }
     Ok(model)
-}
-
-/// Names the provider credential file the block reads, in place of the
-/// convention path under `~/.config/foe/credentials/`.
-fn name_credential_file(model: &mut ModelConfig, key_file: &Path) -> Result<(), String> {
-    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
-    let option = credential_option(&model.provider);
-    model.options.insert(option.to_string(), key_file.to_string_lossy().into_owned());
-    Ok(())
 }
 
 /// Applies implementation model settings measured for the built-in coding
@@ -578,9 +558,9 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 
 /// The document the binary carries under `name`, over the working directory.
 /// Every name in `BUILTIN_DOCUMENTS` has an arm here, and `contract_source`
-/// admits no other. `--key-file` names the API key file explicitly; without
-/// it the provider's convention path is read. `verify` names an executable
-/// verifier: it becomes a `tool_defs` entry named `check` available to every
+/// admits no other. A model block reads the credential file its own options
+/// name, and the provider's convention path otherwise. `verify` names an
+/// executable verifier: it becomes a `tool_defs` entry named `check` available to every
 /// episode. The root completion gate applies to both the assessment's accept
 /// branch and the repair branch. Without a verifier, the assessment's typed
 /// choice governs completion.
@@ -588,13 +568,12 @@ pub(crate) fn builtin_contract_document(
     name: &str,
     task: String,
     model: Option<ModelConfig>,
-    key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     match name {
-        BUILTIN_CODING => coding_contract_document(&cwd, task, model, key_file, verify, sandbox),
+        BUILTIN_CODING => coding_contract_document(&cwd, task, model, verify, sandbox),
         other => Err(format!("builtin:{other}: no built-in document has that name")),
     }
 }
@@ -608,7 +587,7 @@ const BUILTIN_PLAN_TASK: &str = "Placeholder task. A run of a built-in document 
 /// sandbox mode that only a run selects. The resolved contract carries no
 /// task, so the placeholder text reaches neither a model nor a fingerprint.
 pub(crate) fn builtin_plan_document(name: &str) -> Result<ContractDocument, String> {
-    builtin_contract_document(name, BUILTIN_PLAN_TASK.into(), default_model()?, None, None, None)
+    builtin_contract_document(name, BUILTIN_PLAN_TASK.into(), default_model()?, None, None)
 }
 
 /// The same coding workflow over an explicit root directory, which becomes
@@ -619,16 +598,12 @@ pub(crate) fn coding_contract_document(
     root: &Path,
     task: String,
     mut model: Option<ModelConfig>,
-    key_file: Option<&Path>,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
     let explicit_reasoning = model.as_ref().is_some_and(|m| m.option("reasoning_effort").is_some());
     if let Some(model) = &mut model {
         apply_builtin_model_defaults(model);
-        if let Some(key_file) = key_file {
-            name_credential_file(model, key_file)?;
-        }
     }
     let mut assessment_model = model.clone();
     if let Some(assessment) = &mut assessment_model {
@@ -688,10 +663,6 @@ pub(crate) fn coding_contract_document(
         return serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"));
     }
     serde_json::from_value(document).map_err(|e| format!("built-in contract document: {e}"))
-}
-
-fn credential_option(provider: &str) -> &'static str {
-    foe_transport::provider_info(provider).map(|value| value.auth.option_key()).unwrap_or("api_key_file")
 }
 
 #[cfg(test)]
@@ -815,7 +786,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let transport = match &contract.model {
         Some(model) => Some(built_in_transport(model)?),
         None if options.host => None,
-        None => return Err("no model: give --model and --key-file, add a `model` block, or run under --host".into()),
+        None => return Err("no model: give --model, add a `model` block, or run under --host".into()),
     };
     let confined = unconfined.enter().map_err(|e| e.to_string())?;
     let start = EpisodeStart {
