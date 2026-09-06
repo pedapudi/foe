@@ -1163,7 +1163,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,750 lines. It is separate because it serves a person at a terminal
+under 1,900 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
