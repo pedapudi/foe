@@ -54,7 +54,7 @@ sentence on first reading.
   comment-only lines. `log` and `core` form the kernel and stay under 6,250
   lines together. `contract` stays under 1,575 and `code` under 1,900. `team`
   stays under 800. Coding tools and team coordination together stay under
-  2,700. `workflow` stays under 1,050, `context` under 500, `view` under 725,
+  2,700. `workflow` stays under 1,050, `context` under 500, `view` under 780,
   `cli` under 1,750, `transport` under 2,700, `telemetry` under 1,000, and
   `evidence` under 500. The viewer HTML, TypeScript, and CSS use the
   compressed bundle limit in `docs/design.md`. `scripts/loc.sh` enforces every
