@@ -38,13 +38,9 @@ const GREEN: &str = "\x1b[32m";
 const DIM: &str = "\x1b[2m";
 
 /// Displays recorded messages while `run` executes, followed by its outcome
-/// and, when `viewer` names a served page, that address. Output failures
-/// disable the display while execution continues to settle.
-pub async fn conversation(
-    dir: &Path,
-    viewer: Option<String>,
-    run: impl Future<Output = Result<Outcome, String>>,
-) -> Result<Outcome, String> {
+/// and the `foe view` command that renders the finished episode. Output
+/// failures disable the display while execution continues to settle.
+pub async fn conversation(dir: &Path, run: impl Future<Output = Result<Outcome, String>>) -> Result<Outcome, String> {
     let width = rustix::termios::tcgetwinsize(io::stdout()).map_or(0, |size| usize::from(size.ws_col));
     let width = if width == 0 { DEFAULT_WIDTH } else { width };
     let interactive = io::stdout().is_terminal();
@@ -62,7 +58,7 @@ pub async fn conversation(
             }
         }
     };
-    if let Err(error) = terminal.poll(dir).and(terminal.finish(&result, viewer.as_deref())) {
+    if let Err(error) = terminal.poll(dir).and(terminal.finish(&result, dir)) {
         eprintln!("foe conversation: {error}");
     }
     result
@@ -293,9 +289,11 @@ impl<W: Write> Terminal<W> {
         Ok(())
     }
 
-    /// Writes the final block: the outcome, then the viewer address on one
-    /// unwrapped line so that it can be copied whole.
-    fn finish(&mut self, result: &Result<Outcome, String>, viewer: Option<&str>) -> io::Result<()> {
+    /// Writes the final block: the outcome, then the `foe view` command over
+    /// the episode directory on one unwrapped line so that it can be copied
+    /// whole. The live viewer leaves with the process, so the command is the
+    /// reference that outlives the run.
+    fn finish(&mut self, result: &Result<Outcome, String>, dir: &Path) -> io::Result<()> {
         let (label, body) = match result {
             Ok(outcome) => result_text(outcome),
             Err(error) => ("Failed", vec![Row::Text(error.clone())]),
@@ -303,9 +301,7 @@ impl<W: Write> Terminal<W> {
         self.heading("● ", &format!("Final · {label}"))?;
         self.lanes.clear();
         self.body(&body)?;
-        if let Some(url) = viewer {
-            writeln!(self.output, "{GUTTER}Viewer: {url}")?;
-        }
+        writeln!(self.output, "{GUTTER}Viewer: foe view {}", dir.display())?;
         self.output.flush()
     }
 }
