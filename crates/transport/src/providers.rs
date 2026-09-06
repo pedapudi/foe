@@ -114,8 +114,8 @@ pub static PROVIDERS: &[Provider] = &[
         default_base_url: Some("https://api.openai.com/v1"),
         path: "/responses",
         required: &[],
-        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
-        windows: &[("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
+        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
+        windows: &[("gpt-6", 1_050_000), ("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[],
         verify: Verify::GetJson("/models"),
     },
@@ -143,7 +143,12 @@ pub static PROVIDERS: &[Provider] = &[
         path: "/chat/completions",
         required: &[],
         presets: &["anthropic/claude-opus-5", "openai/gpt-5", "google/gemini-2.5-pro"],
-        windows: &[("anthropic/claude-", CLAUDE), ("openai/gpt-5", GPT5), ("google/gemini-2.5", GEMINI_25)],
+        windows: &[
+            ("anthropic/claude-", CLAUDE),
+            ("openai/gpt-6", 1_050_000),
+            ("openai/gpt-5", GPT5),
+            ("google/gemini-2.5", GEMINI_25),
+        ],
         // OpenRouter attributes traffic to the application named here.
         headers: &[("HTTP-Referer", "https://github.com/pedapudi/foe"), ("X-Title", "foe")],
         verify: Verify::GetJson("/key"),
@@ -161,8 +166,8 @@ pub static PROVIDERS: &[Provider] = &[
         default_base_url: Some("https://chatgpt.com/backend-api"),
         path: "/codex/responses",
         required: &[],
-        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
-        windows: &[("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
+        presets: &["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra"],
+        windows: &[("gpt-6", 1_050_000), ("gpt-5.6", 1_050_000), ("gpt-5", GPT5)],
         headers: &[("originator", "foe"), ("OpenAI-Beta", "responses=experimental")],
         verify: Verify::None,
     },
@@ -230,8 +235,14 @@ mod tests {
         }
         for name in ["openai", "openai-codex"] {
             let provider = find(name).unwrap();
-            assert!(provider.presets.contains(&"gpt-5.6-sol"), "{}: the preset is offered", provider.name);
-            assert_eq!(provider.context_window("gpt-5.6-sol"), Some(1_050_000));
+            for preset in ["gpt-5.6-sol", "gpt-6-astra"] {
+                assert!(provider.presets.contains(&preset), "{}: {preset} is offered", provider.name);
+                assert_eq!(provider.context_window(preset), Some(1_050_000));
+            }
+            assert_eq!(provider.context_window("gpt-5-mini"), Some(GPT5));
         }
+        let openrouter = find("openrouter").unwrap();
+        assert_eq!(openrouter.context_window("openai/gpt-6-astra"), Some(1_050_000));
+        assert_eq!(openrouter.context_window("openai/gpt-5-mini"), Some(GPT5));
     }
 }
