@@ -1468,7 +1468,7 @@ def main(argv: list[str] | None = None) -> int:
     episode_parent = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(binary), "--config", str(contract), "--headless", "--log-dir", str(episode_parent)],
+        [str(binary), "--config", str(contract), "--viewer", "off", "--log-dir", str(episode_parent)],
         text=True,
         capture_output=True,
         timeout=SECONDS + 30,

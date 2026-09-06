@@ -376,7 +376,8 @@ fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
         .arg(&config_path)
         .arg("--log-dir")
         .arg(dir.join("log"))
-        .arg("--headless")
+        .arg("--viewer")
+        .arg("off")
         .output()
         .unwrap();
     let code = run.status.code().unwrap();
@@ -1835,14 +1836,14 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
         value["grants"] = json!({ "read": ["/no/such/repository-root"] });
     });
     std::fs::write(dir.join(".foe/contract.json"), serde_json::to_vec_pretty(&document).unwrap()).unwrap();
-    let refused_key_file = ["--model", "openai/gpt-5.6-sol", "--key-file", "/no/such/key.json", "--headless"];
+    let refused_key_file = ["--model", "openai/gpt-5.6-sol", "--key-file", "/no/such/key.json", "--viewer", "off"];
     let run = |directory: &Path, args: &[&str]| {
         let output = Command::new(FOE).args(args).current_dir(directory).output().unwrap();
         assert!(!output.status.success(), "`foe {}` was expected to fail before an episode starts", args.join(" "));
         String::from_utf8(output.stderr).unwrap()
     };
 
-    let discovered = run(&dir, &["do the thing", "--headless"]);
+    let discovered = run(&dir, &["do the thing", "--viewer", "off"]);
     assert!(discovered.contains("foe: using .foe/contract.json, workflow repository-document"), "{discovered}");
     assert!(
         discovered.contains("/no/such/repository-root"),
@@ -1855,7 +1856,7 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     assert!(!named.contains("using .foe/contract.json"), "a built-in name outranks the repository document: {named}");
     assert!(named.contains("--key-file /no/such/key.json"), "{named}");
 
-    let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--headless"]);
+    let verify = run(&dir, &["do the thing", "--verify", "/bin/true", "--viewer", "off"]);
     assert_eq!(
         verify.trim(),
         "foe: --verify applies to the built-in coding workflow; .foe/contract.json declares its own behavior"
@@ -2146,18 +2147,18 @@ fn a_finished_episode_refuses_to_continue_and_forks_under_a_new_task() {
     let value = scripted_model_config(&dir, &server);
     std::fs::write(&config_path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     let (config, parent) = (config_path.to_str().unwrap(), dir.join("runs"));
-    let first = ["--config", config, "--log-dir", parent.to_str().unwrap(), "--headless"];
+    let first = ["--config", config, "--log-dir", parent.to_str().unwrap(), "--viewer", "off"];
     let (code, err) = cli_run(&dir, &first);
     assert_eq!(code, 0, "{err}");
     let source = announced_log(&err);
     let named = source.to_str().unwrap();
 
-    let (code, err) = cli_run(&dir, &["--config", config, "--from", named, "--headless"]);
+    let (code, err) = cli_run(&dir, &["--config", config, "--from", named, "--viewer", "off"]);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("ended; give a task to continue from its whole conversation"), "{err}");
     assert!(err.contains(&format!("--from {named}@SEQ")), "the refusal names how to fork earlier: {err}");
 
-    let forked = ["continue from there", "--config", config, "--from", named, "--headless"];
+    let forked = ["continue from there", "--config", config, "--from", named, "--viewer", "off"];
     let mut argv = forked.to_vec();
     argv.extend(["--log-dir", parent.to_str().unwrap()]);
     let (code, err) = cli_run(&dir, &argv);
@@ -2199,14 +2200,15 @@ fn an_unfinished_episode_refuses_a_new_task_and_forks_at_a_boundary() {
     std::fs::write(source.join("episode.jsonl"), format!("{start}\n{item}\n")).unwrap();
     let (config, named) = (config_path.to_str().unwrap(), source.to_str().unwrap());
 
-    let refused = ["something else", "--config", config, "--from", named, "--headless"];
+    let refused = ["something else", "--config", config, "--from", named, "--viewer", "off"];
     let (code, err) = cli_run(&dir, &refused);
     assert_eq!(code, 1, "{err}");
     assert!(err.contains("has not ended, and a continued episode keeps the task it started with"), "{err}");
 
     let boundary = format!("{named}@2");
     let parent = dir.join("runs");
-    let rerun = ["--config", config, "--from", &boundary, "--log-dir", parent.to_str().unwrap(), "--headless"];
+    let parent = parent.to_str().unwrap();
+    let rerun = ["--config", config, "--from", &boundary, "--log-dir", parent, "--viewer", "off"];
     let (code, err) = cli_run(&dir, &rerun);
     assert_eq!(code, 0, "{err}");
     assert!(err.contains(&format!("fork of {named} at seq 2")), "the mode is announced: {err}");

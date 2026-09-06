@@ -318,7 +318,7 @@ class FoeAgent(BaseInstalledAgent):
         command = (
             "set +e; "
             f"{shlex.quote(REMOTE_BINARY)} --config {shlex.quote(REMOTE_PROGRAM)} "
-            f"--headless --log-dir {shlex.quote(episode)} "
+            f"--viewer off --log-dir {shlex.quote(episode)} "
             f"> {shlex.quote(stdout)} 2> {shlex.quote(stderr)}; "
             "foe_status=$?; "
             f"printf '%s\\n' \"$foe_status\" > {shlex.quote(exit_code)}; "

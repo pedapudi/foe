@@ -359,7 +359,7 @@ def run_attempt(
     infrastructure_error = None
     try:
         process = subprocess.run(
-            [str(foe), "--config", str(config_path), "--log-dir", str(log_parent), "--headless"],
+            [str(foe), "--config", str(config_path), "--log-dir", str(log_parent), "--viewer", "off"],
             text=True,
             capture_output=True,
             timeout=task.seconds + 30,

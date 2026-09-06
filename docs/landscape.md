@@ -481,7 +481,7 @@ paths are ranked by leverage at the end.
 ### Claude Code
 
 **Shell invocation.** Claude Code's Bash tool runs `foe "..." --config
-CONFIG --headless`. The harness operator pre-approves the binary with
+CONFIG --viewer off`. The harness operator pre-approves the binary with
 `--allowedTools "Bash(foe *)"` or a `permissions.allow` rule. The payload is
 the task string and a configuration path. Standard output receives one final
 JSON outcome. Progress goes to standard error, and events go to the log. Exit
@@ -567,7 +567,7 @@ A command shape consistent with the design is:
 
 ```
 foe "Make cargo test pass in crates/log after adding a Seeded event. Keep crates/view unchanged." \
-  --config PROGRAM.json --headless --log-dir runs/2026-08-21-seeded
+  --config PROGRAM.json --viewer off --log-dir runs/2026-08-21-seeded
 ```
 
 A good delegation has four parts, each mapping to a field foe already

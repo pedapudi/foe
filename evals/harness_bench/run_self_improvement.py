@@ -313,7 +313,7 @@ def main() -> int:
     log_parent = root / "episode"
     started = time.monotonic()
     result = subprocess.run(
-        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_parent), "--headless"],
+        [str(args.foe.resolve()), "--config", str(contract_path), "--log-dir", str(log_parent), "--viewer", "off"],
         text=True,
         capture_output=True,
         timeout=LIMITS["seconds"] + 30,

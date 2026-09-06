@@ -106,8 +106,7 @@ pub struct Options {
     /// The boundary `--from DIR@SEQ` names: source events with `seq` in
     /// `[1, at)` are copied. Absent when the value carried no boundary.
     pub at: Option<u64>,
-    pub no_open: bool,
-    pub headless: bool,
+    pub viewer: Viewer,
     pub conversation: bool,
     pub host: bool,
 }
@@ -159,6 +158,32 @@ pub fn fingerprint(contract: &ResolvedContract) -> Result<Fingerprint, String> {
 
 pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| format!("runtime: {e}"))
+}
+
+/// What a run does about the browser viewer. `--host` gives standard output
+/// to the log, which leaves nothing for a browser to be opened from, so it
+/// runs `Off` whatever the command line asked for.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Viewer {
+    /// Serve the viewer and open the browser on it.
+    #[default]
+    Open,
+    /// Serve the viewer and leave opening it to the person.
+    Serve,
+    /// Serve no viewer.
+    Off,
+}
+
+impl Viewer {
+    /// Reads a `--viewer` value, naming the three it accepts on any other.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "open" => Ok(Self::Open),
+            "serve" => Ok(Self::Serve),
+            "off" => Ok(Self::Off),
+            other => Err(format!("--viewer {other}: expected open, serve, or off")),
+        }
+    }
 }
 
 /// The compaction policy a `context` block with `compact: true` resolves
@@ -781,7 +806,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let viewer_url = viewer.as_ref().map(foe_view::Bound::url);
     if let Some(bound) = &viewer {
         unconfined.policy_mut().add_bind_port(bound.addr.port());
-        if !options.no_open {
+        if options.viewer == Viewer::Open {
             crate::open_browser(&bound.url());
         }
     }
@@ -851,9 +876,9 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 }
 
 /// Whether a run serves the browser viewer: every running form does except
-/// under `--host`, whose standard output is the log, and `--headless`.
+/// under `--host`, whose standard output is the log, and `--viewer off`.
 fn serves_viewer(options: &Options) -> bool {
-    !(options.host || options.headless)
+    !(options.host || options.viewer == Viewer::Off)
 }
 
 /// The fixed prefix of the line a run writes on standard error to name the

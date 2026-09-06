@@ -85,7 +85,7 @@ def run_episode(
             raise PipelineError("the host-owned episode wrote no log")
         return status
     result = subprocess.run(
-        [str(foe), "--config", str(contract), "--log-dir", str(log_dir), "--headless"],
+        [str(foe), "--config", str(contract), "--log-dir", str(log_dir), "--viewer", "off"],
         text=True,
         capture_output=True,
         timeout=1_800,

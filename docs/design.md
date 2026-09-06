@@ -753,9 +753,9 @@ access of its own.
 The binary has one running form and five forms that run nothing.
 
 ```
-foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome; --log-dir holds the created episode directory
+foe "task" [--config FILE] [--log-dir DIR]               run; serve the viewer; print the outcome; --log-dir holds the created episode directory
 foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
-foe "task" --headless                                    run; no browser viewer; print the outcome
+foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
 foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
@@ -1025,9 +1025,10 @@ this command writes is the file a later run in that repository root uses
 when its command line names no document, under the rule "The command line"
 states. The report the command prints states every one of these decisions.
 
-Without `--headless` or `--host`, the binary serves the viewer on
+Under `--viewer open` or `--viewer serve`, and without `--host`, the binary
+serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
-`/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
+`/usr/bin/xdg-open` under `--viewer open`, and keeps serving for
 three seconds after the outcome is written so that an open page receives
 the final events. `foe view DIR --serve` serves a finished directory for as
 long as the process runs.

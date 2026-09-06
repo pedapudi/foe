@@ -178,7 +178,7 @@ PY
 
 echo "Running the $description with $model_route in $run_dir"
 set +e
-"$binary" --config "$run_dir/config.json" --log-dir "$log_parent" --headless 2>"$run_dir/stderr"
+"$binary" --config "$run_dir/config.json" --log-dir "$log_parent" --viewer off 2>"$run_dir/stderr"
 foe_status=$?
 set -e
 cat "$run_dir/stderr" >&2

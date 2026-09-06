@@ -422,7 +422,7 @@ fn invalid_host_verifier_schema_starts_no_episode() {
         config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.to_path_buf()),
         host: true,
-        headless: true,
+        viewer: Viewer::Off,
         ..Options::default()
     })
     .unwrap_err();
@@ -433,15 +433,18 @@ fn invalid_host_verifier_schema_starts_no_episode() {
 }
 
 /// docs/viewer.md "Terminal conversation": the terminal display chooses what
-/// standard output shows and leaves the browser viewer serving; --headless
-/// and --host are the running forms without a viewer.
+/// standard output shows and composes with every `--viewer` value; `off` and
+/// `--host` are the running forms without a browser viewer.
 #[test]
-fn conversation_keeps_the_viewer_unless_headless_or_host() {
-    assert!(serves_viewer(&Options { conversation: true, ..Options::default() }));
-    assert!(serves_viewer(&Options { conversation: true, no_open: true, ..Options::default() }));
-    assert!(!serves_viewer(&Options { conversation: true, headless: true, ..Options::default() }));
+fn conversation_composes_with_every_viewer_value() {
+    for viewer in [Viewer::Open, Viewer::Serve] {
+        assert!(serves_viewer(&Options { conversation: true, viewer, ..Options::default() }));
+    }
+    assert!(!serves_viewer(&Options { conversation: true, viewer: Viewer::Off, ..Options::default() }));
     assert!(!serves_viewer(&Options { host: true, ..Options::default() }));
-    assert!(serves_viewer(&Options::default()));
+    assert!(serves_viewer(&Options::default()), "a run opens the viewer without being asked");
+    assert_eq!(Viewer::parse("serve"), Ok(Viewer::Serve));
+    assert_eq!(Viewer::parse("watch"), Err("--viewer watch: expected open, serve, or off".into()));
 }
 
 /// docs/design.md "The command line": a `--from DIR@SEQ` run whose task the
@@ -529,7 +532,7 @@ fn independently_resumed_child_rejects_a_changed_executable() {
         config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.clone()),
         host: true,
-        headless: true,
+        viewer: Viewer::Off,
         ..Options::default()
     })
     .unwrap_err();

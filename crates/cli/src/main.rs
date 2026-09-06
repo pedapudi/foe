@@ -106,14 +106,19 @@ const OPTS: &[Opt] = &[
         "a fresh episode",
         "continue the episode logged in DIR, or with @SEQ fork it at that seq into a new episode",
     ),
-    opt("", "--no-open", "", "", "serve the viewer without opening a browser on it"),
-    opt("", "--headless", "", "", "run without the browser viewer"),
+    opt(
+        "",
+        "--viewer",
+        "MODE",
+        "open, and off under --host",
+        "the browser viewer: open a browser on it, serve without opening one, or off",
+    ),
     opt(
         "",
         "--conversation",
         "",
         "",
-        "show the conversation and execution tree on standard output; the viewer still serves",
+        "show the conversation and execution tree on standard output; --viewer applies as given",
     ),
     opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
     opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
@@ -139,7 +144,12 @@ const HELP: Opt = opt("*", "--help", "", "", "print this help and exit");
 /// Spellings the running form does not accept, each with the option that
 /// says the same thing. A command line using one is refused by its own name,
 /// because what it asked for is still available under another spelling.
-const RETIRED: &[(Text, Text)] = &[("--fork", "--from DIR@SEQ"), ("--at", "--from DIR@SEQ")];
+const RETIRED: &[(Text, Text)] = &[
+    ("--fork", "--from DIR@SEQ"),
+    ("--at", "--from DIR@SEQ"),
+    ("--no-open", "--viewer serve"),
+    ("--headless", "--viewer off"),
+];
 
 /// How a message names a form: `foe` alone for the bare running form.
 fn spelled(form: &Form) -> String {
@@ -324,6 +334,11 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 },
                 None => (None, None),
             };
+            // `--host` gives standard output to the log, so it runs with no
+            // viewer whatever the command line named. A named value is still
+            // read, so a value none of the three matches is reported.
+            let host = args.switch("--host");
+            let named_viewer = args.value("--viewer").map(|value| run::Viewer::parse(&value)).transpose()?;
             let options = run::Options {
                 task: args.positional.pop(),
                 config: args.value("--config"),
@@ -333,10 +348,12 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 verify: args.value("--verify").map(PathBuf::from),
                 sandbox: args.value("--sandbox"),
                 log_dir: args.value("--log-dir").map(PathBuf::from),
-                no_open: args.switch("--no-open"),
-                headless: args.switch("--headless"),
+                viewer: match host {
+                    true => run::Viewer::Off,
+                    false => named_viewer.unwrap_or_default(),
+                },
                 conversation: args.switch("--conversation"),
-                host: args.switch("--host"),
+                host,
                 from,
                 at,
             };

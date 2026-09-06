@@ -409,7 +409,7 @@ def run_task(
     infrastructure_error = None
     try:
         result = subprocess.run(
-            [str(binary), "--config", str(config_path), "--log-dir", str(log_parent), "--headless"],
+            [str(binary), "--config", str(config_path), "--log-dir", str(log_parent), "--viewer", "off"],
             text=True,
             capture_output=True,
             timeout=task.seconds + 30,

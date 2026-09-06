@@ -114,7 +114,7 @@ class TrajectoryCorpusTest(unittest.TestCase):
             encoding="utf-8",
         )
         (trial / "agent" / "foe-invocation.json").write_text(
-            '{"arguments":["--headless"]}\n', encoding="utf-8"
+            '{"arguments":["--viewer", "off"]}\n', encoding="utf-8"
         )
         (episode / "episode.jsonl").write_text(
             json.dumps(

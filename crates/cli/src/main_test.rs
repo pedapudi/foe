@@ -51,12 +51,12 @@ fn parse(line: &str) -> Result<Command, String> {
 fn conversation_is_an_explicit_running_option() {
     let Ok(Command::Run(default)) = parse("a-task") else { panic!() };
     assert!(!default.conversation);
-    for input in ["a-task --conversation", "--config c.json --conversation --headless"] {
+    for input in ["a-task --conversation", "--config c.json --conversation --viewer off"] {
         let Ok(Command::Run(options)) = parse(input) else { panic!("{input}") };
         assert!(options.conversation);
     }
-    let Ok(Command::Run(options)) = parse("a-task --conversation --no-open") else { panic!() };
-    assert!(options.conversation && options.no_open && !options.headless);
+    let Ok(Command::Run(options)) = parse("a-task --conversation --viewer serve") else { panic!() };
+    assert!(options.conversation && options.viewer == run::Viewer::Serve);
     let error = parse("--config c.json --host --conversation").err().unwrap();
     assert_eq!(error, "--conversation cannot be combined with --host");
     assert!(parse("view logs --conversation").is_err());
@@ -75,11 +75,11 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
     let Ok(Command::Run(options)) =
-        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --headless --no-open")
+        parse("fix --model anthropic/m --service-tier priority --key-file k --sandbox off --viewer off")
     else {
         panic!()
     };
-    assert_eq!((options.task.as_deref(), options.headless, options.no_open), (Some("fix"), true, true));
+    assert_eq!((options.task.as_deref(), options.viewer), (Some("fix"), run::Viewer::Off));
     assert_eq!(options.sandbox.as_deref(), Some("off"));
     assert_eq!(options.service_tier.as_deref(), Some("priority"));
     let Ok(Command::Run(options)) = parse("--from /logs/ep_1 --config c.json") else { panic!() };
@@ -139,8 +139,8 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
 fn golden(line: &str) -> String {
     match parse(line) {
         Ok(Command::Run(o)) => format!(
-            "run task={:?} config={:?} model={:?} key_file={:?} log_dir={:?} no_open={} headless={} host={}",
-            o.task, o.config, o.model, o.key_file, o.log_dir, o.no_open, o.headless, o.host
+            "run task={:?} config={:?} model={:?} key_file={:?} log_dir={:?} from={:?} at={:?} viewer={:?} host={}",
+            o.task, o.config, o.model, o.key_file, o.log_dir, o.from, o.at, o.viewer, o.host
         ),
         Ok(Command::Init { repository }) => format!("init repository={repository:?}"),
         Ok(Command::Login { provider, model, status }) => {
@@ -161,22 +161,32 @@ fn golden(line: &str) -> String {
 #[test]
 fn representative_invocations_parse_to_known_values() {
     let cases = [
-        ("fix", "run task=Some(\"fix\") config=None model=None key_file=None log_dir=None no_open=false headless=false host=false"),
         (
-            "fix --config c.json --model p/m --key-file k.txt --log-dir logs --no-open --headless",
+            "fix",
+            "run task=Some(\"fix\") config=None model=None key_file=None log_dir=None from=None at=None viewer=Open \
+             host=false",
+        ),
+        (
+            "fix --config c.json --model p/m --key-file k.txt --log-dir logs --viewer serve",
             "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") key_file=Some(\"k.txt\") \
-             log_dir=Some(\"logs\") no_open=true headless=true host=false",
+             log_dir=Some(\"logs\") from=None at=None viewer=Serve host=false",
         ),
         (
             "--config c.json --host --log-dir logs",
-            "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") no_open=false \
-             headless=false host=true",
+            "run task=None config=Some(\"c.json\") model=None key_file=None log_dir=Some(\"logs\") from=None \
+             at=None viewer=Off host=true",
         ),
         ("--config builtin:coding --host", "error"),
+        ("fix --viewer watch", "error"),
+        (
+            "redo --from /logs/ep_1@12",
+            "run task=Some(\"redo\") config=None model=None key_file=None log_dir=None \
+             from=Some(\"/logs/ep_1\") at=Some(12) viewer=Open host=false",
+        ),
         (
             "fix --config builtin:coding",
             "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None key_file=None log_dir=None \
-             no_open=false headless=false host=false",
+             from=None at=None viewer=Open host=false",
         ),
         ("init --repository repo", "init repository=\"repo\""),
         ("init", "error"),
@@ -195,7 +205,11 @@ fn representative_invocations_parse_to_known_values() {
         ("plan --schema", "schema"),
         ("plan --schema --json", "error"),
         // A word that once selected a removed form is a task like any other.
-        ("tools", "run task=Some(\"tools\") config=None model=None key_file=None log_dir=None no_open=false headless=false host=false"),
+        (
+            "tools",
+            "run task=Some(\"tools\") config=None model=None key_file=None log_dir=None from=None at=None \
+             viewer=Open host=false",
+        ),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),
         ("", "error"),
     ];
@@ -285,10 +299,16 @@ fn the_top_level_help_names_every_command() {
 /// refused by its own name, with the option that says the same thing now.
 #[test]
 fn a_dropped_spelling_names_what_replaced_it() {
-    for line in ["fix --fork /logs/ep_1", "fix --at 12"] {
+    let cases = [
+        ("fix --fork /logs/ep_1", "--from DIR@SEQ"),
+        ("fix --at 12", "--from DIR@SEQ"),
+        ("fix --no-open", "--viewer serve"),
+        ("fix --headless", "--viewer off"),
+    ];
+    for (line, replacement) in cases {
         let error = parse(line).err().unwrap_or_default();
         assert!(error.contains("no longer takes"), "`foe {line}`: {error}");
-        assert!(error.contains("--from DIR@SEQ"), "`foe {line}`: {error}");
+        assert!(error.contains(replacement), "`foe {line}`: {error}");
     }
     let elsewhere = parse("view logs --fork /logs/ep_1").err().unwrap_or_default();
     assert!(elsewhere.starts_with("unknown option --fork"), "another form knows nothing of it: {elsewhere}");
