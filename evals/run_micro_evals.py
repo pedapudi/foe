@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-from foe_build import evaluated_foe
+from foe_build import announced_log_dir, evaluated_foe
 from micro_tasks import TASKS, Task, task_by_name
 from trace_quality import evaluate
 
@@ -392,7 +392,7 @@ def run_task(
     case = root / f"attempt-{attempt:02d}" / task.name
     workspace = case / "workspace"
     grader = case / "grader"
-    log_dir = case / "episode"
+    log_parent = case / "episode"
     try:
         workspace.mkdir(parents=True)
         grader.mkdir()
@@ -409,7 +409,7 @@ def run_task(
     infrastructure_error = None
     try:
         result = subprocess.run(
-            [str(binary), "--config", str(config_path), "--log-dir", str(log_dir), "--headless"],
+            [str(binary), "--config", str(config_path), "--log-dir", str(log_parent), "--headless"],
             text=True,
             capture_output=True,
             timeout=task.seconds + 30,
@@ -430,6 +430,7 @@ def run_task(
     except OSError as error:
         return unstarted_result(task, attempt, case, f"foe could not be launched: {error}")
     duration = time.monotonic() - started
+    log_dir = announced_log_dir(process["stderr"], log_parent)
 
     outcome = root_outcome(log_dir)
     logs = episode_logs(log_dir)

@@ -96,6 +96,11 @@ def test_a_first_event_stating_no_log_version_is_read_as_version_three(
 
 
 def last_outcome(log_dir: Path) -> dict[str, Any]:
-    """The outcome of the `episode/end` event the binary wrote."""
-    events = [json.loads(line) for line in (log_dir / "episode.jsonl").read_text(encoding="utf-8").splitlines()]
+    """The outcome of the `episode/end` event the binary wrote.
+
+    A refused pairing raises before the caller holds a handle, so the sole
+    episode directory the run created under `log_dir` is located here.
+    """
+    log = next(iter(sorted(log_dir.glob("*/episode.jsonl"))))
+    events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     return dict(events[-1]["data"]["outcome"])

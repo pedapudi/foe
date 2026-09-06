@@ -69,18 +69,23 @@ def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
         requests,
     )
     events: list[foe.Event] = []
-    log_dir = tmp_path / "episode"
-    outcome = asyncio.run(
-        contract_with(["read", mutation_usage]).run(
+
+    async def scenario() -> tuple[foe.Outcome, Path]:
+        handle = await contract_with(["read", mutation_usage]).start(
             task="Count references.",
             model_backend=model_backend,
             binary=fake_binary,
-            log_dir=log_dir,
+            log_dir=tmp_path / "episodes",
             on_event=events.append,
         )
-    )
+        outcome = await handle.wait()
+        assert handle.log_dir is not None
+        return outcome, handle.log_dir
+
+    outcome, log_dir = asyncio.run(scenario())
 
     assert outcome == foe.Completed("Done: 3 references.")
+    assert log_dir.parent == tmp_path / "episodes", "the run created its own directory under the one named"
     assert seen == [{"mutation_id": "m_41", "roots": ["/"]}]
 
     # The model backend received the header joined with the messages.

@@ -427,7 +427,9 @@ fn invalid_host_verifier_schema_starts_no_episode() {
     })
     .unwrap_err();
     assert!(error.contains("done_when.verify") && error.contains("found 0"), "{error}");
-    assert!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
+    let created =
+        std::fs::read_dir(&dir).unwrap().flatten().map(|entry| entry.path()).find(|path| path.is_dir()).unwrap();
+    assert!(std::fs::read(created.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
 }
 
 /// docs/viewer.md "Terminal conversation": the terminal display chooses what
@@ -538,7 +540,7 @@ fn child_resume_uses_recorded_allowance_and_fingerprint() {
             std::fs::write(dir.join("child-launch.json"), serde_json::to_vec(&metadata).unwrap()).unwrap();
         }
 
-        let (_, launch) = resume(&dir, "sha256:recorded").unwrap();
+        let (_, launch, _) = resume(&dir, "sha256:recorded").unwrap();
         assert_eq!(launch.episode_id, "ep_child");
         assert_eq!(launch.expected_contract_fingerprint.as_deref(), Some("sha256:recorded"));
         assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
@@ -578,7 +580,7 @@ fn ordinary_prepared_fork_retains_source_fingerprint_exemption() {
     writer.sync().unwrap();
     drop(writer);
 
-    let (_, launch) = resume(&dir, "sha256:fork-contract").unwrap();
+    let (_, launch, _) = resume(&dir, "sha256:fork-contract").unwrap();
     assert!(launch.expected_contract_fingerprint.is_none());
     assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
 }

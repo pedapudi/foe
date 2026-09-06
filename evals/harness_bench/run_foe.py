@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from foe_build import evaluated_foe
+from foe_build import announced_log_dir, evaluated_foe
 
 
 BENCHMARK_COMMIT = "1025086a446653702b80cfb48babbeec35db6b2c"
@@ -330,7 +330,7 @@ def run_attempt(
 ) -> dict[str, Any]:
     case = root / task.identifier / f"attempt-{attempt:02d}"
     workspace = case / "workspace"
-    log_dir = case / "foe-episode"
+    log_parent = case / "foe-episode"
     workspace.mkdir(parents=True)
     prompt, runtime, cleanup = prepare_task(task_dir, workspace)
     fixture_hash = tree_digest(workspace)
@@ -359,7 +359,7 @@ def run_attempt(
     infrastructure_error = None
     try:
         process = subprocess.run(
-            [str(foe), "--config", str(config_path), "--log-dir", str(log_dir), "--headless"],
+            [str(foe), "--config", str(config_path), "--log-dir", str(log_parent), "--headless"],
             text=True,
             capture_output=True,
             timeout=task.seconds + 30,
@@ -380,6 +380,7 @@ def run_attempt(
     finally:
         cleanup()
     duration = round(time.monotonic() - started, 3)
+    log_dir = announced_log_dir(process_record["stderr"] or "", log_parent)
     events = read_events(log_dir)
     if not events and infrastructure_error is None:
         infrastructure_error = "foe wrote no root episode log"

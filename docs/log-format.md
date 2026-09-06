@@ -933,8 +933,8 @@ prefix at N equal to SEQ and runs it: the new `episode/start` draws a
 fresh id, its `fork_origin` names the source, and the task the launch
 carries is appended as a live `system` inbox item after `seed/end`,
 because rule 1 copies the `task` item and the format admits one per log.
-Launching with `--log-dir DIR` where DIR holds a log without `episode/end`
-resumes that episode under the execution contract that ran it. The launch is
+Launching over a log directory without `episode/end` resumes that episode
+under the execution contract that ran it. The launch is
 refused, with both fingerprints named, when the given configuration's
 fingerprint differs from `episode/start.contract_fingerprint`. A log ending at
 `seed/end` instead uses the execution contract recorded by its source's

@@ -107,8 +107,10 @@ that directs the binary to call a configured model endpoint.
 foe --config hello.json
 ```
 
-foe validates the document, writes `episode.jsonl` under
-`.foe/<episode-id>` in the current directory or under `--log-dir`, serves a
+foe validates the document, writes `episode.jsonl` in a directory of its
+own named by the episode id, under `.foe` in the current directory or under
+the directory `--log-dir` names, prints that directory on standard error as
+`foe: log PATH`, serves a
 viewer on the loopback interface while the episode runs, and prints the
 outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1

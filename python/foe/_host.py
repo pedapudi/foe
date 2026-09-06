@@ -115,6 +115,10 @@ class Handle:
     identity that binary stated. A handle is returned only after
     `episode/start`, so a supervisor holds both before the episode's first
     request and first tool call.
+
+    `log_dir` is the directory the binary created for this episode, which is
+    the episode id under the directory the caller named. It holds
+    `episode.jsonl` and every descendant's log.
     """
 
     def __init__(
@@ -123,7 +127,7 @@ class Handle:
         process: asyncio.subprocess.Process,
         config: Mapping[str, Any],
         config_dir: str,
-        log_dir: Path,
+        log_parent: Path,
         model_backend: ModelBackend | None,
         tools: Mapping[str, HostTool],
         on_event: EventCallback | None,
@@ -132,7 +136,8 @@ class Handle:
         self._process = process
         self._config = config
         self._config_dir = config_dir
-        self.log_dir = log_dir
+        self._log_parent = log_parent
+        self.log_dir: Path | None = None
         self._model_backend = model_backend
         self._tools = tools
         self._on_event = on_event
@@ -254,6 +259,7 @@ class Handle:
         tag = event.episode_id
         if event.type == "episode/start" and tag is None:
             self.episode_id = str(event.data.get("id"))
+            self.log_dir = self._log_parent / self.episode_id
             runtime = event.data.get("runtime") or {}
             self.runtime = Runtime(str(runtime.get("version", "")), str(runtime.get("build", "")))
             self._start_known.set()
@@ -382,6 +388,10 @@ async def start_config(
 ) -> Handle:
     """Launch the binary on a complete configuration document.
 
+    `log_dir` is the directory the episode's own directory is created
+    under, which docs/design.md "The command line" states for `--log-dir`.
+    The handle names the created directory once the episode has started.
+
     `config` is a document as a dict or the path of a JSON file, and must
     carry `task`. The document's `model` block decides who calls the model,
     which docs/config.md `model` states: a document without one leaves the
@@ -420,8 +430,8 @@ async def start_config(
     if missing:
         raise ValueError(f"host_tools: no implementation was supplied for {', '.join(missing)}")
 
-    log_path = Path(os.fspath(log_dir))
-    log_path.mkdir(parents=True, exist_ok=True)
+    log_parent = Path(os.fspath(log_dir))
+    log_parent.mkdir(parents=True, exist_ok=True)
     config_dir = tempfile.mkdtemp(prefix="foe-contract-")
     config_path = Path(config_dir) / "config.json"
     config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
@@ -432,7 +442,7 @@ async def start_config(
             str(config_path),
             "--host",
             "--log-dir",
-            str(log_path),
+            str(log_parent),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             limit=_LINE_LIMIT,
@@ -444,7 +454,7 @@ async def start_config(
         process=process,
         config=doc,
         config_dir=config_dir,
-        log_dir=log_path,
+        log_parent=log_parent,
         model_backend=model_backend,
         tools=by_name,
         on_event=on_event,

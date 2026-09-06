@@ -144,7 +144,7 @@ fi
 mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/$run_prefix.XXXXXX")
 project_dir="$run_dir/foe"
-log_dir="$run_dir/episode"
+log_parent="$run_dir/episode"
 mkdir -p "$project_dir/crates/code/src" "$project_dir/docs"
 cp "$repo_dir/crates/code/src/read.rs" "$project_dir/crates/code/src/read.rs"
 cp "$repo_dir/crates/code/src/read_test.rs" "$project_dir/crates/code/src/read_test.rs"
@@ -178,9 +178,13 @@ PY
 
 echo "Running the $description with $model_route in $run_dir"
 set +e
-"$binary" --config "$run_dir/config.json" --log-dir "$log_dir" --headless
+"$binary" --config "$run_dir/config.json" --log-dir "$log_parent" --headless 2>"$run_dir/stderr"
 foe_status=$?
 set -e
+cat "$run_dir/stderr" >&2
+# The run creates its own directory under the one named and prints it.
+log_dir=$(sed -n 's/^foe: log //p' "$run_dir/stderr" | head -n 1)
+log_dir=${log_dir:-$log_parent}
 
 result=0
 if [ "$foe_status" -ne 0 ]; then

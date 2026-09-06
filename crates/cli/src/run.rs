@@ -182,10 +182,13 @@ fn known_window(model: &ModelConfig) -> Option<u64> {
     foe_transport::context_window(model)
 }
 
+/// The file a parent process writes beside a child's log, naming the child.
+pub(crate) const CHILD_LAUNCH: &str = "child-launch.json";
+
 /// Who this episode is. A child reads the launch metadata its parent wrote;
 /// a root draws a fresh id.
 fn read_child_launch(log_dir: Option<&Path>) -> Result<ChildLaunch, String> {
-    let file = log_dir.map(|d| d.join("child-launch.json")).filter(|f| f.is_file());
+    let file = log_dir.map(|d| d.join(CHILD_LAUNCH)).filter(|f| f.is_file());
     let Some(file) = file else { return Ok(ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() }) };
     let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", file.display()))
@@ -197,37 +200,46 @@ fn fresh_id() -> String {
     format!("ep_{}", hex::encode(&digest[..4]))
 }
 
+/// Where the episode's log lives, who the episode is, and one line about how
+/// the directory was reached, which the run prints under the directory.
+type Placement = (PathBuf, ChildLaunch, Option<String>);
+
 /// Where the episode's log lives and who the episode is: a fresh directory
-/// seeded from `--fork`, an existing log continued or repaired, or a new
-/// log. docs/log-format.md "Seeding" states the fork and resume flows.
-fn episode_directory(
-    options: &Options,
-    contract_fingerprint: &str,
-    task: &str,
-) -> Result<(PathBuf, ChildLaunch), String> {
+/// seeded from `--fork`, an existing log continued or repaired, or a fresh
+/// directory. docs/log-format.md "Seeding" states the fork and resume flows.
+fn episode_directory(options: &Options, contract_fingerprint: &str, task: &str) -> Result<Placement, String> {
     if let Some(source) = &options.fork {
         let at = options.at.expect("the parser pairs --fork with --at");
-        return fork(source, at, options.log_dir.clone(), task);
+        return fork(source, at, options.log_dir.as_deref(), task);
     }
     if let Some(dir) = options.log_dir.as_deref().filter(|dir| dir.join(foe_log::fold::LOG_FILE).is_file()) {
         return resume(dir, contract_fingerprint);
     }
     let launch = read_child_launch(options.log_dir.as_deref())?;
-    let dir = options.log_dir.clone().unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
-    Ok((dir, launch))
+    Ok((fresh_directory(options.log_dir.as_deref(), &launch.episode_id), launch, None))
+}
+
+/// The directory a fresh episode writes into: the episode id under the parent
+/// directory, which is `--log-dir` when given and `.foe` otherwise. A
+/// directory holding launch metadata is the episode's own directory instead,
+/// because the parent process that wrote that file chose the directory and
+/// the episode id together.
+fn fresh_directory(log_dir: Option<&Path>, episode_id: &str) -> PathBuf {
+    match log_dir {
+        Some(dir) if dir.join(CHILD_LAUNCH).is_file() => dir.to_path_buf(),
+        Some(parent) => parent.join(episode_id),
+        None => PathBuf::from(".foe").join(episode_id),
+    }
 }
 
 /// Seeds a fresh episode from a prefix of the log in `source` and appends
 /// the running form's task as a `system` inbox item: the one `task` item
 /// per log is the copied one at seq 1, and `system` is the runtime's
 /// channel for text the model must see.
-fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(PathBuf, ChildLaunch), String> {
+fn fork(source: &Path, at: u64, dest: Option<&Path>, task: &str) -> Result<Placement, String> {
     let launch = ChildLaunch { episode_id: fresh_id(), ..ChildLaunch::default() };
-    let dest = dest.unwrap_or_else(|| PathBuf::from(".foe").join(&launch.episode_id));
+    let dest = fresh_directory(dest, &launch.episode_id);
     let in_dest = |e: LogError| format!("{}: {e}", dest.display());
-    if dest.join(foe_log::fold::LOG_FILE).is_file() {
-        return Err(format!("{} already holds a log; a fork starts a fresh one", dest.display()));
-    }
     std::fs::create_dir_all(&dest).map_err(|e| format!("{}: {e}", dest.display()))?;
     let header = SeedHeader { new_id: launch.episode_id.clone(), parent_id: None, team_id: None, contract: None };
     foe_log::seed::seed(source, at, &dest, header).map_err(|e| format!("--fork {}: {e}", source.display()))?;
@@ -236,7 +248,7 @@ fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(Pa
     let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
     writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
     writer.sync().map_err(in_dest)?;
-    Ok((dest, launch))
+    Ok((dest, launch, None))
 }
 
 /// Continues the episode whose log is in `dir` under the same contract. A
@@ -246,7 +258,7 @@ fn fork(source: &Path, at: u64, dest: Option<PathBuf>, task: &str) -> Result<(Pa
 /// which the run then continues. A prepared seeded log, ending at
 /// `seed/end`, is continued as it stands with no fingerprint comparison,
 /// because a seeded `episode/start` records its source's contract.
-fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunch), String> {
+fn resume(dir: &Path, contract_fingerprint: &str) -> Result<Placement, String> {
     let dir = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
     let in_dir = |e: LogError| format!("{}: {e}", dir.display());
     let (events, consumed) = foe_log::fold::read_from(&dir, 0).map_err(in_dir)?;
@@ -274,11 +286,8 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
         let (dir, recorded) = (dir.display(), &start.contract_fingerprint);
         return Err(format!("{dir}: resuming requires the contract that ran: the log records fingerprint {recorded}; the given contract document resolves to {contract_fingerprint}"));
     }
-    if prepared {
-        return Ok((dir, launch));
-    }
-    if !torn && foe_log::fold::open_obligations(&events).is_empty() {
-        return Ok((dir, launch));
+    if prepared || (!torn && foe_log::fold::open_obligations(&events).is_empty()) {
+        return Ok((dir, launch, None));
     }
     let new_id = fresh_id();
     let dest = dir.parent().unwrap_or(Path::new(".")).join(&new_id);
@@ -290,12 +299,8 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<(PathBuf, ChildLaunc
         contract: None,
     };
     foe_log::seed::seed(&dir, events.len() as u64, &dest, header).map_err(in_dir)?;
-    eprintln!(
-        "foe: {} stopped mid-line or mid-obligation; episode {new_id} continues it in {}",
-        dir.display(),
-        dest.display()
-    );
-    Ok((dest, ChildLaunch { episode_id: new_id, ..launch }))
+    let note = format!("{} stopped mid-line or mid-obligation; episode {new_id} continues it", dir.display());
+    Ok((dest, ChildLaunch { episode_id: new_id, ..launch }, Some(note)))
 }
 
 /// The name of the coding workflow the binary carries.
@@ -622,7 +627,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let inherited = options
         .log_dir
         .as_deref()
-        .filter(|dir| dir.join("child-launch.json").is_file())
+        .filter(|dir| dir.join(CHILD_LAUNCH).is_file())
         .map(|dir| read_child_launch(Some(dir)))
         .transpose()?
         .filter(|launch| launch.parent_id.is_some())
@@ -635,7 +640,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     .map_err(|e| format!("config: {e}"))?;
     let fingerprint = fingerprint(&contract)?;
-    let (log_dir, launch) = episode_directory(&options, &fingerprint.hash, &task)?;
+    let (log_dir, launch, note) = episode_directory(&options, &fingerprint.hash, &task)?;
     if let Some(expected) = &launch.expected_contract_fingerprint {
         if expected != &fingerprint.hash {
             return Err(format!(
@@ -646,6 +651,10 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    announce_log_directory(&log_dir);
+    if let Some(note) = note {
+        eprintln!("foe: {note}");
+    }
     let executables = match &inherited {
         Some(inherited) => CapturedExecutableTree::from_inherited(&contract, inherited),
         None => CapturedExecutableTree::materialize(&contract, &log_dir),
@@ -769,6 +778,17 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
 /// under `--host`, whose standard output is the log, and `--headless`.
 fn serves_viewer(options: &Options) -> bool {
     !(options.host || options.headless)
+}
+
+/// The fixed prefix of the line a run writes on standard error to name the
+/// directory it created for this episode's log. A caller reads the directory
+/// from that line rather than reconstructing the episode id.
+const LOG_DIRECTORY_LINE: &str = "foe: log ";
+
+/// Names the created log directory, before the episode starts and before
+/// anything the episode itself reports.
+fn announce_log_directory(dir: &Path) {
+    eprintln!("{LOG_DIRECTORY_LINE}{}", dir.display());
 }
 
 /// What the episode needs from the work done before the process restricted

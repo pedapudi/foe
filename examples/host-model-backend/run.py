@@ -123,16 +123,19 @@ async def main() -> None:
     output_dir.mkdir(exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix="foe-host-model-backend-demo.", dir=output_dir))
     config_path, readme = prepare(run_dir)
-    log_dir = run_dir / "episode"
-
     print(f"Running the host model backend demo in {run_dir}")
-    outcome = await foe.run_config(
+    handle = await foe.start_config(
         config_path,
         model_backend=model_backend_for(readme),
         binary=binary,
-        log_dir=log_dir,
+        log_dir=run_dir / "episodes",
         tools=[validate_proposal],
     )
+    outcome = await handle.wait()
+    # The binary created its own directory for this episode under the one
+    # named, and the handle carries it.
+    log_dir = handle.log_dir
+    assert log_dir is not None
     print(outcome)
     check(log_dir, outcome)
     print("Host model backend demo passed. Inspect it with:")

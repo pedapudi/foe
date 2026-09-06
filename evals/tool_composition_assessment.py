@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from foe_build import evaluated_foe
+from foe_build import announced_log_dir, evaluated_foe
 from run_micro_evals import (
     TOKEN_FIELDS,
     assistant_calls,
@@ -686,7 +686,7 @@ def run_attempt(
     case = run_root / task.task_set / f"attempt-{attempt:02d}" / task.name / configuration.name
     workspace = case / "workspace"
     grader = case / "grader"
-    log_dir = case / "episode"
+    log_parent = case / "episode"
     workspace.mkdir(parents=True)
     grader.mkdir()
     metadata = task.materialize(workspace, grader)
@@ -700,7 +700,7 @@ def run_attempt(
     infrastructure_error = None
     try:
         completed = subprocess.run(
-            [str(binary), "--config", str(config_path), "--log-dir", str(log_dir), "--headless"],
+            [str(binary), "--config", str(config_path), "--log-dir", str(log_parent), "--headless"],
             text=True,
             capture_output=True,
             timeout=task.seconds + 30,
@@ -722,6 +722,7 @@ def run_attempt(
         infrastructure_error = f"foe could not be launched: {error}"
         process = {"exit_code": None, "stdout": "", "stderr": ""}
     duration = time.monotonic() - started
+    log_dir = announced_log_dir(process["stderr"], log_parent)
 
     logs = episode_logs(log_dir)
     if infrastructure_error is None:

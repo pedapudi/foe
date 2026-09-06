@@ -753,7 +753,7 @@ access of its own.
 The binary has one running form and five forms that run nothing.
 
 ```
-foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
+foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome; --log-dir holds the created episode directory
 foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
 foe "task" --headless                                    run; no browser viewer; print the outcome
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
@@ -790,16 +790,25 @@ with `--host`.
 The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
 for `failed`. Diagnostics go to standard error. The log goes to the file.
 
-The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A workflow launch over a directory with
+Every run creates a directory of its own for the log, named by the episode
+id, under `--log-dir` when the command line gives one and under `.foe` in
+the current directory otherwise. Two runs given the same directory therefore
+keep separate logs. The run prints the directory it created on standard
+error as `foe: log PATH`, and a caller reads the directory from that line
+rather than assembling it. `foe view DIR` renders a directory of episodes
+side by side, so the directory a series of runs shares is also what the
+viewer takes. A directory holding `child-launch.json`, which a parent
+process writes for a child, is the child's own directory rather than a
+parent of one, because the parent chose the directory and the episode id
+together. A workflow launch over a directory with
 recorded `workflow/*` events is refused before queued tasks or nodes start.
 The restriction also applies to forks containing those events. Execution without a workflow
 can continue under the log's episode id. A log ending at `seed/end`
 — a prepared fork — or at an event boundary with every binding obligation
 closed continues in place. An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean
-boundary into a fresh directory beside it, named on standard error, which
-the run then continues. Resuming requires the execution contract that ran.
+boundary into a fresh directory beside it, which the run then continues and
+names on standard error. Resuming requires the execution contract that ran.
 A configuration whose fingerprint differs from the log's
 `episode/start.contract_fingerprint` is refused with both fingerprints
 named. A log ending at `seed/end` is

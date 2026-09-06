@@ -101,7 +101,7 @@ async def main() -> None:
     output_dir.mkdir(exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix="foe-model-block-demo.", dir=output_dir))
     project_dir = prepare(run_dir)
-    log_dir = run_dir / "episode"
+    log_parent = run_dir / "episodes"
     responses = [
         tool_response("read-readme", "read", {"path": str(project_dir / "README.md")}),
         tool_response(
@@ -115,9 +115,13 @@ async def main() -> None:
     print(f"Running the model block demo in {run_dir}")
     with ScriptedHttpEndpoint(responses) as endpoint:
         handle = await review_contract(project_dir, endpoint.base_url).start(
-            task="Review the README.", binary=binary, log_dir=log_dir
+            task="Review the README.", binary=binary, log_dir=log_parent
         )
         assert handle.runtime is not None
+        # The binary created its own directory for this episode under the one
+        # named, and the handle carries it.
+        log_dir = handle.log_dir
+        assert log_dir is not None
         print(f"Episode {handle.episode_id} is process {handle.pid}, runtime {handle.runtime.version}")
         print(f"Build {handle.runtime.build}")
         outcome = await handle.wait()
