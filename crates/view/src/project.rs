@@ -160,7 +160,7 @@ const LOG_FILE: &str = "episode.jsonl";
 /// directory of notes or of spilled tool values is never taken for an
 /// episode. Empty when `dir` cannot be read, which is how an absent
 /// directory arrives here.
-fn episode_dirs(dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn episode_dirs(dir: &Path) -> Vec<PathBuf> {
     let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
     let mut dirs: Vec<PathBuf> = entries.map(|e| e.path()).filter(|p| p.join(LOG_FILE).is_file()).collect();
     dirs.sort();

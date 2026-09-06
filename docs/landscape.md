@@ -589,10 +589,11 @@ defines.
 
 What the person gets back:
 
-- An exit status and one JSON line holding the outcome kind and, according
+- An exit status and, by default, one JSON line holding the outcome kind and, according
   to the kind, the returned value, the blocked code and message, or the
   exhausted limit. The budget consumed and the log directory are read from
-  the log rather than from that line.
+  the log rather than from that line. `--conversation` selects readable
+  conversation text and branch results with an execution tree instead.
 - The log directory, which a later `foe view DIR` writes to standard output
   as a single HTML file showing the episode tree, every tool call with
   rendered and canonical forms, budget consumption, sandbox status, and the

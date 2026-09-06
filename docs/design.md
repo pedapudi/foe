@@ -755,7 +755,8 @@ The binary has one running form and five forms that run nothing.
 ```
 foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
 foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
-foe "task" --headless                                    run; no viewer; print the outcome
+foe "task" --headless                                    run; no browser viewer; print the outcome
+foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
 foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
 foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
@@ -777,11 +778,17 @@ prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
 reprinting every form.
 
-In every running form except `--host`, standard output receives exactly one
-line when the episode ends: the outcome as JSON. A shell reads it with one
-`read`; another process parses it with one `json.loads`. The exit code is 0
-for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
-Progress goes to standard error. The log goes to the file.
+By default, a run writes one JSON outcome line to standard output when the
+episode ends. This also applies to interactive terminals. A shell reads it
+with one `read`; another process parses it with one `json.loads`.
+`--conversation` selects a readable conversation and execution tree on
+standard output, including returned branch results and the final outcome.
+The browser viewer serves as usual. `--conversation` cannot be combined
+with `--host`.
+[viewer.md](viewer.md#terminal-conversation) specifies the terminal display.
+`--host` selects the log protocol described in [protocol.md](protocol.md).
+The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
+for `failed`. Diagnostics go to standard error. The log goes to the file.
 
 The log directory is `--log-dir` when given and `.foe/<episode-id>` under
 the current directory otherwise. A workflow launch over a directory with
@@ -985,11 +992,11 @@ this command writes is the file a later run in that repository root uses
 when its command line names no document, under the rule "The command line"
 states. The report the command prints states every one of these decisions.
 
-Without `--headless` and without `--host`, the binary serves the viewer on
+Without `--headless` or `--host`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
 `/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
-three seconds after the episode ends so that an open page receives the
-final events. `foe view DIR --serve` serves a finished directory for as
+three seconds after the outcome is written so that an open page receives
+the final events. `foe view DIR --serve` serves a finished directory for as
 long as the process runs.
 
 ## The viewer
@@ -1132,7 +1139,7 @@ episode. The executor realizes the rule as an ordinary spawn. Inspection reads
 the same rule as reachability. The compaction policy in `crates/context` stays
 under 500.
 
-The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
+The viewer is budgeted apart from the runtime: `crates/view` under 780 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
 because it delivers a record of a run rather than running one, so a viewer
 that grows must not force the runtime to shrink. The browser viewer's HTML,
@@ -1147,7 +1154,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,725 lines. It is separate because it serves a person at a terminal
+under 1,750 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and

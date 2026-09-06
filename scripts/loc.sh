@@ -21,8 +21,8 @@ tools     | 1900 | coding tools         | code
 team      |  800 | team coordination    | team
 workflow  | 1050 | workflows            | workflow
 context   |  500 | compaction           | context
-view      |  600 | viewer server        | view
-cli       | 1725 | command line         | cli
+view      |  780 | viewer server        | view
+cli       | 1750 | command line         | cli
 transport | 2700 | model transports     | transport
 telemetry | 1000 | telemetry            | telemetry
 evidence  |  500 | evidence             | evidence

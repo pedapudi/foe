@@ -123,11 +123,21 @@ than drawn by hand, so a change to one radius regenerates every file.
 
 - Clear space around the lockup is one core diameter on every side.
 - The mark is never stretched, outlined, filled, given a gradient, rotated,
-  or animated. The dashed limit is never removed.
+  or animated, with the one exception below. The dashed limit is never
+  removed.
 - The accent appears on the core only. No second accent.
 - The wordmark is never set in a proportional face and never capitalized.
 - The mark may appear without the wordmark. The wordmark may appear without
   the mark. Neither is altered to fit.
+
+One animation is allowed. A progress indicator in a terminal may pulse a
+single-glyph text rendering of the mark through the eleven frames `·` `✶`
+`✷` `✸` `⊛` `◎` `⊛` `✸` `✷` `✶` `·`, one frame per redraw, in the accent
+color. The dot is the core, the stars are the spikes growing, `⊛` is the
+shell closing around them, and `◎` at the peak is the whole mark. Every
+surface that pulses the mark draws this sequence, so the pulse is the same
+drawing wherever it appears. The drawn mark of the assets above never
+moves.
 
 ## Voice
 

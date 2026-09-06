@@ -114,6 +114,17 @@ outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
+
+For a terminal conversation with branch connectors and readable results, run:
+
+```sh
+foe --config hello.json --conversation
+```
+
+This opt-in display hides tool requests and responses, shows completed
+messages as they arrive, and repeats the viewer address after the outcome.
+The browser viewer serves as usual. JSON remains the default output. See [the terminal display specification](docs/viewer.md#terminal-conversation).
+
 `examples/` holds thirteen examples, each of which runs. Every one builds a
 disposable project, uses deterministic responses, checks its own result, and
 leaves an episode to read. None needs a credential or external network
@@ -170,8 +181,8 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 | team coordination | 800 |
 | workflows | 1,050 |
 | compaction | 500 |
-| viewer server | 600 |
-| command line | 1,725 |
+| viewer server | 780 |
+| command line | 1,750 |
 | model transports | 2,700 |
 | telemetry | 1,000 |
 | evidence | 500 |

@@ -430,6 +430,18 @@ fn invalid_host_verifier_schema_starts_no_episode() {
     assert!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
 }
 
+/// docs/viewer.md "Terminal conversation": the terminal display chooses what
+/// standard output shows and leaves the browser viewer serving; --headless
+/// and --host are the running forms without a viewer.
+#[test]
+fn conversation_keeps_the_viewer_unless_headless_or_host() {
+    assert!(serves_viewer(&Options { conversation: true, ..Options::default() }));
+    assert!(serves_viewer(&Options { conversation: true, no_open: true, ..Options::default() }));
+    assert!(!serves_viewer(&Options { conversation: true, headless: true, ..Options::default() }));
+    assert!(!serves_viewer(&Options { host: true, ..Options::default() }));
+    assert!(serves_viewer(&Options::default()));
+}
+
 /// docs/design.md "Contract construction": a child resumed without its
 /// inherited executable descriptors validates the recorded fingerprint.
 #[test]

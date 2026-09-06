@@ -5,7 +5,9 @@
 // it on every ground.
 //
 // docs/brand/README.md states the geometry and the rules: the mark is
-// never stretched, recoloured, or animated, and the dashed limit stays.
+// never stretched or recoloured, and the dashed limit stays. The one
+// animation the brand allows is the single-glyph text pulse a terminal
+// progress indicator draws; this lockup never moves.
 
 import { h } from "./dom.js";
 
