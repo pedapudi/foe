@@ -92,6 +92,7 @@ when the binary asks.
 | name | role |
 |---|---|
 | `foe.ExecutionContract(...)` | a contract document without a task |
+| `foe.builtin(name, root, binary=...)` | a document the binary carries, as a contract over a root |
 | `contract.to_dict()`, `contract.to_json()` | the document, without `task` |
 | `contract.fingerprint(binary)` | the contract fingerprint computed by `foe plan` |
 | `await contract.run(task, ...)` | run one episode to its outcome |
@@ -166,6 +167,82 @@ the checks the package cannot, such as whether an executable exists.
 `Budget` fields left None are omitted from the document and take the
 runtime's defaults, which config.md states. `Grants.write`, `Grants.execute`,
 and `Grants.spawn` are omitted when empty.
+
+### `builtin`
+
+```python
+foe.builtin(
+    name: str,
+    root: str | os.PathLike,
+    *,
+    binary: str | os.PathLike,
+    verify: foe.HostTool | str | os.PathLike | None = None,
+    retries: int = 2,
+    model: foe.Model | None = None,
+) -> foe.ExecutionContract
+```
+
+The binary carries documents of its own, and `builtin` returns one of them as
+an `ExecutionContract` over a root directory. `builtin("coding", root,
+binary=...)` returns the coding workflow that a command line naming no
+document runs. The package holds no copy of any such document: `builtin` runs
+`foe plan --config builtin:NAME --json`, which prints the document the binary
+carries, so the name, the instructions, the tools, the budgets, and every
+workflow node come from the binary that will run the contract.
+[config.md](config.md) states what `--config` takes, and a name the binary
+does not carry raises `foe.ConfigError` carrying the message the binary
+printed, which names the documents it does carry.
+
+The binary runs with `root` as its working directory, which is how the
+document's read and write roots and its description of the environment come
+to name that directory. `root` also joins the execute grant of the document
+and of every workflow node that runs a model, which is the grant `foe init`
+writes so that a subprocess of the episode may run the programs in the
+directory. Because the concrete paths in `grants` do not participate in the
+fingerprint and the counts do, the contract fingerprints as the printed
+document does except for that one added grant.
+
+`verify` gates completion. A host tool becomes the verifier directly. A path
+becomes a configured tool named `check` that runs in `root`, given to the
+document and to every workflow node that runs a model, and the document's
+`done_when` names it.
+
+`retries` is how many times findings are fed back, and applies only when
+`verify` is given. [workflow.md](workflow.md) "Completion" makes a finding
+re-fire the nearest model ancestor of the node that completed the workflow,
+and "Bounds" makes `max_fires` cap those re-fires, so `builtin` raises the
+bounds the printed document carries to admit them. Every node that can
+complete a workflow of the document, meaning a node marked `terminal` and a
+node carrying a branch label with no successors, contributes the nearest
+node running a model that its edges reach; that node's `max_fires` becomes
+at least `retries` plus one, and a bound already that wide stands. The
+document's `budget.max_episodes` rises by `retries`, because each re-fire
+runs one further episode. A workflow nested inside another receives the
+same raise on its own completing nodes.
+Without the raise, a single finding ends the run as `blocked` with
+`recovery-exhausted` rather than feeding the finding back.
+
+`model` configures the endpoint the binary calls, and is the only model
+block the returned document carries: the blocks the binary printed below the
+document are dropped, and a contract that omits the block inherits the
+nearest ancestor's, so the one block serves every node. Without `model` the
+document carries no block at all and this host answers every model request.
+
+The returned contract is an ordinary `ExecutionContract`. A host raises a
+budget, adds a host tool, or changes the gate before running it, and writes
+`contract.to_json(task)` to `.foe/contract.json` when the next run in that
+directory is to use it.
+
+```python
+contract = foe.builtin("coding", "/home/user/project", binary="/usr/local/bin/foe")
+contract.budget = foe.Budget(model_calls=600, seconds=14_400)
+outcome = await foe.run_config(
+    contract.to_dict("Make the failing test pass."),
+    model_backend=my_model_backend,
+    binary="/usr/local/bin/foe",
+    log_dir="/home/user/project/.foe/episode",
+)
+```
 
 ### `to_json` and `to_dict`
 
