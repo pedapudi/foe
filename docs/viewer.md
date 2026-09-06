@@ -29,6 +29,32 @@ available message from that child. Independent episodes can be displayed
 in discovery order; the display does not claim a global event order.
 Existing recorded messages are displayed when execution resumes.
 
+While execution runs and standard output is a terminal, one line at the
+bottom of scrollback reports progress and is redrawn in place on every poll
+tick:
+
+```
+◎  [assess-task]  [12 s]  [3 tool calls]
+```
+
+The leading glyph advances one frame per tick through the eleven frames
+[docs/brand/README.md](brand/README.md) defines, so the frame follows the
+number of ticks rather than the clock. The name in brackets is the episode
+whose event arrived most recently. The seconds count from the moment the
+display started. The tool-call count is the number of tool calls the
+assistant has requested since the last displayed assistant message; a
+parent or peer message and a returned result leave the count as it is. The
+line is erased before any block is appended and before a display error is
+reported, so scrollback holds blocks alone. It is drawn only while standard
+output is a terminal, so redirected output holds no progress line. In color the glyph takes the brand accent as a 24-bit
+color, the episode name takes the cyan of a block heading, the tool-call
+count is green, and the seconds and every bracket are dim. Deciding whether
+a terminal supports 24-bit color requires an environment variable, and no
+environment variable is read anywhere, so a terminal limited to 256 colors
+approximates the accent. With color off the same layout appears as plain
+text. The episode name is shortened to whatever the terminal width leaves,
+so the redraw stays on one row.
+
 A string value appears as text; a string holding a JSON object or array is
 displayed as that object or array. An object opens with its `summary` field
 as a paragraph without a label. Every other field is a section, in

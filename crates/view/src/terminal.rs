@@ -14,6 +14,28 @@ const GUTTER: &str = "  ";
 const MIN_TEXT_WIDTH: usize = 20;
 /// The width assumed when standard output has no window size.
 const DEFAULT_WIDTH: usize = 80;
+/// The frames of the progress glyph, one per poll tick: the core dot, the
+/// spikes growing, the shell closing around them, and the whole mark at the
+/// peak. docs/brand/README.md defines the sequence. `◎` has ambiguous East
+/// Asian width, so a terminal set to a CJK locale draws it two cells wide and
+/// shifts the rest of the line one cell on that frame. The progress line is
+/// redrawn whole on every tick and never enters scrollback, so the shift
+/// leaves the transcript unchanged.
+const FRAMES: [&str; 11] = ["·", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "·"];
+/// Returns to column one and clears to the end of the line.
+const ERASE: &str = "\r\x1b[K";
+/// The brand accent `#C7791A` as a 24-bit foreground color, for the progress
+/// glyph. Which color depths a terminal supports is readable only from an
+/// environment variable, and no environment variable is read anywhere, so the
+/// accent is always 24-bit and a terminal limited to 256 colors approximates
+/// it with the nearest index it holds.
+const ACCENT: &str = "\x1b[38;2;199;121;26m";
+/// The cyan of a block heading, also for the episode name on the progress line.
+const CYAN: &str = "\x1b[1;36m";
+/// Green, for the tool-call count on the progress line.
+const GREEN: &str = "\x1b[32m";
+/// Dim, for the elapsed seconds and every bracket on the progress line.
+const DIM: &str = "\x1b[2m";
 
 /// Displays recorded messages while `run` executes, followed by its outcome
 /// and, when `viewer` names a served page, that address. Output failures
@@ -25,13 +47,15 @@ pub async fn conversation(
 ) -> Result<Outcome, String> {
     let width = rustix::termios::tcgetwinsize(io::stdout()).map_or(0, |size| usize::from(size.ws_col));
     let width = if width == 0 { DEFAULT_WIDTH } else { width };
-    let mut terminal = Terminal::new(io::stdout(), io::stdout().is_terminal(), width);
+    let interactive = io::stdout().is_terminal();
+    let mut terminal = Terminal::new(io::stdout(), interactive, interactive, width);
     tokio::pin!(run);
     let result = loop {
         tokio::select! {
             result = &mut run => break result,
             _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                if let Err(error) = terminal.poll(dir) {
+                if let Err(error) = terminal.poll(dir).and_then(|()| terminal.status()) {
+                    let _ = terminal.erase();
                     eprintln!("foe conversation: {error}; live display stopped");
                     break run.await;
                 }
@@ -47,9 +71,24 @@ pub async fn conversation(
 struct Terminal<W> {
     output: W,
     color: bool,
+    /// Whether standard output is a terminal. The progress line is drawn only
+    /// then, so redirected output holds appended blocks alone.
+    interactive: bool,
     width: usize,
     offsets: BTreeMap<PathBuf, (u64, String)>,
     lanes: Vec<(String, String)>,
+    /// When the display started, on the runtime clock.
+    started: tokio::time::Instant,
+    /// Poll ticks since the display started. The progress frame is this count
+    /// modulo the number of frames.
+    ticks: usize,
+    /// Tool calls the assistant has requested since the last displayed
+    /// assistant message.
+    calls: usize,
+    /// The label of the episode whose event arrived most recently.
+    active: String,
+    /// Whether the progress line stands on the last line written.
+    drawn: bool,
 }
 
 /// One line of a body: a section title, bold in color mode, or text.
@@ -59,8 +98,54 @@ enum Row {
 }
 
 impl<W: Write> Terminal<W> {
-    fn new(output: W, color: bool, width: usize) -> Self {
-        Self { output, color, width, offsets: BTreeMap::new(), lanes: Vec::new() }
+    /// `color` decides whether escape sequences are emitted and `interactive`
+    /// decides whether the progress line is drawn. A run gives both the same
+    /// value; a test sets them apart to render one without the other.
+    fn new(output: W, color: bool, interactive: bool, width: usize) -> Self {
+        let (offsets, lanes, active) = Default::default();
+        let started = tokio::time::Instant::now();
+        Self { output, color, interactive, width, offsets, lanes, started, ticks: 0, calls: 0, active, drawn: false }
+    }
+
+    /// Redraws the progress line in place: the pulsing mark, the episode that
+    /// acted most recently, the seconds since the display started, and the
+    /// tool calls requested since the last displayed assistant message. The
+    /// episode name is shortened to whatever the width leaves, so the redraw
+    /// stays on one row and `ERASE` reaches all of it.
+    fn status(&mut self) -> io::Result<()> {
+        if !self.interactive {
+            return Ok(());
+        }
+        let mark = FRAMES[self.ticks % FRAMES.len()];
+        self.ticks += 1;
+        let mark = if self.color { format!("{ACCENT}{mark}\x1b[0m") } else { mark.into() };
+        let seconds = format!("{} s", tokio::time::Instant::now().duration_since(self.started).as_secs());
+        let calls = format!("{} tool call{}", self.calls, if self.calls == 1 { "" } else { "s" });
+        let room = self.width.saturating_sub(seconds.chars().count() + calls.chars().count() + 13);
+        let lane: String = self.active.chars().take(room).collect();
+        let fields = [self.bracket(CYAN, &lane), self.bracket(DIM, &seconds), self.bracket(GREEN, &calls)];
+        self.drawn = true;
+        write!(self.output, "{ERASE}{mark}  {}", fields.join("  "))?;
+        self.output.flush()
+    }
+
+    /// One bracketed field of the progress line, its text in `code` and its
+    /// brackets dim.
+    fn bracket(&self, code: &str, text: &str) -> String {
+        match self.color {
+            true => format!("{DIM}[\x1b[0m{code}{text}\x1b[0m{DIM}]\x1b[0m"),
+            false => format!("[{text}]"),
+        }
+    }
+
+    /// Removes the progress line, so that what follows owns the scrollback.
+    /// The erasure is flushed, so a message written to standard error next
+    /// starts on a clear row.
+    fn erase(&mut self) -> io::Result<()> {
+        match std::mem::take(&mut self.drawn) {
+            true => write!(self.output, "{ERASE}").and_then(|()| self.output.flush()),
+            false => Ok(()),
+        }
     }
 
     fn poll(&mut self, dir: &Path) -> io::Result<()> {
@@ -96,10 +181,23 @@ impl<W: Write> Terminal<W> {
     }
 
     fn event(&mut self, id: &str, data: &EventData) -> io::Result<()> {
+        if let Some((_, label)) = self.lanes.iter().find(|(key, _)| key == id) {
+            self.active = label.clone();
+        }
+        // A tool call is carried by the assistant message that requests it
+        // rather than logged on its own, and the count restarts whenever an
+        // assistant message reaches the display.
+        if let EventData::AssistantMessage(message) = data {
+            if !message.text.trim().is_empty() {
+                self.calls = 0;
+            }
+            self.calls += message.tool_calls.len();
+        }
         match data {
             EventData::EpisodeStart(start) => {
                 let i = self.lane(id);
                 self.lanes[i].1 = start.contract["name"].as_str().unwrap_or(id).into();
+                self.active = self.lanes[i].1.clone();
             }
             EventData::InboxItem(item)
                 if matches!(item.source, InboxSource::Parent | InboxSource::Peer)
@@ -150,9 +248,10 @@ impl<W: Write> Terminal<W> {
     }
 
     fn heading(&mut self, prefix: &str, label: &str) -> io::Result<()> {
+        self.erase()?;
         let label = clean(label).replace('\n', " ");
         if self.color {
-            writeln!(self.output, "\x1b[2m{prefix}\x1b[0m\x1b[1;36m{label}\x1b[0m")
+            writeln!(self.output, "{DIM}{prefix}\x1b[0m{CYAN}{label}\x1b[0m")
         } else {
             writeln!(self.output, "{prefix}{label}")
         }

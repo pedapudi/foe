@@ -18,3 +18,6 @@ rustix = { version = "1", features = ["termios"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+# The progress line tests measure elapsed seconds on tokio's virtual clock,
+# which the test-util feature provides.
+tokio = { workspace = true, features = ["test-util"] }
