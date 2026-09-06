@@ -1138,7 +1138,7 @@ episode. The executor realizes the rule as an ordinary spawn. Inspection reads
 the same rule as reachability. The compaction policy in `crates/context` stays
 under 500.
 
-The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
+The viewer is budgeted apart from the runtime: `crates/view` under 725 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
 because it delivers a record of a run rather than running one, so a viewer
 that grows must not force the runtime to shrink. The browser viewer's HTML,
