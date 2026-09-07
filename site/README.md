@@ -56,3 +56,6 @@ Ubuntu and Ubuntu Mono are under the Ubuntu Font Licence 1.0, in
 `site/public` is the published tree. GitHub Pages serves it from the branch and
 folder named in the repository's Pages settings. No workflow builds or deploys
 it; a person runs the build and pushes the result.
+
+Run `site/publish.sh` to build the page and push the result to the `gh-pages`
+branch, which is the tree Pages serves.

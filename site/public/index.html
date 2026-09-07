@@ -883,7 +883,7 @@ function Terminal(root, spec){
 function promptLine(t, dur, text){ return { t: t, dur: dur, typed: true, segs: [seg(text, "pr")] }; }
 
 /* ===== the terminals ================================================== */
-var runTerm = new Terminal($("[data-term=run]"), {
+new Terminal($("[data-term=run]"), {
   status: true,
   /* The runtime erases the progress line before it appends a block, and the
      final block is the last thing it writes, so the line stops there. */
@@ -1530,9 +1530,8 @@ function detailOf(e){
   var host = $("#stats");
   if(!host) return;
   var lead = RUNWF[0].d.budget, spent = { model_calls: 0, input_tokens: 0, output_tokens: 0 };
-  var cache = 0, tools = {}, eps = {};
+  var cache = 0, tools = {};
   RUNWF.forEach(function(e){
-    eps[e.ep] = true;
     if(e.ty === "model/request") spent.model_calls++;
     if(e.ty === "assistant/message" && e.d.usage){
       spent.input_tokens += e.d.usage.input || 0;
@@ -1562,10 +1561,7 @@ function detailOf(e){
     g.appendChild(r);
   }
 
-  var scope = group("this run");
-  row(scope, "episodes", String(Object.keys(eps).length), 100, false);
-
-  var budget = group("budget, and what the run spent");
+  var budget = group("token usage");
   var limits = [["model calls", "model_calls", n], ["input tokens", "input_tokens", n], ["output tokens", "output_tokens", n]];
   var shares = limits.map(function(l){ return pct(spent[l[1]], lead[l[1]]); });
   var biggest = Math.max.apply(null, shares);
