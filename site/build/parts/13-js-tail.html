@@ -48,14 +48,14 @@
     row(budget, l[0], l[2](spent[l[1]]) + " of " + l[2](lead[l[1]]) + " – " + shares[i] + "%", shares[i], shares[i] === biggest);
   });
 
-  var reads = group("where the input came from");
+  /* Where that input came from belongs with the input it splits. */
   var fromCache = pct(cache, spent.input_tokens);
-  row(reads, "read from cache", n(cache) + " – " + fromCache + "%", fromCache, fromCache >= 50);
-  row(reads, "sent as new text", n(spent.input_tokens - cache) + " – " + (100 - fromCache) + "%", 100 - fromCache, fromCache < 50);
+  row(budget, "read from cache", n(cache) + " – " + fromCache + "%", fromCache, false);
+  row(budget, "sent as new text", n(spent.input_tokens - cache) + " – " + (100 - fromCache) + "%", 100 - fromCache, false);
 
   var names = Object.keys(tools).sort(function(x, y){ return tools[y].ms - tools[x].ms; });
   if(names.length){
-    var calls = group("tool time"), longest = tools[names[0]].ms;
+    var calls = group("tool calls"), longest = tools[names[0]].ms;
     names.forEach(function(name, i){
       var t = tools[name];
       row(calls, name + " – " + t.calls + (t.calls === 1 ? " call" : " calls"),
