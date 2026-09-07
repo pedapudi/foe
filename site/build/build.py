@@ -133,6 +133,12 @@ def faces(source):
     return "\n".join(out)
 
 
+# A face the build no longer ships would otherwise sit in the served tree
+# for ever, so the fonts are the ones this typeface names and no others.
+keep = {name for name, _, _, _ in font_files()} | {BOXES[0]}
+for stale in os.listdir(OUT):
+    if stale.endswith(".woff2") and stale not in keep:
+        os.remove(os.path.join(OUT, stale))
 for name, _, _, where in font_files():
     shutil.copyfile(os.path.join(where, name), os.path.join(OUT, name))
 shutil.copyfile(os.path.join(BOXES[2], BOXES[0]), os.path.join(OUT, BOXES[0]))
