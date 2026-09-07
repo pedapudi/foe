@@ -51,6 +51,7 @@ const BUILTIN_VERIFIER_RETRIES: u32 = 12;
 /// Static behavior of the built-in coding workflow. Dynamic permissions,
 /// environment, model, verifier, and task values are filled below.
 const BUILTIN_CONTRACT_DOCUMENT: &str = include_str!("builtin-coding.json");
+const BUILTIN_TEAM_DOCUMENT: &str = include_str!("builtin-team.json");
 const BUILTIN_EXECUTABLE_PROBES: &[(&str, &str)] = &[
     ("sh", "/bin/sh"),
     ("bash", "/bin/bash"),
@@ -407,8 +408,11 @@ pub(crate) const BUILTIN_CODING: &str = "coding";
 /// The name of the one implementation episode the binary carries, run alone.
 pub(crate) const BUILTIN_ONESHOT: &str = "oneshot";
 
+/// The name of the document that delegates to a team of workers.
+pub(crate) const BUILTIN_TEAM: &str = "team";
+
 /// Every document the binary carries, each selected as `builtin:NAME`.
-pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING, BUILTIN_ONESHOT];
+pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING, BUILTIN_ONESHOT, BUILTIN_TEAM];
 
 /// What marks a `--config` value as the name of a document the binary
 /// carries rather than a file path.
@@ -585,6 +589,7 @@ pub(crate) fn builtin_contract_document(
     match name {
         BUILTIN_CODING => coding_contract_document(&cwd, task, model, verify, sandbox),
         BUILTIN_ONESHOT => oneshot_contract_document(&cwd, task, model, verify, sandbox),
+        BUILTIN_TEAM => team_contract_document(&cwd, task, model, verify, sandbox),
         other => Err(format!("builtin:{other}: no built-in document has that name")),
     }
 }
@@ -682,6 +687,63 @@ fn verifier_def(check: &Path, root: &Path) -> Result<serde_json::Value, String> 
 fn add_verifier(contract: &mut serde_json::Value, def: &serde_json::Value) {
     contract["tools"].as_array_mut().expect("a tool list").push(serde_json::json!("check"));
     contract["tool_defs"] = serde_json::json!({ "check": def });
+}
+
+/// Model calls a worker of the team document may spend, and how many of them
+/// run at once. A worker reads and reports, which is a handful of calls; the
+/// lead surveys first, delegates, and writes, so it holds the larger share.
+const BUILTIN_WORKER_CALLS: u64 = 20;
+const BUILTIN_TEAM_WORKERS: u32 = 8;
+
+/// The team document: a lead that divides the task into independent units,
+/// delegates each to a worker, and integrates what they return. The lead
+/// holds the only write grant, so every change to the workspace is made in
+/// one episode however many workers read for it. `verify` gates the lead,
+/// which is the episode that changed anything.
+///
+/// A worker is not a coding workflow. Breadth and verification are separate
+/// questions: this document answers "cover this", and `builtin:coding`
+/// answers "change this and check it".
+pub(crate) fn team_contract_document(
+    root: &Path,
+    task: String,
+    mut model: Option<ModelConfig>,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    if let Some(model) = &mut model {
+        apply_builtin_model_defaults(model);
+    }
+    let mut document: serde_json::Value =
+        serde_json::from_str(BUILTIN_TEAM_DOCUMENT).map_err(|e| format!("built-in team document: {e}"))?;
+    let environment = builtin_environment(root, Path::is_file);
+    document["instructions"]["environment"] = serde_json::json!(environment);
+    document["child_contracts"]["worker"]["instructions"]["environment"] = serde_json::json!(environment);
+    document["model"] = serde_json::json!(model);
+    document["grants"] = serde_json::json!({
+        "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS, "spawn": ["worker"]
+    });
+    // A worker reads everything the lead reads and writes nothing.
+    document["child_contracts"]["worker"]["grants"] =
+        serde_json::json!({ "read": [root], "write": [], "execute": BUILTIN_EXECUTE_ROOTS });
+    document["child_contracts"]["worker"]["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
+    // The lifetime count is the lead plus the workers it may open in all,
+    // which is twice what may run at once, so a second round is affordable.
+    document["budget"] = serde_json::json!({
+        "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_WORKER_CALLS * u64::from(BUILTIN_TEAM_WORKERS) * 2,
+        "max_episodes": BUILTIN_TEAM_WORKERS * 2 + 1,
+        "max_concurrent": BUILTIN_TEAM_WORKERS,
+    });
+    document["task"] = serde_json::json!(task);
+    if let Some(mode) = sandbox {
+        document["sandbox"] = sandbox_block(mode)?;
+    }
+    if let Some(check) = verify {
+        add_verifier(&mut document, &verifier_def(check, root)?);
+        document["done_when"]["verify"] = serde_json::json!("check");
+        document["done_when"]["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
+    }
+    serde_json::from_value(document).map_err(|e| format!("built-in team document: {e}"))
 }
 
 /// The `sandbox` block `--sandbox MODE` states. The three modes are the ones

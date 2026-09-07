@@ -237,9 +237,10 @@ fn builtin_oneshot_takes_the_verifier_and_the_sandbox_mode() {
 /// `crates/cli/tests/integration.rs` records the same for every example
 /// document.
 #[rustfmt::skip]
-const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 2] = [
+const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 3] = [
     ("coding", "sha256:932e6eec5d4766355ed7f8c6b911e9d61f8c695bfe1815c98f2c2236e4a2ce2a"),
     ("oneshot", "sha256:afd326c5f8a095451f072cbb425f2d3ede5542c746df1d5097c3f44400b2baf9"),
+    ("team",    "sha256:7b2f162aa810a7065c534f3bbb52f880c0942466f72c71df04d7036ff4985adb"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one
@@ -449,7 +450,7 @@ fn config_takes_a_built_in_name_beside_a_file_path() {
     assert_eq!(
         contract_source("builtin:parser").unwrap_err(),
         "--config builtin:parser: no built-in document has that name; the built-in documents are \
-         builtin:coding, builtin:oneshot"
+         builtin:coding, builtin:oneshot, builtin:team"
     );
 }
 

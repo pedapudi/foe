@@ -26,8 +26,9 @@ What a run uses is the document `--config` names, else `.foe/contract.json`
 in the working directory, else the built-in coding workflow the binary
 carries. `--config` takes a file path or the name of a built-in document,
 written `builtin:NAME`: `builtin:coding` is that coding workflow,
-`builtin:oneshot` is its implementation episode alone, and
-`foe plan --config builtin:NAME` resolves either as it resolves a file. A run
+`builtin:oneshot` is its implementation episode alone, `builtin:team` is a
+lead that delegates to workers, and `foe plan --config builtin:NAME` resolves
+any of them as it resolves a file. A run
 that reads `.foe/contract.json` because its command line named no document
 prints one line on standard error naming the file and the document's `name`.
 docs/design.md "The command line" states the rule and what the built-in

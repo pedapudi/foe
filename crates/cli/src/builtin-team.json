@@ -1,0 +1,73 @@
+{
+  "version": 4,
+  "name": "team",
+  "instructions": {
+    "role": "Cover the task by dividing it into independent units and delegating each to a worker, then integrate what they return. Survey first with your own tools until you know what the units are. Delegate a unit only when it is independent of the others and costs more than a few tool calls; do the rest yourself. One `spawn` adds a worker and returns at once, so add every unit before waiting. `wait` returns when they have all settled and their reports arrive in the request after it. You hold the only write grant: a worker reads and reports, and every change to the workspace is yours to make. Each tool result begins with its log sequence as `[seq N]`.",
+    "contract": "Treat the task text and repository checks as the source of truth. Unless the task says otherwise, limit mutations to current filesystem state and preserve history, prior versions, archives, encodings, and hidden implementation details. Report a worker's finding as that worker's, with the sequence that carries it. A unit no worker covered is an unresolved risk and not a finding. Cite successful tool results for every completion-critical requirement."
+  },
+  "tools": ["read", "grep", "edit", "bash", "spawn", "wait", "steer", "team"],
+  "done_when": {
+    "returns": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "units": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "unit": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "worker": { "type": "string", "maxLength": 120 },
+              "finding": { "type": "string", "minLength": 1, "maxLength": 1000 },
+              "seq": { "type": "integer", "minimum": 0 }
+            },
+            "required": ["unit", "worker", "finding", "seq"],
+            "additionalProperties": false
+          }
+        },
+        "changed_paths": { "type": "array", "items": { "type": "string", "maxLength": 512 }, "maxItems": 64 },
+        "unresolved_risks": { "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 16 }
+      },
+      "required": ["summary", "units", "changed_paths", "unresolved_risks"],
+      "additionalProperties": false
+    }
+  },
+  "child_contracts": {
+    "worker": {
+      "name": "worker",
+      "instructions": {
+        "role": "Cover the one unit your task names and report what you found. Read, search, and run read-only commands. You have no write grant: change nothing, and report what would need changing instead. Each tool result begins with its log sequence as `[seq N]`.",
+        "contract": "Answer only for the unit you were given. Cite the log sequence of the tool result that carries each finding. A question you could not settle is an open question and not a finding."
+      },
+      "tools": ["read", "grep", "bash", "notify"],
+      "done_when": {
+        "returns": {
+          "type": "object",
+          "properties": {
+            "unit": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "finding": { "type": "string", "minLength": 1, "maxLength": 2000 },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "claim": { "type": "string", "minLength": 1, "maxLength": 300 },
+                  "seq": { "type": "integer", "minimum": 0 }
+                },
+                "required": ["claim", "seq"],
+                "additionalProperties": false
+              }
+            },
+            "open_questions": { "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 8 }
+          },
+          "required": ["unit", "finding", "evidence", "open_questions"],
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

@@ -883,13 +883,26 @@ A document in a file carries its own task, which directs the fork.
 What runs is the document `--config` names, else `.foe/contract.json` in the
 working directory, else the built-in coding workflow. `--config` takes a
 file path or the name of a document the binary carries, written
-`builtin:NAME`. The binary carries two documents. `builtin:coding` is the
+`builtin:NAME`. The binary carries three documents. `builtin:coding` is the
 coding workflow this section describes, and it is the default because the
 failure it prevents is a task reported complete on a wrong result.
 `builtin:oneshot` is the plain form: that workflow's implementation episode
 alone, under the same instructions, tools, return schema, grants, and
 sandbox mode, with no assessment episode and no repair episode. It suits a
-task whose result a person reads directly. Every other name is refused with
+task whose result a person reads directly.
+
+`builtin:team` answers a task that divides rather than one that deepens. The
+lead surveys with its own tools, adds one board task per independent unit,
+waits, and integrates what the workers return. A worker reads, searches, and
+runs read-only commands, and returns a finding with the log sequence that
+carries it; it has no write grant and no spawn grant, so it changes nothing
+and leads no team of its own. The lead holds the only write grant, which is
+why however many workers read, every change to the workspace is made in one
+episode. Eight workers run at once and sixteen may open over the run, which
+is a second round after the first. A worker is not a coding workflow:
+breadth and verification are separate questions, and a document that answered
+both would multiply the episode count of the one it is the default instead
+of. Every other name is refused with
 the names the binary carries. A command line naming no document examines the
 working directory alone and searches no ancestor directory. A run that reads
 `.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on

@@ -1935,10 +1935,26 @@ fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     assert_eq!(oneshot["contract"]["tools"], implementation["tools"]);
     assert_ne!(oneshot["contract_fingerprint"], report["contract_fingerprint"], "the two forms hash apart");
 
+    // The team document delegates: the lead may spawn a worker, the worker
+    // reads everything the lead reads and writes nothing, and every change to
+    // the workspace is therefore made in the one episode that holds the grant.
+    let team = resolved("builtin:team");
+    assert_eq!(team["contract"]["name"], "team");
+    assert_eq!(team["contract"]["grants"]["spawn"], json!(["worker"]));
+    assert_eq!(team["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
+    let worker = &team["contract"]["child_contracts"]["worker"];
+    assert_eq!(worker["grants"]["write"], json!([]), "a worker changes nothing");
+    assert_eq!(worker["grants"]["read"], team["contract"]["grants"]["read"]);
+    assert_eq!(worker["grants"]["spawn"], json!([]), "a worker leads no team of its own");
+    assert!(team["contract"]["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
+    assert!(!worker["tools"].as_array().unwrap().iter().any(|t| t == "edit"));
+    assert_eq!(team["contract"]["budget"]["max_concurrent"], json!(8));
+    assert_ne!(team["contract_fingerprint"], oneshot["contract_fingerprint"], "the forms hash apart");
+
     let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();
     assert!(!unknown.status.success(), "an unknown built-in name is refused");
     let message = String::from_utf8_lossy(&unknown.stderr).to_string();
-    assert!(message.contains("the built-in documents are builtin:coding, builtin:oneshot"), "{message}");
+    assert!(message.contains("the built-in documents are builtin:coding, builtin:oneshot, builtin:team"), "{message}");
 }
 
 /// docs/design.md "Execution contracts and fingerprints": every example contract hashes to
