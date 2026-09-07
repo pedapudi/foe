@@ -589,3 +589,9 @@ test("an episode whose requests were never answered still has rows", () => {
 test("a row that is not in the figure scopes to nothing", () => {
   assert.equal(scopeFor(layout("rich.jsonl"), "ep_rich/step/9"), null);
 });
+
+test("a step of a running episode that nothing has answered is waiting, not unanswered", () => {
+  assert.equal(composeLabel({ kind: "step", step: 4, answered: false, waiting: true }).label, "waiting");
+  assert.equal(composeLabel({ kind: "step", step: 4, answered: false }).label, "no answer");
+  assert.equal(composeLabel({ kind: "step", step: 4, answered: false, waiting: true }).aside, "step 4");
+});
