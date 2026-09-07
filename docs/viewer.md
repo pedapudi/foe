@@ -354,7 +354,13 @@ conversation show every pass over the node.
 Each lane is one continuous line at its own column, from its first row to
 its last, stretched to reach every curve that joins it; a lane of one row
 gets a short stub, so its own elbow and its merge have ground between
-them. A lane takes the lowest free column when it opens and releases it
+them. A lane that ended runs a little past its last row, because its
+outcome mark sits at the foot rather than on the last row, and the curves
+leave and rejoin at those two ends rather than at the first and last rows.
+A parent therefore reaches past every child's foot: a child branches from
+its parent above the child's own first row and folds back below the child's
+own foot, so the two never coincide and the order they happened in reads
+down the figure. A lane takes the lowest free column when it opens and releases it
 when it closes, so column is occupancy and not tree depth — tree depth is
 carried by the label's indent instead. The layout claims no room past its
 own marks: it reports the width its strokes take and gives each row an
@@ -385,9 +391,10 @@ second, never by a substring of free text: a workflow node by its own
 name, a step of one call by the tool and its target (`read
 src/parser.rs`), a step of several by the first call and a count (`read
 src/parser.rs +2`), a delegation by `spawn` and the child's contract name
-(`spawn surveyor`), a step that called nothing by `answered`, and a step
-whose request no message answered by `no answer`. `step N` rides alongside
-in faint.
+(`spawn surveyor`), a step that called nothing by `answered`, a step of a
+running episode that nothing has answered yet by `waiting`, and a step of a
+finished episode whose request no message ever answered by `no answer`.
+`step N` rides alongside in faint.
 
 The tool name stands beside the target even though the tick beside it
 already draws a mark. The redundancy is deliberate: a word is faster to
