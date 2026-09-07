@@ -79,7 +79,7 @@ The first command asks for an API key, checks it, stores it under
 the current directory. What it runs is the document `--config` names, else
 `.foe/contract.json` in the working directory, else the built-in coding
 workflow, which `--config builtin:coding` names explicitly.
-`--config builtin:single` runs that workflow's implementation episode alone.
+`--config builtin:oneshot` runs that workflow's implementation episode alone.
 The runtime supports API-key endpoints, OAuth-backed coding endpoints,
 compatible HTTP endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.

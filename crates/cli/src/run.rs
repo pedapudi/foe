@@ -404,11 +404,11 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<Placement, String> {
 /// The name of the coding workflow the binary carries.
 pub(crate) const BUILTIN_CODING: &str = "coding";
 
-/// The name of the single implementation episode the binary carries.
-pub(crate) const BUILTIN_SINGLE: &str = "single";
+/// The name of the one implementation episode the binary carries, run alone.
+pub(crate) const BUILTIN_ONESHOT: &str = "oneshot";
 
 /// Every document the binary carries, each selected as `builtin:NAME`.
-pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING, BUILTIN_SINGLE];
+pub(crate) const BUILTIN_DOCUMENTS: &[&str] = &[BUILTIN_CODING, BUILTIN_ONESHOT];
 
 /// What marks a `--config` value as the name of a document the binary
 /// carries rather than a file path.
@@ -572,7 +572,7 @@ finding per line, and exits 0 whether or not it found any; printing nothing is a
 /// executable verifier: it becomes a `tool_defs` entry named `check` available to every
 /// episode. In the coding workflow the root completion gate applies to both
 /// the assessment's accept branch and the repair branch, and without a
-/// verifier the assessment's typed choice governs completion. In the single
+/// verifier the assessment's typed choice governs completion. In the one-shot
 /// document the gate applies to the one episode it runs.
 pub(crate) fn builtin_contract_document(
     name: &str,
@@ -584,7 +584,7 @@ pub(crate) fn builtin_contract_document(
     let cwd = std::env::current_dir().and_then(|d| d.canonicalize()).map_err(|e| format!("current directory: {e}"))?;
     match name {
         BUILTIN_CODING => coding_contract_document(&cwd, task, model, verify, sandbox),
-        BUILTIN_SINGLE => single_contract_document(&cwd, task, model, verify, sandbox),
+        BUILTIN_ONESHOT => oneshot_contract_document(&cwd, task, model, verify, sandbox),
         other => Err(format!("builtin:{other}: no built-in document has that name")),
     }
 }
@@ -702,7 +702,7 @@ fn sandbox_block(mode: &str) -> Result<serde_json::Value, String> {
 /// `verify` gates that one episode, with the retry allowance the coding
 /// workflow receives; a finding re-fires inside the episode, so the lifetime
 /// episode count stays at one.
-pub(crate) fn single_contract_document(
+pub(crate) fn oneshot_contract_document(
     root: &Path,
     task: String,
     mut model: Option<ModelConfig>,
@@ -716,7 +716,7 @@ pub(crate) fn single_contract_document(
         serde_json::from_str(BUILTIN_CONTRACT_DOCUMENT).map_err(|e| format!("built-in contract template: {e}"))?;
     let mut document = template["workflow"]["nodes"]["implement-task"]["model"].clone();
     document["version"] = serde_json::json!(foe_contract::document::CONTRACT_FORMAT_VERSION);
-    document["name"] = serde_json::json!(BUILTIN_SINGLE);
+    document["name"] = serde_json::json!(BUILTIN_ONESHOT);
     document["instructions"]["environment"] = serde_json::json!(builtin_environment(root, Path::is_file));
     document["model"] = serde_json::json!(model);
     document["grants"] = serde_json::json!({ "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS });

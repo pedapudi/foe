@@ -290,7 +290,7 @@ fn the_running_help_lists_every_option_under_one_group() {
 
 /// docs/design.md "The command line": `--verify` gates completion of the
 /// document the run uses, which is either assessment branch at the coding
-/// workflow's root and the one episode of the single document.
+/// workflow's root and the one episode of the one-shot document.
 #[test]
 fn verifier_help_names_built_in_completion() {
     let text = help_of(&FORMS[0]);

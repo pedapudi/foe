@@ -165,27 +165,27 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
 }
 
-/// The single document under a model, which is what a run of
-/// `--config builtin:single` builds.
-fn single(
+/// The one-shot document under a model, which is what a run of
+/// `--config builtin:oneshot` builds.
+fn oneshot(
     task: String,
     model: ModelConfig,
     verify: Option<&Path>,
     sandbox: Option<&str>,
 ) -> Result<ContractDocument, String> {
-    builtin_contract_document(BUILTIN_SINGLE, task, Some(model), verify, sandbox)
+    builtin_contract_document(BUILTIN_ONESHOT, task, Some(model), verify, sandbox)
 }
 
-/// docs/design.md "The command line": the single document runs one
+/// docs/design.md "The command line": the one-shot document runs one
 /// implementation episode and no assessment, and states that episode with
 /// the return schema, tools, grants, sandbox mode, and instructions the
 /// coding workflow's implementation node states.
 #[test]
-fn builtin_single_runs_the_implementation_episode_alone() {
+fn builtin_oneshot_runs_the_implementation_episode_alone() {
     let model = ModelConfig::new("anthropic", "claude-opus-5");
-    let document = single("task".into(), model.clone(), None, None).unwrap();
-    resolve(&document).expect("the single document resolves before an episode starts");
-    assert_eq!(document.name, "single");
+    let document = oneshot("task".into(), model.clone(), None, None).unwrap();
+    resolve(&document).expect("the one-shot document resolves before an episode starts");
+    assert_eq!(document.name, "oneshot");
     assert!(document.workflow.is_none(), "one episode needs no graph");
     assert_eq!(document.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
     assert_eq!(document.budget.max_episodes, 1);
@@ -207,15 +207,15 @@ fn builtin_single_runs_the_implementation_episode_alone() {
 /// on the verifier's acceptance, with the retry allowance the coding
 /// workflow receives, and `--sandbox` selects the mode as it does there.
 #[test]
-fn builtin_single_takes_the_verifier_and_the_sandbox_mode() {
+fn builtin_oneshot_takes_the_verifier_and_the_sandbox_mode() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = crate::tests::scratch("foe-cli-single", "built-in-checker");
+    let dir = crate::tests::scratch("foe-cli-oneshot", "built-in-checker");
     let script = dir.join("check");
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let model = ModelConfig::new("anthropic", "claude-opus-5");
-    let document = single("task".into(), model.clone(), Some(&script), Some("off")).unwrap();
-    resolve(&document).expect("the guarded single document resolves");
+    let document = oneshot("task".into(), model.clone(), Some(&script), Some("off")).unwrap();
+    resolve(&document).expect("the guarded one-shot document resolves");
     assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
     assert!(document.tools.iter().any(|tool| tool == "check"));
     let gate = document.done_when.as_ref().unwrap();
@@ -225,7 +225,7 @@ fn builtin_single_takes_the_verifier_and_the_sandbox_mode() {
     assert_eq!(document.budget.max_episodes, 1, "a finding re-fires inside the one episode");
     assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
 
-    let error = single("task".into(), model, None, Some("wide-open")).unwrap_err();
+    let error = oneshot("task".into(), model, None, Some("wide-open")).unwrap_err();
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
@@ -239,7 +239,7 @@ fn builtin_single_takes_the_verifier_and_the_sandbox_mode() {
 #[rustfmt::skip]
 const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 2] = [
     ("coding", "sha256:932e6eec5d4766355ed7f8c6b911e9d61f8c695bfe1815c98f2c2236e4a2ce2a"),
-    ("single", "sha256:907f05d0330dbc5edeee38a3fe1b7d283aa2d01fc42d3a02b2cf802f6156964b"),
+    ("oneshot", "sha256:afd326c5f8a095451f072cbb425f2d3ede5542c746df1d5097c3f44400b2baf9"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one
@@ -303,7 +303,7 @@ fn every_built_in_document_hashes_to_its_recorded_fingerprint() {
         found.push(hash);
     }
     assert!(changed.is_empty(), "built-in document fingerprints changed:\n    {}", changed.join(",\n    "));
-    assert_ne!(found[0], found[1], "the coding workflow and the single document hash apart");
+    assert_ne!(found[0], found[1], "the coding workflow and the one-shot document hash apart");
 }
 
 #[test]
@@ -352,7 +352,7 @@ fn explicit_config_owns_its_sandbox_mode() {
 #[test]
 fn permitting_everything_grants_the_whole_filesystem_with_no_confinement() {
     let plain =
-        Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_SINGLE}")), ..Options::default() };
+        Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_ONESHOT}")), ..Options::default() };
     let (document, _) = load_contract_document(&plain).unwrap();
     assert_eq!(document.sandbox.mode, foe_log::SandboxMode::BestEffort);
     assert_ne!(document.grants.read, vec![PathBuf::from("/")]);
@@ -449,7 +449,7 @@ fn config_takes_a_built_in_name_beside_a_file_path() {
     assert_eq!(
         contract_source("builtin:parser").unwrap_err(),
         "--config builtin:parser: no built-in document has that name; the built-in documents are \
-         builtin:coding, builtin:single"
+         builtin:coding, builtin:oneshot"
     );
 }
 

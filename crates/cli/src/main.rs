@@ -88,7 +88,7 @@ const OPTS: &[Opt] = &[
         "FILE",
         ".foe/contract.json in the working directory, else builtin:coding",
         "the contract document to run: a file, builtin:coding, the careful default that implements and then \
-         assesses, or builtin:single, the plain form of one implementation episode",
+         assesses, or builtin:oneshot, the plain form of one implementation episode",
     ),
     opt("", WHAT_RUNS, "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
     opt(
@@ -182,7 +182,7 @@ const OPTS: &[Opt] = &[
         "--config",
         "FILE",
         "the built-in tools alone",
-        "the contract document to resolve: a file, builtin:coding, or builtin:single",
+        "the contract document to resolve: a file, builtin:coding, or builtin:oneshot",
     ),
     opt("plan", "", "--json", "", "", "print one JSON object instead of the report"),
     opt("plan", "", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),

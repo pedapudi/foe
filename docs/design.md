@@ -886,7 +886,7 @@ file path or the name of a document the binary carries, written
 `builtin:NAME`. The binary carries two documents. `builtin:coding` is the
 coding workflow this section describes, and it is the default because the
 failure it prevents is a task reported complete on a wrong result.
-`builtin:single` is the plain form: that workflow's implementation episode
+`builtin:oneshot` is the plain form: that workflow's implementation episode
 alone, under the same instructions, tools, return schema, grants, and
 sandbox mode, with no assessment episode and no repair episode. It suits a
 task whose result a person reads directly. Every other name is refused with
@@ -916,8 +916,8 @@ fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
 contract document.
 
-The single document is built from that same file. The implementation node's
-contract becomes the whole document, under the name `single`, and the CLI
+The one-shot document is built from that same file. The implementation node's
+contract becomes the whole document, under the name `oneshot`, and the CLI
 fills the same values around it. The document declares no workflow, so the
 run is one episode of the direct loop, its lifetime episode count is one, and
 its allowance is that episode's 60-call backstop. With `--verify` the episode

@@ -256,8 +256,8 @@ def test_an_absent_root_and_a_relative_verifier_are_refused(tmp_path: Path) -> N
         foe.builtin("coding", root, binary=BINARY, verify="verify")
 
 
-def test_the_single_document_is_the_implementation_episode_over_the_root(tmp_path: Path) -> None:
-    """The single document reaches the package as the binary carries it.
+def test_the_oneshot_document_is_the_implementation_episode_over_the_root(tmp_path: Path) -> None:
+    """The one-shot document reaches the package as the binary carries it.
 
     It declares no workflow, so the returned contract carries none, and the
     package's fingerprint is the one the binary computes for the printed
@@ -265,17 +265,17 @@ def test_the_single_document_is_the_implementation_episode_over_the_root(tmp_pat
     workflow above. The two built-in documents fingerprint apart.
     """
     root = _root(tmp_path)
-    contract = foe.builtin("single", root, binary=BINARY)
-    document = _plan("builtin:single", root)["contract"]
+    contract = foe.builtin("oneshot", root, binary=BINARY)
+    document = _plan("builtin:oneshot", root)["contract"]
     document["grants"]["execute"] = [*document["grants"]["execute"], str(root)]
     document["version"] = foe.CONFIG_VERSION
     document["task"] = "fingerprint"
-    rooted = tmp_path / "rooted-single.json"
+    rooted = tmp_path / "rooted-oneshot.json"
     rooted.write_text(json.dumps(document), encoding="utf-8")
 
     assert contract.workflow is None
     written = contract.to_dict()
-    assert written["name"] == "single"
+    assert written["name"] == "oneshot"
     assert "workflow" not in written
     assert written["grants"]["read"] == [str(root)]
     assert written["grants"]["execute"][-1] == str(root)
@@ -283,10 +283,10 @@ def test_the_single_document_is_the_implementation_episode_over_the_root(tmp_pat
     assert contract.fingerprint(BINARY) != foe.builtin("coding", root, binary=BINARY).fingerprint(BINARY)
 
 
-def test_the_single_document_runs_as_one_episode(tmp_path: Path) -> None:
-    """The single contract runs to a typed return, with no node of a workflow."""
+def test_the_oneshot_document_runs_as_one_episode(tmp_path: Path) -> None:
+    """The one-shot contract runs to a typed return, with no node of a workflow."""
     root = _root(tmp_path)
-    contract = foe.builtin("single", root, binary=BINARY)
+    contract = foe.builtin("oneshot", root, binary=BINARY)
     task = "Report that the repository needs no change."
     outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")
     assert isinstance(outcome, foe.Completed), outcome
@@ -294,8 +294,8 @@ def test_the_single_document_runs_as_one_episode(tmp_path: Path) -> None:
     assert '"type":"workflow/node-start"' not in events
 
 
-def test_a_finding_re_fires_inside_the_single_episode(tmp_path: Path) -> None:
-    """A gated single document feeds a finding back without a further episode.
+def test_a_finding_re_fires_inside_the_oneshot_episode(tmp_path: Path) -> None:
+    """A gated one-shot document feeds a finding back without a further episode.
 
     docs/config.md `done_when` feeds findings to the model of the episode
     that produced the candidate, and that episode is the whole run here, so
@@ -304,7 +304,7 @@ def test_a_finding_re_fires_inside_the_single_episode(tmp_path: Path) -> None:
     acceptance.
     """
     root = _root(tmp_path)
-    contract = foe.builtin("single", root, binary=BINARY, verify=_verifier(root, findings=1))
+    contract = foe.builtin("oneshot", root, binary=BINARY, verify=_verifier(root, findings=1))
     assert contract.budget.max_episodes == 1
     task = "Report that the repository needs no change."
     outcome, episode = _run(contract, task, _reads_then_returns(root / "notes.txt"), tmp_path / "episodes")

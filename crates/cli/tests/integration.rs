@@ -1894,7 +1894,7 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
 /// docs/design.md "The command line": `foe plan --config builtin:NAME`
 /// resolves a document the binary carries as it resolves a file, and
 /// `--json` prints the contract a host reads. The coding workflow resolves
-/// to a graph and the single document to one model node, both under the
+/// to a graph and the one-shot document to one model node, both under the
 /// return schema the binary carries, and the two hash apart. A name the
 /// binary does not carry is refused with the names it carries.
 #[test]
@@ -1919,26 +1919,26 @@ fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     let implementation = &report["contract"]["workflow"]["nodes"]["implement-task"]["model"];
     assert_eq!(implementation["done_when"]["returns"]["required"], required);
 
-    let single = resolved("builtin:single");
-    assert_eq!(single["contract"]["name"], "single");
-    assert_eq!(single["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
-    assert!(single["contract"]["task"].is_null(), "a resolved contract carries no task");
+    let oneshot = resolved("builtin:oneshot");
+    assert_eq!(oneshot["contract"]["name"], "oneshot");
+    assert_eq!(oneshot["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
+    assert!(oneshot["contract"]["task"].is_null(), "a resolved contract carries no task");
     assert_eq!(
-        single["execution"],
+        oneshot["execution"],
         json!({
             "kind": "root-agent", "nodes": 1, "name": "root-agent", "follows": ["task"], "terminal": true
         })
     );
-    assert_eq!(single["contract"]["workflow"], Value::Null, "one episode needs no graph");
-    assert_eq!(single["contract"]["done_when"]["returns"]["required"], required);
-    assert_eq!(single["contract"]["instructions"], implementation["instructions"]);
-    assert_eq!(single["contract"]["tools"], implementation["tools"]);
-    assert_ne!(single["contract_fingerprint"], report["contract_fingerprint"], "the two forms hash apart");
+    assert_eq!(oneshot["contract"]["workflow"], Value::Null, "one episode needs no graph");
+    assert_eq!(oneshot["contract"]["done_when"]["returns"]["required"], required);
+    assert_eq!(oneshot["contract"]["instructions"], implementation["instructions"]);
+    assert_eq!(oneshot["contract"]["tools"], implementation["tools"]);
+    assert_ne!(oneshot["contract_fingerprint"], report["contract_fingerprint"], "the two forms hash apart");
 
     let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();
     assert!(!unknown.status.success(), "an unknown built-in name is refused");
     let message = String::from_utf8_lossy(&unknown.stderr).to_string();
-    assert!(message.contains("the built-in documents are builtin:coding, builtin:single"), "{message}");
+    assert!(message.contains("the built-in documents are builtin:coding, builtin:oneshot"), "{message}");
 }
 
 /// docs/design.md "Execution contracts and fingerprints": every example contract hashes to
