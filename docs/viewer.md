@@ -12,14 +12,16 @@ starts. `--conversation` cannot be combined with `--host`.
 
 The display appends blocks to terminal scrollback. Each active episode has
 a column of tree connectors. A branch opens a column; its return joins
-that column to its parent and displays the outcome. A returned result
-means the child finished; it does not establish that its parent accepted
-or incorporated the result.
+that column to its parent and displays the outcome. Both lines name the
+child alone: the connector already carries which parent the column belongs
+to, so `Branch: reviewer` opens a column and `reviewer · Completed` closes
+the same one. A returned result means the child finished; it does not
+establish that its parent accepted or incorporated the result.
 
 An episode's name is written in one of eight colours, which is how two
 episodes writing into one transcript are told apart: a block heading names
-the episode that produced it, a branch line names the child it opens, and a
-return line names both ends. The colour is the one the name hashes to, moved
+the episode that produced it, and a branch line and its return line name the
+child whose column they open and close. The colour is the one the name hashes to, moved
 on to the next free colour when another open episode already holds it, so a
 name keeps one colour for the rest of the run. The eight are the terminal's
 own palette entries rather than fixed values, because the terminal's theme

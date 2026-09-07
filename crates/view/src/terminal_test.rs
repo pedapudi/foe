@@ -137,7 +137,7 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
     ] {
         assert!(output.find(first).unwrap() < output.find(second).unwrap(), "{first} before {second}: {output}");
     }
-    assert!(output.contains("reviewer → lead · Completed"), "{output}");
+    assert!(output.contains("reviewer · Completed"), "{output}");
     assert!(output.contains("Final · Completed\n  Ready.\n\n  Checks\n  - Review\n  - Tests\n"), "{output}");
     assert_eq!(output.matches("Review complete.").count(), 1);
     let finished = terminal.output.clone();
@@ -373,10 +373,7 @@ fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
     let output = String::from_utf8(terminal.output).unwrap();
     assert!(output.contains("\x1b[1;36mBranch: \x1b[0m\x1b[1;95mreviewer\x1b[0m"), "{output}");
     assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m · Assistant\x1b[0m"), "{output}");
-    assert!(
-        output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[2m → \x1b[0m\x1b[1;35mlead\x1b[0m\x1b[1;36m · Completed\x1b[0m"),
-        "{output}"
-    );
+    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m · Completed\x1b[0m"), "{output}");
 
     // `survey-propose-apply` and `propose` hash to one color, so the second
     // lane to open moves on to the next free one rather than repeating it.
@@ -393,6 +390,6 @@ fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
     plain.event("lead", &returned("reviewer", "Approved.")).unwrap();
     let plain = String::from_utf8(plain.output).unwrap();
     assert!(plain.contains("Branch: reviewer"), "{plain}");
-    assert!(plain.contains("reviewer → lead · Completed"), "{plain}");
+    assert!(plain.contains("reviewer · Completed"), "{plain}");
     assert!(!plain.contains('\x1b'), "{plain}");
 }

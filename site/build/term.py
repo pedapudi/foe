@@ -179,8 +179,10 @@ class Term:
         elif ty == "spawn/end":
             parent, child = self.lane(eid), self.lane(d["child_id"])
             status, body = result_text(d["outcome"])
-            a, b = self.lanes[child][1], self.lanes[parent][1]
-            head = [[self.cls(child), a], ["cx", " → "], [self.cls(parent), b], ["hd", " – "],
+            # The elbow closing the child's column into its parent's tee
+            # already says which parent took the result, so the label names
+            # the child alone, matching the Branch line that opened it.
+            head = [[self.cls(child), self.lanes[child][1]], ["hd", " – "],
                     ["hd oc-%s" % status.lower(), status]]
             hp = self.edge_prefix(parent, child, "╯ ")
             self.lanes[child] = ["", "", 0]

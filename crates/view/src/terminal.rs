@@ -254,10 +254,13 @@ impl<W: Write> Terminal<W> {
                 let parent = self.lane(id);
                 let child = self.lane(child_id);
                 let (status, body) = result_text(outcome);
-                let (a, b) = (self.lanes[child].1.clone(), self.lanes[parent].1.clone());
-                let (ca, cb) = (IDENTITY[self.lanes[child].2], IDENTITY[self.lanes[parent].2]);
-                let ends = [(ca, a), (DIM, " → ".into()), (cb, b), (CYAN, format!(" · {status}"))];
-                self.edge(parent, child, "╯ ", &ends)?;
+                // The elbow closing the child's column into its parent's tee
+                // already says which parent took the result, and the columns
+                // name both ends, so the label names the child alone. It
+                // matches the `Branch:` line that opened the same column.
+                let name = self.lanes[child].1.clone();
+                let code = IDENTITY[self.lanes[child].2];
+                self.edge(parent, child, "╯ ", &[(code, name), (CYAN, format!(" · {status}"))])?;
                 self.lanes[child] = (String::new(), String::new(), 0);
                 while self.lanes.last().is_some_and(|(id, ..)| id.is_empty()) {
                     self.lanes.pop();
