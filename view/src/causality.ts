@@ -210,6 +210,11 @@ export interface CausalityRow {
   stepNumber?: number;
   attempts?: number;
   answered?: boolean;
+  /**
+   * True when nothing has answered the step yet and the episode is still
+   * running: a step in flight, rather than one that never got an answer.
+   */
+  waiting?: boolean;
 }
 
 /** One row of the model, placed. */
@@ -503,6 +508,7 @@ export function composeLabel(row: {
   step?: number;
   attempts?: number;
   answered?: boolean;
+  waiting?: boolean;
   calls?: CausalityCall[];
   /** True when the step's calls are rows of their own on the same page. */
   callsVisible?: boolean;
@@ -522,6 +528,9 @@ export function composeLabel(row: {
   const attempts = row.attempts !== undefined && row.attempts > 1 ? ` – attempt ${row.attempts} of ${row.attempts}` : "";
   if (row.callsVisible) return { label: `${step}${attempts}`, aside: "" };
   const aside = step;
+  // A step of a running episode that nothing has answered yet is in flight.
+  // Only an episode that has ended can hold a step that never got an answer.
+  if (row.waiting === true) return { label: "waiting", aside };
   if (row.answered === false) return { label: "no answer", aside };
   if (!first) return { label: "answered", aside };
   return { label: calls.length > 1 ? `${one(first)} +${calls.length - 1}` : one(first), aside };
@@ -624,6 +633,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         // the label is set when the visible set is known, not here.
         row.attempts = step.attempts;
         row.answered = step.answered;
+        row.waiting = !step.answered && episode.outcome === null;
         row.stepNumber = step.step;
         if (step.text !== "") {
           push({
@@ -786,6 +796,7 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
       step: row.stepNumber,
       attempts: row.attempts,
       answered: row.answered,
+      waiting: row.waiting,
       calls: row.calls,
       callsVisible: callsShown,
     });
@@ -876,26 +887,39 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
     const lane = build.lane;
     lane.y1 = yOf(build.first);
     lane.y2 = yOf(build.last);
-    for (const child of build.children) {
-      if (!Number.isFinite(child.first)) continue;
-      lane.y1 = Math.min(lane.y1, yOf(child.first) - ELBOW);
-      lane.y2 = Math.max(lane.y2, yOf(child.last) + ELBOW);
-    }
     // A lane of one row still needs a line, or its own elbow and its merge
     // meet at a point with nothing between them.
     if (lane.y1 === lane.y2) {
       lane.y1 -= STUB / 2;
       lane.y2 += STUB / 2;
     }
+    // The foot carries the outcome mark, which is the last thing on the
+    // lane and so sits below the last row rather than on it.
     if (lane.outcome !== null) lane.y2 += OUTCOME_TAIL;
+  }
+
+  // A lane reaches past its children, because a child branches from it above
+  // the child's own first row and merges back into it below the child's own
+  // foot. The children are settled before the parent reads them: `ordered`
+  // holds each lane before the lanes it opened, so reading it backwards puts
+  // every child's foot in its final place first.
+  for (const build of [...ordered].reverse()) {
+    for (const child of build.children) {
+      if (!Number.isFinite(child.first)) continue;
+      build.lane.y1 = Math.min(build.lane.y1, child.lane.y1 - ELBOW);
+      build.lane.y2 = Math.max(build.lane.y2, child.lane.y2 + ELBOW);
+    }
   }
 
   const edges: CausalityEdge[] = [];
   for (const build of ordered) {
     const parent = build.lane.parentId === null ? undefined : builds.get(build.lane.parentId);
     if (!parent || !Number.isFinite(parent.first)) continue;
-    const top = yOf(build.first);
-    const bottom = yOf(build.last);
+    // The curves leave and rejoin at the lane's own ends, not at its first
+    // and last rows: a lane runs past its last row by the height of its
+    // outcome mark, and a merge drawn from the row would leave the foot
+    // hanging below the point it had already folded away at.
+    const { y1: top, y2: bottom } = build.lane;
     edges.push({
       kind: "branch",
       from: { x: parent.lane.x, y: top - ELBOW },
