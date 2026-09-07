@@ -3605,7 +3605,7 @@ kbd {
  * beside it ran, so it takes neutral ink rather than an identity colour. */
 .caus-strokes .caus-lane.workflow,
 .caus-strokes .caus-node.node {
-  --caus-tone: var(--v2-ink-faint);
+  --caus-tone: var(--v2-ink-soft);
 }
 
 .caus-lane .line {
