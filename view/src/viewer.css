@@ -858,7 +858,7 @@ details[open] > summary::before {
 }
 
 .tree tspan.id {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));
 }
@@ -866,7 +866,7 @@ details[open] > summary::before {
 .tree text.sub {
   font-family: var(--v2-mono);
   font-size: calc(10.5px * var(--dt-font-scale, 1));
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
 }
 
 .tree text.sub .good {
@@ -886,7 +886,7 @@ details[open] > summary::before {
 }
 
 .tree text.sub .running {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
 }
 
 .tree text.sub .detail {
@@ -1850,8 +1850,13 @@ table.events td.type.error {
   stroke-width: 0.6;
 }
 
+/* Text inside the trajectory states plain pixels. The figure lays itself out
+ * at `clientWidth / scale` and renders its viewBox at `scale`, so the drawing
+ * already carries the reader's text size, and `--dt-font-scale` here would
+ * apply that size a second time. A figure that draws at its own pixel size,
+ * such as the episode tree, does carry the variable. */
 .traj .tick-label {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: 9.5px;
   font-variant-numeric: tabular-nums;
@@ -1924,7 +1929,7 @@ table.events td.type.error {
 /* One lane per node that fired, named in the label column beside its own
  * lane. The name is data about the graph, so it sets in the data face. */
 .traj-lane-label {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: 9px;
 }
@@ -2278,10 +2283,10 @@ table.events td.type.error {
 /* A label sits at the end of a leader tick, fanned clear of its
  * neighbours, and the edge it names continues past it. */
 .wf-label text {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .wf-label .leader {
@@ -2344,7 +2349,7 @@ table.events td.type.error {
 
 .wf-node .kind,
 .wf-node .fires {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   font-variant-numeric: tabular-nums;
@@ -2707,7 +2712,7 @@ table.events td.type.error {
 }
 
 .clock-share .share-label {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
 }
@@ -2826,7 +2831,7 @@ table.events td.type.error {
 }
 
 .origin-share .share-label {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
 }
@@ -2855,7 +2860,7 @@ table.events td.type.error {
 }
 
 .curve-axes .tick-label {
-  fill: var(--v2-ink-faint);
+  fill: var(--v2-ink-soft);
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
   font-variant-numeric: tabular-nums;
@@ -3693,8 +3698,8 @@ kbd {
 
 .caus-passes {
   font-family: var(--v2-mono);
-  font-size: 7px;
-  fill: var(--v2-ink-faint);
+  font-size: calc(7px * var(--dt-font-scale, 1));
+  fill: var(--v2-ink-soft);
 }
 
 /* The conversation scoped to one node of the figure. */
