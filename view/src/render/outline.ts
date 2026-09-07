@@ -105,7 +105,11 @@ export function drawOutline(
  * full width.
  */
 function rowElement(row: CausalityRow, outline: CausalityOutline, state: OutlineState, handlers: OutlineHandlers): HTMLElement {
-  const openable = outline.rows.some((r) => r.parent === row.id);
+  // A caret stands only where opening the row would reveal something. A row
+  // whose children the reading already shows has nothing folded under it, and
+  // a caret there opens onto what is already on the page.
+  const wanted = DEPTHS.indexOf(state.depth);
+  const openable = outline.rows.some((r) => r.parent === row.id && DEPTHS.indexOf(r.appearsAt) > wanted);
   const open = state.opened.has(row.id);
   const el = h("div", {
     class: [
