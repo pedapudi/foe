@@ -310,7 +310,7 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 @media (min-width:880px){ .lanepane{border-bottom:0; border-right:1px solid var(--v2-rule); padding-right:16px} }
 .lanewrap{flex:1 1 auto; min-height:0; position:relative}
 .lanewrap svg{position:absolute; inset:0; width:100%; height:100%}
-.meter{margin-top:10px; font-size:14.5px; line-height:1.5; color:var(--v2-ink-faint)}
+.meter{margin-top:10px; font-size:15.5px; line-height:1.5; color:var(--v2-ink-faint)}
 .ticks{display:flex; gap:2px; margin:5px 0 4px}
 .ticks i{display:block; width:5px; height:12px; border-left:1px solid var(--v2-rule)}
 .ticks i.spent{border-left-color:var(--v2-ink)}
@@ -319,7 +319,7 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 .tape{overflow:hidden; min-height:0; display:flex; flex-direction:column; padding:8px 0 8px 16px}
 @media (max-width:879px){ .tape{padding-left:0} }
 .erow{font-family:var(--code); display:grid; grid-template-columns:2.6em 5.4em 10.2em minmax(0,1fr); gap:10px;
-  font-size:15.5px; line-height:1.75; white-space:nowrap}
+  font-size:16.5px; line-height:1.8; white-space:nowrap}
 .erow .s{text-align:right; color:var(--v2-ink-faint); font-variant-numeric:tabular-nums}
 .erow .c{color:var(--v2-ink-faint); overflow:hidden; text-overflow:ellipsis}
 .erow .t{color:var(--v2-ink)}
@@ -336,8 +336,9 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 .glabel{fill:var(--v2-ink-faint)}
 .glabel.on{fill:var(--v2-accent)}
 .board{width:100%; height:auto; display:block; color:var(--v2-ink); stroke-width:1.8}
-.board text{font-family:var(--code); font-size:11.5px; fill:var(--v2-ink-faint)}
-.board text.nm{fill:var(--v2-ink)}
+/* The figure sets its own size and colour on every string it draws, so this
+   rule states the family alone: a size or a fill here would override them. */
+.board text{font-family:var(--code)}
 
 /* ===== outline ======================================================== */
 /* One hairline per level of nesting, the columns the viewer's own outline

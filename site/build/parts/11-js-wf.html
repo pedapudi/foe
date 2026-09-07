@@ -20,7 +20,7 @@
 
   function paint(){
     var R = rows(), W = Math.max(300, svg.clientWidth || svg.getBoundingClientRect().width || 520);
-    var G = 120, BX = G, BW = W - BX - 8, BH = 54, PITCH = 82, TOP = 14;
+    var G = 132, BX = G, BW = W - BX - 8, BH = 60, PITCH = 90, TOP = 16;
     var H = TOP + R.length * PITCH + 6;
     var index = {}, i;
     R.forEach(function(r, k){ index[r.id] = k; });
@@ -61,7 +61,7 @@
         g += '<path class="gedge" d="M' + BX + ' ' + ys + ' C ' + lx + ' ' + ys + ', ' + lx + ' ' + (ys + 20) +
              ', ' + lx + ' ' + (ys + 20) + '" stroke="' + stroke + '"' + dash + ' fill="none"/>';
         g += '<rect x="' + (lx - 3) + '" y="' + (ys + 17) + '" width="6" height="6" fill="none" stroke="' + stroke + '"/>';
-        if(e.label) g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + (lx + 10) + '" y="' + (ys + 24) + '" font-size="12">' + esc(e.label) + '</text>';
+        if(e.label) g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + (lx + 10) + '" y="' + (ys + 24) + '" font-size="13.5">' + esc(e.label) + '</text>';
         return;
       }
       var far = Math.abs(b - a) > 1, back = b < a;
@@ -73,7 +73,7 @@
         /* The label sits where its edge arrives, so it reads as the way in. */
         var my = y2 - 9, w = e.label.length * 5 + 6;
         g += '<rect x="' + (lane - w / 2) + '" y="' + (my - 6) + '" width="' + w + '" height="12" fill="var(--v2-paper)"/>';
-        g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + lane + '" y="' + (my + 3) + '" text-anchor="middle" font-size="12">' + esc(e.label) + '</text>';
+        g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + lane + '" y="' + (my + 3) + '" text-anchor="middle" font-size="13.5">' + esc(e.label) + '</text>';
       }
     });
     /* Boxes */
@@ -91,8 +91,8 @@
       g += '<g class="gnode">';
       g += '<rect x="' + BX + '" y="' + yTop(k) + '" width="' + BW + '" height="' + BH +
            '" fill="var(--v2-paper)" stroke="' + stroke + '"' + dash + '/>';
-      g += '<text class="nm" x="' + (BX + 8) + '" y="' + (yTop(k) + 22) + '" font-size="18" fill="' + ink + '">' + esc(r.id) + '</text>';
-      g += '<text x="' + (BX + 8) + '" y="' + (yTop(k) + 41) + '" font-size="14.5" fill="var(--v2-ink-faint)">' + esc(r.kind) + '</text>';
+      g += '<text class="nm" x="' + (BX + 8) + '" y="' + (yTop(k) + 24) + '" font-size="20" fill="' + ink + '">' + esc(r.id) + '</text>';
+      g += '<text x="' + (BX + 8) + '" y="' + (yTop(k) + 45) + '" font-size="16" fill="var(--v2-ink-faint)">' + esc(r.kind) + '</text>';
       if(st){
         /* A gate that did not pass is re-fired; the caution hue says retried
            rather than broken, and the node's last firing decides its end. */
@@ -110,7 +110,7 @@
       if(fires[r.id]) tags.push(fires[r.id] + (fires[r.id] === 1 ? " firing" : " firings"));
       if(recov[r.id]) tags.push("recovery " + recov[r.id]);
       if(tags.length)
-        g += '<text x="' + right + '" y="' + (yTop(k) + 25) + '" text-anchor="end" font-size="12" fill="' +
+        g += '<text x="' + right + '" y="' + (yTop(k) + 25) + '" text-anchor="end" font-size="13.5" fill="' +
              (recov[r.id] ? "var(--v2-caution)" : "var(--v2-ink-faint)") + '">' + esc(tags.join("  ")) + '</text>';
       g += '</g>';
     });

@@ -83,24 +83,8 @@ TYPEFACES = {
                  [("JetBrainsMono-Regular.woff2", "400"), ("JetBrainsMono-Bold.woff2", "700")],
                  os.path.join(REPO, "view/fonts")),
     },
-    # Source Sans 3 and Source Code Pro are the faces foe's technical-source
-    # entry names. Both are variable, so one file carries every weight.
-    "technical-ubuntu": {
-        "prose": ("'Ubuntu', system-ui, -apple-system, sans-serif", "Ubuntu",
-                  [("Ubuntu-400.woff2", "400"), ("Ubuntu-700.woff2", "700")],
-                  os.path.join(REPO, "site/fonts")),
-        "code": ("'Ubuntu Mono', ui-monospace, 'SF Mono', Menlo, monospace", "Ubuntu Mono",
-                 [("UbuntuMono-400.woff2", "400"), ("UbuntuMono-700.woff2", "700")],
-                 os.path.join(REPO, "site/fonts")),
-    },
-    "technical-source": {
-        "prose": ("'Source Sans 3', system-ui, -apple-system, sans-serif", "Source Sans 3",
-                  [("SourceSans3.woff2", "400 700")], os.path.join(REPO, "site/fonts")),
-        "code": ("'Source Code Pro', ui-monospace, 'SF Mono', Menlo, monospace", "Source Code Pro",
-                 [("SourceCodePro.woff2", "400 700")], os.path.join(REPO, "site/fonts")),
-    },
 }
-TYPEFACE = TYPEFACES[os.environ.get("FOE_TYPEFACE", "technical-ubuntu")]
+TYPEFACE = TYPEFACES[os.environ.get("FOE_TYPEFACE", "technical-inconsolata")]
 
 FACE = ('@font-face{font-family:"%s";src:url(%s) format("woff2");'
         'font-weight:%s;font-style:normal;font-display:swap}')
@@ -114,34 +98,19 @@ def font_files():
             yield name, weight, family, where
 
 
-# The transcript draws with box-drawing characters, arrows and filled circles.
-# A code face without them makes the browser substitute one whose advance
-# differs, which breaks the connector column and shifts every character after
-# a bullet, so those ranges always come from Inconsolata, which carries them
-# at the advance the code face uses. Measured at 40px: Ubuntu Mono renders M
-# at 20px and the vertical bar at 28.3px; Inconsolata renders both at 20px.
-BOXES = ("Inconsolata-Regular.woff2", "foe boxes", os.path.join(REPO, "view/fonts"))
-BOX_FACE = ('@font-face{font-family:"%s";src:url(%s) format("woff2");'
-            'font-weight:400 700;font-style:normal;font-display:swap;'
-            'unicode-range:U+2010-2015,U+2190-21FF,U+25A0-25FF,U+2500-257F}')
-
-
 def faces(source):
-    out = [FACE % (family, source(name), weight)
-           for name, weight, family, _ in font_files()]
-    out.append(BOX_FACE % (BOXES[1], source(BOXES[0])))
-    return "\n".join(out)
+    return "\n".join(FACE % (family, source(name), weight)
+                      for name, weight, family, _ in font_files())
 
 
 # A face the build no longer ships would otherwise sit in the served tree
 # for ever, so the fonts are the ones this typeface names and no others.
-keep = {name for name, _, _, _ in font_files()} | {BOXES[0]}
+keep = {name for name, _, _, _ in font_files()}
 for stale in os.listdir(OUT):
     if stale.endswith(".woff2") and stale not in keep:
         os.remove(os.path.join(OUT, stale))
 for name, _, _, where in font_files():
     shutil.copyfile(os.path.join(where, name), os.path.join(OUT, name))
-shutil.copyfile(os.path.join(BOXES[2], BOXES[0]), os.path.join(OUT, BOXES[0]))
 
 
 def datauri(name):
@@ -180,7 +149,7 @@ for token in ("__LOCKUP__", "__RUN__", "__TERM__", "__WF__", "__TEAM__", "__RUNW
 
 local = faces(lambda n: '"%s"' % n)
 inline = faces(lambda n: '"%s"' % datauri(n))
-stacks = "  --prose:%s;\n  --code:'foe boxes', %s;" % (TYPEFACE["prose"][0], TYPEFACE["code"][0])
+stacks = "  --prose:%s;\n  --code:%s;" % (TYPEFACE["prose"][0], TYPEFACE["code"][0])
 page = page.replace("__FACES__", stacks)
 
 index = page.replace("__FONTS__", local).replace("__FAVICON__", "favicon.svg")

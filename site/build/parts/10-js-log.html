@@ -108,14 +108,14 @@ function detailOf(e){
            '" y2="' + y2.toFixed(1) + '" stroke="' + stroke + '" stroke-width="1.8"/>';
     }
     [0, 4000, 8000].forEach(function(ms){
-      g += '<text x="4" y="' + (y(ms) + 3.5).toFixed(1) + '" fill="var(--v2-ink-faint)" font-size="13.5">' + (ms / 1000) + ' s</text>';
+      g += '<text x="4" y="' + (y(ms) + 3.5).toFixed(1) + '" fill="var(--v2-ink-faint)" font-size="15">' + (ms / 1000) + ' s</text>';
     });
     IDS.forEach(function(id, ei){
       var evs = RUN.filter(function(e){ return e.ep === ei; });
       var s = evs[0].t, e2 = evs[evs.length - 1].t;
       if(T < s) return;
       line(x(ei), y(s), x(ei), y(Math.min(T, e2)), "var(--v2-ink)");
-      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="13" fill="' +
+      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="14.5" fill="' +
            (T <= e2 ? "var(--v2-ink)" : "var(--v2-ink-faint)") + '">' + NAMES[ei] + '</text>';
       evs.forEach(function(ev){
         if(ev.t > T) return;
@@ -129,7 +129,7 @@ function detailOf(e){
         g += '<circle cx="' + x(ei).toFixed(1) + '" cy="' + y(e2).toFixed(1) + '" r="3.2" fill="none" stroke="' + hue + '" stroke-width="1.8"/>';
         if(done)
           g += '<text x="' + x(ei).toFixed(1) + '" y="' + (y(e2) + 15).toFixed(1) +
-               '" text-anchor="middle" font-size="13.5" fill="' + hue + '">' + done + '</text>';
+               '" text-anchor="middle" font-size="15" fill="' + hue + '">' + done + '</text>';
       }
     });
     /* Only the edges the log carries: a reservation opening a child, a return closing it. */

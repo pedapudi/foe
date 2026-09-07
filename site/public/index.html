@@ -7,11 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>
 /* ===== fonts ========================================================== */
-@font-face{font-family:"Ubuntu";src:url("Ubuntu-400.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Ubuntu";src:url("Ubuntu-700.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"Ubuntu Mono";src:url("UbuntuMono-400.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:"Ubuntu Mono";src:url("UbuntuMono-700.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
-@font-face{font-family:"foe boxes";src:url("Inconsolata-Regular.woff2") format("woff2");font-weight:400 700;font-style:normal;font-display:swap;unicode-range:U+2010-2015,U+2190-21FF,U+25A0-25FF,U+2500-257F}
+@font-face{font-family:"Inconsolata";src:url("Inconsolata-Regular.woff2") format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Inconsolata";src:url("Inconsolata-Bold.woff2") format("woff2");font-weight:700;font-style:normal;font-display:swap}
 
 /* ===== role tokens ==================================================== */
 :root{
@@ -19,8 +16,8 @@
   --v2-ink-faint:#85837A; --v2-rule:#C6C3B6; --v2-rule-soft:#DCD9CA; --v2-good:#216609;
   --v2-good-soft:#CCD6B8; --v2-bad:#CC3E28; --v2-bad-soft:#EBCEBD; --v2-caution:#B58900;
   --v2-accent:#1E6FCC; --v2-flat:#6E6A5E; --v2-cell-empty:#E8E4D5; --foe-accent:#C7791A;
-  --prose:'Ubuntu', system-ui, -apple-system, sans-serif;
-  --code:'foe boxes', 'Ubuntu Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --prose:"Inconsolata", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --code:"Inconsolata", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --step:8px;
   --pad:clamp(16px,4vw,40px);
   color-scheme:light;
@@ -324,7 +321,7 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 @media (min-width:880px){ .lanepane{border-bottom:0; border-right:1px solid var(--v2-rule); padding-right:16px} }
 .lanewrap{flex:1 1 auto; min-height:0; position:relative}
 .lanewrap svg{position:absolute; inset:0; width:100%; height:100%}
-.meter{margin-top:10px; font-size:14.5px; line-height:1.5; color:var(--v2-ink-faint)}
+.meter{margin-top:10px; font-size:15.5px; line-height:1.5; color:var(--v2-ink-faint)}
 .ticks{display:flex; gap:2px; margin:5px 0 4px}
 .ticks i{display:block; width:5px; height:12px; border-left:1px solid var(--v2-rule)}
 .ticks i.spent{border-left-color:var(--v2-ink)}
@@ -333,7 +330,7 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 .tape{overflow:hidden; min-height:0; display:flex; flex-direction:column; padding:8px 0 8px 16px}
 @media (max-width:879px){ .tape{padding-left:0} }
 .erow{font-family:var(--code); display:grid; grid-template-columns:2.6em 5.4em 10.2em minmax(0,1fr); gap:10px;
-  font-size:15.5px; line-height:1.75; white-space:nowrap}
+  font-size:16.5px; line-height:1.8; white-space:nowrap}
 .erow .s{text-align:right; color:var(--v2-ink-faint); font-variant-numeric:tabular-nums}
 .erow .c{color:var(--v2-ink-faint); overflow:hidden; text-overflow:ellipsis}
 .erow .t{color:var(--v2-ink)}
@@ -350,8 +347,9 @@ td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-num
 .glabel{fill:var(--v2-ink-faint)}
 .glabel.on{fill:var(--v2-accent)}
 .board{width:100%; height:auto; display:block; color:var(--v2-ink); stroke-width:1.8}
-.board text{font-family:var(--code); font-size:11.5px; fill:var(--v2-ink-faint)}
-.board text.nm{fill:var(--v2-ink)}
+/* The figure sets its own size and colour on every string it draws, so this
+   rule states the family alone: a size or a fill here would override them. */
+.board text{font-family:var(--code)}
 
 /* ===== outline ======================================================== */
 /* One hairline per level of nesting, the columns the viewer's own outline
@@ -1164,14 +1162,14 @@ function detailOf(e){
            '" y2="' + y2.toFixed(1) + '" stroke="' + stroke + '" stroke-width="1.8"/>';
     }
     [0, 4000, 8000].forEach(function(ms){
-      g += '<text x="4" y="' + (y(ms) + 3.5).toFixed(1) + '" fill="var(--v2-ink-faint)" font-size="13.5">' + (ms / 1000) + ' s</text>';
+      g += '<text x="4" y="' + (y(ms) + 3.5).toFixed(1) + '" fill="var(--v2-ink-faint)" font-size="15">' + (ms / 1000) + ' s</text>';
     });
     IDS.forEach(function(id, ei){
       var evs = RUN.filter(function(e){ return e.ep === ei; });
       var s = evs[0].t, e2 = evs[evs.length - 1].t;
       if(T < s) return;
       line(x(ei), y(s), x(ei), y(Math.min(T, e2)), "var(--v2-ink)");
-      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="13" fill="' +
+      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="14.5" fill="' +
            (T <= e2 ? "var(--v2-ink)" : "var(--v2-ink-faint)") + '">' + NAMES[ei] + '</text>';
       evs.forEach(function(ev){
         if(ev.t > T) return;
@@ -1185,7 +1183,7 @@ function detailOf(e){
         g += '<circle cx="' + x(ei).toFixed(1) + '" cy="' + y(e2).toFixed(1) + '" r="3.2" fill="none" stroke="' + hue + '" stroke-width="1.8"/>';
         if(done)
           g += '<text x="' + x(ei).toFixed(1) + '" y="' + (y(e2) + 15).toFixed(1) +
-               '" text-anchor="middle" font-size="13.5" fill="' + hue + '">' + done + '</text>';
+               '" text-anchor="middle" font-size="15" fill="' + hue + '">' + done + '</text>';
       }
     });
     /* Only the edges the log carries: a reservation opening a child, a return closing it. */
@@ -1282,7 +1280,7 @@ function detailOf(e){
 
   function paint(){
     var R = rows(), W = Math.max(300, svg.clientWidth || svg.getBoundingClientRect().width || 520);
-    var G = 120, BX = G, BW = W - BX - 8, BH = 54, PITCH = 82, TOP = 14;
+    var G = 132, BX = G, BW = W - BX - 8, BH = 60, PITCH = 90, TOP = 16;
     var H = TOP + R.length * PITCH + 6;
     var index = {}, i;
     R.forEach(function(r, k){ index[r.id] = k; });
@@ -1323,7 +1321,7 @@ function detailOf(e){
         g += '<path class="gedge" d="M' + BX + ' ' + ys + ' C ' + lx + ' ' + ys + ', ' + lx + ' ' + (ys + 20) +
              ', ' + lx + ' ' + (ys + 20) + '" stroke="' + stroke + '"' + dash + ' fill="none"/>';
         g += '<rect x="' + (lx - 3) + '" y="' + (ys + 17) + '" width="6" height="6" fill="none" stroke="' + stroke + '"/>';
-        if(e.label) g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + (lx + 10) + '" y="' + (ys + 24) + '" font-size="12">' + esc(e.label) + '</text>';
+        if(e.label) g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + (lx + 10) + '" y="' + (ys + 24) + '" font-size="13.5">' + esc(e.label) + '</text>';
         return;
       }
       var far = Math.abs(b - a) > 1, back = b < a;
@@ -1335,7 +1333,7 @@ function detailOf(e){
         /* The label sits where its edge arrives, so it reads as the way in. */
         var my = y2 - 9, w = e.label.length * 5 + 6;
         g += '<rect x="' + (lane - w / 2) + '" y="' + (my - 6) + '" width="' + w + '" height="12" fill="var(--v2-paper)"/>';
-        g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + lane + '" y="' + (my + 3) + '" text-anchor="middle" font-size="12">' + esc(e.label) + '</text>';
+        g += '<text class="glabel' + (labelOn[k] ? " on" : "") + '" x="' + lane + '" y="' + (my + 3) + '" text-anchor="middle" font-size="13.5">' + esc(e.label) + '</text>';
       }
     });
     /* Boxes */
@@ -1353,8 +1351,8 @@ function detailOf(e){
       g += '<g class="gnode">';
       g += '<rect x="' + BX + '" y="' + yTop(k) + '" width="' + BW + '" height="' + BH +
            '" fill="var(--v2-paper)" stroke="' + stroke + '"' + dash + '/>';
-      g += '<text class="nm" x="' + (BX + 8) + '" y="' + (yTop(k) + 22) + '" font-size="18" fill="' + ink + '">' + esc(r.id) + '</text>';
-      g += '<text x="' + (BX + 8) + '" y="' + (yTop(k) + 41) + '" font-size="14.5" fill="var(--v2-ink-faint)">' + esc(r.kind) + '</text>';
+      g += '<text class="nm" x="' + (BX + 8) + '" y="' + (yTop(k) + 24) + '" font-size="20" fill="' + ink + '">' + esc(r.id) + '</text>';
+      g += '<text x="' + (BX + 8) + '" y="' + (yTop(k) + 45) + '" font-size="16" fill="var(--v2-ink-faint)">' + esc(r.kind) + '</text>';
       if(st){
         /* A gate that did not pass is re-fired; the caution hue says retried
            rather than broken, and the node's last firing decides its end. */
@@ -1372,7 +1370,7 @@ function detailOf(e){
       if(fires[r.id]) tags.push(fires[r.id] + (fires[r.id] === 1 ? " firing" : " firings"));
       if(recov[r.id]) tags.push("recovery " + recov[r.id]);
       if(tags.length)
-        g += '<text x="' + right + '" y="' + (yTop(k) + 25) + '" text-anchor="end" font-size="12" fill="' +
+        g += '<text x="' + right + '" y="' + (yTop(k) + 25) + '" text-anchor="end" font-size="13.5" fill="' +
              (recov[r.id] ? "var(--v2-caution)" : "var(--v2-ink-faint)") + '">' + esc(tags.join("  ")) + '</text>';
       g += '</g>';
     });
@@ -1452,7 +1450,7 @@ function detailOf(e){
 
   function paint(){
     var W = Math.max(280, svg.clientWidth || svg.getBoundingClientRect().width || 520);
-    var PITCH = 78, TOP = 24, IND = 54, g = "";
+    var PITCH = 86, TOP = 26, IND = 60, g = "";
     function esc(t){ return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
     function y(i){ return TOP + i * PITCH; }
     function x(d){ return 12 + d * IND; }
@@ -1472,13 +1470,13 @@ function detailOf(e){
       g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="7" fill="none" stroke="' +
            (open ? hue : "var(--v2-rule)") + '" stroke-width="1.8"/>';
       if(open) g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="2.8" fill="' + hue + '"/>';
-      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="16" fill="' + ink + '">' + esc(n.id) + '</text>';
-      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="13" fill="' + soft + '">' + esc(n.what) + '</text>';
-      g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="13" fill="' +
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="17.5" fill="' + ink + '">' + esc(n.id) + '</text>';
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="14.5" fill="' + soft + '">' + esc(n.what) + '</text>';
+      g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="14.5" fill="' +
            (open && done ? "var(--v2-good)" : soft) + '">' +
            (open ? (done ? "completed" : "running") : "") + '</text>';
       if(open)
-        g += '<text x="' + (W - 6) + '" y="' + (y(i) + 17) + '" text-anchor="end" font-size="15" fill="var(--v2-ink-faint)">' +
+        g += '<text x="' + (W - 6) + '" y="' + (y(i) + 17) + '" text-anchor="end" font-size="14.5" fill="var(--v2-ink-faint)">' +
              CALLS[n.id] + ' model calls</text>';
     });
     var H = y(TREE.length - 1) + 26;

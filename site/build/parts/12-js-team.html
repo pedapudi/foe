@@ -31,7 +31,7 @@
 
   function paint(){
     var W = Math.max(280, svg.clientWidth || svg.getBoundingClientRect().width || 520);
-    var PITCH = 78, TOP = 24, IND = 54, g = "";
+    var PITCH = 86, TOP = 26, IND = 60, g = "";
     function esc(t){ return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
     function y(i){ return TOP + i * PITCH; }
     function x(d){ return 12 + d * IND; }
@@ -51,13 +51,13 @@
       g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="7" fill="none" stroke="' +
            (open ? hue : "var(--v2-rule)") + '" stroke-width="1.8"/>';
       if(open) g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="2.8" fill="' + hue + '"/>';
-      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="16" fill="' + ink + '">' + esc(n.id) + '</text>';
-      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="13" fill="' + soft + '">' + esc(n.what) + '</text>';
-      g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="13" fill="' +
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="17.5" fill="' + ink + '">' + esc(n.id) + '</text>';
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="14.5" fill="' + soft + '">' + esc(n.what) + '</text>';
+      g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="14.5" fill="' +
            (open && done ? "var(--v2-good)" : soft) + '">' +
            (open ? (done ? "completed" : "running") : "") + '</text>';
       if(open)
-        g += '<text x="' + (W - 6) + '" y="' + (y(i) + 17) + '" text-anchor="end" font-size="15" fill="var(--v2-ink-faint)">' +
+        g += '<text x="' + (W - 6) + '" y="' + (y(i) + 17) + '" text-anchor="end" font-size="14.5" fill="var(--v2-ink-faint)">' +
              CALLS[n.id] + ' model calls</text>';
     });
     var H = y(TREE.length - 1) + 26;
