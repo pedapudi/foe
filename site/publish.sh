@@ -13,17 +13,23 @@ work=$(mktemp -d)
 cleanup() {
   git -C "$repo" worktree remove --force "$work" 2>/dev/null || true
   rm -rf "$work"
+  # The temporary branch and the worktree record outlive a failed run.
+  git -C "$repo" worktree prune
+  git -C "$repo" branch -q -D publish 2>/dev/null || true
 }
 trap cleanup EXIT
 
 python3 "$here/build/build.py"
 
 git -C "$repo" fetch -q origin gh-pages
-git -C "$repo" worktree add -q "$work" origin/gh-pages --detach
-git -C "$work" switch -q -c publish
+rmdir "$work"
+git -C "$repo" worktree add -q --detach "$work" origin/gh-pages
+git -C "$work" switch -q -C publish
 
 # The published tree is exactly what the build wrote, plus the font licence.
-find "$work" -maxdepth 1 -type f ! -name README.md -exec rm -f {} +
+# A worktree keeps its link to the repository in a .git file, so the sweep
+# has to leave that file alone.
+find "$work" -maxdepth 1 -type f ! -name README.md ! -name .git -exec rm -f {} +
 cp "$here/public/index.html" "$here/public/favicon.svg" "$here/public/install.sh" "$work/"
 cp "$here"/public/*.woff2 "$work/"
 cp "$here/fonts/UFL-Ubuntu.txt" "$work/"
