@@ -152,7 +152,7 @@ The sizes persist in `localStorage` under `foe.panes` as one object with
 the sidebar width in pixels and the two row splits as a fraction of the
 column each divides. The object names only the sizes the reader has moved,
 so a size left alone stays derived across a reload. The sidebar opens at
-288 pixels, the rail width the spacing scale names, and the details
+340 pixels, the rail width the spacing scale names, and the details
 region at 30 percent of the left column.
 
 The trajectory opens at the height its rows need: the axis, the pixels the

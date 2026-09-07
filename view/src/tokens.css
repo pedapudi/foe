@@ -589,7 +589,7 @@
  * under that. Every interior spacing in the stylesheet is one of these
  * four, so a row, a gutter, and a pane edge share one rhythm. */
 :root {
-  --dt-rail: 288px;
+  --dt-rail: 340px;
   --dt-pad-x: 56px;
   --dt-pad-y: 40px;
   --dt-section-gap: 30px;

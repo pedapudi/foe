@@ -82,8 +82,8 @@ test("the page scale clamps to its range and snaps to its step", () => {
   assert.equal((SCALE_MAX - SCALE_MIN) % SCALE_STEP, 0);
 });
 
-test("the smallest text size is the default and every step above it is larger", () => {
-  assert.equal(FONT_SIZES[0]!.id, DEFAULT_FONTSIZE);
+test("the middle text size is the default and every step above it is larger", () => {
+  assert.equal(FONT_SIZES[1]!.id, DEFAULT_FONTSIZE);
   for (let i = 1; i < FONT_SIZES.length; i += 1) {
     assert.ok(FONT_SIZES[i]!.scale > FONT_SIZES[i - 1]!.scale, FONT_SIZES[i]!.id);
   }

@@ -223,7 +223,7 @@ pill is the sizing control.
 
 | token | value | role |
 |---|---|---|
-| `--dt-rail` | `288px` | the sidebar's width, which a grip then resizes |
+| `--dt-rail` | `340px` | the sidebar's width, which a grip then resizes |
 | `--dt-pad-x`, `--dt-pad-y` | `56px`, `40px` | padding around a detail surface |
 | `--dt-section-gap` | `30px` | between two sections |
 | `--dt-panel-pad-x`, `--dt-panel-pad-y` | `19px`, `17px` | a panel's inner padding |

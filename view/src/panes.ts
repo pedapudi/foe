@@ -27,8 +27,13 @@ export interface PaneExtent {
   rightHeight: number;
 }
 
-/** The sidebar opens at the rail width `--dt-rail` in tokens.css names. */
-export const PANE_DEFAULTS: PaneSizes = { sidebar: 288, details: 0.3, trajectory: 0.35 };
+/**
+ * The sidebar opens at the rail width `--dt-rail` in tokens.css names. The
+ * two are one number and change together: the rail holds a label column and
+ * a value column of the details pane side by side, so it is sized against
+ * the default text size and has to follow it.
+ */
+export const PANE_DEFAULTS: PaneSizes = { sidebar: 340, details: 0.3, trajectory: 0.35 };
 
 export const PANE_KEYS: (keyof PaneSizes)[] = ["sidebar", "details", "trajectory"];
 
