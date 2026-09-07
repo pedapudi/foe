@@ -774,8 +774,8 @@ under. The parser and both help screens read that table and nothing else, so
 an option the parser accepts is documented and an option the table omits is
 refused. The running form's help lists its options under four headings, each
 saying what the options beneath it decide: what runs, holding `--config`,
-`--log-dir`, and `--from`; built-in documents only, holding `--verify` and
-`--sandbox`; the model when the document names none, holding `--model` and
+`--log-dir`, and `--from`; built-in documents only, holding `--verify`,
+`--sandbox`, and `--dangerously-permit-everything-no-sandbox`; the model when the document names none, holding `--model` and
 `--service-tier`; and how you watch it, holding `--viewer` and
 `--conversation`. `--host` is listed above all four, because it selects a
 different way to run rather than adjusting a run. Every other form names no
@@ -899,9 +899,10 @@ file: `--host` takes the task of the run from the document, and a built-in
 document carries no task, so `--config builtin:NAME` beside `--host` is
 refused.
 
-`--verify` and `--sandbox` configure either built-in document. A document in
-a file states that behavior in its own keys, so pairing either option with a
-file document, the discovered one included, is refused. The log records the
+`--verify`, `--sandbox` and `--dangerously-permit-everything-no-sandbox`
+configure either built-in document. A document in a file states that behavior
+in its own keys, so pairing any of the three with a file document, the
+discovered one included, is refused. The log records the
 full contract and its fingerprint, so a run is reproducible from its log
 whether or not the command line named the document.
 
@@ -950,6 +951,16 @@ The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 workflow. The default is `best-effort`. A contract document in a file
 declares its own `sandbox.mode`, so `--sandbox` accompanies a built-in
 document alone.
+
+`--dangerously-permit-everything-no-sandbox` grants read, write and execute
+over `/` and sets the sandbox mode to `off`. Two things bound a run and the
+option removes both: the kernel confinement, which `--sandbox off` removes on
+its own, and the grants, which the runtime enforces whatever the kernel is
+doing, so `--sandbox off` alone still holds a tool to the working directory.
+The name states what it does because a reader who has not seen it before has
+no other way to know. What it grants is recorded in `episode/start` like any
+other contract, so a run made this way reads afterwards as exactly what it
+was rather than as an ordinary one.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. All three episodes receive the recorded
@@ -1028,9 +1039,10 @@ that declares no `model` block has stated that it names no model, so the two
 supply one exactly as they do for the built-in document; without either such
 a document runs under a host. The block they supply changes no fingerprint,
 which covers what a model can observe rather than the transport that reaches
-it. `--verify` and `--sandbox` are refused with a document in a file
-whatever it declares, because a document carries its own completion gate and
-sandbox mode.
+it. `--verify`, `--sandbox` and
+`--dangerously-permit-everything-no-sandbox` are refused with a document in a
+file whatever it declares, because a document carries its own completion
+gate, sandbox mode and grants.
 
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with

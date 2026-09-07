@@ -99,6 +99,9 @@ pub struct Options {
     pub verify: Option<PathBuf>,
     /// Kernel confinement mode for a built-in document.
     pub sandbox: Option<String>,
+    /// Whether a built-in document grants the whole filesystem and runs
+    /// with kernel confinement off.
+    pub permit_everything: bool,
     pub log_dir: Option<PathBuf>,
     /// The source log directory of `--from DIR[@SEQ]`.
     pub from: Option<PathBuf>,
@@ -474,19 +477,25 @@ fn load_contract_document(options: &Options) -> Result<(ContractDocument, bool),
                 false => USAGE_BARE,
             })?;
             let model = command_line_model(options)?;
-            let document = builtin_contract_document(
-                name,
-                task,
-                Some(model),
-                options.verify.as_deref(),
-                options.sandbox.as_deref(),
-            )?;
+            let sandbox = options.permit_everything.then_some("off").or(options.sandbox.as_deref());
+            let mut document = builtin_contract_document(name, task, Some(model), options.verify.as_deref(), sandbox)?;
+            // Everything the kernel would have held back, and the grants with
+            // it. The episode still records what it was given, so a run made
+            // this way is as readable afterwards as any other.
+            if options.permit_everything {
+                let whole = || vec![PathBuf::from("/")];
+                (document.grants.read, document.grants.write, document.grants.execute) = (whole(), whole(), whole());
+            }
             return Ok((document, from_log));
         }
         ContractSource::File(path) => path,
     };
-    if options.verify.is_some() || options.sandbox.is_some() {
-        let option = if options.verify.is_some() { "--verify" } else { "--sandbox" };
+    if options.verify.is_some() || options.sandbox.is_some() || options.permit_everything {
+        let option = match (&options.verify, &options.sandbox) {
+            (Some(_), _) => "--verify",
+            (_, Some(_)) => "--sandbox",
+            _ => "--dangerously-permit-everything-no-sandbox",
+        };
         return Err(format!("{option} applies to a built-in document; {} declares its own behavior", path.display()));
     }
     let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;

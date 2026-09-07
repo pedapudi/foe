@@ -115,6 +115,14 @@ const OPTS: &[Opt] = &[
         "best-effort",
         "kernel confinement mode: best-effort, required, or off",
     ),
+    opt(
+        "",
+        BUILT_IN_ONLY,
+        "--dangerously-permit-everything-no-sandbox",
+        "",
+        "the working directory alone, under kernel confinement",
+        "grant read, write and execute over the whole filesystem and turn kernel confinement off",
+    ),
     opt("", THE_MODEL, "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
     opt(
         "",
@@ -283,7 +291,9 @@ fn row(o: &Opt) -> String {
         "required" => " (required)".to_string(),
         text => format!(" (default: {text})"),
     };
-    format!("  {:<24}{}{}\n", flag.trim_end(), o.meaning, absent)
+    // The flag column is padded to a width, and a flag wider than it keeps
+    // the one space that separates it from what follows.
+    format!("  {:<24}{}{}\n", format!("{} ", flag.trim_end()), o.meaning, absent)
 }
 
 /// `foe <command> --help`: the usage line, what the form does, and every
@@ -408,6 +418,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 service_tier: args.value("--service-tier"),
                 verify: args.value("--verify").map(PathBuf::from),
                 sandbox: args.value("--sandbox"),
+                permit_everything: args.switch("--dangerously-permit-everything-no-sandbox"),
                 log_dir: args.value("--log-dir").map(PathBuf::from),
                 viewer: match host {
                     true => run::Viewer::Off,

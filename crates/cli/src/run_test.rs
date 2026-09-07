@@ -347,6 +347,30 @@ fn explicit_config_owns_its_sandbox_mode() {
     assert_eq!(error, "--sandbox applies to a built-in document; unused.json declares its own behavior");
 }
 
+/// docs/config.md: the flag grants the whole filesystem and turns kernel
+/// confinement off, and only a built-in document takes it.
+#[test]
+fn permitting_everything_grants_the_whole_filesystem_with_no_confinement() {
+    let plain = Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_SINGLE}")), ..Options::default() };
+    let (document, _) = load_contract_document(&plain).unwrap();
+    assert_eq!(document.sandbox.mode, foe_log::SandboxMode::BestEffort);
+    assert_ne!(document.grants.read, vec![PathBuf::from("/")]);
+
+    let permitted = Options { permit_everything: true, ..plain };
+    let (document, _) = load_contract_document(&permitted).unwrap();
+    assert_eq!(document.sandbox.mode, foe_log::SandboxMode::Off);
+    for granted in [&document.grants.read, &document.grants.write, &document.grants.execute] {
+        assert_eq!(granted, &vec![PathBuf::from("/")]);
+    }
+
+    let explicit = Options { config: Some("unused.json".into()), permit_everything: true, ..Options::default() };
+    let error = load_contract_document(&explicit).unwrap_err();
+    assert_eq!(
+        error,
+        "--dangerously-permit-everything-no-sandbox applies to a built-in document; unused.json declares its own behavior"
+    );
+}
+
 /// A contract document, with the `model` block given when there is one.
 /// The return value is the `--config` value naming it.
 fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> String {
