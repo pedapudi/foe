@@ -80,6 +80,16 @@ favicon_uri = ("data:image/svg+xml;base64,"
                + base64.b64encode(favicon.encode()).decode())
 open(os.path.join(OUT, "favicon.svg"), "w").write(favicon)
 
+# The eleven frames of the brand pulse, read out of the document that
+# defines them. docs/brand/README.md states that every surface pulsing the
+# mark draws this sequence; the page drew its own for a while, and nothing
+# failed, because the page was restating rather than reading.
+brand = open(os.path.join(REPO, "docs/brand/README.md")).read()
+at = brand.index("the eleven frames") + len("the eleven frames")
+frames = re.findall(r"`(\S)`", brand[at:brand.index(", one frame per redraw", at)])
+assert len(frames) == 11, frames
+FRAMES = "[" + ", ".join('"%s"' % f for f in frames) + "]"
+
 lockup = open(os.path.join(REPO, "docs/brand/foe-lockup.svg")).read()
 lockup = re.sub(r"\s*\n\s*", "", lockup).strip()
 lockup = lockup.replace('<svg xmlns="http://www.w3.org/2000/svg" ', '<svg focusable="false" ')
@@ -158,6 +168,8 @@ page = page.replace("__LIGHT__", palette(LIGHT_THEME, "light", "  "))
 page = page.replace("__DARKI__", palette(DARK_THEME, "dark", "    "))
 page = page.replace("__DARK__", palette(DARK_THEME, "dark", "  "))
 page = page.replace("__LOCKUP__", lockup)
+assert page.count("__FRAMES__") == 1
+page = page.replace("__FRAMES__", FRAMES)
 assert "__REPLAY__" in page and "__COPY__" in page and "__SUN__" in page
 page = (page.replace("__REPLAY__", REPLAY).replace("__COPY__", COPY)
             .replace("__SUN__", SUN).replace("__MOON__", MOON))

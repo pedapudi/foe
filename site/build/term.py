@@ -1,6 +1,6 @@
 # A port of crates/view/src/terminal.rs: lanes, connector cells, blocks, rows.
 # Wrapping is left to the page, which knows its own column count.
-import json, os, sys
+import json, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(os.path.dirname(os.path.dirname(HERE)), "view/fixtures")
@@ -14,6 +14,14 @@ RUNS = {
 }
 NAME = os.environ.get("FOE_RUN", "term")
 FILES = RUNS[NAME]
+
+# What separates the fields of a heading, read out of the display this file
+# ports rather than restated here. The two carried different characters for a
+# while, and nothing failed, because a hand-written port is free to drift.
+SOURCE = os.path.join(os.path.dirname(os.path.dirname(HERE)), "crates/view/src/terminal.rs")
+FIELD = re.search(r'const FIELD: &str = "(.*)";', open(SOURCE).read())
+assert FIELD, "crates/view/src/terminal.rs no longer names FIELD"
+FIELD = FIELD.group(1)
 
 def load():
     ev = []
@@ -141,7 +149,7 @@ class Term:
     def block(self, t, lane, label, rows, ep=None):
         p = self.prefix(); p[lane] = "● "
         name = self.lanes[lane][1]
-        head = [[self.cls(lane), name], ["hd", " – %s" % label]]
+        head = [[self.cls(lane), name], ["hd", FIELD + label]]
         self.emit(t, "".join(p), head, "".join(self.prefix()), rows, ep=ep)
 
     def edge_prefix(self, parent, child, end):
@@ -182,7 +190,7 @@ class Term:
             # The elbow closing the child's column into its parent's tee
             # already says which parent took the result, so the label names
             # the child alone, matching the Branch line that opened it.
-            head = [[self.cls(child), self.lanes[child][1]], ["hd", " – "],
+            head = [[self.cls(child), self.lanes[child][1]], ["hd", FIELD],
                     ["hd oc-%s" % status.lower(), status]]
             hp = self.edge_prefix(parent, child, "╯ ")
             self.lanes[child] = ["", "", 0]
@@ -193,7 +201,7 @@ class Term:
     def finish(self, t, outcome, path):
         status, body = result_text(outcome)
         self.lanes = []
-        head = [["hd", "Final – "], ["hd oc-%s" % status.lower(), status]]
+        head = [["hd", "Final" + FIELD], ["hd oc-%s" % status.lower(), status]]
         self.emit(t, "● ", head, "", body, ep="final")
 
 events = load()

@@ -600,9 +600,10 @@ var TEAM = {"contracts":[{"name":"review-and-test – lead","tools":["read","gre
 var NAMES = ["lead", "surveyor"];
 var IDS = ["ep_over_parent", "ep_over_child"];
 var SPAN = RUN[RUN.length - 1].t;    /* the run, in milliseconds */
-/* The eleven frames of the brand pulse, opening and closing on the
-   smallest mark the page draws. */
-var FRAMES = ["◦", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "◦"];
+/* The eleven frames of the brand pulse, read at build time out of
+   docs/brand/README.md, which defines the sequence every surface that pulses
+   the mark draws. */
+var FRAMES = ["·", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "·"];
 var GUTTER = "  ";
 var MIN_TEXT = 20;
 var LINE_MS = 24;                    /* run-time between two written lines */
