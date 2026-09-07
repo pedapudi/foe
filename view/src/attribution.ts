@@ -194,7 +194,7 @@ function piecesOf(data: Record<string, unknown>, header: HeaderText, compaction:
     if (role === "tool") {
       const callId = str(m.call_id, "?");
       const rendered = str(m.rendered);
-      pieces.push({ kind: "tool", id: callId, label: `${str(m.name, "?")} · ${callId}`, chars: rendered.length });
+      pieces.push({ kind: "tool", id: callId, label: `${str(m.name, "?")} – ${callId}`, chars: rendered.length });
       continue;
     }
     const text = arr(m.content)
@@ -306,7 +306,7 @@ export function computeAttribution(scope: StatisticsEpisode[]): Attribution {
         const key = episode.id + SEP + piece.kind + SEP + piece.id;
         let part = parts.get(key);
         if (part === undefined) {
-          const label = labels.has(piece.label) ? `${piece.label} · step ${num(data.step)}` : piece.label;
+          const label = labels.has(piece.label) ? `${piece.label} – step ${num(data.step)}` : piece.label;
           labels.add(label);
           part = { key, kind: piece.kind, label, episodeId: episode.id, seq: event.seq, chars: piece.chars };
           parts.set(key, part);

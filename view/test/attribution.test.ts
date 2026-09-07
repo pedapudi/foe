@@ -59,7 +59,7 @@ test("the system prompt and the tool schemas come from the header the request na
   const dialogue = out.requests[0]!.shares[0]!.part;
   assert.equal(dialogue.chars, 47);
   assert.equal(dialogue.label, "system prompt");
-  assert.equal(summary.shares[0]!.part.label, "system prompt · step 4");
+  assert.equal(summary.shares[0]!.part.label, "system prompt – step 4");
 });
 
 test("a summarization prompt is its own kind and is never a replay", () => {
@@ -73,7 +73,7 @@ test("a summarization prompt is its own kind and is never a replay", () => {
 
 test("a tool result is named by its call and costs its size once per request that carried it", () => {
   const out = attribution(["root.jsonl"]);
-  const result = out.parts.find((p) => p.part.label === "read · tc_01")!;
+  const result = out.parts.find((p) => p.part.label === "read – tc_01")!;
   assert.equal(result.part.kind, "tool");
   assert.equal(result.part.chars, 98);
   assert.equal(result.sends, 4, "the four requests after the call that produced it");
@@ -86,7 +86,7 @@ test("a tool result is named by its call and costs its size once per request tha
 
 test("each part names the request that introduced it", () => {
   const out = attribution(["root.jsonl"]);
-  const result = out.parts.find((p) => p.part.label === "read · tc_01")!;
+  const result = out.parts.find((p) => p.part.label === "read – tc_01")!;
   const first = out.requests.find((r) => r.shares.some((s) => s.part === result.part))!;
   assert.equal(result.part.seq, first.requestSeq);
   assert.equal(result.part.episodeId, first.episodeId);
@@ -155,10 +155,10 @@ test("an unmeasured attempt does not turn its retry's text into a replay", () =>
   // Nothing measured rq_02, so the text is first billed at rq_03 and the
   // tokens of that request belong to the unique share.
   const retry = out.requests.find((r) => r.requestId === "rq_03")!;
-  const result = retry.shares.find((s) => s.part.label === "read · tc_01")!;
+  const result = retry.shares.find((s) => s.part.label === "read – tc_01")!;
   assert.equal(result.replayed, false);
   const later = out.requests.find((r) => r.requestId === "rq_04")!;
-  assert.equal(later.shares.find((s) => s.part.label === "read · tc_01")!.replayed, true);
+  assert.equal(later.shares.find((s) => s.part.label === "read – tc_01")!.replayed, true);
 });
 
 test("a scope whose answers reported no usage has characters and no token figure", () => {

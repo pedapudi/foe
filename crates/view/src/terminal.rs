@@ -32,6 +32,10 @@ const ERASE: &str = "\r\x1b[K";
 const ACCENT: &str = "\x1b[38;2;199;121;26m";
 /// The cyan of a block heading.
 const CYAN: &str = "\x1b[1;36m";
+/// What separates the fields of a heading. The landing page's port of this
+/// display reads the value out of this line rather than restating it, so the
+/// two cannot drift; site/build/term.py names the line it reads.
+const FIELD: &str = " – ";
 /// The eight colors that name an episode, one per hue of the identity palette
 /// in `view/src/tokens.css` and in the same order, so a name that reads blue
 /// in the browser reads blue here. A block heading, a branch line, and the
@@ -260,7 +264,7 @@ impl<W: Write> Terminal<W> {
                 // matches the `Branch:` line that opened the same column.
                 let name = self.lanes[child].1.clone();
                 let code = IDENTITY[self.lanes[child].2];
-                self.edge(parent, child, "╯ ", &[(code, name), (CYAN, format!(" · {status}"))])?;
+                self.edge(parent, child, "╯ ", &[(code, name), (CYAN, format!("{FIELD}{status}"))])?;
                 self.lanes[child] = (String::new(), String::new(), 0);
                 while self.lanes.last().is_some_and(|(id, ..)| id.is_empty()) {
                     self.lanes.pop();
@@ -291,7 +295,7 @@ impl<W: Write> Terminal<W> {
         let mut prefix = self.prefix();
         prefix[lane] = "● ";
         let (name, code) = (self.lanes[lane].1.clone(), IDENTITY[self.lanes[lane].2]);
-        self.heading(&prefix.concat(), &[(code, name), (CYAN, format!(" · {label}"))])?;
+        self.heading(&prefix.concat(), &[(code, name), (CYAN, format!("{FIELD}{label}"))])?;
         self.body(body)
     }
 
@@ -331,7 +335,7 @@ impl<W: Write> Terminal<W> {
     fn finish(&mut self, result: &Result<Outcome, String>, dir: &Path) -> io::Result<()> {
         let failed = |error: &String| ("Failed", vec![Row::Text(error.clone())]);
         let (label, body) = result.as_ref().map_or_else(failed, result_text);
-        self.heading("● ", &[(CYAN, format!("Final · {label}"))])?;
+        self.heading("● ", &[(CYAN, format!("Final{FIELD}{label}"))])?;
         self.lanes.clear();
         self.body(&body)?;
         writeln!(self.output, "{GUTTER}Viewer: foe view {}", dir.display())?;

@@ -40,7 +40,7 @@ function cost(total: number | null, bounded: boolean): string {
 
 function stepLabel(request: RequestInput): string {
   const step = request.compaction ? "compaction" : `step ${request.step}`;
-  return request.attempt > 1 ? `${step} · attempt ${request.attempt}` : step;
+  return request.attempt > 1 ? `${step} – attempt ${request.attempt}` : step;
 }
 
 /** The kind that accounts for the most of the scope's input, which the figures accent. */
@@ -95,8 +95,8 @@ export function inputSourceFigure(tools: FigureTools, attribution: Attribution, 
             ? "characters measured; no answer reported an input count for this request"
             : `${fmtInt(share.part.chars)} characters ÷ ${fmtInt(request.chars)} × ${fmtInt(request.input ?? 0)} input tokens`,
         () =>
-          `${KIND_NAMES[share.part.kind]} · ${share.replayed ? "resent" : "first sent here"}` +
-          (share.tokens === null ? "" : ` · ${fmtInt(Math.round(share.tokens))} tokens`),
+          `${KIND_NAMES[share.part.kind]} – ${share.replayed ? "resent" : "first sent here"}` +
+          (share.tokens === null ? "" : ` – ${fmtInt(Math.round(share.tokens))} tokens`),
       );
       bar.appendChild(group);
     }
@@ -292,8 +292,8 @@ export function inputOriginFigure(tools: FigureTools, attribution: Attribution, 
     "span",
     { class: "fig-total" },
     cache === null
-      ? [fmtInt(attribution.input ?? 0), " input tokens · cache read ", tools.absent()]
-      : `${fmtInt(attribution.input ?? 0)} input tokens · ${fmtInt(cache)} of them read from the provider's cache`,
+      ? [fmtInt(attribution.input ?? 0), " input tokens – cache read ", tools.absent()]
+      : `${fmtInt(attribution.input ?? 0)} input tokens – ${fmtInt(cache)} of them read from the provider's cache`,
   );
   tools.card.attach(
     beside,

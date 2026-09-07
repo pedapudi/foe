@@ -46,7 +46,7 @@ function renderString(text: string): HTMLElement {
   if (text === "") return h("span", { class: "j-empty" }, "(empty)");
   if (isInlineString(text)) return h("span", { class: "j-str" }, text);
   const lines = text.split("\n").length;
-  const size = `${text.length} characters${lines > 1 ? ` · ${lines} lines` : ""}`;
+  const size = `${text.length} characters${lines > 1 ? ` – ${lines} lines` : ""}`;
   return lazyDetails(
     [h("span", { class: "j-str" }, stringHead(text)), h("span", { class: "meta" }, size)],
     () => h("pre", { class: "text" }, text),

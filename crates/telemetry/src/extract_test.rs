@@ -165,7 +165,7 @@ fn steps_and_calls_carry_their_own_times_and_usage() {
                 is_error: true,
                 failure: None,
                 spill: None,
-                subject: Some("pytest · exit 1".into()),
+                subject: Some("pytest – exit 1".into()),
                 duration_ms: 40,
                 synthetic: false,
             }),

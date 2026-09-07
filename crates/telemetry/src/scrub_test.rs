@@ -185,7 +185,7 @@ fn a_path_of_common_directories_alone_is_left_as_it_is() {
 
 #[test]
 fn ordinary_prose_is_left_as_it_is() {
-    let subject = "grep -rn TODO src · exit 0 in 0.01s";
+    let subject = "grep -rn TODO src – exit 0 in 0.01s";
     assert_eq!(scrub(subject), subject);
 }
 

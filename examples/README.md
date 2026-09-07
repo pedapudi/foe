@@ -61,8 +61,8 @@ have seen before.
 | outcome | what it means | example |
 |---|---|---|
 | `exhausted` | the contract did not break; it ran out of the allowance the configuration gave it | [budget-exhausted](budget-exhausted/) |
-| `blocked` · `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |
-| `blocked` · `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |
+| `blocked` – `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |
+| `blocked` – `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |
 
 ## What each one exercises
 

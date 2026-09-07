@@ -14,7 +14,7 @@ The display appends blocks to terminal scrollback. Each active episode has
 a column of tree connectors. A branch opens a column; its return joins
 that column to its parent and displays the outcome. Both lines name the
 child alone: the connector already carries which parent the column belongs
-to, so `Branch: reviewer` opens a column and `reviewer · Completed` closes
+to, so `Branch: reviewer` opens a column and `reviewer – Completed` closes
 the same one. A returned result means the child finished; it does not
 establish that its parent accepted or incorporated the result.
 

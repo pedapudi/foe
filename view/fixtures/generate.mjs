@@ -209,7 +209,7 @@ function child() {
   const messages1 = [user(text(taskText), text("Report the count when done."))];
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_10", header_seq: header, consumed: [task, peer], messages: messages1 });
   log.ev("assistant/message", { step: 1, request_id: "rq_10", text: "", tool_calls: [grep], stop: "tool", usage: { input: 300, output: 20, cache_read: 0 }, interrupted: false });
-  log.ev("tool/result", { step: 1, call_id: "tc_10", name: "bash", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: "grep -rn TODO src · exit 0 in 0.01s", duration_ms: 12, synthetic: false });
+  log.ev("tool/result", { step: 1, call_id: "tc_10", name: "bash", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: "grep -rn TODO src – exit 0 in 0.01s", duration_ms: 12, synthetic: false });
   log.ev("workflow/node-end", { node: "survey", status: "ok" });
   const messages2 = [...messages1, assistant("", [grep]), tool("tc_10", "bash", grepOut)];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_11", header_seq: header, consumed: [], messages: messages2 });
@@ -393,7 +393,7 @@ function overlapChild() {
   const header = log.ev("request/header", { reason: "initial", system: "You read manifests.", tools: tools.slice(0, 2), model });
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_c1", header_seq: header, consumed: [task], messages: [user(text(taskText))] }, 800);
   log.ev("assistant/message", { step: 1, request_id: "rq_c1", text: "", tool_calls: [call], stop: "tool", usage: { input: 200, output: 12, cache_read: 0 }, interrupted: false }, 600);
-  log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, subject: "ls crates · exit 0 in 0.01s", duration_ms: 2600, synthetic: false }, 2600);
+  log.ev("tool/result", { step: 1, call_id: "tc_c1", name: "bash", value: { exit: 0 }, rendered: "cli\ncode\ncore\nlog", is_error: false, spill: null, subject: "ls crates – exit 0 in 0.01s", duration_ms: 2600, synthetic: false }, 2600);
   log.ev("compaction/start", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: "threshold", projected_tokens: 74000, reserved: { model_calls: 6, input_tokens: 56000, output_tokens: 14000 } }, 400);
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_c2", header_seq: header, consumed: [], messages: [user(text(taskText))] }, 900);
   log.ev("request/retry", { step: 2, attempt: 1, cause: "rate-limit", delay_ms: 1000 }, 300);

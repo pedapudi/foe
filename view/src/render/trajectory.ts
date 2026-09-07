@@ -460,17 +460,17 @@ export class TrajectoryView {
       `seq ${firing.startSeq}`,
       fmtTime(firing.startTime),
       observed === null ? "running" : `${fmtDuration(observed)} between its two events`,
-    ].join(" · ");
+    ].join(" – ");
     const detail = [
       firing.durationMs === null ? "no duration reported" : `the node reported ${fmtDuration(firing.durationMs)}`,
       child ? `ran ${firing.childId}` : "",
       firing.error === "" ? "" : firing.error,
     ]
       .filter((part) => part !== "")
-      .join(" · ");
+      .join(" – ");
     this.card.attach(
       group,
-      () => `${firing.node} · firing ${firing.fire}`,
+      () => `${firing.node} – firing ${firing.fire}`,
       () => meta,
       () => detail,
     );
@@ -502,8 +502,8 @@ export class TrajectoryView {
     }
     this.card.attach(
       group,
-      () => `${decision.kind} · ${decision.node}`,
-      () => `seq ${decision.seq} · ${fmtTime(decision.time)}`,
+      () => `${decision.kind} – ${decision.node}`,
+      () => `seq ${decision.seq} – ${fmtTime(decision.time)}`,
       () => decision.detail,
     );
     group.addEventListener("click", (event) => {
@@ -601,7 +601,7 @@ export class TrajectoryView {
     else group.appendChild(svg("circle", { class: "open", cx: x, cy: y, r: 3.2 }));
     const label = outcome ? outcomeLabel(outcome) : "running";
     const detail = outcome ? str((outcome as Record<string, unknown>).message) : "";
-    const meta = row.name === row.id ? row.id : `${row.name} · ${row.id}`;
+    const meta = row.name === row.id ? row.id : `${row.name} – ${row.id}`;
     this.card.attach(group, () => label, () => meta, () => detail);
     return group;
   }
@@ -619,5 +619,5 @@ function markMeta(mark: PlacedMark): string {
   // the bar draws them as two and a reader asks which one was long.
   const first = mark.span?.firstTokenTime ?? null;
   if (first !== null) lines.push(`${fmtDuration(first - mark.time)} to first token`);
-  return lines.join(" · ");
+  return lines.join(" – ");
 }

@@ -342,7 +342,7 @@ test("a branch and a recovery become decisions naming what was chosen or done", 
     ],
   );
   assert.equal(s.decisions[0]!.detail, "widen leads to survey");
-  assert.match(s.decisions[2]!.detail, /^process-exit on firing 1 · re-fires verify_change$/);
+  assert.match(s.decisions[2]!.detail, /^process-exit on firing 1 – re-fires verify_change$/);
 });
 
 test("an episode that runs the free loop records no firing and no decision", () => {
@@ -369,9 +369,9 @@ test("a verification becomes one compact row and joins the summary", () => {
   const notes = rows<NoteRow>(f, "note").filter((n) => n.type === "verification/result");
   assert.equal(notes.length, 2);
   assert.equal(notes[0]!.label, "verify");
-  assert.match(notes[0]!.detail, /^check · findings · 2 findings · 12 ms$/);
+  assert.match(notes[0]!.detail, /^check – findings – 2 findings – 12 ms$/);
   assert.equal(notes[0]!.level, "info");
-  assert.match(notes[1]!.detail, /^check · accepted · 0 findings · 9 ms$/);
+  assert.match(notes[1]!.detail, /^check – accepted – 0 findings – 9 ms$/);
   assert.equal(f.summary.verifications.length, 2);
   assert.equal(f.summary.verifications[1]!.status, "accepted");
 });

@@ -224,15 +224,15 @@ pub fn preview(derived: &Emission) -> String {
     let (facts, class) = (&derived.facts, &derived.classification);
     let (kind, exit_class, _) = crate::extract::outcome_terms(facts.outcome.as_ref());
     let (used, failed) = (facts.usage, facts.calls.iter().filter(|c| c.is_error).count());
-    let spend = format!("{} in · {} out · {} cache-read", used.input, used.output, used.cache_read);
+    let spend = format!("{} in – {} out – {} cache-read", used.input, used.output, used.cache_read);
     let votes: Vec<String> = class.votes.iter().map(|v| format!("{}={} ×{}", v.token, v.bucket, v.count)).collect();
     let counts: Vec<String> = derived.report.0.iter().map(|(name, count)| format!("{name} {count}")).collect();
-    let mut out = format!("{} · {}/{} · {kind}/{exit_class}\n", facts.id, facts.provider, facts.model);
+    let mut out = format!("{} – {}/{} – {kind}/{exit_class}\n", facts.id, facts.provider, facts.model);
     out += &format!("  category  {} → {}\n", class.bucket, class.top_level);
     out += &format!("  evidence  {}\n", list(&votes, ", "));
-    out += &format!("  totals    {} model calls · {spend}", facts.model_calls);
-    out += &format!(" · {} tool calls, {failed} failed\n", facts.calls.len());
-    out += &format!("  scrubbed  {}\n  spans\n", list(&counts, " · "));
+    out += &format!("  totals    {} model calls – {spend}", facts.model_calls);
+    out += &format!(" – {} tool calls, {failed} failed\n", facts.calls.len());
+    out += &format!("  scrubbed  {}\n  spans\n", list(&counts, " – "));
     for span in &derived.spans {
         let nanos = |text: &str| text.parse::<u64>().unwrap_or_default();
         let millis = (nanos(&span.end_time_unix_nano) - nanos(&span.start_time_unix_nano)) / 1_000_000;

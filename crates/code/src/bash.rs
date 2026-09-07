@@ -128,7 +128,7 @@ impl Tool for Bash {
             let room = SUBJECT_MAX.saturating_sub(status.chars().count() + 4);
             let cut: String = a.command.chars().take(room - 1).collect();
             let cmd = if a.command.chars().count() > room { cut + "…" } else { a.command.clone() };
-            format!("{cmd} \u{b7} {status}")
+            format!("{cmd} \u{2013} {status}")
         })
     }
 }

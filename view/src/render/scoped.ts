@@ -81,8 +81,8 @@ function sectionHead(segment: ScopeSegment, name: string, rows: Row[]): HTMLElem
       h(
         "span",
         { class: "meta" },
-        before.join(" · "),
-        name === "" ? null : before.length === 0 ? null : " · ",
+        before.join(" – "),
+        name === "" ? null : before.length === 0 ? null : " – ",
         name === "" ? null : h("span", { class: "identity", style: identityStyle(name) }, name),
       ),
     ),

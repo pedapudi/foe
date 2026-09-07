@@ -41,8 +41,8 @@ export class DiffView {
       h(
         "div",
         { class: "columns" },
-        h("div", { class: "column" }, h("h2", null, `${a.name} · ${a.id} · seq ${sharedLen} onward`), this.left.el),
-        h("div", { class: "column" }, h("h2", null, `${b.name} · ${b.id} · seq ${sharedLen} onward`), this.right.el),
+        h("div", { class: "column" }, h("h2", null, `${a.name} – ${a.id} – seq ${sharedLen} onward`), this.left.el),
+        h("div", { class: "column" }, h("h2", null, `${b.name} – ${b.id} – seq ${sharedLen} onward`), this.right.el),
       ),
     );
   }

@@ -92,9 +92,9 @@ fn conversation_includes_only_visible_messages() {
         }
     }
     let output = String::from_utf8(terminal.output).unwrap();
-    assert!(output.contains("lead · You\n│   Visible task"), "{output}");
+    assert!(output.contains("lead – You\n│   Visible task"), "{output}");
     assert!(output.contains("Visible response\n│   with a second line"), "{output}");
-    assert_eq!(output.matches("· Assistant").count(), 1);
+    assert_eq!(output.matches("– Assistant").count(), 1);
     for hidden in ["hidden-", "import pytest", "tool_calls", "<first>", "\x1b"] {
         assert!(!output.contains(hidden), "{output}");
     }
@@ -133,12 +133,12 @@ fn polling_preserves_branch_returns_and_does_not_repeat_messages() {
         ("Details passed.", "Review complete."),
         ("Review complete.", "Review passed."),
         ("Running checks.", "Tests passed."),
-        ("Tests passed.", "Final · Completed"),
+        ("Tests passed.", "Final – Completed"),
     ] {
         assert!(output.find(first).unwrap() < output.find(second).unwrap(), "{first} before {second}: {output}");
     }
-    assert!(output.contains("reviewer · Completed"), "{output}");
-    assert!(output.contains("Final · Completed\n  Ready.\n\n  Checks\n  - Review\n  - Tests\n"), "{output}");
+    assert!(output.contains("reviewer – Completed"), "{output}");
+    assert!(output.contains("Final – Completed\n  Ready.\n\n  Checks\n  - Review\n  - Tests\n"), "{output}");
     assert_eq!(output.matches("Review complete.").count(), 1);
     let finished = terminal.output.clone();
     terminal.poll(root.path()).unwrap();
@@ -178,7 +178,7 @@ fn long_lines_wrap_inside_the_lanes() {
                 Supercalifragilisticexpialidociousantidisestablishmentarianism";
     terminal.event("worker", &message(text)).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
-    let body: Vec<&str> = output.lines().skip_while(|line| !line.contains("worker · Assistant")).skip(1).collect();
+    let body: Vec<&str> = output.lines().skip_while(|line| !line.contains("worker – Assistant")).skip(1).collect();
     assert_eq!(
         body,
         [
@@ -208,7 +208,7 @@ fn terminal_controls_are_removed_and_color_is_optional() {
     terminal.event("lead", &start("lead")).unwrap();
     terminal.event("lead", &message("Safe\x1b[2J\r\x08\u{009b}31mtext\n\tIndented")).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
-    assert!(output.contains("\x1b[1;35mlead\x1b[0m\x1b[1;36m · Assistant\x1b[0m"));
+    assert!(output.contains("\x1b[1;35mlead\x1b[0m\x1b[1;36m – Assistant\x1b[0m"));
     assert!(output.contains("Safe[2J31mtext\n│   \tIndented"));
     assert!(!output.contains("\x1b[2J"));
     assert_eq!(rendered(json!({"empty": [], "count": 0})), "[Count]\n0");
@@ -268,7 +268,7 @@ fn unsuccessful_outcomes_and_output_errors_are_reported() {
         let output = String::from_utf8(terminal.output).unwrap();
         let (label, rows) = result_text(&outcome);
         let [Row::Text(body)] = rows.as_slice() else { panic!("{label} has one line") };
-        assert!(output.contains(&format!("Final · {label}\n  {body}\n")), "{output}");
+        assert!(output.contains(&format!("Final – {label}\n  {body}\n")), "{output}");
     }
     struct Closed;
     impl Write for Closed {
@@ -332,7 +332,7 @@ async fn the_progress_line_yields_to_blocks_and_to_redirected_output() {
     terminal.event("lead", &message("Recorded.")).unwrap();
     let output = String::from_utf8(terminal.output.clone()).unwrap();
     let block = output.strip_prefix(&line).unwrap();
-    assert!(block.starts_with("\r\x1b[K\x1b[2m● \x1b[0m\x1b[1;35mlead\x1b[0m\x1b[1;36m · Assistant"), "{block}");
+    assert!(block.starts_with("\r\x1b[K\x1b[2m● \x1b[0m\x1b[1;35mlead\x1b[0m\x1b[1;36m – Assistant"), "{block}");
     terminal.status().unwrap();
     terminal.erase().and_then(|()| terminal.erase()).unwrap();
     assert!(String::from_utf8(terminal.output.clone()).unwrap().ends_with("]\x1b[0m\r\x1b[K"));
@@ -372,8 +372,8 @@ fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
     terminal.event("lead", &returned("reviewer", "Approved.")).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
     assert!(output.contains("\x1b[1;36mBranch: \x1b[0m\x1b[1;95mreviewer\x1b[0m"), "{output}");
-    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m · Assistant\x1b[0m"), "{output}");
-    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m · Completed\x1b[0m"), "{output}");
+    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m – Assistant\x1b[0m"), "{output}");
+    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m – Completed\x1b[0m"), "{output}");
 
     // `survey-propose-apply` and `propose` hash to one color, so the second
     // lane to open moves on to the next free one rather than repeating it.
@@ -390,6 +390,6 @@ fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
     plain.event("lead", &returned("reviewer", "Approved.")).unwrap();
     let plain = String::from_utf8(plain.output).unwrap();
     assert!(plain.contains("Branch: reviewer"), "{plain}");
-    assert!(plain.contains("reviewer · Completed"), "{plain}");
+    assert!(plain.contains("reviewer – Completed"), "{plain}");
     assert!(!plain.contains('\x1b'), "{plain}");
 }

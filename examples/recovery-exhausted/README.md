@@ -107,4 +107,4 @@ outcome.
 
 In the viewer, the step shows its five attempts with the delay between them,
 and the details region's outcome row reads
-`blocked · recovery-exhausted`.
+`blocked – recovery-exhausted`.

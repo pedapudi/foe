@@ -1077,7 +1077,7 @@ canonical forms, budget consumption, sandbox status, and the outcome.
 
 ```
    ┌─ episodes ──────────┬─ conversation ─────────────────────────────────┐
-   │ ▾ root   completed  │  system   charter, 2 sections · 4 tools        │
+   │ ▾ root   completed  │  system   charter, 2 sections – 4 tools        │
    │   ├ A    completed  │  user     Fix the failing parser test.         │
    │   └ B    blocked    │  tool     read tests/parser_test.py  → 212 ln  │
    │         looping-    │  tool     grep "def parse"           → 3 hits  │

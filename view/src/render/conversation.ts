@@ -45,7 +45,7 @@ export function renderRow(row: Row, ctx: RenderContext): HTMLElement {
 function renderCompaction(row: CompactionRow): HTMLElement {
   const label = `context compacted: ${row.summarized} message${row.summarized === 1 ? "" : "s"} summarized`;
   const body = lazyDetails(
-    [h("span", null, label), h("span", { class: "meta" }, `step ${row.step} · kept from seq ${row.firstKeptSeq}`)],
+    [h("span", null, label), h("span", { class: "meta" }, `step ${row.step} – kept from seq ${row.firstKeptSeq}`)],
     () => h("pre", { class: "text" }, row.continuation),
     { key: "continuation" },
   );
@@ -73,7 +73,7 @@ function renderHeader(row: HeaderRow): HTMLElement {
     row.system.length,
   )} chars`]
     .filter(Boolean)
-    .join(" · ");
+    .join(" – ");
   const parts = promptParts(row.system, row.instructions);
   const body = lazyDetails(
     [h("span", null, "system prompt"), h("span", { class: "meta" }, meta)],
@@ -173,7 +173,7 @@ function renderUser(row: UserRow): HTMLElement {
     h(
       "div",
       { class: "body" },
-      h("div", { class: "meta" }, meta.join(" · ")),
+      h("div", { class: "meta" }, meta.join(" – ")),
       row.content.length ? row.content.map((b, i) => renderBlock(b, `block:${i}`)) : h("pre", { class: "text" }, "(no content)"),
     ),
   );
@@ -204,7 +204,7 @@ function renderAssistant(row: AssistantRow): HTMLElement {
     "div",
     { class: `body${row.streaming ? " streaming" : ""}` },
     row.thinking
-      ? lazyDetails([h("span", { class: "meta" }, `thinking · ${fmtInt(row.thinking.length)} chars`)], () => h("pre", { class: "text" }, row.thinking), {
+      ? lazyDetails([h("span", { class: "meta" }, `thinking – ${fmtInt(row.thinking.length)} chars`)], () => h("pre", { class: "text" }, row.thinking), {
           key: "thinking",
         })
       : null,
@@ -254,7 +254,7 @@ function renderAssistant(row: AssistantRow): HTMLElement {
         // open terminal with the line still to come.
         row.interrupted ? markSvg("interrupted") : null,
         row.streaming ? markSvg("live") : null,
-        meta.length ? h("span", { class: "meta" }, meta.join(" · ")) : null,
+        meta.length ? h("span", { class: "meta" }, meta.join(" – ")) : null,
       ),
       body,
     ),
@@ -291,8 +291,8 @@ function renderTool(row: ToolRow): HTMLElement {
         h(
           "span",
           { class: "meta" },
-          row.spill ? [h("span", { title: "canonical value stored under spill/" }, `spill ${row.spill}`), " · "] : null,
-          meta.join(" · "),
+          row.spill ? [h("span", { title: "canonical value stored under spill/" }, `spill ${row.spill}`), " – "] : null,
+          meta.join(" – "),
         ),
       ),
       row.rendered

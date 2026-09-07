@@ -147,17 +147,17 @@ export class App implements Sink {
       h("kbd", null, "j"),
       "/",
       h("kbd", null, "k"),
-      " move · ",
+      " move – ",
       h("kbd", null, "enter"),
-      " select · ",
+      " select – ",
       h("kbd", null, "c"),
-      " compare · ",
+      " compare – ",
       h("kbd", null, "/"),
-      " filter · ",
+      " filter – ",
       h("kbd", null, "1"),
       "–",
       h("kbd", null, "6"),
-      " tabs · drag or arrow a grip to resize, double click to reset",
+      " tabs – drag or arrow a grip to resize, double click to reset",
     );
     clear(root);
     root.classList.add("foe");
@@ -462,7 +462,7 @@ export class App implements Sink {
     }
     // The contract name arrives with `episode/start`, after the first
     // selection is made, so the title is set on every sidebar redraw.
-    this.title.textContent = s ? `${s.name} · ${s.id}` : "";
+    this.title.textContent = s ? `${s.name} – ${s.id}` : "";
     const causality = this.causalityEpisodes(roots);
     this.trajectory.update(this.trajectoryEpisodes(roots), causality, {
       selected: this.selected,

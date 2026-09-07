@@ -255,8 +255,8 @@ model received.
 | `read` | `src/parser.rs lines 1–6 of 42` for a file, or `src entries 1–6 of 42` for a directory | the error, which names the path and what went wrong |
 | `grep` | `3 match(es) in 2 file(s) under src`, with `; incomplete` when a collection bound or failed file stopped it | the error, which names the pattern or the root |
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
-| `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
-| `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
+| `bash` | `cargo test -p parser – exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
+| `session` | `session 2: postgres – alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
 | `compose_tools` | `compose_tools: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because

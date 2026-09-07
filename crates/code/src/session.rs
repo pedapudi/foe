@@ -135,7 +135,7 @@ impl Tool for Session {
                             SessionLifetime::Task => "task",
                         };
                         let qualifier = if lifetime == SessionLifetime::Task { "task lifetime " } else { "" };
-                        let line = format!("session {}: {} \u{b7} {qualifier}started", status.id, status.name);
+                        let line = format!("session {}: {} \u{2013} {qualifier}started", status.id, status.name);
                         ToolValue::ok(
                             json!({
                                 "session": status.id, "name": status.name, "command": command,
@@ -159,7 +159,7 @@ impl Tool for Session {
                 match sessions.write_stdin(sid, input.as_bytes()) {
                     Ok(status) => {
                         let line =
-                            format!("session {}: {} \u{b7} {} bytes to stdin", status.id, status.name, input.len());
+                            format!("session {}: {} \u{2013} {} bytes to stdin", status.id, status.name, input.len());
                         ToolValue::ok(json!({ "session": sid, "bytes": input.len() }), format!("[{line}]\n"))
                             .subject(line)
                     }
@@ -173,7 +173,7 @@ impl Tool for Session {
                 let name = normalize(&signal);
                 match sessions.signal(sid, &name) {
                     Ok(status) => {
-                        let line = format!("session {}: {} \u{b7} {name} sent", status.id, status.name);
+                        let line = format!("session {}: {} \u{2013} {name} sent", status.id, status.name);
                         ToolValue::ok(json!({ "session": sid, "signal": name }), format!("[{line}]\n")).subject(line)
                     }
                     Err(e) => ToolValue::from_cap_error("session", e),

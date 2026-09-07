@@ -156,7 +156,7 @@ async fn states_the_command_and_how_it_ended() {
     let exec = Arc::new(FakeExecutor::new(result(0, "ok\n", "")));
     let c = ctx_with_executor(&fx, exec.clone());
     let v = Bash::new().call(json!({"command": "cargo test -p parser"}), &c).await;
-    assert_eq!(v.subject.as_deref(), Some("cargo test -p parser \u{b7} exit 0 in 1.50s"));
+    assert_eq!(v.subject.as_deref(), Some("cargo test -p parser \u{2013} exit 0 in 1.50s"));
 
     let exec = Arc::new(FakeExecutor::new(ExecResult {
         exit_code: None,
@@ -167,7 +167,7 @@ async fn states_the_command_and_how_it_ended() {
     }));
     let c = ctx_with_executor(&fx, exec);
     let v = Bash::new().call(json!({"command": "sleep 99"}), &c).await;
-    assert_eq!(v.subject.as_deref(), Some("sleep 99 \u{b7} timed out after 30.0s; the process group was killed"));
+    assert_eq!(v.subject.as_deref(), Some("sleep 99 \u{2013} timed out after 30.0s; the process group was killed"));
 }
 
 /// A command longer than the subject's cap loses its middle, never its
@@ -180,6 +180,6 @@ async fn a_long_command_is_cut_before_its_status_is() {
     let long = format!("printf '%s' {}", "x".repeat(200));
     let v = Bash::new().call(json!({"command": long}), &c).await;
     let subject = v.subject.unwrap();
-    assert!(subject.ends_with("\u{2026} \u{b7} exit 0 in 1.50s"), "{subject}");
+    assert!(subject.ends_with("\u{2026} \u{2013} exit 0 in 1.50s"), "{subject}");
     assert!(subject.chars().count() <= foe_core::SUBJECT_MAX, "{subject}");
 }

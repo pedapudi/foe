@@ -519,7 +519,7 @@ export function composeLabel(row: {
   };
   if (row.kind === "call") return { label: first ? one(first) : "", aside: "" };
   const step = row.step === undefined ? "" : `step ${row.step}`;
-  const attempts = row.attempts !== undefined && row.attempts > 1 ? ` · attempt ${row.attempts} of ${row.attempts}` : "";
+  const attempts = row.attempts !== undefined && row.attempts > 1 ? ` – attempt ${row.attempts} of ${row.attempts}` : "";
   if (row.callsVisible) return { label: `${step}${attempts}`, aside: "" };
   const aside = step;
   if (row.answered === false) return { label: "no answer", aside };
@@ -1049,7 +1049,7 @@ export function scopeFor(layout: CausalityLayout, rowId: string): ConversationSc
       for (const id of descendants(layout, opened)) segments.push(whole(layout, id, row.label));
     }
   }
-  return { rowId, title: row.aside === "" ? row.label : `${row.label} · ${row.aside}`, segments };
+  return { rowId, title: row.aside === "" ? row.label : `${row.label} – ${row.aside}`, segments };
 }
 
 /** One whole episode as a segment, which is how a node below is included. */

@@ -70,4 +70,4 @@ run that completed; the ending is the whole difference. The `usage` in every
 This configuration declares no input-token or output-token limit.
 
 In the viewer, the details region counts four model calls against four, and
-its outcome row reads `exhausted · model_calls`.
+its outcome row reads `exhausted – model_calls`.

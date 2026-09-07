@@ -285,10 +285,10 @@ export class StatisticsView {
     row.addEventListener("click", () => this.handlers.reveal(run.id, 0));
     this.card.attach(
       row,
-      () => `${run.name} · ${run.id}`,
+      () => `${run.name} – ${run.id}`,
       () => "this root and every episode under it, counted on their own",
       () =>
-        `${run.episodes} episode${run.episodes === 1 ? "" : "s"} · ` +
+        `${run.episodes} episode${run.episodes === 1 ? "" : "s"} – ` +
         `${run.tokens === null ? ABSENT : `${fmtInt(stats.tokens.input ?? 0)} input plus ${fmtInt(stats.tokens.output ?? 0)} output`} tokens`,
     );
     return row;
@@ -475,7 +475,7 @@ export class StatisticsView {
 
   private stepRow(step: Step, longest: number, barWidth: number, slowest: boolean): HTMLElement {
     const name = this.names.get(step.episodeId) ?? step.episodeId;
-    const label = `${step.compaction ? "compaction" : `step ${step.step}`}${step.attempt > 1 ? ` · attempt ${step.attempt}` : ""}`;
+    const label = `${step.compaction ? "compaction" : `step ${step.step}`}${step.attempt > 1 ? ` – attempt ${step.attempt}` : ""}`;
     const bar = barSvg("step-bar", barWidth, 12, "wait for the first token, then for the whole answer");
     const latency = step.latencyMs;
     if (latency !== null) {
@@ -496,14 +496,14 @@ export class StatisticsView {
     row.addEventListener("click", () => this.handlers.reveal(step.episodeId, step.requestSeq));
     this.card.attach(
       row,
-      () => `${name} · ${label}`,
+      () => `${name} – ${label}`,
       () =>
         "first token: `model/request` to its first `assistant/chunk`; latency: `model/request` to `assistant/message`; out/s: output tokens ÷ latency",
       () =>
         latency === null
           ? "no message answered this request"
           : `${step.output === null ? ABSENT : fmtInt(step.output)} output tokens ÷ ${(latency / 1000).toFixed(3)} s` +
-            `${step.input === null ? "" : ` · ${fmtInt(step.input)} input tokens`}`,
+            `${step.input === null ? "" : ` – ${fmtInt(step.input)} input tokens`}`,
     );
     return row;
   }
@@ -531,7 +531,7 @@ export class StatisticsView {
       () => "cache-read tokens ÷ total input tokens",
       () => `${fmtInt(read)} ÷ ${fmtInt(input)} = ${percent(rate)}`,
     );
-    const total = h("span", { class: "fig-total" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens · ${percent(rate)}`);
+    const total = h("span", { class: "fig-total" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens – ${percent(rate)}`);
     const body: Child[] = [figure, total];
     if (perRequest !== null) {
       const line = h(
@@ -544,7 +544,7 @@ export class StatisticsView {
         line,
         () => "per-request cached-input fraction",
         () => "the mean over answered requests of each request's cache_read ÷ input; every request weighs the same, while the bar weights each by its input",
-        () => `${fmtInt(measuredRequests)} requests · mean ${percent(perRequest)}`,
+        () => `${fmtInt(measuredRequests)} requests – mean ${percent(perRequest)}`,
       );
       body.push(line);
     }
@@ -621,7 +621,7 @@ export class StatisticsView {
         row,
         () => `tool ${group.name}`,
         () => "calls and the total of the `duration_ms` their results report",
-        () => `${fmtInt(group.calls)} calls · ${fmtInt(group.durationMs)} ms total`,
+        () => `${fmtInt(group.calls)} calls – ${fmtInt(group.durationMs)} ms total`,
       );
       return row;
     });

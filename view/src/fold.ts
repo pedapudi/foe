@@ -221,11 +221,11 @@ export function outcomeLabel(outcome: Outcome | null): string {
     case "completed":
       return "completed";
     case "blocked":
-      return `blocked · ${str(o.code, "?")}`;
+      return `blocked – ${str(o.code, "?")}`;
     case "exhausted":
-      return `exhausted · ${str(o.limit, "?")}`;
+      return `exhausted – ${str(o.limit, "?")}`;
     case "failed":
-      return `failed · ${str(o.error, "?")}`;
+      return `failed – ${str(o.error, "?")}`;
     default:
       return str(outcome.kind, "unknown");
   }
@@ -301,9 +301,9 @@ export class EpisodeFold {
       case "model/request": {
         s.modelCalls += 1;
         const consumed = arr(data.consumed).length;
-        const detail = `step ${num(data.step)} · attempt ${num(data.attempt)} · header seq ${num(
+        const detail = `step ${num(data.step)} – attempt ${num(data.attempt)} – header seq ${num(
           data.header_seq,
-        )}${consumed ? ` · consumed ${consumed}` : ""}`;
+        )}${consumed ? ` – consumed ${consumed}` : ""}`;
         const mark = this.mark(ev, "request", `step ${num(data.step)}`, detail, 0);
         // The span opens with no length. The chunks the request produces
         // and the message that answers it give it one as they are read.
@@ -320,13 +320,13 @@ export class EpisodeFold {
           ev,
           "retry",
           str(data.cause, "?"),
-          `step ${num(data.step)} · attempt ${num(data.attempt)} · backoff before the next attempt`,
+          `step ${num(data.step)} – attempt ${num(data.attempt)} – backoff before the next attempt`,
           num(data.delay_ms),
         );
         return this.note(
           ev,
           "retry",
-          `step ${num(data.step)} · attempt ${num(data.attempt)} · ${str(data.cause, "?")} · ${num(
+          `step ${num(data.step)} – attempt ${num(data.attempt)} – ${str(data.cause, "?")} – ${num(
             data.delay_ms,
           )} ms`,
           "info",
@@ -364,7 +364,7 @@ export class EpisodeFold {
           durationMs: num(data.duration_ms),
         });
       case "host/tool-call":
-        return this.note(ev, "host call", `${str(data.name, "?")} · ${str(data.call_id)}`, "info", data.args);
+        return this.note(ev, "host call", `${str(data.name, "?")} – ${str(data.call_id)}`, "info", data.args);
       case "inbox/item":
         return this.append({
           kind: "user",
@@ -381,7 +381,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "reserve",
-          `${str(data.child_id)} · ${num(r.model_calls)} calls · ${num(r.input_tokens)} input · ${num(r.output_tokens)} output`,
+          `${str(data.child_id)} – ${num(r.model_calls)} calls – ${num(r.input_tokens)} input – ${num(r.output_tokens)} output`,
           "info",
           data,
           str(data.child_id),
@@ -392,7 +392,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "release",
-          `${str(data.child_id)} · spent ${num(r.model_calls)} calls · ${num(r.input_tokens)} input · ${num(r.output_tokens)} output`,
+          `${str(data.child_id)} – spent ${num(r.model_calls)} calls – ${num(r.input_tokens)} input – ${num(r.output_tokens)} output`,
           "info",
           data,
           str(data.child_id),
@@ -401,11 +401,11 @@ export class EpisodeFold {
       case "spawn/start": {
         const child = str(data.child_id);
         s.children.set(child, { contract: str(data.contract), context: str(data.context) });
-        this.mark(ev, "spawn", child, `${str(data.contract, "?")} · ${str(data.context, "?")}`, 0);
+        this.mark(ev, "spawn", child, `${str(data.contract, "?")} – ${str(data.context, "?")}`, 0);
         return this.note(
           ev,
           "spawn",
-          `${child} · ${str(data.contract, "?")} · ${str(data.context, "?")} · ${str(data.call_id)}`,
+          `${child} – ${str(data.contract, "?")} – ${str(data.context, "?")} – ${str(data.call_id)}`,
           "info",
           data,
           child,
@@ -416,7 +416,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "spawn end",
-          `${str(data.child_id)} · ${outcomeLabel(outcome)}`,
+          `${str(data.child_id)} – ${outcomeLabel(outcome)}`,
           levelFor(str(outcome.kind)),
           data,
           str(data.child_id),
@@ -428,7 +428,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "roster",
-          `${str(data.name, "?")} (${member}) · ${str(data.phase, "?")}`,
+          `${str(data.name, "?")} (${member}) – ${str(data.phase, "?")}`,
           str(data.phase) === "failed" ? "error" : "info",
           data,
           member,
@@ -438,7 +438,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "message",
-          `${str(data.message_id)} · ${str(data.from, "?")} → ${str(data.to, "?")}`,
+          `${str(data.message_id)} – ${str(data.from, "?")} → ${str(data.to, "?")}`,
           "info",
           data,
         );
@@ -452,7 +452,7 @@ export class EpisodeFold {
         return this.note(
           ev,
           "task",
-          `${str(data.task_id, "?")} · ${str(data.name, "?")} · ${status}${owner ? ` · ${owner}` : ""}`,
+          `${str(data.task_id, "?")} – ${str(data.name, "?")} – ${status}${owner ? ` – ${owner}` : ""}`,
           levelFor(status),
           data,
           owner || null,
@@ -462,13 +462,13 @@ export class EpisodeFold {
         return this.note(
           ev,
           "denied",
-          `${str(data.comm, "?")} (pid ${num(data.pid)}) · ${str(data.access, "?")} ${str(data.path, "?")}`,
+          `${str(data.comm, "?")} (pid ${num(data.pid)}) – ${str(data.access, "?")} ${str(data.path, "?")}`,
           "error",
           data,
         );
       case "compaction/start": {
         const covered = obj(data.covered);
-        const detail = `step ${num(data.step)} · projected ${num(data.projected_tokens)} tokens · covering seq ${num(
+        const detail = `step ${num(data.step)} – projected ${num(data.projected_tokens)} tokens – covering seq ${num(
           covered.first_seq,
         )}–${num(covered.last_seq)}`;
         this.mark(ev, "compaction", str(data.trigger, "threshold"), detail, 0);
@@ -495,10 +495,10 @@ export class EpisodeFold {
       case "compaction/end": {
         const usage = obj(data.usage);
         const detail = data.ok === true
-          ? `step ${num(data.step)} · ${fmtInt(num(usage.input))} in / ${fmtInt(num(usage.output))} out · next request about ${fmtInt(
+          ? `step ${num(data.step)} – ${fmtInt(num(usage.input))} in / ${fmtInt(num(usage.output))} out – next request about ${fmtInt(
               num(data.active_estimate),
             )} tokens`
-          : `step ${num(data.step)} · failed: ${str(data.error, "?")} · context unchanged`;
+          : `step ${num(data.step)} – failed: ${str(data.error, "?")} – context unchanged`;
         return this.note(ev, "compaction end", detail, data.ok === true ? "info" : "error", data);
       }
       case "verification/result": {
@@ -506,7 +506,7 @@ export class EpisodeFold {
         const findings = arr(data.findings).length;
         const ms = num(data.duration_ms);
         s.verifications.push({ seq: ev.seq, tool: str(data.tool, "?"), status, findings, durationMs: ms });
-        const detail = `${str(data.tool, "?")} · ${status} · ${findings} finding${findings === 1 ? "" : "s"} · ${fmtInt(
+        const detail = `${str(data.tool, "?")} – ${status} – ${findings} finding${findings === 1 ? "" : "s"} – ${fmtInt(
           ms,
         )} ms`;
         return this.note(ev, "verify", detail, status === "failed" ? "error" : "info", data);
@@ -561,7 +561,7 @@ export class EpisodeFold {
     if (s.forkOrigin) parts.push(`fork of ${s.forkOrigin.episodeId} at seq ${s.forkOrigin.seq}`);
     else if (s.parentId) parts.push(`spawned by ${s.parentId}`);
     if (s.teamId) parts.push(`team ${s.teamId}`);
-    return this.note(ev, "episode", parts.join(" · "), "info", data);
+    return this.note(ev, "episode", parts.join(" – "), "info", data);
   }
 
   private chunk(ev: LogEvent, data: Record<string, unknown>): Patch[] {
@@ -768,7 +768,7 @@ export class EpisodeFold {
       seq: ev.seq,
       time: ev.time,
       label: action,
-      detail: `${str(data.cause, "?")} on firing ${fire}${target === "" ? "" : ` · re-fires ${target}`}`,
+      detail: `${str(data.cause, "?")} on firing ${fire}${target === "" ? "" : ` – re-fires ${target}`}`,
     });
   }
 
@@ -937,5 +937,5 @@ function summarize(data: Record<string, unknown>): string {
       const v = data[k];
       return typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? `${k}=${String(v)}` : k;
     })
-    .join(" · ");
+    .join(" – ");
 }

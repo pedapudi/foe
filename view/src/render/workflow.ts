@@ -207,7 +207,7 @@ export class WorkflowView {
             "wf-recovery-label",
             placed.x + placed.width / 2,
             placed.y + placed.height + 12,
-            `${recovery.action} · ${recovery.cause}`,
+            `${recovery.action} – ${recovery.cause}`,
             "middle",
           ),
         );
@@ -228,7 +228,7 @@ export class WorkflowView {
         () => `${recovery.node} firing ${recovery.fire} failed: ${recovery.cause}`,
         () =>
           `${recovery.action}${recovery.target ? ` ${recovery.target}` : ""}${
-            recovery.note ? ` · ${recovery.note}` : ""
+            recovery.note ? ` – ${recovery.note}` : ""
           }`,
       );
       marks.appendChild(group);
@@ -275,7 +275,7 @@ export class WorkflowView {
     this.card.attach(
       group,
       () => node.name,
-      () => `${kindLine(node)}${node.terminal ? " · terminal" : ""}`,
+      () => `${kindLine(node)}${node.terminal ? " – terminal" : ""}`,
       () =>
         node.firings.length === 0
           ? "declared; never fired"
@@ -303,7 +303,7 @@ export class WorkflowView {
         () =>
           firing.durationMs === null
             ? "still running"
-            : `${fmtDuration(firing.durationMs)}${firing.label ? ` · chose ${firing.label}` : ""}`,
+            : `${fmtDuration(firing.durationMs)}${firing.label ? ` – chose ${firing.label}` : ""}`,
         () => firing.error || (linked ? `child episode ${firing.childId}` : "ended with a value"),
       );
       group.appendChild(mark);

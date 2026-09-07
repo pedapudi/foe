@@ -217,7 +217,7 @@ fn preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts() {
     let (events, dir, _) = foe_telemetry::read_log(&fixtures().join("clean")).unwrap();
     let derived = foe_telemetry::emission(&events, &dir.to_string_lossy(), key()).unwrap();
     let printed = foe_telemetry::preview(&derived);
-    assert!(printed.contains("ep_7c1a · replay/recorded-1 · completed/none"));
+    assert!(printed.contains("ep_7c1a – replay/recorded-1 – completed/none"));
     assert!(printed.contains("category  programming → programming"));
     assert!(printed.contains("cargo test=testing"));
     assert!(printed.contains("3 model calls"));

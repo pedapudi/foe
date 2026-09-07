@@ -68,8 +68,8 @@ async fn start_runs_the_command_under_the_bash_contract() {
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["session"], 1);
     assert_eq!(v.value["command"], "postgres -D data");
-    assert_eq!(v.rendered.as_deref(), Some("[session 1: postgres \u{b7} started]\n"));
-    assert_eq!(v.subject.as_deref(), Some("session 1: postgres \u{b7} started"));
+    assert_eq!(v.rendered.as_deref(), Some("[session 1: postgres \u{2013} started]\n"));
+    assert_eq!(v.subject.as_deref(), Some("session 1: postgres \u{2013} started"));
     let req = fake.started.lock().unwrap().pop().unwrap();
     assert_eq!(req.command, std::path::PathBuf::from("/bin/bash"));
     assert_eq!(req.args, ["-c", "postgres -D data"]);
@@ -100,7 +100,7 @@ async fn start_passes_the_explicit_task_lifetime_to_the_capability() {
     let value = Session::new().call(json!({"action": "start", "command": "server", "lifetime": "task"}), &c).await;
     assert!(!value.is_error, "{value:?}");
     assert_eq!(value.value["lifetime"], "task");
-    assert_eq!(value.rendered.as_deref(), Some("[session 1: server · task lifetime started]\n"));
+    assert_eq!(value.rendered.as_deref(), Some("[session 1: server – task lifetime started]\n"));
     assert_eq!(fake.started.lock().unwrap()[0].lifetime, SessionLifetime::Task);
 
     let invalid = Session::new().call(json!({"action": "poll", "session": 1, "lifetime": "task"}), &c).await;
@@ -115,8 +115,8 @@ async fn poll_leads_with_the_status_and_counts_the_new_lines() {
     let c = ctx_with_sessions(&fx, fake);
     let v = Session::new().call(json!({"action": "poll", "session": 2}), &c).await;
     assert!(!v.is_error, "{v:?}");
-    assert_eq!(v.rendered.as_deref(), Some("[session 2: postgres \u{b7} alive]\nready\n--- stderr ---\nwarn\n"));
-    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{b7} alive, 2 lines"));
+    assert_eq!(v.rendered.as_deref(), Some("[session 2: postgres \u{2013} alive]\nready\n--- stderr ---\nwarn\n"));
+    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{2013} alive, 2 lines"));
     assert_eq!(v.value["alive"], true);
     assert_eq!(v.value["stdout"], "ready\n");
     assert_eq!(v.value["stderr"], "warn\n");
@@ -146,7 +146,7 @@ async fn long_poll_output_is_tail_truncated_and_spilled() {
     let spill = c.spill_dir.join("call-1-session.txt");
     assert!(
         r.starts_with(&format!(
-            "[session 1: seq \u{b7} alive]\n[Showing the last 2000 of 5000 lines. Full output saved to {}]\nline 3001\n",
+            "[session 1: seq \u{2013} alive]\n[Showing the last 2000 of 5000 lines. Full output saved to {}]\nline 3001\n",
             spill.display()
         )),
         "{r}"
@@ -155,7 +155,7 @@ async fn long_poll_output_is_tail_truncated_and_spilled() {
     assert_eq!(std::fs::read_to_string(&spill).unwrap(), full);
     assert_eq!(v.value["truncated"], true);
     assert_eq!(v.value["spill"], spill.display().to_string());
-    assert_eq!(v.subject.as_deref(), Some("session 1: seq \u{b7} alive, 5000 lines"));
+    assert_eq!(v.subject.as_deref(), Some("session 1: seq \u{2013} alive, 5000 lines"));
 }
 
 #[tokio::test]
@@ -167,11 +167,11 @@ async fn write_signal_and_stop_report_their_action() {
 
     let v = tool.call(json!({"action": "write", "session": 2, "input": "y\n"}), &c).await;
     assert_eq!(v.value["bytes"], 2);
-    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{b7} 2 bytes to stdin"));
+    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{2013} 2 bytes to stdin"));
 
     let v = tool.call(json!({"action": "signal", "session": 2, "signal": "int"}), &c).await;
     assert_eq!(v.value["signal"], "SIGINT", "a bare name gains the SIG prefix");
-    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{b7} SIGINT sent"));
+    assert_eq!(v.subject.as_deref(), Some("session 2: postgres \u{2013} SIGINT sent"));
 
     let fake_dead = Arc::new(FakeSessions::new(dead(2, "postgres", Some(0), 84)));
     let c = ctx_with_sessions(&fx, fake_dead);

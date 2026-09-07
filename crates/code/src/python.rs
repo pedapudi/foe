@@ -237,7 +237,7 @@ fn outcome(served: Served, res: ExecResult) -> ToolValue {
         details: json!({ "exit_code": exit_code, "timed_out": timed_out }),
     };
     ToolValue { value, rendered: Some(out), is_error: true, failure: Some(Box::new(failure)), subject: None }
-        .subject(format!("compose_tools: {calls} call(s) · {subject}"))
+        .subject(format!("compose_tools: {calls} call(s) – {subject}"))
 }
 
 #[async_trait::async_trait]

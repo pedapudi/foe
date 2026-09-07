@@ -107,7 +107,7 @@ export class TeamView {
         { class: "fig-head" },
         h("h3", null, "task boards"),
         h("span", { class: "spacer" }),
-        h("span", { class: "fig-total" }, `${boards.length} teams · ${taskCount} tasks`),
+        h("span", { class: "fig-total" }, `${boards.length} teams – ${taskCount} tasks`),
       ),
       h("div", { class: "task-boards" }, boards.map((board) => boardElement(board, names, selected, this.handlers))),
       h(

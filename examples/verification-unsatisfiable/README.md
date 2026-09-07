@@ -88,4 +88,4 @@ rather than to rerun.
 
 In the viewer, the verify items appear in the trajectory between the steps,
 and the details region's outcome row reads
-`blocked · verification-unsatisfiable`.
+`blocked – verification-unsatisfiable`.

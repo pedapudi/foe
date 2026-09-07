@@ -33,11 +33,11 @@ pub const SESSION_TOOL: &str = "session";
 
 /// The session half of every session subject, shared by the tool and by
 /// the settlement that stops survivors, so the two never drift:
-/// `session 2: postgres · alive`, `session 2: exit 0 after 84s`, or
+/// `session 2: postgres – alive`, `session 2: exit 0 after 84s`, or
 /// `session 2: killed after 84s` when a signal ended the process.
 pub fn subject(status: &SessionStatus) -> String {
     match (status.alive, status.exit_code) {
-        (true, _) => format!("session {}: {} \u{b7} alive", status.id, status.name),
+        (true, _) => format!("session {}: {} \u{2013} alive", status.id, status.name),
         (false, Some(code)) => format!("session {}: exit {code} after {}s", status.id, status.seconds),
         (false, None) => format!("session {}: killed after {}s", status.id, status.seconds),
     }
@@ -60,7 +60,7 @@ impl SessionSettlement {
                 value["disposition"] = json!("released_to_task_environment");
                 value["pid"] = json!(self.pid);
                 value["process_group"] = json!(self.process_group);
-                format!("session {}: {} \u{b7} released to task environment", status.id, status.name)
+                format!("session {}: {} \u{2013} released to task environment", status.id, status.name)
             }
             false => subject(status),
         };

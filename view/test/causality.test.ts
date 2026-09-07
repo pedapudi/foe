@@ -357,16 +357,16 @@ test("a path that must shorten elides its middle and keeps the basename", () => 
 
 test("the fixture's own steps read as their role", () => {
   const figure = layout("root.jsonl", "child.jsonl");
-  const labels = figure.rows.filter((r) => r.episodeId === "ep_root").map((r) => `${r.label} · ${r.aside}`);
+  const labels = figure.rows.filter((r) => r.episodeId === "ep_root").map((r) => `${r.label} – ${r.aside}`);
   // Each call reads as the line its own tool wrote. The interrupted `bash`
   // names what failed, and because that line already opens with the tool's
   // name the label does not repeat it.
   assert.deepEqual(labels, [
-    "fix-test · ep_root",
-    "read tests/parser_test.py lines 1\u20135 of 5 · step 1",
-    "spawn survey · step 2",
-    "bash: the request was interrupted before the tool ran · step 3",
-    "answered · step 4",
+    "fix-test – ep_root",
+    "read tests/parser_test.py lines 1\u20135 of 5 – step 1",
+    "spawn survey – step 2",
+    "bash: the request was interrupted before the tool ran – step 3",
+    "answered – step 4",
   ]);
 });
 
@@ -433,7 +433,7 @@ test("a step's label defers to its calls once they are on the page", () => {
 test("a step that retried says so once its calls are shown", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
   const retried = visibleRows(outline, "calls").find((r) => r.id === "ep_root/step/2")!;
-  assert.equal(retried.label, "step 2 · attempt 2 of 2");
+  assert.equal(retried.label, "step 2 – attempt 2 of 2");
 });
 
 test("a caret opens one branch one level past the reading", () => {
@@ -525,7 +525,7 @@ test("selecting a step scopes to its own messages and to what it opened", () => 
   const figure = layout("root.jsonl", "child.jsonl");
   const scope = scopeFor(figure, "ep_root/step/2");
   assert.ok(scope);
-  assert.equal(scope.title, "spawn survey · step 2");
+  assert.equal(scope.title, "spawn survey – step 2");
   assert.deepEqual(
     scope.segments.map((s) => s.episodeId),
     ["ep_root", "ep_child"],

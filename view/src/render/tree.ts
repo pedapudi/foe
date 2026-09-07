@@ -102,7 +102,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const y2 = (run.last + 1) * ROW - 4;
     const bracket = svg("path", { class: "contract-run", d: `M 6 ${y1} H 3 V ${y2} H 6` });
     const runTitle = svg("title");
-    runTitle.textContent = `${run.runs} runs of ${run.name} · one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;
+    runTitle.textContent = `${run.runs} runs of ${run.name} – one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;
     bracket.appendChild(runTitle);
     figure.appendChild(bracket);
   }
@@ -239,7 +239,7 @@ function parts(list: string[]): Child {
   const kept = list.filter((p) => p !== "");
   // The separator leads its part rather than trailing the one before it, so
   // that a line never ends on a dangling dot.
-  return kept.flatMap((part, i) => [i > 0 ? " " : null, h("span", { class: "part" }, i > 0 ? `· ${part}` : part)]);
+  return kept.flatMap((part, i) => [i > 0 ? " " : null, h("span", { class: "part" }, i > 0 ? `– ${part}` : part)]);
 }
 
 export function renderInfo(s: Summary | null): HTMLElement {
@@ -251,7 +251,7 @@ export function renderInfo(s: Summary | null): HTMLElement {
     "outcome",
     [
       h("span", { class: `outcome ${role}` }, outcomeLabel(s.outcome)),
-      provenance ? h("span", { class: "sub" }, ` · ${provenanceText(provenance)}`) : null,
+      provenance ? h("span", { class: "sub" }, ` – ${provenanceText(provenance)}`) : null,
     ],
   ]);
   // Consumption rows appear once something was consumed; before the first
