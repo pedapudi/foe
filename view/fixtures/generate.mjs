@@ -514,6 +514,11 @@ function rich() {
 
 /** Absolute path of the release binary that writes the logs. */
 const BINARY = join(dir, "..", "..", "target", "release", "foe");
+/// The prefix of the line a run writes to name the directory it created.
+const LOG_DIRECTORY_LINE = "foe: log ";
+
+/** The checkout path written into the logs in place of the machine's own. */
+const CHECKOUT = "/home/user/foe";
 
 /** Paths written into the logs in place of the machine's own. */
 const PROJECT = "/home/user/project";
@@ -753,9 +758,20 @@ async function workflowRun() {
     // The logs name the scratch directory in grants, tool paths, and every
     // tool result. Two replacements put stable paths in their place; the
     // events are otherwise the bytes the runtime wrote.
-    const settle = (text) => text.split(`${root}/project`).join(PROJECT).split(root).join(TOOLS);
+    // The scratch directory and the checkout the binary was built in both
+    // appear in grants, tool paths and results. Neither belongs in a fixture.
+    const checkout = join(dir, "..", "..");
+    const settle = (text) =>
+      text.split(`${root}/project`).join(PROJECT).split(root).join(TOOLS).split(checkout).join(CHECKOUT);
     const read = (path) => settle(readFileSync(path, "utf8"));
-    const episode = read(join(logs, "episode.jsonl"));
+    // A run creates a directory of its own, named by the episode id, under
+    // the one `--log-dir` names, and prints it. Reading the path from that
+    // line is what docs/design.md asks a caller to do; assembling it from
+    // the id would break again the next time the layout moves.
+    const named = stderr.split("\n").find((line) => line.startsWith(LOG_DIRECTORY_LINE));
+    if (named === undefined) throw new Error(`the run named no log directory: ${stderr}`);
+    const own = named.slice(LOG_DIRECTORY_LINE.length).trim();
+    const episode = read(join(own, "episode.jsonl"));
     const events = episode.split("\n").filter((line) => line.trim() !== "").map(JSON.parse);
     const ids = new Map([[events[0].data.id, "ep_c5785a1e"]]);
     const stableChildren = new Map([
@@ -779,7 +795,7 @@ async function workflowRun() {
       const name = `workflow-${event.data.node.replace(/_/g, "-")}-${event.data.fire}.jsonl`;
       writeFileSync(
         join(dir, name),
-        normalizeIds(read(join(logs, "children", event.data.child_id, "episode.jsonl"))),
+        normalizeIds(read(join(own, "children", event.data.child_id, "episode.jsonl"))),
       );
       names.push(name);
     }
