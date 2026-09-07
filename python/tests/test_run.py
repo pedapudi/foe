@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import os
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -45,6 +46,41 @@ def contract_with(
         done_when=done_when,
         model=model,
     )
+
+
+@pytest.mark.parametrize("isolated", [None, False, True], ids=["default", "inherited", "isolated"])
+def test_start_config_process_session(fake_binary: Path, tmp_path: Path, isolated: bool | None) -> None:
+    """docs/sdk.md: session isolation applies before start_config returns the handle."""
+    async def scenario() -> foe.Outcome:
+        finish = asyncio.Event()
+
+        async def model_backend(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+            await finish.wait()
+            for chunk in text_response("finished"):
+                yield chunk
+
+        options = {} if isolated is None else {"start_new_session": isolated}
+        handle = await foe.start_config(
+            contract_with(["read"]).to_dict("Finish when released."),
+            model_backend=model_backend,
+            binary=fake_binary,
+            log_dir=tmp_path / "episode",
+            **options,
+        )
+        try:
+            if isolated:
+                assert os.getsid(handle.pid) == handle.pid
+                assert os.getpgid(handle.pid) == handle.pid
+                assert os.getsid(handle.pid) != os.getsid(0)
+            else:
+                assert os.getsid(handle.pid) == os.getsid(0)
+                assert os.getpgid(handle.pid) == os.getpgrp()
+        finally:
+            finish.set()
+            outcome = await asyncio.wait_for(handle.wait(), timeout=5)
+        return outcome
+
+    assert asyncio.run(scenario()) == foe.Completed("finished")
 
 
 def test_full_run_with_host_tool(fake_binary: Path, tmp_path: Path) -> None:
