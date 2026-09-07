@@ -351,7 +351,8 @@ fn explicit_config_owns_its_sandbox_mode() {
 /// confinement off, and only a built-in document takes it.
 #[test]
 fn permitting_everything_grants_the_whole_filesystem_with_no_confinement() {
-    let plain = Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_SINGLE}")), ..Options::default() };
+    let plain =
+        Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_SINGLE}")), ..Options::default() };
     let (document, _) = load_contract_document(&plain).unwrap();
     assert_eq!(document.sandbox.mode, foe_log::SandboxMode::BestEffort);
     assert_ne!(document.grants.read, vec![PathBuf::from("/")]);

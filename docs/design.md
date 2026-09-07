@@ -958,7 +958,9 @@ option removes both: the kernel confinement, which `--sandbox off` removes on
 its own, and the grants, which the runtime enforces whatever the kernel is
 doing, so `--sandbox off` alone still holds a tool to the working directory.
 The name states what it does because a reader who has not seen it before has
-no other way to know. What it grants is recorded in `episode/start` like any
+no other way to know. `--yolo` is a second spelling of it, accepted and left
+out of the help: the deterrent is meant to be the reading of the long name,
+which a reader meets once here, and not the typing of it every time. What it grants is recorded in `episode/start` like any
 other contract, so a run made this way reads afterwards as exactly what it
 was rather than as an ordinary one.
 

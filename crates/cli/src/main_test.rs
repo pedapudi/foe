@@ -375,3 +375,17 @@ fn help_outranks_a_missing_argument() {
         assert!(matches!(parse(line), Ok(Command::Help(_))), "`foe {line}` did not print help");
     }
 }
+
+/// docs/design.md, "The command line": `--yolo` is a second spelling of the
+/// long option, accepted and absent from the help.
+#[test]
+fn the_short_spelling_reaches_the_option_it_stands_for() {
+    let long = "--dangerously-permit-everything-no-sandbox";
+    for flag in ["--yolo", long] {
+        let Ok(given) = given(&FORMS[0], &["t".to_string(), flag.to_string()]) else { panic!("{flag}") };
+        assert!(given.options.contains_key(long), "{flag}");
+    }
+    assert!(!help(&FORMS[0]).contains("--yolo"));
+    let Err(unknown) = given(&FORMS[0], &["--yolo-please".to_string()]) else { panic!("accepted") };
+    assert!(unknown.starts_with("unknown option --yolo-please"), "{unknown}");
+}

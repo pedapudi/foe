@@ -265,9 +265,14 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
             out.positional.push(arg.clone());
             continue;
         }
-        let Some(o) = accepted(form).find(|o| o.flag == arg.as_str()) else {
+        // A second spelling of one option, accepted and left out of the help,
+        // because the option it stands for is long enough that typing it
+        // would be its own deterrent, and the deterrent is meant to be the
+        // reading of the name rather than the typing of it.
+        let arg = if arg == "--yolo" { "--dangerously-permit-everything-no-sandbox" } else { arg.as_str() };
+        let Some(o) = accepted(form).find(|o| o.flag == arg) else {
             let it = spelled(form);
-            let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg.as_str());
+            let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg);
             if let Some((_, advice)) = retired {
                 return Err(format!("`{it}` no longer takes {arg}; {advice}"));
             }
