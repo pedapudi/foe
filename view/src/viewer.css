@@ -695,53 +695,34 @@ details[open] > summary::before {
   box-shadow: inset 0 0 0 1.5px var(--v2-ink-faint);
 }
 
-.run-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 6px;
+/* The mark, pulsing through the eleven frames docs/brand/README.md fixes.
+ * It is a text glyph rather than a drawing, which is the one animation the
+ * brand allows, and it takes the accent the mark's core takes. The frames
+ * differ in width, so the box is held at the width of the widest and the
+ * chrome beside it does not shuffle. */
+.brand-pulse {
+  color: var(--foe-accent);
+  font-family: var(--v2-mono);
+  font-size: calc(12px * var(--dt-font-scale, 1));
+  line-height: 1;
+  width: 1.1em;
+  text-align: center;
+  margin-left: 3px;
 }
 
-.run-pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--v2-good);
-  box-shadow: 0 0 0 0 var(--v2-good);
-  animation: run-pulse 1.6s ease-out infinite;
+/* Read aloud, never drawn: the mark says the same thing to everyone else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.run-label {
-  color: var(--v2-good);
-}
-
-.run-count {
-  color: var(--v2-ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-@keyframes run-pulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--v2-good);
-    opacity: 1;
-  }
-
-  70% {
-    box-shadow: 0 0 0 5px transparent;
-    opacity: 0.7;
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-    opacity: 1;
-  }
-}
-
+/* The mark's pulse is driven from the script, which reads the same query and
+ * holds the peak frame rather than advancing it. Nothing here moves. */
 @media (prefers-reduced-motion: reduce) {
-  .run-pulse {
-    animation: none;
-  }
-
   * {
     transition: none !important;
   }

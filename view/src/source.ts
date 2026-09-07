@@ -84,7 +84,10 @@ function startLive(config: LiveConfig, sink: Sink): void {
     if (!listOk) {
       sink.status("unavailable", "episode list unavailable");
     } else if (open.size > 0) {
-      sink.status("connected", `${open.size} stream${open.size === 1 ? "" : "s"}`);
+      // How many event streams the page holds open is this module's business
+      // and not the reader's: one episode or four, connected is connected,
+      // and the mark beside the word says whether anything is running.
+      sink.status("connected", "connected");
     } else if (known.length > 0 && known.every((id) => ended.has(id))) {
       sink.status("ended", "ended");
     } else {

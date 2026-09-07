@@ -6,8 +6,9 @@
 //
 // docs/brand/README.md states the geometry and the rules: the mark is
 // never stretched or recoloured, and the dashed limit stays. The one
-// animation the brand allows is the single-glyph text pulse a terminal
-// progress indicator draws; this lockup never moves.
+// animation the brand allows is the single-glyph text pulse a progress
+// indicator draws, which `brandPulse` below renders and this lockup never
+// does.
 
 import { h } from "./dom.js";
 
@@ -65,4 +66,48 @@ export function researchPreview(): HTMLElement {
     h("span", null, "research"),
     h("span", null, "preview"),
   );
+}
+
+/**
+ * The eleven frames of the pulse, from docs/brand/README.md: the core dot,
+ * the spikes growing, the shell closing around them, and the whole mark at
+ * the peak. `crates/view/src/terminal.rs` draws the same sequence, and
+ * `view/test/stylesheet.test.ts` holds these two to the document that
+ * defines them.
+ */
+export const PULSE_FRAMES = ["\u00b7", "\u2736", "\u2737", "\u2738", "\u229b", "\u25ce", "\u229b", "\u2738", "\u2737", "\u2736", "\u00b7"];
+
+/** One poll tick of the runtime, which is one frame of the pulse. */
+const PULSE_MS = 100;
+
+/**
+ * A pulsing text rendering of the mark, in the brand accent. It advances one
+ * frame per tick only while `run` is called with work in flight; nothing
+ * ticks while nothing runs. A reader who asked for reduced motion gets the
+ * peak frame, held: the mark still says that something is running, and
+ * nothing moves.
+ */
+export function brandPulse(): { el: HTMLElement; run(count: number): void } {
+  const el = h("span", { class: "brand-pulse", "aria-hidden": "true" }, PULSE_FRAMES[0]);
+  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let frame = 0;
+  return {
+    el,
+    run(count: number): void {
+      el.hidden = count === 0;
+      el.title = count === 1 ? "one episode running" : `${count} episodes running`;
+      if (count === 0 || still) {
+        if (timer !== undefined) clearInterval(timer);
+        timer = undefined;
+        el.textContent = still ? PULSE_FRAMES[5]! : PULSE_FRAMES[0]!;
+        return;
+      }
+      if (timer !== undefined) return;
+      timer = setInterval(() => {
+        frame = (frame + 1) % PULSE_FRAMES.length;
+        el.textContent = PULSE_FRAMES[frame]!;
+      }, PULSE_MS);
+    },
+  };
 }

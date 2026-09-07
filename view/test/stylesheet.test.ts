@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
+import { PULSE_FRAMES } from "../src/brand.js";
 
 const viewerCss = readFileSync(new URL("../src/viewer.css", import.meta.url), "utf8");
 const tokensCss = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
@@ -103,4 +104,23 @@ test("every exempt selector is one the stylesheet still carries", () => {
   for (const selector of UNSCALED) {
     assert.ok(viewerCss.includes(`${selector} {`), selector);
   }
+});
+
+// docs/brand/README.md: "Every surface that pulses the mark draws this
+// sequence, so the pulse is the same drawing wherever it appears." Three
+// surfaces state it — the browser bundle here, `crates/view/src/terminal.rs`
+// for the terminal, and `site/build` for the landing page, which reads the
+// document at build time. This holds the two that state it against the one
+// that defines it.
+test("the pulse the viewer draws is the sequence the brand document fixes", () => {
+  const brand = readFileSync(new URL("../../docs/brand/README.md", import.meta.url), "utf8");
+  const at = brand.indexOf("the eleven frames") + "the eleven frames".length;
+  const declared = [...brand.slice(at, brand.indexOf(", one frame per redraw", at)).matchAll(/`(\S)`/g)].map((m) => m[1]);
+  assert.equal(declared.length, 11);
+  assert.deepEqual(PULSE_FRAMES, declared);
+
+  const rust = readFileSync(new URL("../../crates/view/src/terminal.rs", import.meta.url), "utf8");
+  const frames = rust.match(/const FRAMES: \[&str; 11\] = \[([^\]]*)\]/);
+  assert.ok(frames, "terminal.rs no longer declares FRAMES");
+  assert.deepEqual([...frames[1]!.matchAll(/"(.+?)"/g)].map((m) => m[1]), declared);
 });

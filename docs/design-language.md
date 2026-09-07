@@ -277,10 +277,19 @@ The top bar is sticky, blurred, and hairline-bottomed. Left to right:
 6. the page-scale pill: a range input from 70% to 150% in 5% steps with a
    percent readout and a reset control, applied by `zoom` on the root so the
    page reflows rather than scales;
-7. the status pill: a dot and a word for the connection state, and a run
-   badge with a pulse when an episode is in flight. The pulse is the only
-   keyframe animation in the chrome and is disabled under
-   `prefers-reduced-motion`.
+7. the status pill: a dot and a word for the connection state, and, while
+   any episode is in flight, the brand mark pulsing beside them. The mark is
+   a single text glyph advancing one frame per hundred milliseconds through
+   the eleven frames `docs/brand/README.md` fixes, in `--foe-accent`; it is
+   the same drawing the terminal's progress line makes, and the only
+   animation in the chrome. How many episodes are running is the mark's
+   tooltip and is read aloud, and is written nowhere on the page: the mark
+   pulsing is the statement, and a word beside it saying `running` and a
+   count saying `2 in flight` said the same thing twice more. Under
+   `prefers-reduced-motion` the mark holds its peak frame instead of
+   advancing, so it still says that something is running and nothing moves.
+   The connection word is the state alone; how many event streams the page
+   holds open belongs to the module that opens them.
 
 The lockup is sized by height, so that the wordmark's ascenders match the
 cap height of the surrounding chrome text. It strokes in `currentColor` and

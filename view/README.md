@@ -460,7 +460,7 @@ src/main.ts                   entry point: settings, then the application
 src/app.ts                    state, regions, keyboard, digest-gated redraws
 src/chrome.ts                 top bar, pickers, persisted settings
 src/appearance.ts             themes, typefaces, sizes, and their names
-src/brand.ts                  the lockup and the research-preview tag
+src/brand.ts                  the lockup, the research-preview tag, and the pulse
 src/panes.ts                  region sizes, the grips, and their persistence
 src/trajectory.ts             where every mark of the timeline goes
 src/causality.ts              the causal model of a run and where it is drawn
