@@ -26,13 +26,13 @@ rmdir "$work"
 git -C "$repo" worktree add -q --detach "$work" origin/gh-pages
 git -C "$work" switch -q -C publish
 
-# The published tree is exactly what the build wrote, plus the font licence.
-# A worktree keeps its link to the repository in a .git file, so the sweep
-# has to leave that file alone.
+# The published tree is exactly what the build wrote. A worktree keeps its
+# link to the repository in a .git file, so the sweep has to leave that file
+# alone. The faces carry their own licence statement in their name table,
+# which is how view/fonts distributes them; view/fonts/README.md records it.
 find "$work" -maxdepth 1 -type f ! -name README.md ! -name .git -exec rm -f {} +
 cp "$here/public/index.html" "$here/public/favicon.svg" "$here/public/install.sh" "$work/"
 cp "$here"/public/*.woff2 "$work/"
-cp "$here/fonts/UFL-Ubuntu.txt" "$work/"
 
 git -C "$work" add -A
 if git -C "$work" diff --cached --quiet; then
