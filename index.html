@@ -467,7 +467,7 @@ $ foe --verify ./check "fix the failing test"</code></div>
       <div class="wrap" style="display:flex;flex-direction:column;height:100%">
         <div class="stagehead">
           <code>episode.jsonl</code>
-          <code class="pos" id="stagepos">seq 0 of 33 &middot; 0.00 s</code>
+          <code class="pos" id="stagepos">seq 0 of 33 &ndash; 0.00 s</code>
           <span class="grp" style="display:flex;margin-left:auto;align-items:center">
             <button class="ctl icon" type="button" id="stageplay" aria-label="replay" title="replay" disabled><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85"/><path d="M13.4 2.1v2.9h-2.9"/></svg></button>
           </span>
@@ -478,7 +478,7 @@ $ foe --verify ./check "fix the failing test"</code></div>
             <div class="meter">
               <div>model calls, of the 20 declared</div>
               <div class="ticks" id="ticks" aria-hidden="true"></div>
-              <div id="meterread">lead 0 &middot; children 0 &middot; reserved 0 &middot; free 20</div>
+              <div id="meterread">lead 0 &ndash; children 0 &ndash; reserved 0 &ndash; free 20</div>
             </div>
           </div>
           <div class="tape" id="tape" role="group" aria-label="The log as far as the run has gone: one row per event, newest last"></div>
@@ -600,9 +600,10 @@ var TEAM = {"contracts":[{"name":"review-and-test – lead","tools":["read","gre
 var NAMES = ["lead", "surveyor"];
 var IDS = ["ep_over_parent", "ep_over_child"];
 var SPAN = RUN[RUN.length - 1].t;    /* the run, in milliseconds */
-/* The eleven frames of the brand pulse, opening and closing on the
-   smallest mark the page draws. */
-var FRAMES = ["◦", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "◦"];
+/* The eleven frames of the brand pulse, read at build time out of
+   docs/brand/README.md, which defines the sequence every surface that pulses
+   the mark draws. */
+var FRAMES = ["·", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "·"];
 var GUTTER = "  ";
 var MIN_TEXT = 20;
 var LINE_MS = 24;                    /* run-time between two written lines */
