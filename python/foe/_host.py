@@ -379,6 +379,7 @@ async def start_config(
     tools: Iterable[HostTool] = (),
     on_event: EventCallback | None = None,
     max_output_tokens: int | None = None,
+    start_new_session: bool = False,
 ) -> Handle:
     """Launch the binary on a complete configuration document.
 
@@ -390,6 +391,8 @@ async def start_config(
     absent.
     The host registers and services the document's `host_tools` either way.
     `tools` supplies the implementation of every name in `host_tools`.
+    On POSIX, `start_new_session=True` makes the binary lead its own session
+    and process group. The default inherits the host's session and group.
 
     Returns once the binary has written `episode/start`, so the handle
     carries the process id and the runtime build before the first request.
@@ -436,6 +439,7 @@ async def start_config(
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             limit=_LINE_LIMIT,
+            start_new_session=start_new_session,
         )
     except OSError as exc:
         shutil.rmtree(config_dir, ignore_errors=True)

@@ -257,6 +257,13 @@ and its `model` block decides whether `model_backend` is required or refused.
 in the document's `host_tools`; a missing implementation is an error before
 launch.
 
+`start_config` also accepts the keyword-only argument
+`start_new_session: bool = False`. On POSIX, setting it to `True` creates a
+session and process group whose leader is the binary. Both identifiers equal
+`handle.pid` when the call returns. The default inherits the host's session
+and process group. This launch setting belongs to the host and does not change
+the configuration document or its fingerprint.
+
 ### `serve`
 
 `await foe.serve(log_dir, binary=...)` runs `foe view DIR --serve`, reads
