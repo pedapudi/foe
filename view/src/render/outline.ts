@@ -29,7 +29,10 @@ import { clear, fmtInt, h } from "../dom.js";
 import { DEPTHS, layoutLanes, visibleRows } from "../causality.js";
 import type { CausalityOutline, CausalityRow, Depth } from "../causality.js";
 import { identityStyle } from "../identity.js";
+import { renderJson } from "./json.js";
+import { outcomeRole } from "./tree.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
+import { obj } from "../types.js";
 import { languageForPath } from "./shape.js";
 import { Hovercard } from "./hovercard.js";
 import { laneStrokes } from "./causality.js";
@@ -118,6 +121,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
       // the conversation uses for its own blocks, and a bare kind here
       // would take their styling.
       `kind-${row.kind}`,
+      row.kind === "outcome" ? outcomeRole(row.outcome ?? null) : "",
       row.id === state.selected ? "selected" : "",
       row.failed ? "failed" : "",
     ]
@@ -161,7 +165,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
     row.kind === "node" && row.firings.length > 1 ? h("span", { class: "aside" }, `${row.firings.length} passes`) : null,
   );
   el.appendChild(name);
-  if (row.body !== "") el.appendChild(bodyElement(row));
+  if (row.body !== "" || row.kind === "outcome") el.appendChild(bodyElement(row));
   el.addEventListener("click", () => handlers.scope(row.id === state.selected ? null : row.id));
   return el;
 }
@@ -172,9 +176,27 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
  */
 function bodyElement(row: CausalityRow): HTMLElement {
   const body = h("div", { class: "outline-body" });
-  if (row.kind === "prose") body.appendChild(renderMarkdown(row.body));
+  // What the episode returned is a value, not text: an object of a summary
+  // and whatever else the contract asked it to return. The summary sets as
+  // prose, because it is the answer and a reader should not have to open
+  // anything to read it; the whole value sets beneath it, read the way every
+  // other value in the viewer is read.
+  if (row.kind === "outcome") {
+    const value = returned(row.outcome);
+    const summary = obj(value).summary;
+    if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
+    body.appendChild(renderJson(value));
+  }
+  else if (row.kind === "prose") body.appendChild(renderMarkdown(row.body));
   else body.appendChild(renderToolText(row.body, languageForPath(row.label)));
   return body;
+}
+
+/** The part of an outcome a reader came for: what it returned, or why not. */
+function returned(outcome: CausalityRow["outcome"]): unknown {
+  if (outcome === undefined || outcome === null) return null;
+  const fields = outcome as unknown as Record<string, unknown>;
+  return fields.value ?? fields.message ?? fields.error ?? fields.limit ?? null;
 }
 
 /** The depth control: the four readings, coarsest first. */

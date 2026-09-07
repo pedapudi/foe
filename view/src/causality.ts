@@ -24,6 +24,7 @@
 // `spawn` is not special-cased: it is the call whose tick opens a lane,
 // because what it created can outlive it.
 
+import { outcomeLabel } from "./fold.js";
 import type { Row, StreamedCall, Summary } from "./fold.js";
 import { IDENTITY_COLORS, identitySlot } from "./identity.js";
 import { num, obj, str } from "./types.js";
@@ -118,7 +119,7 @@ export interface PlacedCall extends CausalityCall {
   y: number;
 }
 
-export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result";
+export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome";
 
 /**
  * How deep a reading goes. The rail, the tree, the causal figure and the
@@ -145,6 +146,7 @@ const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
   step: "steps",
   call: "calls",
   prose: "conversation",
+  outcome: "conversation",
   result: "outputs",
 };
 
@@ -209,6 +211,8 @@ export interface CausalityRow {
   /** A step row's own number and attempt count, for the label it earns. */
   stepNumber?: number;
   attempts?: number;
+  /** What an outcome row returned, which its body renders. */
+  outcome?: Outcome;
   answered?: boolean;
   /**
    * True when nothing has answered the step yet and the episode is still
@@ -726,6 +730,27 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         row.opens.push(child.id);
         emit(child, workflowLaneId ?? laneId, row.id);
       }
+    }
+
+    // What the episode returned, which is its answer. An episode can reach it
+    // without ever writing a word of prose: every step spends itself on tool
+    // calls and the last one returns a typed value. A reading that stopped at
+    // the model's own words would then show a run that said nothing.
+    if (episode.outcome !== null) {
+      push({
+        id: `${episode.id}/outcome`,
+        kind: "outcome",
+        episodeId: episode.id,
+        laneId,
+        parent: head.id,
+        depth: episode.depth + 1,
+        label: outcomeLabel(episode.outcome),
+        aside: "",
+        outcome: episode.outcome,
+        fromSeq: episode.lastSeq,
+        toSeq: episode.lastSeq,
+        seq: episode.lastSeq,
+      });
     }
   };
 

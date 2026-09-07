@@ -396,8 +396,12 @@ test("each reading adds the kinds of row it names", () => {
   // What the model said and what its tools returned are separate rungs,
   // because a reader who wants the conversation must not have to take the
   // tool output with it.
-  assert.deepEqual(kinds("conversation"), ["call", "episode", "prose", "step"]);
-  assert.deepEqual(kinds("outputs"), ["call", "episode", "prose", "result", "step"]);
+  // The conversation carries what the episode returned as well as what the
+  // model said: an episode can spend every step on tool calls and answer only
+  // in its typed return, and a reading that left it out would show a run that
+  // said nothing.
+  assert.deepEqual(kinds("conversation"), ["call", "episode", "outcome", "prose", "step"]);
+  assert.deepEqual(kinds("outputs"), ["call", "episode", "outcome", "prose", "result", "step"]);
   const graph = causalityOutline(run("workflow.jsonl"));
   assert.ok(visibleRows(graph, "steps").some((r) => r.kind === "node"));
 });

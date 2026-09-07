@@ -3821,6 +3821,30 @@ kbd {
   font-family: var(--v2-mono);
 }
 
+/* The row that carries what the episode returned. Its word takes the hue of
+ * the direction it reports, which is the one place in the outline where a
+ * label is coloured by anything other than identity. */
+.outline-row.kind-outcome .outline-name .label {
+  font-family: var(--v2-mono);
+  font-weight: 600;
+}
+
+.outline-row.kind-outcome.good .outline-name .label {
+  color: var(--v2-good);
+}
+
+.outline-row.kind-outcome.bad .outline-name .label {
+  color: var(--v2-bad);
+}
+
+.outline-row.kind-outcome.caution .outline-name .label {
+  color: var(--v2-caution);
+}
+
+.outline-row.kind-outcome.flat .outline-name .label {
+  color: var(--v2-flat);
+}
+
 .outline-name .aside {
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));

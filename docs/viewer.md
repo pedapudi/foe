@@ -444,6 +444,14 @@ tool results to 139,281, so a reader who wanted the conversation would
 otherwise have had to take 96 percent of the run's text with it. The
 outline opens at `conversation`: the whole causal structure of a run plus
 the model's account of it, one rung short of the output.
+
+An episode's return sits on that rung beside the model's words, because it is
+the answer and not commentary on one. An episode can reach a typed return
+without writing a word of prose — every step spends itself on tool calls and
+the last one returns a value — and a reading that carried only what the model
+said would then show a run that said nothing. The row takes the outcome word,
+in the hue of the direction it reports, with the returned value's `summary`
+set as prose under it and the whole value beneath that, closed.
 `docs/viewer-study.md` carries the measurement over every fixture.
 
 The reading is stored in `localStorage` under `foe.depth` beside the
