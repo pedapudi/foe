@@ -3582,28 +3582,29 @@ kbd {
   color: var(--v2-ink);
 }
 
-/* Lane colour distinguishes branches, cycled over five tones mixed from
- * the theme's own tokens so that it follows all sixteen themes. None of
- * the five is an outcome hue: a lane must never read as a verdict. The
- * tones are scoped to the drawing itself rather than to either view of
- * it, because both views draw the same strokes. */
-.caus-strokes .tone-0 {
-  --caus-tone: var(--v2-ink-soft);
-}
+/* A lane carries one episode, so it takes that episode's identity colour,
+ * the same colour its name is written in beside it and everywhere else the
+ * run is read. Before this the lanes cycled over five tones mixed from the
+ * theme's tokens, which distinguished a column from its neighbour and said
+ * nothing about whose column it was; a reader then had two colours for one
+ * episode and no stated relation between them. None of the eight is an
+ * outcome hue, so a lane still never reads as a verdict, and an outcome
+ * mark sets its own direction hue over the lane's. The colours are scoped
+ * to the drawing rather than to either view of it, because both views draw
+ * the same strokes. */
+.caus-strokes .tone-0 { --caus-tone: var(--foe-id-1); }
+.caus-strokes .tone-1 { --caus-tone: var(--foe-id-2); }
+.caus-strokes .tone-2 { --caus-tone: var(--foe-id-3); }
+.caus-strokes .tone-3 { --caus-tone: var(--foe-id-4); }
+.caus-strokes .tone-4 { --caus-tone: var(--foe-id-5); }
+.caus-strokes .tone-5 { --caus-tone: var(--foe-id-6); }
+.caus-strokes .tone-6 { --caus-tone: var(--foe-id-7); }
+.caus-strokes .tone-7 { --caus-tone: var(--foe-id-8); }
 
-.caus-strokes .tone-1 {
-  --caus-tone: color-mix(in srgb, var(--v2-accent) 65%, var(--v2-ink-faint));
-}
-
-.caus-strokes .tone-2 {
-  --caus-tone: color-mix(in srgb, var(--v2-flat) 55%, var(--v2-ink));
-}
-
-.caus-strokes .tone-3 {
-  --caus-tone: color-mix(in srgb, var(--v2-accent) 30%, var(--v2-flat));
-}
-
-.caus-strokes .tone-4 {
+/* A graph lane is not an agent: it carries the declared graph the episode
+ * beside it ran, so it takes neutral ink rather than an identity colour. */
+.caus-strokes .caus-lane.workflow,
+.caus-strokes .caus-node.node {
   --caus-tone: var(--v2-ink-faint);
 }
 

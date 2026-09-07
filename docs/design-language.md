@@ -43,9 +43,9 @@ Five rules govern their use.
   carried by four channels that hue does not touch: the lane the mark sits
   in, its shape, its thickness, and its ink weight. The section below states
   why hue is unavailable for kind and how the four channels are assigned.
-- An agent's name, written as text, is the one exception, and it uses a
-  palette of its own rather than the role tokens. "Identity" below states
-  where the exception holds and where it does not.
+- An agent's name, and the lane that stands for that one agent, are the
+  exception, and they use a palette of their own rather than the role tokens.
+  "Identity" below states where the exception holds and where it does not.
 - The accent appears once per figure, on the element that carries the
   meaning. A selected episode, a current step, or a focused control takes
   it. Nothing decorative does.
@@ -109,10 +109,12 @@ the word each time loses the thread. Eight colours name them instead.
 The channel is bounded in two ways, so that it cannot be confused with
 direction.
 
-- It applies to an agent's name set as text, never to a mark in a figure. A
-  dot, a bar, a ring, and a lane keep the direction rule exactly as stated
-  above: a coloured mark still means completed, failed, exhausted, or a limit
-  reached, and nothing else.
+- It applies to an agent's name set as text, and to the lane a drawing gives
+  that one agent, which is the same object as the name written beside it. It
+  never applies to a mark that reports something. A dot, a bar and a ring keep
+  the direction rule exactly as stated above: a coloured mark still means
+  completed, failed, exhausted, or a limit reached, and nothing else, and an
+  outcome mark at the foot of a lane sets its own hue over the lane's.
 - It uses `--foe-id-1` through `--foe-id-8`, which are not role tokens. They
   are stated once for a light ground and once for a dark one in
   `view/src/tokens.css`, beside `--foe-accent` and outside the sixteen theme
@@ -126,6 +128,13 @@ colours over four names collide more often than not, so a name whose slot is
 already held by another agent on screen moves on to the next free slot, and
 keeps what it was given for the rest of the run. Past the eighth agent the
 colours repeat.
+
+The causality figure draws a lane per episode, and that lane takes its
+episode's colour. Before this the lanes cycled over five tones mixed from the
+theme's tokens, which told a column from its neighbour and said nothing about
+whose column it was, so a reader had two colours for one episode and no stated
+relation between them. The lane a declared graph earns is not an agent and
+stays in neutral ink.
 
 Three implementations write the same hash: `view/src/identity.ts` for the
 browser, `crates/view/src/terminal.rs` for the terminal conversation, where

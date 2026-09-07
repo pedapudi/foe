@@ -366,9 +366,12 @@ The figure paints in three layers — the row highlight, the strokes, then
 the labels — so a selected row never hides a line and a line never crosses
 out a name.
 
-Lane colour distinguishes branches, cycled over five tones mixed from the
-theme's own tokens so that it follows every theme, and none of the five is
-an outcome hue. Hue carries the outcome and carries it only on the marks:
+A lane takes the identity colour of the episode it carries, the same colour
+that episode's name is written in beside it and everywhere else the run is
+read, so a stroke and a name never disagree about whose they are. The lane a
+declared graph earns is not an agent and stays in neutral ink. None of the
+eight identity colours is an outcome hue. Hue carries the outcome and carries
+it only on the marks:
 at the foot of a lane, a ring in `--v2-good` for `Completed`, in
 `--v2-caution` for `Exhausted` and in `--v2-flat` for `Blocked`, and a
 cross in `--v2-bad` for `Failed`. A tool call whose result reported a

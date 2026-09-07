@@ -25,6 +25,7 @@
 // because what it created can outlive it.
 
 import type { Row, StreamedCall, Summary } from "./fold.js";
+import { IDENTITY_COLORS, identitySlot } from "./identity.js";
 import { num, obj, str } from "./types.js";
 import type { Outcome } from "./types.js";
 
@@ -350,7 +351,7 @@ export const LOOP_BOW = 7;
 export const DEPTH_INDENT = 12;
 
 /** How many lane colours the figure cycles through. */
-export const TONES = 5;
+export const TONES = IDENTITY_COLORS;
 
 /**
  * One episode folded into what the causality figure draws. The fold in
@@ -546,8 +547,12 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
   const lanes: LaneSpec[] = [];
   const loops: { laneId: string; from: string; to: string }[] = [];
 
+  // A lane carries one episode, so it takes that episode's identity colour
+  // rather than a colour cycled from its position, and the stroke agrees
+  // with the name written beside it. A graph lane is not an agent; the
+  // stylesheet draws it in neutral ink whatever slot it is given here.
   const openLane = (id: string, kind: LaneKind, episodeId: string, parentId: string | null, label: string, outcome: Outcome | null): void => {
-    lanes.push({ id, kind, episodeId, parentId, tone: lanes.length % TONES, outcome, label });
+    lanes.push({ id, kind, episodeId, parentId, tone: kind === "workflow" ? 0 : identitySlot(label), outcome, label });
   };
 
   const push = (row: Omit<CausalityRow, "appearsAt" | "body" | "failed" | "calls" | "firings" | "opens"> & Partial<CausalityRow>): CausalityRow => {

@@ -53,9 +53,19 @@ export function claim(names: string[]): void {
   }
 }
 
+/**
+ * The color `name` holds: the one `claim` gave it, or the one it hashes to
+ * when it was never claimed. A figure that draws a name rather than writing
+ * it, such as the lane a causality drawing gives an episode, reads the slot
+ * and not the custom property.
+ */
+export function identitySlot(name: string): number {
+  return held.get(name) ?? identityIndex(name);
+}
+
 /** The custom property holding the color for `name`, ready for a style value. */
 export function identityColor(name: string): string {
-  return `var(--foe-id-${(held.get(name) ?? identityIndex(name)) + 1})`;
+  return `var(--foe-id-${identitySlot(name) + 1})`;
 }
 
 /**
