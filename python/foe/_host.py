@@ -167,6 +167,7 @@ class Handle:
 
     @property
     def done(self) -> bool:
+        """Whether the reader has finished cleanup and reaped the binary."""
         return self._reader.done()
 
     async def wait(self) -> Outcome:
@@ -386,6 +387,7 @@ async def start_config(
     on_event: EventCallback | None = None,
     max_output_tokens: int | None = None,
     start_new_session: bool = False,
+    on_spawn: Callable[[Handle], None] | None = None,
 ) -> Handle:
     """Launch the binary on a complete configuration document.
 
@@ -403,6 +405,8 @@ async def start_config(
     `tools` supplies the implementation of every name in `host_tools`.
     On POSIX, `start_new_session=True` makes the binary lead its own session
     and process group. The default inherits the host's session and group.
+    `on_spawn` receives the handle synchronously before the startup handshake.
+    Its `pid` is available; `runtime` and `episode_id` are still unknown.
 
     Returns once the binary has written `episode/start`, so the handle
     carries the process id and the runtime build before the first request.
@@ -464,10 +468,31 @@ async def start_config(
         on_event=on_event,
         max_output_tokens=max_output_tokens,
     )
+    if on_spawn is not None:
+        try:
+            on_spawn(handle)
+        except BaseException:
+            cleanup = asyncio.create_task(_abort_spawn(handle), name="foe-host-spawn-cleanup")
+            while not cleanup.done():
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    continue
+            cleanup.result()
+            raise
     pairing_error = await handle._await_start()
     if pairing_error is not None:
         raise CompatibilityError(pairing_error)
     return handle
+
+
+async def _abort_spawn(handle: Handle) -> None:
+    """Reap a process whose owner callback failed before the handshake."""
+    try:
+        handle._process.kill()
+    except ProcessLookupError:
+        pass
+    await asyncio.gather(handle._reader, return_exceptions=True)
 
 
 async def run_config(

@@ -317,10 +317,11 @@ request; the package has no opinion about its value.
   `foe.Runtime` with the `version` and `build` the binary stated in
   `episode/start`; `build` is `sha256:<hex>` of the running binary, or the
   word `unknown` when the binary could not read its own image;
-- `handle.episode_id`, `handle.log_dir` — the directory the binary created
-  for this episode, which is the episode id under the directory `log_dir`
-  named, and None until `episode/start` — `handle.outcome`, and
-  `handle.done`.
+- `handle.episode_id` and `handle.outcome`;
+- `handle.log_dir`, the episode directory created under the supplied log
+  directory, or `None` before `episode/start`;
+- `handle.done`, which ordinary completion sets only after reader cleanup
+  has reaped the binary.
 
 Both `pid` and `runtime` hold their values before the episode's first
 model request and first tool call, because `start` returns only after
@@ -357,6 +358,14 @@ session and process group whose leader is the binary. Both identifiers equal
 `handle.pid` when the call returns. The default inherits the host's session
 and process group. This launch setting belongs to the host and does not change
 the configuration document or its fingerprint.
+
+`on_spawn: Callable[[Handle], None] | None = None` receives the handle
+synchronously after process creation, before the startup handshake. The
+callback can record `handle.pid` and arrange cancellation even when the binary
+never writes `episode/start`. At callback time, `runtime` and `episode_id` are
+`None`. The callback must return promptly. If it raises, the package kills and
+reaps the binary before propagating that same exception. Cancellation of the
+launch task during this cleanup does not interrupt the reap.
 
 ### `serve`
 
