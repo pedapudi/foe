@@ -77,7 +77,7 @@ target/foe-wrap-a-binary-demo.XXXXXX/
 ├── project/
 │   ├── src/report.py          one unused import and one line of 164 columns
 │   └── tools/style-check      the wrapped checker, copied from this directory
-└── episode/episode.jsonl
+└── episode/<episode-id>/episode.jsonl
 ```
 
 Before starting the episode the runner runs the checker itself and requires

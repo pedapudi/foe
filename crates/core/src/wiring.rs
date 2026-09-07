@@ -58,10 +58,12 @@ impl Downlink for Router {
 }
 
 impl LeadLog for Log {
-    fn append(&self, event: EventData) {
-        if let Err(e) = Log::append(self, event) {
-            eprintln!("foe: appending a team event: {e}");
-        }
+    fn append(&self, event: EventData) -> Result<(), CapError> {
+        Ok(Log::append(self, event).map(|_| ())?)
+    }
+
+    fn check(&self) -> Result<(), CapError> {
+        Ok(Log::check(self)?)
     }
 
     fn events(&self) -> Vec<Event> {
@@ -96,6 +98,7 @@ impl Spawner for BudgetedSpawner {
     }
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        self.log.check()?;
         let reserved =
             lock(&self.pool).reserve(&child_id, self.inner.reserve_for(&req)).map_err(|limit| CapError::Budget {
                 name: serde_json::to_value(limit)
@@ -142,12 +145,13 @@ impl Spawner for BudgetedSpawner {
         let returned = SpawnHandle { child_id: handle.child_id.clone(), dir: handle.dir.clone(), run: settled_run };
         let (log, pool, run) = (self.log.clone(), self.pool.clone(), handle.run);
         tokio::spawn(async move {
-            let settled = run.settle().await;
+            let mut settled = run.settle().await;
             let end = EventData::SpawnEnd { child_id: child_id.clone(), outcome: settled.outcome.clone() };
             let release = EventData::BudgetRelease { child_id: child_id.clone(), spent: settled.spent };
             for event in [end, release] {
                 if let Err(e) = log.append(event) {
-                    eprintln!("foe: recording a child's end: {e}");
+                    settled.outcome = foe_log::Outcome::Failed { error: e.to_string() };
+                    break;
                 }
             }
             // The pool is released after the log and before the handle. A

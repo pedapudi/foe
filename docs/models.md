@@ -16,7 +16,7 @@ The first command asks for an API key, checks it with one request, writes it
 to `~/.config/foe/credentials/anthropic.json`, and offers a list of models
 to make the default. The second command runs the built-in coding
 configuration against the current directory with that default model and
-prints the outcome as one JSON line. No flag names a model or a key file,
+prints the outcome as one JSON line by default. No flag names a model or a key file,
 because both were settled by the login.
 
 `foe login` alone lists every provider and whether each is
@@ -49,7 +49,7 @@ One `model` block per provider, each the smallest that runs after
 
 ```json
 { "provider": "anthropic", "model": "claude-opus-5" }
-{ "provider": "openai", "model": "gpt-5.6-sol" }
+{ "provider": "openai", "model": "gpt-6-astra" }
 { "provider": "compatible-http", "model": "fixture-model", "base_url": "http://127.0.0.1:11434/v1" }
 { "provider": "openrouter", "model": "anthropic/claude-opus-5" }
 { "provider": "openai-codex", "model": "gpt-5.6-sol" }
@@ -80,8 +80,16 @@ Every provider-specific option is a flat string. The options by provider:
 | `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
 | `base_url` | every HTTP provider | replaces the default endpoint; required for `compatible-http` |
 | `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
-| `service_tier` | `openai`, `openai-codex` | sent as the Responses API `service_tier` request field |
+| `service_tier` | `openai`, `openai-codex` | the tier the provider processes the request in: `auto`, `default`, `flex`, or `priority`, sent as the `service_tier` request field |
 | `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
+
+A service tier is one provider's vocabulary, so the provider table carries
+both halves of it: the request field the value travels in, and every value
+that provider accepts. Resolving a `model` block checks the configured value
+against that row and names the provider and its accepted values when the
+value is none of them. A provider whose row carries no tier, which is every
+provider absent from the `service_tier` row of the table above, refuses the
+option by name.
 
 The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
 Codex backend used by `openai-codex` rejects that field, so foe omits it on
@@ -111,9 +119,11 @@ used.
 | provider | model-name prefix | window in tokens |
 |---|---|---|
 | `anthropic` | `claude-` | 200000 |
+| `openai`, `openai-codex` | `gpt-6` | 1050000 |
 | `openai`, `openai-codex` | `gpt-5.6` | 1050000 |
 | `openai`, `openai-codex` | `gpt-5` | 400000 |
 | `openrouter` | `anthropic/claude-` | 200000 |
+| `openrouter` | `openai/gpt-6` | 1050000 |
 | `openrouter` | `openai/gpt-5` | 400000 |
 | `openrouter` | `google/gemini-2.5` | 1048576 |
 | `vertex` | `gemini-2.5` | 1048576 |
@@ -121,6 +131,46 @@ used.
 
 `compatible-http` knows no windows because the endpoint decides which model
 answers.
+
+## HTTP requests and cancellation
+
+Each built-in client opens an HTTP/1.1 connection for one request. The client
+uses compiled certificate roots and explicit headers. It does not discover
+proxies, follow redirects, decompress responses, or reuse connections.
+
+Cancelling a model request drops its pending connection or response. The
+runtime aborts the task that owns the socket. Credential refresh uses the
+same transport, and cancellation also releases the credential cache lock.
+No detached response worker or unbounded queue of decoded chunks remains.
+The decoder delivers each chunk directly to the runtime recorder.
+
+Connection establishment, including TLS negotiation, has a thirty-second
+limit. Waiting for response headers has a six-hundred-second limit. Each
+response body frame has the same idle limit. Episode cancellation and the
+contract's `seconds` allowance can end these waits earlier. The operating
+system's hostname lookup may continue after the requesting future is dropped.
+
+Response headers have a 64 KiB buffer limit and a limit of one hundred
+fields. Chunk extensions and trailers have separate 16 KiB limits.
+Each server-sent event line and the event's retained name and data have a
+one MiB limit. Retained data includes one newline per data field while the
+event is assembled. Empty data fields preserve their event and line
+boundaries. An incomplete event at end of input is discarded.
+
+Malformed headers, chunk framing, event text, and parser-limit violations
+produce nonretryable errors. Connection failures, idle timeouts, and
+incomplete response bodies are retryable. Error response text is read up to
+64 KiB. A successful credential response requires a complete UTF-8 JSON body
+of at most 64 KiB. A truncated credential body retains its transport error
+classification, and an oversized body is refused. Credential lifetimes that
+cannot be represented by the expiry clock are refused before caching or
+writing the token. These bounds cover response parsing; the runtime separately
+accounts for output tokens and retained context. Server-provided retry delays
+saturate at the largest millisecond value when their conversion would overflow.
+
+The Rust HTTP and credential methods are asynchronous. Callers await request,
+verification, and token-refresh results. The command-line login flow runs
+these methods on a local runtime while retaining synchronous terminal input.
 
 ## Where credentials live
 
@@ -212,8 +262,13 @@ next: foe "describe what this repository does"
 ```
 
 A bare `foe "task"` reads the default model file when `--model` is absent.
-`--model PROVIDER/MODEL` on the command line replaces it for one run, and
-`--key-file PATH` names the key file explicitly.
+`--model PROVIDER/MODEL` on the command line replaces it for one run.
+`foe login PROVIDER --key-file PATH` records the file the provider's
+credential is read from, in the default model block's credential option, and
+a document's own `model` block names one for a single contract. A document
+named by `--config` that declares no `model` block takes its block from
+`--model` and `--service-tier` in the same way; a document that declares one
+refuses both.
 
 When the selected model is `gpt-5.6-sol` through `openai` or
 `openai-codex`, login writes `"reasoning_effort": "low"` into the default
@@ -224,11 +279,12 @@ the effective reasoning effort.
 ## Formats and credential sources
 
 The transport crate pairs wire formats with credential sources through one
-provider table. A provider is one row of twelve fields: the name a configuration
+provider table. A provider is one row of thirteen fields: the name a configuration
 writes, the title and one-line description `foe login` prints, the wire
 format, the credential source, the default base URL, the path appended to
 it, the options the `model` block must carry, the models `foe login`
-offers, the context windows by model-name prefix, any fixed headers, and
+offers, the context windows by model-name prefix, any fixed headers, the
+service tier's request field and accepted values, and
 how `foe login` proves a credential works. The binary includes every format,
 credential source, and provider row.
 
@@ -264,6 +320,7 @@ Provider {
     presets: &["example-large", "example-small"],
     windows: &[("example-", 128_000)],
     headers: &[],
+    service_tier: None,
     verify: Verify::GetJson("/models"),
 },
 ```

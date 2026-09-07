@@ -1,9 +1,9 @@
 //! `foe init --repository PATH`: write a repository's starting execution
 //! contract to `PATH/.foe/contract.json` and a placeholder verifier to
-//! `PATH/.foe/verify`. The runtime reads configuration from no well-known
-//! location: only this command and the document it writes name these paths,
-//! and the document names the verifier by absolute path like any configured
-//! tool.
+//! `PATH/.foe/verify`. A later run started in that directory reads the
+//! contract when its command line names no document, which docs/design.md
+//! "The command line" states. The document names the verifier by absolute
+//! path like any configured tool.
 
 use crate::plan::{configuration_warnings, ConfigurationWarning};
 use crate::run;
@@ -69,7 +69,7 @@ fn document(
          this text. An episode that reads this text was started without a task; do nothing and report blocked.",
         contract_path.display()
     );
-    let mut document = run::coding_contract_document(root, task, run::default_model()?, None, Some(verify_path), None)?;
+    let mut document = run::coding_contract_document(root, task, run::default_model()?, Some(verify_path), None)?;
     document.budget.model_calls = INIT_MODEL_CALLS;
     document.budget.seconds = Some(INIT_SECONDS);
     document.grants.execute.push(root.to_path_buf());

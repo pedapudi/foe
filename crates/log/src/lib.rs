@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod append;
+pub mod artifact;
 pub mod digest;
 pub mod fold;
 pub mod seed;
@@ -112,9 +113,8 @@ pub enum EventData {
     TeamMessage { message_id: String, from: String, to: String, content: Vec<ContentBlock> },
     #[serde(rename = "team/delivered")]
     TeamDelivered { message_id: String, to: String },
-    /// Reserved for a shared task board.
     #[serde(rename = "team/task")]
-    TeamTask(serde_json::Value),
+    TeamTask(TeamTask),
 
     // ---- sandbox ---------------------------------------------------------
     #[serde(rename = "sandbox/denied")]
@@ -619,7 +619,7 @@ pub enum ToolFailureCode {
 }
 
 /// Payload of `tool/inner-call`: one tool call a composing tool, such as
-/// the built-in `python` tool, dispatched through the registry while its
+/// the built-in `compose_tools` tool, dispatched through the registry while its
 /// own model-issued call ran. `outer_call_id` names that model-issued call;
 /// `call_id` is the inner call's own id, which its `tool/result` names;
 /// `index` counts the outer call's inner dispatches from 0.
@@ -773,6 +773,41 @@ pub enum MemberPhase {
     Failed,
 }
 
+/// One complete revision of a task on a team's board. The lead log is the
+/// only writer. A queued task has no owner. A running or settled task names
+/// the child episode assigned to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TeamTask {
+    pub task_id: String,
+    pub revision: u64,
+    pub name: String,
+    pub contract: String,
+    pub description: String,
+    pub context: SpawnContext,
+    pub status: TaskStatus,
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocked_by: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<Outcome>,
+    /// The model-issued call that posted the task. A later capacity release
+    /// may start the child, so the call and the launch can be separated.
+    pub call_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    Queued,
+    Running,
+    Completed,
+    Blocked,
+    Exhausted,
+    Failed,
+}
+
 // ---- compaction payloads -------------------------------------------------------
 
 /// Request ids of summarization requests start with this. The request and
@@ -912,6 +947,8 @@ pub struct WorkflowRecovery {
 
 #[derive(Debug, thiserror::Error)]
 pub enum LogError {
+    #[error("{0}")]
+    Recording(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
     #[error("line {line}: {source}")]

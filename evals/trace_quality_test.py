@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import tempfile
 import unittest
@@ -97,7 +98,7 @@ def valid_events() -> list[dict[str, Any]]:
 def valid_inner_call_events() -> list[dict[str, Any]]:
     """docs/log-format.md `tool/inner-call`: inner results stay out of derived messages."""
     events = valid_events()
-    events[0]["data"]["contract"]["tools"] = ["python", "read"]
+    events[0]["data"]["contract"]["tools"] = ["compose_tools", "read"]
     events[4] = event(
         4,
         "assistant/message",
@@ -105,7 +106,9 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
             "step": 1,
             "request_id": "rq_1",
             "text": "",
-            "tool_calls": [{"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}],
+            "tool_calls": [
+                {"id": "outer", "name": "compose_tools", "args": {"source": "def main(): return 2"}}
+            ],
             "stop": "tool",
             "usage": {"input": 10, "output": 2, "cache_read": 0},
             "interrupted": False,
@@ -137,7 +140,7 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
             {
                 "step": 1,
                 "call_id": "outer",
-                "name": "python",
+                "name": "compose_tools",
                 "value": {"returned": 2},
                 "rendered": "2",
                 "is_error": False,
@@ -160,10 +163,16 @@ def valid_inner_call_events() -> list[dict[str, Any]]:
                         "role": "assistant",
                         "text": "",
                         "tool_calls": [
-                            {"id": "outer", "name": "python", "args": {"source": "def main(): return 2"}}
+                            {"id": "outer", "name": "compose_tools", "args": {"source": "def main(): return 2"}}
                         ],
                     },
-                    {"role": "tool", "call_id": "outer", "name": "python", "rendered": "2", "is_error": False},
+                    {
+                        "role": "tool",
+                        "call_id": "outer",
+                        "name": "compose_tools",
+                        "rendered": "2",
+                        "is_error": False,
+                    },
                 ],
             },
         ),
@@ -210,6 +219,85 @@ def evaluate_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 class TraceQualityTest(unittest.TestCase):
+    def test_message_identity_and_redelivery_checks(self) -> None:
+        """docs/log-format.md Team: queued ids are unique; receipts may repeat."""
+        original = valid_events()
+        ending = original.pop()
+        message = {"message_id": "ep_test:tm_01", "from": "ep_test", "to": "ep_child", "content": []}
+        receipt = {"message_id": message["message_id"], "to": "ep_child"}
+        for kind, data in [("team/message", message), ("team/delivered", receipt), ("team/delivered", receipt)]:
+            original.append(event(len(original), kind, data))
+        original.append(event(len(original), "episode/end", ending["data"]))
+        report = evaluate_events(original)
+        self.assertTrue(report["valid"], report["violations"])
+        changed = copy.deepcopy(original)
+        changed[-2] = event(changed[-2]["seq"], "team/message", {**message, "content": [{"type": "text", "text": "different message"}]})
+        report = evaluate_events(changed)
+        self.assertTrue(any("team/message.message_id" in v["message"] for v in report["violations"]))
+        changed = copy.deepcopy(original)
+        changed[-2]["data"]["to"] = "ep_wrong"
+        report = evaluate_events(changed)
+        self.assertTrue(any("team/delivered" in v["message"] for v in report["violations"]))
+
+    def test_duplicate_peer_inbox_items_fail_conformance(self) -> None:
+        """docs/log-format.md Team: repeated delivery produces one inbox item."""
+        events = valid_events()
+        ending = events.pop()
+        item = {"source": "peer", "from": "ep_sender", "message_id": "ep_lead:tm_01", "content": []}
+        events.extend([event(len(events), "inbox/item", item), event(len(events) + 1, "inbox/item", item)])
+        events.append(event(len(events), "episode/end", ending["data"]))
+        report = evaluate_events(events)
+        self.assertTrue(any("peer inbox message_id" in v["message"] for v in report["violations"]))
+
+    def test_canonical_spill_conformance_checks(self) -> None:
+        """docs/log-format.md tool/result: canonical bytes remain reconstructable."""
+        for fault in (None, "missing", "digest", "length", "json", "path", "error"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                content = b'{"content":"two"}' if fault != "json" else b'invalid'
+                name = "result.json" if fault != "path" else "../result.json"
+                locator = {"spill": name, "bytes": len(content), "is_error": False,
+                           "digest": "sha256:" + hashlib.sha256(content).hexdigest()}
+                if fault == "digest":
+                    locator["digest"] = "sha256:" + "0" * 64
+                if fault == "length":
+                    locator["bytes"] = len(content) + 1
+                if fault == "error":
+                    locator["is_error"] = True
+                (root / "spill").mkdir()
+                if fault != "missing":
+                    (root / "spill" / name).write_bytes(content)
+                events = valid_inner_call_events()
+                events[6]["data"].update(spill=name, value=locator)
+                path = root / "episode.jsonl"
+                path.write_text("".join(json.dumps(e) + "\n" for e in events))
+                report = evaluate([path])
+                self.assertEqual(report["valid"], fault is None, report["violations"])
+                if fault is not None:
+                    self.assertTrue(any("tool/result spill" in v["message"] for v in report["violations"]))
+
+    def test_rendering_archive_conformance_checks(self) -> None:
+        """docs/log-format.md tool/rendering-archive: bytes and result association agree."""
+        for fault in (None, "digest", "pair"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                content = b"complete rendering"
+                digest = hashlib.sha256(content).hexdigest()
+                name = f"renderings/{digest}.txt"
+                path = root / "spill" / name
+                path.parent.mkdir(parents=True)
+                path.write_bytes(content if fault != "digest" else b"different rendering")
+                events = valid_inner_call_events()
+                archive = {"step": 1, "call_id": "inner" if fault != "pair" else "absent",
+                           "file": name, "digest": "sha256:" + digest, "bytes": len(content)}
+                events.insert(6, event(6, "tool/rendering-archive", archive))
+                for index, item in enumerate(events):
+                    item["seq"] = index
+                log = root / "episode.jsonl"
+                log.write_text("".join(json.dumps(e) + "\n" for e in events))
+                report = evaluate([log])
+                self.assertEqual(report["valid"], fault is None, report["violations"])
+
     def test_valid_trace_conforms(self) -> None:
         report = evaluate_events(valid_events())
         self.assertTrue(report["valid"], report["violations"])

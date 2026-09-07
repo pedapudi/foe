@@ -16,8 +16,8 @@
 //! [`REFRESH_MARGIN`] of expiry. Nothing is written back to the file.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use base64::Engine;
 
@@ -84,18 +84,21 @@ pub fn read_credentials(path: &Path) -> Result<Credentials, AuthError> {
 }
 
 /// Mints one access token. Returns the token and its lifetime in seconds.
-pub fn mint(credentials: &Credentials) -> Result<(String, u64), AuthError> {
+pub async fn mint(credentials: &Credentials) -> Result<(String, u64), AuthError> {
     let endpoint = credentials.token_uri();
     let json = match credentials {
-        Credentials::AuthorizedUser { client_id, client_secret, refresh_token, .. } => post_form(
-            endpoint,
-            &[
-                ("grant_type", "refresh_token"),
-                ("client_id", client_id),
-                ("client_secret", client_secret),
-                ("refresh_token", refresh_token),
-            ],
-        )?,
+        Credentials::AuthorizedUser { client_id, client_secret, refresh_token, .. } => {
+            post_form(
+                endpoint,
+                &[
+                    ("grant_type", "refresh_token"),
+                    ("client_id", client_id),
+                    ("client_secret", client_secret),
+                    ("refresh_token", refresh_token),
+                ],
+            )
+            .await?
+        }
         Credentials::ServiceAccount { client_email, private_key_pem, token_uri } => {
             let now = super::now_ms() / 1000;
             let assertion = service_account_assertion(client_email, private_key_pem, token_uri, now)
@@ -103,7 +106,8 @@ pub fn mint(credentials: &Credentials) -> Result<(String, u64), AuthError> {
             post_form(
                 endpoint,
                 &[("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"), ("assertion", &assertion)],
-            )?
+            )
+            .await?
         }
     };
     let fail = |reason: String| AuthError::Endpoint { endpoint: endpoint.to_string(), reason, retryable: false };
@@ -177,22 +181,29 @@ impl Google {
     }
 
     /// A token valid for at least [`REFRESH_MARGIN`] from now.
-    pub fn token(&self) -> Result<String, AuthError> {
-        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
+    pub async fn token(&self) -> Result<String, AuthError> {
+        let mut cache = self.cache.lock().await;
         if let Some((token, expiry)) = cache.as_ref() {
             if expiry.saturating_duration_since(Instant::now()) > REFRESH_MARGIN {
                 return Ok(token.clone());
             }
         }
-        let (token, expires_in) = mint(&self.credentials)?;
-        *cache = Some((token.clone(), Instant::now() + Duration::from_secs(expires_in)));
+        let (token, expires_in) = mint(&self.credentials).await?;
+        let expiry =
+            Instant::now().checked_add(Duration::from_secs(expires_in)).ok_or_else(|| AuthError::Endpoint {
+                endpoint: self.credentials.token_uri().to_string(),
+                reason: "response expires_in exceeds the supported lifetime".into(),
+                retryable: false,
+            })?;
+        *cache = Some((token.clone(), expiry));
         Ok(token)
     }
 }
 
+#[async_trait::async_trait]
 impl Auth for Google {
-    fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
-        Ok(vec![("authorization".to_string(), format!("Bearer {}", self.token()?))])
+    async fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
+        Ok(vec![("authorization".to_string(), format!("Bearer {}", self.token().await?))])
     }
 }
 
@@ -233,8 +244,8 @@ JJykaWpMBy01wxf52VpXYZY=
 -----END PRIVATE KEY-----
 ";
 
-    #[test]
-    fn authorized_user_credentials_are_exchanged_and_cached() {
+    #[tokio::test]
+    async fn authorized_user_credentials_are_exchanged_and_cached() {
         let server = Server::start(vec![Reply::full(
             200,
             r#"{"access_token":"ya29.x","expires_in":3599,"token_type":"Bearer"}"#,
@@ -247,8 +258,8 @@ JJykaWpMBy01wxf52VpXYZY=
         std::fs::write(&path, json.to_string()).unwrap();
         let google = Google::open(&path).unwrap();
         assert_eq!(google.credentials().kind(), "authorized_user");
-        assert_eq!(google.headers().unwrap(), vec![("authorization".to_string(), "Bearer ya29.x".to_string())]);
-        google.headers().unwrap();
+        assert_eq!(google.headers().await.unwrap(), vec![("authorization".to_string(), "Bearer ya29.x".to_string())]);
+        google.headers().await.unwrap();
         let seen = server.requests();
         assert_eq!(seen.len(), 1, "the token is cached until near expiry");
         assert_eq!(seen[0].path, "/token");
@@ -284,18 +295,25 @@ JJykaWpMBy01wxf52VpXYZY=
         public.verify(signed.as_bytes(), &url.decode(parts[2]).unwrap()).expect("signature verifies");
     }
 
-    #[test]
-    fn service_account_file_is_exchanged_with_a_jwt_bearer_grant() {
-        let server = Server::start(vec![Reply::full(200, r#"{"access_token":"sa-token","expires_in":3600}"#)]);
+    #[tokio::test]
+    async fn service_account_file_is_exchanged_with_a_jwt_bearer_grant() {
+        let invalid = serde_json::json!({"access_token":"unusable", "expires_in":u64::MAX}).to_string();
+        let server = Server::start(vec![
+            Reply::full(200, &invalid),
+            Reply::full(200, r#"{"access_token":"sa-token","expires_in":3600}"#),
+        ]);
         let path = scratch("sa.json");
         let json = serde_json::json!({
             "type": "service_account", "client_email": "sa@p.iam.gserviceaccount.com",
             "private_key": TEST_KEY, "token_uri": format!("{}/token", server.base()),
         });
         std::fs::write(&path, json.to_string()).unwrap();
-        let google = Google::open(&path).unwrap();
-        assert_eq!(google.token().unwrap(), "sa-token");
-        let body = server.requests()[0].body.clone();
+        let credential = Google::open(&path).unwrap();
+        let error = credential.token().await.unwrap_err();
+        assert!(!error.retryable(), "{error}");
+        assert!(error.to_string().contains("expires_in"), "{error}");
+        assert_eq!(credential.token().await.unwrap(), "sa-token");
+        let body = server.requests()[1].body.clone();
         assert!(
             body.starts_with("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=eyJ"),
             "{body}"
@@ -314,8 +332,8 @@ JJykaWpMBy01wxf52VpXYZY=
         assert!(pem_to_der("-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----").is_err());
     }
 
-    #[test]
-    fn a_refused_exchange_is_an_endpoint_error() {
+    #[tokio::test]
+    async fn a_refused_exchange_is_an_endpoint_error() {
         let server = Server::start(vec![Reply::full(
             400,
             r#"{"error":"invalid_grant","error_description":"Token has been expired or revoked."}"#,
@@ -326,7 +344,7 @@ JJykaWpMBy01wxf52VpXYZY=
             "token_uri": format!("{}/token", server.base()),
         });
         std::fs::write(&path, json.to_string()).unwrap();
-        let err = Google::open(&path).unwrap().headers().unwrap_err();
+        let err = Google::open(&path).unwrap().headers().await.unwrap_err();
         assert!(!err.retryable());
         assert!(err.to_string().contains("HTTP 400: invalid_grant"), "{err}");
     }

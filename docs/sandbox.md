@@ -316,9 +316,9 @@ The enclosing task environment owns process cleanup, as
 [tools.md](tools.md#session) specifies.
 
 One request may replace the derived narrowing with a policy of its own.
-The built-in `python` tool is the one caller: its interpreter runs with
+The built-in `compose_tools` tool is the one caller. Its interpreter runs with
 read on `/usr` alone, execute on the interpreter, write on nothing, and no
-network, in place of the episode's roots. [code-mode.md](code-mode.md)
+network, in place of the episode's roots. [tool-composition.md](tool-composition.md)
 specifies that confinement.
 
 Each executable also runs in its own process group. When its timeout

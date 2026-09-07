@@ -65,8 +65,9 @@ pub struct Responses {
     /// `reasoning.effort`, sent only when configured, because models
     /// without reasoning reject the field.
     reasoning_effort: Option<String>,
-    /// Request processing tier, sent only when configured.
-    service_tier: Option<String>,
+    /// The request field the provider table names for the service tier,
+    /// with the configured value. Sent only when configured.
+    service_tier: Option<(&'static str, String)>,
 }
 
 impl Responses {
@@ -75,7 +76,7 @@ impl Responses {
         model: String,
         max_output_tokens: Option<u32>,
         reasoning_effort: Option<String>,
-        service_tier: Option<String>,
+        service_tier: Option<(&'static str, String)>,
     ) -> Responses {
         Responses { provider, model, max_tokens: max_output_tokens, reasoning_effort, service_tier }
     }
@@ -86,7 +87,8 @@ impl Format for Responses {
         // The ChatGPT Codex backend shares the Responses event format but
         // rejects the public API's per-request output cap.
         let max_tokens = (self.provider != "openai-codex").then(|| req.max_output_tokens.or(self.max_tokens)).flatten();
-        request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), self.service_tier.as_deref(), req)
+        let tier = self.service_tier.as_ref().map(|(field, value)| (*field, value.as_str()));
+        request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), tier, req)
     }
 
     fn decoder(&self) -> Box<dyn Decoder> {
@@ -100,7 +102,7 @@ pub fn request_body(
     model: &str,
     max_tokens: Option<u32>,
     reasoning_effort: Option<&str>,
-    service_tier: Option<&str>,
+    service_tier: Option<(&str, &str)>,
     req: &ModelRequestBody,
 ) -> Value {
     let mut body = json!({
@@ -123,8 +125,8 @@ pub fn request_body(
     if let Some(effort) = reasoning_effort {
         body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
     }
-    if let Some(tier) = service_tier {
-        body["service_tier"] = json!(tier);
+    if let Some((field, tier)) = service_tier {
+        body[field] = json!(tier);
     }
     body
 }
@@ -666,13 +668,17 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(Responses::new("openai", "gpt-5".into(), Some(2048), None, None).body(&req)["max_output_tokens"], 9);
     }
 
+    /// The route sends the tier in the field the provider table names, and
+    /// carries the configured value unchanged.
     #[test]
     fn configured_service_tier_reaches_the_request_body() {
         let req = request();
-        let priority =
-            Responses::new("openai-codex", "gpt-5.6-sol".into(), None, Some("low".into()), Some("priority".into()))
-                .body(&req);
+        let tier = Some(("service_tier", "priority".to_string()));
+        let priority = Responses::new("openai-codex", "gpt-5.6-sol".into(), None, Some("low".into()), tier).body(&req);
         assert_eq!(priority["service_tier"], "priority");
+
+        let flex = Responses::new("openai", "gpt-5".into(), None, None, Some(("service_tier", "flex".into())));
+        assert_eq!(flex.body(&req)["service_tier"], "flex");
 
         let automatic = Responses::new("openai", "gpt-5".into(), None, None, None).body(&req);
         assert!(automatic.get("service_tier").is_none());

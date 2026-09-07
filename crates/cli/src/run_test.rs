@@ -1,11 +1,20 @@
 use super::*;
 
+/// The built-in coding document under a model, which is what a run of
+/// `--config builtin:coding` and a run with no `--config` both build.
+fn coding(
+    task: String,
+    model: ModelConfig,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    builtin_contract_document(BUILTIN_CODING, task, Some(model), verify, sandbox)
+}
+
 #[test]
 fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol() {
     for provider in ["openai", "openai-codex"] {
-        let config =
-            builtin_contract_document("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None, None)
-                .unwrap();
+        let config = coding("task".into(), ModelConfig::new(provider, "gpt-5.6-sol"), None, None).unwrap();
         assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("low"));
         let workflow = config.workflow.as_ref().unwrap();
         for node in ["assess-task", "repair-task"] {
@@ -19,7 +28,7 @@ fn builtin_coding_uses_low_implementation_and_xhigh_assessment_for_gpt_5_6_sol()
 fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     let mut explicit = ModelConfig::new("openai-codex", "gpt-5.6-sol");
     explicit.options.insert("reasoning_effort".into(), "high".into());
-    let config = builtin_contract_document("task".into(), explicit, None, None, None).unwrap();
+    let config = coding("task".into(), explicit, None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
@@ -27,9 +36,7 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
         assert_eq!(contract.model.as_ref().unwrap().option("reasoning_effort"), Some("high"));
     }
 
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("reasoning_effort"), None);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         let contract = node.model.as_ref().unwrap();
@@ -37,33 +44,15 @@ fn builtin_coding_preserves_explicit_reasoning_and_other_models() {
     }
 }
 
+/// docs/design.md "The command line": the built-in document carries the
+/// credential options of the model block it is given, so a credential file
+/// recorded by `foe login` reaches the run through that block.
 #[test]
-fn builtin_key_file_uses_the_providers_credential_option() {
-    let dir = crate::tests::scratch("foe-cli-run", "builtin-credential");
-    let credential = dir.join("credential.json");
-    std::fs::write(&credential, "{}\n").unwrap();
-    let canonical = credential.canonicalize().unwrap().to_string_lossy().into_owned();
-
-    let codex = builtin_contract_document(
-        "task".into(),
-        ModelConfig::new("openai-codex", "gpt-5.6-sol"),
-        Some(&credential),
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(codex.model.as_ref().unwrap().option("token_file"), Some(canonical.as_str()));
-    assert_eq!(codex.model.as_ref().unwrap().option("api_key_file"), None);
-
-    let openai = builtin_contract_document(
-        "task".into(),
-        ModelConfig::new("openai", "gpt-5.6-sol"),
-        Some(&credential),
-        None,
-        None,
-    )
-    .unwrap();
-    assert_eq!(openai.model.as_ref().unwrap().option("api_key_file"), Some(canonical.as_str()));
+fn builtin_coding_carries_the_credential_options_of_its_model_block() {
+    let mut model = ModelConfig::new("openai", "gpt-5.6-sol");
+    model.options.insert("api_key_file".into(), "/keys/openai.json".into());
+    let document = coding("task".into(), model, None, None).unwrap();
+    assert_eq!(document.model.as_ref().unwrap().option("api_key_file"), Some("/keys/openai.json"));
 }
 
 /// docs/design.md "The command line": a bare task reserves independent
@@ -73,9 +62,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(BUILTIN_IMPLEMENTATION_CALLS, 60);
     assert_eq!(BUILTIN_ASSESSMENT_CALLS, 60);
     assert_eq!(BUILTIN_REPAIR_CALLS, 60);
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("openai-codex", "gpt-5.6-sol"), None, None).unwrap();
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(
         config.budget.model_calls,
@@ -151,7 +138,7 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     let model = ModelConfig::new("anthropic", "claude-opus-5");
-    let config = builtin_contract_document("task".into(), model.clone(), None, Some(&script), None).unwrap();
+    let config = coding("task".into(), model.clone(), Some(&script), None).unwrap();
     resolve(&config).expect("the guarded built-in workflow resolves");
     let canonical = script.canonicalize().unwrap();
     assert_eq!(config.tool_defs["check"].exec, canonical);
@@ -174,20 +161,164 @@ fn builtin_coding_with_verify_gates_both_assessment_branches() {
     assert!(done.verify.is_none(), "implementation claims are not authoritative");
     assert!(done.returns.is_some(), "the typed handoff remains declared");
 
-    let plain = builtin_contract_document("task".into(), model, None, None, None).unwrap();
+    let plain = coding("task".into(), model, None, None).unwrap();
     assert!(plain.tool_defs.is_empty(), "without --verify the document is unchanged");
+}
+
+/// The single document under a model, which is what a run of
+/// `--config builtin:single` builds.
+fn single(
+    task: String,
+    model: ModelConfig,
+    verify: Option<&Path>,
+    sandbox: Option<&str>,
+) -> Result<ContractDocument, String> {
+    builtin_contract_document(BUILTIN_SINGLE, task, Some(model), verify, sandbox)
+}
+
+/// docs/design.md "The command line": the single document runs one
+/// implementation episode and no assessment, and states that episode with
+/// the return schema, tools, grants, sandbox mode, and instructions the
+/// coding workflow's implementation node states.
+#[test]
+fn builtin_single_runs_the_implementation_episode_alone() {
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let document = single("task".into(), model.clone(), None, None).unwrap();
+    resolve(&document).expect("the single document resolves before an episode starts");
+    assert_eq!(document.name, "single");
+    assert!(document.workflow.is_none(), "one episode needs no graph");
+    assert_eq!(document.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
+    assert_eq!(document.budget.max_episodes, 1);
+    assert_eq!(document.budget.max_concurrent, 1);
+    assert!(document.tool_defs.is_empty(), "without --verify the document defines no tool");
+
+    let coding = coding("task".into(), model, None, None).unwrap();
+    let implementation = coding.workflow.as_ref().unwrap().nodes["implement-task"].model.as_ref().unwrap();
+    assert_eq!(document.instructions, implementation.instructions);
+    assert_eq!(document.tools, implementation.tools);
+    assert_eq!(document.grants, coding.grants);
+    assert_eq!(document.sandbox.mode, coding.sandbox.mode);
+    let returns = document.done_when.as_ref().unwrap().returns.as_ref().unwrap();
+    assert_eq!(returns, implementation.done_when.as_ref().unwrap().returns.as_ref().unwrap());
+    assert!(document.done_when.as_ref().unwrap().verify.is_none(), "without --verify nothing gates the return");
+}
+
+/// docs/design.md "The command line": `--verify` gates the single episode
+/// on the verifier's acceptance, with the retry allowance the coding
+/// workflow receives, and `--sandbox` selects the mode as it does there.
+#[test]
+fn builtin_single_takes_the_verifier_and_the_sandbox_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = crate::tests::scratch("foe-cli-single", "built-in-checker");
+    let script = dir.join("check");
+    std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let document = single("task".into(), model.clone(), Some(&script), Some("off")).unwrap();
+    resolve(&document).expect("the guarded single document resolves");
+    assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
+    assert!(document.tools.iter().any(|tool| tool == "check"));
+    let gate = document.done_when.as_ref().unwrap();
+    assert_eq!(gate.verify.as_deref(), Some("check"));
+    assert_eq!(gate.retries, BUILTIN_VERIFIER_RETRIES);
+    assert!(gate.returns.is_some(), "the typed return stays declared beside the verifier");
+    assert_eq!(document.budget.max_episodes, 1, "a finding re-fires inside the one episode");
+    assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
+
+    let error = single("task".into(), model, None, Some("wide-open")).unwrap_err();
+    assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
+}
+
+/// The recorded fingerprint of each document the binary carries, over the
+/// fixed runtime and host of [`recorded_runtime`] and [`fixed_host`]. A
+/// retained trajectory identifies the document that produced it by this
+/// value, so the two forms hash apart and neither hash moves unless the
+/// document, the harness text, or the built-in tool specifications change.
+/// `crates/cli/tests/integration.rs` records the same for every example
+/// document.
+#[rustfmt::skip]
+const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 2] = [
+    ("coding", "sha256:932e6eec5d4766355ed7f8c6b911e9d61f8c695bfe1815c98f2c2236e4a2ce2a"),
+    ("single", "sha256:907f05d0330dbc5edeee38a3fe1b7d283aa2d01fc42d3a02b2cf802f6156964b"),
+];
+
+/// The runtime the recorded fingerprints were computed under. The real one
+/// hashes the running binary, so it differs on every build; pinning it here
+/// leaves the document as the only thing the recorded hashes measure.
+fn recorded_runtime() -> foe_log::RuntimeInfo {
+    foe_log::RuntimeInfo { version: "0.2.0".into(), build: "sha256:recorded".into() }
+}
+
+/// The document with the two values that depend on the host replaced by
+/// fixed ones, at every depth: the environment description, which names the
+/// working directory and the executables found at the standard paths, and
+/// the execute grant, whose roots collapse to one entry on a host where
+/// `/bin` names the same directory as `/usr/bin`. Everything else a
+/// fingerprint covers is the document itself.
+fn fixed_host(document: &ContractDocument) -> ContractDocument {
+    fn walk(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(fields) => {
+                if let Some(instructions) = fields.get_mut("instructions") {
+                    if instructions.get("environment").is_some() {
+                        instructions["environment"] = serde_json::json!("a fixed environment description");
+                    }
+                }
+                if let Some(grants) = fields.get_mut("grants") {
+                    if grants.get("execute").is_some() {
+                        grants["execute"] = serde_json::json!(["/usr/bin"]);
+                    }
+                }
+                fields.values_mut().for_each(walk);
+            }
+            serde_json::Value::Array(items) => items.iter_mut().for_each(walk),
+            _ => {}
+        }
+    }
+    let mut value = serde_json::to_value(document).expect("a document serializes");
+    walk(&mut value);
+    serde_json::from_value(value).expect("the fixed document parses")
+}
+
+/// docs/design.md "Execution contracts and fingerprints": each built-in
+/// document hashes to the fingerprint recorded for it, and the two forms
+/// hash apart.
+#[test]
+fn every_built_in_document_hashes_to_its_recorded_fingerprint() {
+    let model = ModelConfig::new("anthropic", "claude-opus-5");
+    let recorded: std::collections::BTreeMap<&str, &str> = RECORDED_BUILTIN_FINGERPRINTS.into_iter().collect();
+    assert_eq!(BUILTIN_DOCUMENTS.len(), recorded.len(), "every built-in document has a recorded fingerprint");
+    let mut found = Vec::new();
+    let mut changed = Vec::new();
+    for name in BUILTIN_DOCUMENTS {
+        let task = "the task the recording ignores".into();
+        let document = builtin_contract_document(name, task, Some(model.clone()), None, None).unwrap();
+        let resolved = resolve(&fixed_host(&document)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let hash = compute(&resolved, &extra_builtin_specs(), &recorded_runtime())
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
+            .hash;
+        if hash != recorded[name] {
+            changed.push(format!("({name:?}, {hash:?})"));
+        }
+        found.push(hash);
+    }
+    assert!(changed.is_empty(), "built-in document fingerprints changed:\n    {}", changed.join(",\n    "));
+    assert_ne!(found[0], found[1], "the coding workflow and the single document hash apart");
 }
 
 #[test]
 fn builtin_coding_selects_an_explicit_sandbox_mode() {
     let model = ModelConfig::new("openai-codex", "gpt-5.6-sol");
-    let config = builtin_contract_document("task".into(), model.clone(), None, None, Some("off")).unwrap();
+    let config = coding("task".into(), model.clone(), None, Some("off")).unwrap();
     assert_eq!(serde_json::to_value(config.sandbox.mode).unwrap(), "off");
 
-    let error = builtin_contract_document("task".into(), model, None, None, Some("wide-open")).unwrap_err();
+    let error = coding("task".into(), model, None, Some("wide-open")).unwrap_err();
     assert_eq!(error, "--sandbox wide-open: expected best-effort, required, or off");
 }
 
+/// The command line carries the tier the caller typed into every episode
+/// of the built-in workflow. The provider table judges the value, so the
+/// command line refuses none of them.
 #[test]
 fn builtin_coding_selects_an_explicit_service_tier() {
     let options = Options {
@@ -196,7 +327,7 @@ fn builtin_coding_selects_an_explicit_service_tier() {
         service_tier: Some("priority".into()),
         ..Options::default()
     };
-    let config = load_contract_document(&options).unwrap();
+    let (config, _) = load_contract_document(&options).unwrap();
     assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     let workflow = config.workflow.as_ref().unwrap();
     for node in ["assess-task", "repair-task"] {
@@ -204,32 +335,160 @@ fn builtin_coding_selects_an_explicit_service_tier() {
         assert_eq!(contract.model.as_ref().unwrap().option("service_tier"), Some("priority"));
     }
 
-    let invalid = Options { service_tier: Some("fastest".into()), ..options };
-    assert_eq!(load_contract_document(&invalid).unwrap_err(), "--service-tier fastest: expected default or priority");
+    let other = Options { service_tier: Some("flex".into()), ..options };
+    let (config, _) = load_contract_document(&other).unwrap();
+    assert_eq!(config.model.as_ref().unwrap().option("service_tier"), Some("flex"));
 }
 
 #[test]
 fn explicit_config_owns_its_sandbox_mode() {
-    let options =
-        Options { config: Some(PathBuf::from("unused.json")), sandbox: Some("off".into()), ..Options::default() };
+    let options = Options { config: Some("unused.json".into()), sandbox: Some("off".into()), ..Options::default() };
     let error = load_contract_document(&options).unwrap_err();
+    assert_eq!(error, "--sandbox applies to a built-in document; unused.json declares its own behavior");
+}
+
+/// A contract document, with the `model` block given when there is one.
+/// The return value is the `--config` value naming it.
+fn contract_document_file(dir: &Path, model: Option<serde_json::Value>) -> String {
+    let mut value = serde_json::json!({
+        "version": 4,
+        "name": "document",
+        "instructions": {"role": "test"},
+        "tools": [],
+        "grants": {"read": [dir]},
+        "budget": {"model_calls": 1},
+        "sandbox": {"mode": "off"},
+        "task": "test"
+    });
+    if let Some(model) = model {
+        value["model"] = model;
+    }
+    let path = dir.join("config.json");
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+/// docs/design.md "The command line": a document that declares no `model`
+/// block takes one from the model options, exactly as the built-in
+/// document does, and stays without one when they are absent.
+#[test]
+fn a_document_without_a_model_block_takes_the_command_line_model() {
+    let dir = crate::tests::scratch("foe-cli-run", "model-less-document");
+    let credential = dir.join("credential.json");
+    std::fs::write(&credential, "{}\n").unwrap();
+    let path = contract_document_file(dir.as_ref(), None);
+
+    let options = Options {
+        config: Some(path.clone()),
+        model: Some("openai/gpt-5.6-sol".into()),
+        service_tier: Some("flex".into()),
+        ..Options::default()
+    };
+    let (config, _) = load_contract_document(&options).unwrap();
+    let model = config.model.as_ref().unwrap();
+    assert_eq!((model.provider.as_str(), model.model.as_str()), ("openai", "gpt-5.6-sol"));
+    assert_eq!(model.option("service_tier"), Some("flex"));
+
+    let none_given = Options { config: Some(path), ..Options::default() };
+    assert!(load_contract_document(&none_given).unwrap().0.model.is_none(), "the document still names no model");
+}
+
+/// A document that declares a `model` block owns the model, so each of the
+/// two options that would supply one is refused.
+#[test]
+fn explicit_config_owns_its_model_options() {
+    let dir = crate::tests::scratch("foe-cli-run", "document-model-block");
+    let path = contract_document_file(dir.as_ref(), Some(serde_json::json!({"provider": "openai", "model": "m"})));
+    let given = [
+        ("--model", Options { model: Some("anthropic/claude-opus-5".into()), ..Options::default() }),
+        ("--service-tier", Options { service_tier: Some("priority".into()), ..Options::default() }),
+    ];
+    for (option, options) in given {
+        let options = Options { config: Some(path.clone()), ..options };
+        let error = load_contract_document(&options).unwrap_err();
+        assert_eq!(error, format!("{option}: the contract document declares its own `model` block"));
+    }
+}
+
+/// docs/design.md "The command line": `--config` takes the name of a
+/// document the binary carries beside a file path, and a name the binary
+/// does not carry is refused with the names it carries.
+#[test]
+fn config_takes_a_built_in_name_beside_a_file_path() {
+    let named = contract_source("builtin:coding").unwrap();
+    assert!(matches!(named, ContractSource::Builtin("coding")));
+    assert_eq!(named.describe(), "builtin:coding");
+    let file = contract_source("/tmp/contract.json").unwrap();
+    assert!(matches!(&file, ContractSource::File(path) if path == Path::new("/tmp/contract.json")));
+    assert_eq!(file.describe(), "/tmp/contract.json");
     assert_eq!(
-        error,
-        "--sandbox applies to the built-in coding workflow; a contract document declares its own behavior"
+        contract_source("builtin:parser").unwrap_err(),
+        "--config builtin:parser: no built-in document has that name; the built-in documents are \
+         builtin:coding, builtin:single"
     );
 }
 
+/// A built-in document has no task of its own, so a command line naming one
+/// without a task is refused, and the refusal states where the task comes
+/// from.
 #[test]
-fn explicit_config_owns_its_service_tier() {
-    let options = Options {
-        config: Some(PathBuf::from("unused.json")),
-        service_tier: Some("priority".into()),
+fn a_built_in_name_without_a_task_is_refused() {
+    let options = Options { config: Some("builtin:coding".into()), ..Options::default() };
+    assert_eq!(load_contract_document(&options).unwrap_err(), USAGE_BUILTIN);
+    assert_eq!(USAGE_BUILTIN, "a task is required: a built-in document takes the task from the command line");
+    assert_eq!(load_contract_document(&Options::default()).unwrap_err(), USAGE_BARE);
+}
+
+/// docs/design.md "The command line": `--config builtin:coding` runs the
+/// document that a command line omitting `--config` runs, so the two
+/// documents and their fingerprints are one.
+#[test]
+fn the_built_in_name_and_the_omitted_option_select_one_document() {
+    let options = |config: Option<&str>| Options {
+        task: Some("task".into()),
+        config: config.map(str::to_string),
+        model: Some("anthropic/claude-opus-5".into()),
         ..Options::default()
     };
-    let error = load_contract_document(&options).unwrap_err();
+    let (named, _) = load_contract_document(&options(Some("builtin:coding"))).unwrap();
+    let (omitted, _) = load_contract_document(&options(None)).unwrap();
+    assert_eq!(serde_json::to_value(&named).unwrap(), serde_json::to_value(&omitted).unwrap());
+    let hash = |document: &ContractDocument| fingerprint(&resolve(document).unwrap()).unwrap().hash;
+    assert_eq!(hash(&named), hash(&omitted));
+}
+
+/// docs/design.md "The command line": `--verify` and `--sandbox` configure
+/// a built-in document under its name exactly as they configure it when
+/// `--config` is absent, and a document in a file states that behavior in
+/// its own keys. `--service-tier` reaches the `model` block of the named
+/// document as it reaches the block of the omitted one.
+#[test]
+fn the_run_options_of_the_built_in_workflow_apply_under_its_name() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = crate::tests::scratch("foe-cli-run", "named-run-options");
+    let script = dir.join("check");
+    std::fs::write(&script, "#!/bin/sh\nexit 0\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let options = |verify, sandbox, service_tier: Option<&str>| Options {
+        task: Some("task".into()),
+        config: Some("builtin:coding".into()),
+        model: Some("openai-codex/gpt-5.6-sol".into()),
+        verify,
+        sandbox,
+        service_tier: service_tier.map(str::to_string),
+        ..Options::default()
+    };
+    let document =
+        load_contract_document(&options(Some(script.clone()), Some("off".into()), Some("priority"))).unwrap().0;
+    assert_eq!(document.done_when.as_ref().unwrap().verify.as_deref(), Some("check"));
+    assert_eq!(document.tool_defs["check"].exec, script.canonicalize().unwrap());
+    assert_eq!(serde_json::to_value(document.sandbox.mode).unwrap(), "off");
+    assert_eq!(document.model.as_ref().unwrap().option("service_tier"), Some("priority"));
+
+    let refused = Options { config: Some("unused.json".into()), ..options(Some(script), None, None) };
     assert_eq!(
-        error,
-        "--service-tier applies to the built-in coding workflow; a contract document declares its own behavior"
+        load_contract_document(&refused).unwrap_err(),
+        "--verify applies to a built-in document; unused.json declares its own behavior"
     );
 }
 
@@ -244,21 +503,20 @@ fn builtin_environment_reports_fixed_path_observations_and_their_scope() {
 
 #[test]
 fn builtin_coding_declares_its_general_shell_command_surface() {
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     let expected: Vec<PathBuf> = BUILTIN_EXECUTE_ROOTS.iter().map(PathBuf::from).collect();
+    assert!(expected.iter().any(|root| Path::new("/usr/bin/python3").starts_with(root)));
     assert_eq!(config.grants.execute, expected);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert_eq!(node.model.as_ref().unwrap().grants.execute, expected);
+        assert!(node.model.as_ref().unwrap().tools.iter().any(|tool| tool == "bash"));
+        assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != foe_core::COMPOSING_TOOL));
     }
 }
 
 #[test]
 fn builtin_coding_can_retrieve_shortened_tool_results() {
-    let config =
-        builtin_contract_document("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None, None)
-            .unwrap();
+    let config = coding("task".into(), ModelConfig::new("anthropic", "claude-opus-5"), None, None).unwrap();
     assert_eq!(config.tools, ["read", "grep", "edit", "bash"]);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != "retrieve"));
@@ -293,15 +551,75 @@ fn invalid_host_verifier_schema_starts_no_episode() {
     )
     .unwrap();
     let error = run(Options {
-        config: Some(config_path),
+        config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.to_path_buf()),
         host: true,
-        headless: true,
+        viewer: Viewer::Off,
         ..Options::default()
     })
     .unwrap_err();
     assert!(error.contains("done_when.verify") && error.contains("found 0"), "{error}");
-    assert!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
+    let created =
+        std::fs::read_dir(&dir).unwrap().flatten().map(|entry| entry.path()).find(|path| path.is_dir()).unwrap();
+    assert!(std::fs::read(created.join(foe_log::fold::LOG_FILE)).unwrap().is_empty());
+}
+
+/// docs/viewer.md "Terminal conversation": the terminal display chooses what
+/// standard output shows and composes with every `--viewer` value; `off` and
+/// `--host` are the running forms without a browser viewer.
+#[test]
+fn conversation_composes_with_every_viewer_value() {
+    for viewer in [Viewer::Open, Viewer::Serve] {
+        assert!(serves_viewer(&Options { conversation: true, viewer, ..Options::default() }));
+    }
+    assert!(!serves_viewer(&Options { conversation: true, viewer: Viewer::Off, ..Options::default() }));
+    assert!(!serves_viewer(&Options { host: true, ..Options::default() }));
+    assert!(serves_viewer(&Options::default()), "a run opens the viewer without being asked");
+    assert_eq!(Viewer::parse("serve"), Ok(Viewer::Serve));
+    assert_eq!(Viewer::parse("watch"), Err("--viewer watch: expected open, serve, or off".into()));
+}
+
+/// docs/design.md "The command line": a `--from DIR@SEQ` run whose task the
+/// source log recorded reruns the copied conversation from the boundary, so
+/// the seeded log carries no directive of its own; every other task is
+/// appended after `seed/end` as a live `system` item.
+#[test]
+fn a_fork_appends_every_task_except_the_one_the_source_recorded() {
+    let dir = crate::tests::scratch("foe-cli-run", "fork-directive");
+    let source = dir.join("source");
+    std::fs::create_dir(&source).unwrap();
+    let start = serde_json::json!({ "seq": 0, "time": 1, "type": "episode/start", "data": {
+        "id": "ep_source", "parent_id": null, "fork_origin": null, "team_id": null,
+        "contract": {}, "contract_fingerprint": "sha256:source", "task": "the recorded task",
+        "runtime": { "version": "0", "build": "unknown" },
+        "sandbox": { "mode": "off", "landlock_abi": 0, "resolved_permissions": {},
+            "process_boundary": { "kind": "process-group", "subtree_cleanup": "observational" } } } });
+    let item = serde_json::json!({ "seq": 1, "time": 1, "type": "inbox/item", "data": {
+        "source": "task", "content": [{ "type": "text", "text": "the recorded task" }],
+        "from": null, "message_id": null } });
+    std::fs::write(source.join(foe_log::fold::LOG_FILE), format!("{start}\n{item}\n")).unwrap();
+
+    let recorded = Task { text: "the recorded task".into(), recorded: true };
+    assert_eq!(recorded.directive(), None);
+    let (reran, _, note) = fork(&source, 2, Some(&dir.join("rerun")), recorded.directive()).unwrap();
+    assert!(note.unwrap().contains("fork of"), "the mode is announced");
+    let events = foe_log::fold::read_all(&reran).unwrap();
+    assert!(matches!(events.last().unwrap().data, EventData::SeedEnd {}), "no directive follows the copied prefix");
+
+    let given = Task { text: "a new task".into(), recorded: false };
+    let (directed, _, _) = fork(&source, 2, Some(&dir.join("directed")), given.directive()).unwrap();
+    let events = foe_log::fold::read_all(&directed).unwrap();
+    let EventData::InboxItem(item) = &events.last().unwrap().data else { panic!("the task is appended") };
+    assert_eq!(item.source, InboxSource::System);
+    assert_eq!(item.content, vec![ContentBlock::Text { text: "a new task".into() }]);
+
+    // The parent of episode directories holds no log of its own, and is
+    // refused by the name of the file it lacks, before anything is created.
+    let parent = fork(&dir, 2, Some(&dir.join("misnamed")), given.directive()).unwrap_err();
+    assert!(parent.contains(&format!("{} does not exist", dir.join(foe_log::fold::LOG_FILE).display())), "{parent}");
+    assert!(parent.contains("`foe: log PATH`"), "the refusal names the line a run prints: {parent}");
+    assert_eq!(source_state(&dir).unwrap_err(), parent, "the same rule applies without a boundary");
+    assert!(!dir.join("misnamed").exists());
 }
 
 /// docs/design.md "Contract construction": a child resumed without its
@@ -343,10 +661,10 @@ fn independently_resumed_child_rejects_a_changed_executable() {
     .unwrap();
     std::fs::write(&tool, "second").unwrap();
     let error = run(Options {
-        config: Some(config_path),
+        config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.clone()),
         host: true,
-        headless: true,
+        viewer: Viewer::Off,
         ..Options::default()
     })
     .unwrap_err();
@@ -400,7 +718,7 @@ fn child_resume_uses_recorded_allowance_and_fingerprint() {
             std::fs::write(dir.join("child-launch.json"), serde_json::to_vec(&metadata).unwrap()).unwrap();
         }
 
-        let (_, launch) = resume(&dir, "sha256:recorded").unwrap();
+        let (_, launch, _) = resume(&dir, "sha256:recorded").unwrap();
         assert_eq!(launch.episode_id, "ep_child");
         assert_eq!(launch.expected_contract_fingerprint.as_deref(), Some("sha256:recorded"));
         assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
@@ -440,7 +758,39 @@ fn ordinary_prepared_fork_retains_source_fingerprint_exemption() {
     writer.sync().unwrap();
     drop(writer);
 
-    let (_, launch) = resume(&dir, "sha256:fork-contract").unwrap();
+    let (_, launch, _) = resume(&dir, "sha256:fork-contract").unwrap();
     assert!(launch.expected_contract_fingerprint.is_none());
     assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
+}
+
+/// docs/log-format.md "Seeding": a destination without seed/end cannot resume.
+#[test]
+fn resume_refuses_an_incomplete_seed_without_changing_its_log() {
+    let dir = crate::tests::scratch("foe-cli-resume", "incomplete-seed");
+    let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+    writer
+        .append(EventData::EpisodeStart(EpisodeStart {
+            id: "ep_fork".into(),
+            parent_id: None,
+            fork_origin: Some(foe_log::ForkOrigin { episode_id: "ep_source".into(), seq: 1 }),
+            team_id: None,
+            contract: serde_json::json!({}),
+            contract_fingerprint: "sha256:source".into(),
+            task: "task".into(),
+            runtime: runtime_info(),
+            sandbox: foe_log::SandboxInfo {
+                mode: foe_log::SandboxMode::Off,
+                landlock_abi: 0,
+                resolved_permissions: Default::default(),
+                process_boundary: Default::default(),
+            },
+            effective_budget: Some(serde_json::from_value(serde_json::json!({ "model_calls": 2 })).unwrap()),
+        }))
+        .unwrap();
+    writer.sync().unwrap();
+    drop(writer);
+    let before = std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap();
+    let error = resume(&dir, "sha256:source").unwrap_err();
+    assert!(error.contains("seed/end"), "{error}");
+    assert_eq!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap(), before);
 }

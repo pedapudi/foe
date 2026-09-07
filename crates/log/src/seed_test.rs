@@ -192,3 +192,112 @@ fn a_seeded_log_states_the_format_version_on_its_first_event() {
     assert!(written[1..].iter().all(|event| event.version.is_none()));
     assert_eq!(written, read_all(&dst).unwrap());
 }
+
+fn source_with_canonical(
+    dir: &std::path::Path,
+    file: &str,
+    content: Option<&[u8]>,
+    value: serde_json::Value,
+) -> Vec<Event> {
+    if let Some(bytes) = content {
+        artifact::retain(&dir.join("spill").join(file), bytes).unwrap();
+    }
+    let mut writer = Writer::create(dir, None).unwrap();
+    let EventData::ToolResult(mut result) = fx::result(1, "tc_canonical", "result") else { unreachable!() };
+    result.spill = Some(file.into());
+    result.value = value;
+    [
+        EventData::EpisodeStart(fx::start("ep_source")),
+        fx::inbox(InboxSource::Task, "task"),
+        fx::header(),
+        fx::request(1, 2, vec![1], vec![]),
+        fx::assistant(1, "", vec![fx::call("tc_canonical")], false),
+        EventData::ToolResult(result),
+    ]
+    .into_iter()
+    .map(|data| writer.append(data).unwrap())
+    .collect()
+}
+
+/// docs/log-format.md "Seeding": copied canonical spills remain readable independently of their source.
+#[test]
+fn seed_copies_canonical_spills_with_and_without_digest() {
+    for has_digest in [false, true] {
+        let src = tmp("canonical-source");
+        let dst = tmp("canonical-destination");
+        let bytes = br#"{"count":3}"#;
+        let mut value = serde_json::json!({"spill":"result.json", "bytes":bytes.len(), "is_error":false});
+        if has_digest {
+            value["digest"] = format!("sha256:{}", digest::sha256_hex(bytes)).into();
+        }
+        let events = source_with_canonical(&src, "result.json", Some(bytes), value);
+        let written = seed(&src, events.len() as u64, &dst, header()).unwrap();
+        assert_eq!(std::fs::read(dst.join("spill/result.json")).unwrap(), bytes);
+        let moved = src.with_extension("retained");
+        assert!(!moved.exists());
+        std::fs::rename(&src, moved).unwrap();
+        let EventData::ToolResult(result) = &written[5].data else { unreachable!() };
+        assert_eq!(artifact::read_canonical(&dst.join("spill"), 5, result).unwrap().unwrap(), bytes);
+    }
+}
+
+/// docs/log-format.md "Seeding": unavailable or inconsistent canonical evidence prevents seed/end.
+#[test]
+fn seed_rejects_invalid_canonical_evidence_and_ignores_results_outside_the_prefix() {
+    let bytes = br#"{"count":3}"#;
+    for fault in ["missing", "length", "digest", "digest-type", "json", "path", "locator", "error", "symlink"] {
+        let src = tmp("canonical-invalid");
+        let dst = tmp("canonical-rejected");
+        let file = if fault == "path" { "../result.json" } else { "result.json" };
+        let mut value = serde_json::json!({"spill":file, "bytes":bytes.len(), "is_error":false});
+        match fault {
+            "length" => value["bytes"] = 1.into(),
+            "digest" => value["digest"] = format!("sha256:{}", "0".repeat(64)).into(),
+            "digest-type" => value["digest"] = false.into(),
+            "locator" => value["spill"] = "different.json".into(),
+            "error" => value["is_error"] = true.into(),
+            _ => {}
+        }
+        let content = match fault {
+            "missing" | "path" | "symlink" => None,
+            "json" => Some(b"invalid json".as_slice()),
+            _ => Some(bytes.as_slice()),
+        };
+        if fault == "json" {
+            value["bytes"] = content.unwrap().len().into();
+        }
+        let events = source_with_canonical(&src, file, content, value);
+        #[cfg(unix)]
+        if fault == "symlink" {
+            std::fs::create_dir_all(src.join("spill")).unwrap();
+            artifact::retain(&src.join("outside.json"), bytes).unwrap();
+            std::os::unix::fs::symlink(src.join("outside.json"), src.join("spill/result.json")).unwrap();
+        }
+        let error = seed(&src, events.len() as u64, &dst, header()).unwrap_err().to_string();
+        assert!(error.contains("event 5") && error.contains(file), "{fault}: {error}");
+        assert!(!read_all(&dst).unwrap().iter().any(|e| matches!(e.data, EventData::SeedEnd {})));
+        let before = std::fs::read(dst.join(fold::LOG_FILE)).unwrap();
+        let error = Writer::open(&dst, None).err().expect("incomplete seeding must refuse reopening");
+        assert!(error.to_string().contains("seed/end"), "{fault}: {error}");
+        assert_eq!(std::fs::read(dst.join(fold::LOG_FILE)).unwrap(), before);
+        let earlier = tmp("canonical-outside-prefix");
+        seed(&src, 5, &earlier, header()).unwrap();
+        assert!(!earlier.join("spill/result.json").exists());
+    }
+}
+
+/// docs/log-format.md `tool/result`: immutable installation cannot replace conflicting bytes.
+#[test]
+fn concurrent_archive_installations_preserve_content_and_remove_owned_temporary_files() {
+    let dir = tmp("archive-install");
+    let target = dir.join("result.json");
+    std::thread::scope(|scope| {
+        for _ in 0..16 {
+            scope.spawn(|| artifact::retain(&target, b"recorded").unwrap());
+        }
+    });
+    assert_eq!(std::fs::read(&target).unwrap(), b"recorded");
+    assert!(artifact::retain(&target, b"different").is_err());
+    assert_eq!(std::fs::read(&target).unwrap(), b"recorded");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+}

@@ -24,8 +24,9 @@ impl ApiKey {
     }
 }
 
+#[async_trait::async_trait]
 impl Auth for ApiKey {
-    fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
+    async fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
         Ok(vec![match self.header {
             KeyHeader::XApiKey => ("x-api-key".to_string(), self.key.clone()),
             KeyHeader::Bearer => ("authorization".to_string(), format!("Bearer {}", self.key)),
@@ -63,8 +64,8 @@ mod tests {
     use super::*;
     use crate::test_support::scratch;
 
-    #[test]
-    fn bare_key_is_trimmed_and_json_key_is_read() {
+    #[tokio::test]
+    async fn bare_key_is_trimmed_and_json_key_is_read() {
         let path = scratch("key-with-newline");
         std::fs::write(&path, "sk-test-123\n").unwrap();
         assert_eq!(read_api_key(&path).unwrap(), "sk-test-123");
@@ -72,9 +73,9 @@ mod tests {
         assert_eq!(read_api_key(&path).unwrap(), "sk-test-123");
         write_api_key(&path, "sk-json").unwrap();
         assert_eq!(read_api_key(&path).unwrap(), "sk-json");
-        let headers = ApiKey::from_file(KeyHeader::Bearer, &path).unwrap().headers().unwrap();
+        let headers = ApiKey::from_file(KeyHeader::Bearer, &path).unwrap().headers().await.unwrap();
         assert_eq!(headers, vec![("authorization".to_string(), "Bearer sk-json".to_string())]);
-        let headers = ApiKey::from_file(KeyHeader::XApiKey, &path).unwrap().headers().unwrap();
+        let headers = ApiKey::from_file(KeyHeader::XApiKey, &path).unwrap().headers().await.unwrap();
         assert_eq!(headers, vec![("x-api-key".to_string(), "sk-json".to_string())]);
     }
 

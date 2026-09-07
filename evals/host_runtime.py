@@ -18,25 +18,32 @@ Request = dict[str, Any]
 Responder = Callable[[Request], list[Chunk]]
 
 
-def run(binary: Path, config: Path, log_dir: Path, responder: Responder) -> int:
-    """Return the command status for an episode served by one response function."""
+def run(binary: Path, config: Path, log_dir: Path, responder: Responder) -> tuple[int, Path]:
+    """Return the command status and episode directory for an episode served by one response function.
 
-    async def serve() -> foe.Outcome:
+    `log_dir` is the directory the binary creates the episode's own directory
+    under, which docs/design.md "The command line" states for `--log-dir`.
+    """
+
+    async def serve() -> tuple[foe.Outcome, Path]:
         async def model_backend(request: Request) -> AsyncIterator[Chunk]:
             chunks = await asyncio.to_thread(responder, request)
             for chunk in chunks:
                 yield chunk
 
-        return await foe.run_config(config, model_backend=model_backend, binary=binary, log_dir=log_dir)
+        handle = await foe.start_config(config, model_backend=model_backend, binary=binary, log_dir=log_dir)
+        outcome = await handle.wait()
+        assert handle.log_dir is not None
+        return outcome, handle.log_dir
 
-    outcome = asyncio.run(serve())
+    outcome, episode = asyncio.run(serve())
     match outcome:
         case foe.Completed():
-            return 0
+            return 0, episode
         case foe.Failed():
-            return 1
+            return 1, episode
         case foe.Blocked():
-            return 2
+            return 2, episode
         case foe.Exhausted():
-            return 3
+            return 3, episode
     raise AssertionError(f"unknown outcome {outcome!r}")

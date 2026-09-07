@@ -3,7 +3,7 @@
   "name": "survey-then-fix",
   "instructions": {
     "10-role": "You are a coding agent working in a Python repository.",
-    "20-delegation": "Before editing, spawn one survey child per module named in the task. Each child reports the places in its module that the task touches. A report arrives as a message, and a further message arrives when the child ends. Call `wait` after spawning, which returns once every child has ended, then make the change yourself."
+    "20-delegation": "Before editing, add one survey task per module named in the task. Each child reports the places in its module that the task touches. A report arrives as a message, and a further message arrives when the child ends. Call `wait` after adding the tasks. It returns after every task settles. Then make the change yourself."
   },
   "tools": ["read", "grep", "edit", "spawn", "wait"],
   "grants": {

@@ -1,4 +1,4 @@
-//! Prototype evaluator for the selection gate in docs/code-mode.md.
+//! Prototype evaluator for the selection gate in docs/tool-composition.md.
 //!
 //! The design requires evidence of five properties before the runtime may
 //! take an evaluator dependency: fuel accounting, memory accounting,
@@ -35,7 +35,7 @@ use starlark::values::Value;
 /// is the tool's canonical error value.
 pub type ToolDispatcher = Box<dyn FnMut(&str, &serde_json::Value) -> Result<serde_json::Value, serde_json::Value>>;
 
-/// The four evaluator bounds from docs/code-mode.md "Evaluation
+/// The four evaluator bounds from docs/tool-composition.md "Evaluation
 /// environment", plus the call-stack depth bound the evaluator offers.
 #[derive(Clone, Copy, Debug)]
 pub struct Limits {
@@ -78,7 +78,7 @@ pub struct Success {
 }
 
 /// Every way an evaluation ends without a returned value. Each bound
-/// failure names its bound, which docs/code-mode.md requires of the outer
+/// failure names its bound, which docs/tool-composition.md requires of the outer
 /// error result.
 #[derive(Debug)]
 pub enum EvalFailure {
@@ -126,7 +126,7 @@ struct ToolHost {
     dispatcher: RefCell<ToolDispatcher>,
     calls: Cell<u64>,
     max_calls: u64,
-    /// docs/code-mode.md: inner dispatch is unavailable while the
+    /// docs/tool-composition.md: inner dispatch is unavailable while the
     /// evaluator loads the source and enabled only while invoking `main`.
     dispatch_enabled: Cell<bool>,
 }
@@ -162,7 +162,7 @@ fn json_to_starlark<'v>(heap: Heap<'v>, v: &serde_json::Value) -> anyhow::Result
 
 #[starlark::starlark_module]
 fn code_mode_globals(builder: &mut GlobalsBuilder) {
-    /// The one inner-dispatch function from docs/code-mode.md "Outer call
+    /// The one inner-dispatch function from docs/tool-composition.md "Outer call
     /// contract": `call_tool(name, args)` returns
     /// `struct(value = <canonical JSON value>, is_error = <boolean>)`.
     fn call_tool<'v>(name: &str, args: Value<'v>, eval: &mut Evaluator<'v, '_, '_>) -> anyhow::Result<Value<'v>> {

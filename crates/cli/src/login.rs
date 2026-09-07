@@ -1,10 +1,11 @@
 //! `foe login`: configure a provider's credential and the default model.
 //!
 //! ```text
-//! foe login                      list providers, with whether each is configured
-//! foe login <provider>           configure it, then set the default model if none is set
-//! foe login <provider> --model M set the default model explicitly
-//! foe login --status             show the default model and every configured credential path
+//! foe login                        list providers, with whether each is configured
+//! foe login <provider>             configure it, then set the default model if none is set
+//! foe login <provider> --model M   set the default model explicitly
+//! foe login <provider> --key-file P record P as that provider's credential, asking nothing
+//! foe login --status               show the default model and every configured credential path
 //! ```
 //!
 //! Everything is written under `~/.config/foe/`: one credentials file per
@@ -29,13 +30,16 @@ use foe_transport::paths;
 use foe_transport::providers::{Provider, Verify, PROVIDERS};
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Debug, Default)]
 pub struct Options {
     pub provider: Option<String>,
     pub model: Option<String>,
+    /// A credential file to record for the provider, in place of asking for
+    /// one and writing it under `~/.config/foe/credentials/`.
+    pub key_file: Option<PathBuf>,
     pub status: bool,
 }
 
@@ -67,6 +71,14 @@ pub fn login(options: Options) -> Result<ExitCode, String> {
 }
 
 pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("login runtime: {e}"))?
+        .block_on(conversation(session, options))
+}
+
+async fn conversation(session: &mut Session<'_>, options: Options) -> Result<ExitCode, String> {
     if options.status {
         status(session)?;
         return Ok(ExitCode::SUCCESS);
@@ -77,7 +89,13 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
     };
     let provider = foe_transport::provider_info(&name)
         .ok_or_else(|| format!("provider `{name}` is unknown; run `foe login` to list the known providers"))?;
-    let extra = configure(session, provider)?;
+    if let Some(key_file) = &options.key_file {
+        record_key_file(session, provider, key_file, options.model)?;
+        say(session, "")?;
+        say(session, &format!("next: {NEXT_COMMAND}"))?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let extra = configure(session, provider).await?;
     let path = paths::default_model_path(&session.home);
     if options.model.is_some() || !path.is_file() {
         let model = match options.model {
@@ -93,6 +111,42 @@ pub fn run(session: &mut Session, options: Options) -> Result<ExitCode, String> 
     say(session, "")?;
     say(session, &format!("next: {NEXT_COMMAND}"))?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Records a credential file the provider is to read, asking nothing:
+/// `foe login PROVIDER --key-file PATH`. The file is named in the default
+/// model block, which every run without its own `model` block reads, so the
+/// command needs a model of that provider: `--model` names one, and a
+/// recorded default of the same provider supplies one otherwise.
+fn record_key_file(
+    session: &mut Session,
+    provider: &'static Provider,
+    key_file: &Path,
+    model: Option<String>,
+) -> Result<(), String> {
+    let key_file = key_file.canonicalize().map_err(|e| format!("--key-file {}: {e}", key_file.display()))?;
+    let recorded = default_model_in(&session.home)?.filter(|block| block.provider == provider.name);
+    let mut block = match (model, recorded) {
+        (Some(model), recorded) => {
+            let mut block = ModelConfig::new(provider.name, model);
+            block.options = recorded.map(|recorded| recorded.options).unwrap_or_default();
+            block
+        }
+        (None, Some(recorded)) => recorded,
+        (None, None) => {
+            let name = provider.name;
+            return Err(format!(
+                "`foe login {name} --key-file` records the credential of a default model, and none of {name} is \
+                 recorded; name one with --model MODEL"
+            ));
+        }
+    };
+    block.options.insert(provider.auth.option_key().to_string(), key_file.to_string_lossy().into_owned());
+    crate::run::apply_builtin_model_defaults(&mut block);
+    write_default_model(&session.home, &block)?;
+    say(session, &format!("{}: reads the credential in {}", provider.name, key_file.display()))?;
+    let path = paths::default_model_path(&session.home);
+    say(session, &format!("default model: {}/{} ({})", block.provider, block.model, path.display()))
 }
 
 // ---- listing and status -------------------------------------------------------
@@ -141,7 +195,7 @@ fn status(session: &mut Session) -> Result<(), String> {
 /// and the verification differ, so the arms produce the note that names
 /// what was written and share the report. The verifying and the writing
 /// are `foe_transport::auth::login`; the asking is here.
-fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTreeMap<String, String>, String> {
+async fn configure(session: &mut Session<'_>, provider: &'static Provider) -> Result<BTreeMap<String, String>, String> {
     let mut extra = BTreeMap::new();
     let (path, note) = match provider.auth {
         AuthKind::ApiKey { optional, .. } => {
@@ -167,6 +221,7 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
                 say(session, "verifying...")?;
             }
             login::verify_api_key(provider, base_url.as_deref(), &key)
+                .await
                 .map_err(|e| format!("{e}; check the key and run `foe login {}` again", provider.name))?;
             let path = login::save_api_key(&session.home, provider, &key)?;
             if optional {
@@ -175,7 +230,7 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
             (path, String::new())
         }
         AuthKind::TokenFile { .. } => {
-            let token = browser_login(session)?;
+            let token = browser_login(session).await?;
             let last4 = token.account_id.as_deref().map(|id| &id[id.len().saturating_sub(4)..]).unwrap_or("none");
             let note = format!(" (account ...{last4})");
             (login::save_token(&session.home, provider, &token)?, note)
@@ -194,7 +249,7 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
             let google = foe_transport::auth::google::Google::open(&file).map_err(|e| {
                 format!("{e}; run `gcloud auth application-default login` or name a service account key file")
             })?;
-            google.token().map_err(|e| format!("could not mint an access token: {e}"))?;
+            google.token().await.map_err(|e| format!("could not mint an access token: {e}"))?;
             let note = format!(" ({} credentials)", google.credentials().kind());
             (login::save_google(&session.home, provider, &file, &project, &location)?, note)
         }
@@ -206,7 +261,7 @@ fn configure(session: &mut Session, provider: &'static Provider) -> Result<BTree
 /// Shows the sign-in URL, starts a browser on it unless told not to, and
 /// waits for the authorization server to come back to the loopback
 /// listener the flow bound.
-fn browser_login(session: &mut Session) -> Result<foe_transport::auth::token_file::Token, String> {
+async fn browser_login(session: &mut Session<'_>) -> Result<foe_transport::auth::token_file::Token, String> {
     let flow = BrowserLogin::begin(&session.endpoints)?;
     say(session, "Open this URL in your browser to sign in:")?;
     say(session, &flow.url)?;
@@ -214,7 +269,7 @@ fn browser_login(session: &mut Session) -> Result<foe_transport::auth::token_fil
         crate::open_browser(&flow.url);
     }
     say(session, &format!("waiting for the browser to return to {} ...", flow.redirect_uri))?;
-    flow.finish()
+    flow.finish().await
 }
 
 // ---- the default model ----------------------------------------------------------

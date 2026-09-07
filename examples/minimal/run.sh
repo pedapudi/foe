@@ -35,7 +35,7 @@ fi
 mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-minimal-demo.XXXXXX")
 project_dir="$run_dir/project"
-log_dir="$run_dir/episode"
+log_parent="$run_dir/episode"
 mkdir -p "$project_dir"
 
 cat > "$project_dir/brackets.py" <<'EOF'
@@ -84,8 +84,15 @@ fi
   /home/user/project "$project_dir"
 
 echo "Running the minimal demo in $run_dir"
+status=0
 /usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
-  "$binary" "$run_dir/config.json" "$log_dir" "$example_dir/responses.py"
+  "$binary" "$run_dir/config.json" "$log_parent" "$example_dir/responses.py" 2>"$run_dir/foe.err" || status=$?
+cat "$run_dir/foe.err" >&2
+[ "$status" -eq 0 ] || exit "$status"
+# The run creates its own directory for the episode under the one named
+# and prints it on standard error, which docs/design.md "The command line"
+# fixes.
+log_dir=$(sed -n 's/^foe: log //p' "$run_dir/foe.err" | head -n 1)
 
 (cd "$project_dir" && /usr/bin/python3 -m unittest test_brackets >/dev/null 2>&1)
 

@@ -2,7 +2,7 @@
 
 The script accepts the three command lines the package issues:
 
-    fake_foe --config FILE --host --log-dir DIR    run one episode
+    fake_foe --config FILE --host --log-dir DIR    run one episode under DIR/<episode-id>
     fake_foe plan --json --config FILE             print the contract fingerprint
     fake_foe view DIR --serve                      print a URL and wait
 
@@ -41,9 +41,16 @@ BUILTIN_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 
+EPISODE_ID = "ep_fake"
+
+
 class Log:
-    def __init__(self, log_dir: Path, log_version: int | None) -> None:
+    def __init__(self, log_parent: Path, log_version: int | None) -> None:
+        # `--log-dir` names the parent, exactly as the binary reads it, and
+        # the run announces the directory it created.
+        log_dir = log_parent / EPISODE_ID
         log_dir.mkdir(parents=True, exist_ok=True)
+        print(f"foe: log {log_dir}", file=sys.stderr, flush=True)
         self.file: TextIO = (log_dir / "episode.jsonl").open("w", encoding="utf-8")
         self.seq = 0
         self.log_version = log_version
@@ -84,10 +91,10 @@ class Versions:
 
 
 class Episode:
-    def __init__(self, config: dict[str, Any], log_dir: Path, versions: Versions) -> None:
+    def __init__(self, config: dict[str, Any], log_parent: Path, versions: Versions) -> None:
         self.config = config
         self.versions = versions
-        self.log = Log(log_dir, versions.log)
+        self.log = Log(log_parent, versions.log)
         self.host_tools: dict[str, Any] = config.get("host_tools") or {}
         # Items received over the protocol are held until the next step
         # assembles, so that their `seq` follows the previous step's results.
@@ -164,7 +171,7 @@ class Episode:
         self.log.emit(
             "episode/start",
             {
-                "id": "ep_fake",
+                "id": EPISODE_ID,
                 "parent_id": None,
                 "fork_origin": None,
                 "team_id": None,
@@ -419,12 +426,12 @@ def main(argv: list[str]) -> int:
         print("fake_foe: only the --host form runs an episode", file=sys.stderr)
         return 1
     config_path = Path(argv[argv.index("--config") + 1])
-    log_dir = Path(argv[argv.index("--log-dir") + 1])
+    log_parent = Path(argv[argv.index("--log-dir") + 1])
     config = json.loads(config_path.read_text(encoding="utf-8"))
     if "task" not in config:
         print("task: required", file=sys.stderr)
         return 1
-    return Episode(config, log_dir, versions).run()
+    return Episode(config, log_parent, versions).run()
 
 
 if __name__ == "__main__":

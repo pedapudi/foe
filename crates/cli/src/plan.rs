@@ -23,6 +23,19 @@ pub struct ContractPermissions {
 
 pub use foe_contract::inspect::{configuration_warnings, cycles, tool_sources, ConfigurationWarning, ReachableTool};
 
+/// The effective execution form. A contract without a declared workflow
+/// runs one root-bound agent node through the direct loop.
+pub fn execution(contract: &ResolvedContract) -> serde_json::Value {
+    match &contract.workflow {
+        Some(workflow) => serde_json::json!({
+            "kind": "workflow", "nodes": workflow.nodes.len(), "possible_firings": workflow.possible_firings()
+        }),
+        None => serde_json::json!({
+            "kind": "root-agent", "nodes": 1, "name": "root-agent", "follows": ["task"], "terminal": true
+        }),
+    }
+}
+
 /// Every distinct tool definition reachable from `root`, with the binary's
 /// extra built-in packs supplied. See `foe_contract::inspect`.
 pub fn reachable_tools(root: &ResolvedContract) -> Result<Vec<ReachableTool>, String> {
@@ -129,9 +142,11 @@ pub fn summary_report(
         ("limits", limits),
         ("sandbox", sandbox),
     ];
-    if let Some(wf) = &contract.workflow {
-        rows.push(("workflow", format!("{} nodes, {} possible firings", wf.nodes.len(), wf.possible_firings())));
-    }
+    let execution = match &contract.workflow {
+        Some(wf) => format!("workflow: {} nodes, {} possible firings", wf.nodes.len(), wf.possible_firings()),
+        None => "one root-bound agent node".into(),
+    };
+    rows.push(("execution", execution));
     rows.push(("warnings", warning_list));
     let mut out = String::new();
     for (label, value) in rows {
@@ -246,6 +261,13 @@ pub fn workflow_report(contract: &ResolvedContract) -> Result<String, String> {
     writeln!(out, "workflow references  {} declared, at most {MAX_EDGE_REFERENCES}", wf.edge_references()).ok();
     writeln!(out, "workflow firings     {} possible, at most {MAX_POSSIBLE_FIRINGS}", wf.possible_firings()).ok();
     Ok(out)
+}
+
+pub fn root_agent_report(contract: &ResolvedContract) -> String {
+    format!(
+        "execution nodes\n  task         built-in source: the invocation task\n  root-agent   model {}  follows task  terminal  root episode\n",
+        contract.name
+    )
 }
 
 #[cfg(test)]

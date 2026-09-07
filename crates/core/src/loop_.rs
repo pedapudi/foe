@@ -22,7 +22,7 @@ use foe_log::{
     RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
     VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -58,6 +58,7 @@ pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct Log {
     dir: PathBuf,
     inner: Mutex<(foe_log::append::Writer, Vec<Event>)>,
+    failure: watch::Sender<Option<String>>,
 }
 
 impl Log {
@@ -76,7 +77,7 @@ impl Log {
             true => foe_log::append::Writer::create(dir, mirror)?,
             false => foe_log::append::Writer::open(dir, mirror)?,
         };
-        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)) })
+        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)), failure: watch::channel(None).0 })
     }
 
     pub fn dir(&self) -> &Path {
@@ -84,14 +85,34 @@ impl Log {
     }
 
     pub fn append(&self, data: EventData) -> Result<Event, LogError> {
-        let mut inner = lock(&self.inner);
-        let event = inner.0.append(data)?;
+        self.record(&mut lock(&self.inner), data)
+    }
+
+    fn record(&self, inner: &mut (foe_log::append::Writer, Vec<Event>), data: EventData) -> Result<Event, LogError> {
+        self.check()?;
+        let event = self.capture(inner.0.append(data))?;
         inner.1.push(event.clone());
         Ok(event)
     }
 
     pub fn sync(&self) -> Result<(), LogError> {
-        lock(&self.inner).0.sync()
+        self.capture(lock(&self.inner).0.sync())
+    }
+
+    fn capture<T>(&self, result: Result<T, LogError>) -> Result<T, LogError> {
+        result.inspect_err(|error| {
+            if self.failure.borrow().is_none() {
+                self.failure.send_replace(Some(error.to_string()));
+            }
+        })
+    }
+
+    pub fn check(&self) -> Result<(), LogError> {
+        self.failure.borrow().clone().map_or(Ok(()), |error| Err(LogError::Recording(error)))
+    }
+
+    pub async fn failed(&self) -> LogError {
+        LogError::Recording(wait_stop(self.failure.subscribe()).await)
     }
 
     pub fn next_seq(&self) -> u64 {
@@ -120,7 +141,10 @@ impl Log {
 pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
     if log.next_seq() == 0 {
         log.append(EventData::EpisodeStart(start.clone()))?;
-        log.append(EventData::InboxItem(item(InboxSource::Task, &start.task)))?;
+    }
+    if log.next_seq() == 1 {
+        let task = lock(&log.inner).0.state().start.as_ref().expect("episode/start was recorded").task.clone();
+        log.append(EventData::InboxItem(item(InboxSource::Task, &task)))?;
         log.sync()?;
     }
     Ok(())
@@ -128,7 +152,7 @@ pub fn initialize(log: &Log, start: &EpisodeStart) -> Result<(), LogError> {
 
 /// Everything one episode needs. `start` is written when the log is empty;
 /// a seeded log keeps its own. `pool` is shared with the spawner; `run`
-/// folds the existing events into it before the first step. `context`
+/// restores its recorded consumption once. Call `Pool::restore` before admitting children. `context`
 /// compacts the conversation when it outgrows the window; `None` never
 /// compacts.
 pub struct Params {
@@ -155,10 +179,11 @@ pub struct Params {
 /// whose `message_id` the log already holds. The protocol layer and the
 /// spawner deliver items through this.
 pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, LogError> {
-    if log.with_events(|events| crate::inbox::is_duplicate(events, &item)) {
+    let mut inner = lock(&log.inner);
+    if crate::inbox::is_duplicate(&inner.1, &item) {
         return Ok(None);
     }
-    log.append(EventData::InboxItem(item)).map(Some)
+    log.record(&mut inner, EventData::InboxItem(item)).map(Some)
 }
 
 /// Appends one `session`-source item per session exit not yet reported:
@@ -180,16 +205,31 @@ fn post_session_exits(log: &Log, sessions: Option<&Arc<dyn crate::Sessions>>) ->
 pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     let (log, pool) = (params.log.clone(), params.pool.clone());
     let (children, sessions) = (params.children.clone(), params.sessions.clone());
-    let driven = match Episode::new(params) {
-        Ok(mut episode) => episode.drive().await,
-        Err(e) => Err(e),
+    let driven = async { Episode::new(params)?.drive().await };
+    finish(&log, &pool, children.as_deref(), sessions, driven).await
+}
+
+/// Stops work on recording failure and cleans up before returning any error.
+pub async fn finish(
+    log: &Log,
+    pool: &Mutex<Pool>,
+    children: Option<&Router>,
+    sessions: Option<Arc<dyn crate::Sessions>>,
+    work: impl std::future::Future<Output = Result<Outcome, RuntimeError>>,
+) -> Result<Outcome, RuntimeError> {
+    let driven = tokio::select! {
+        biased;
+        error = log.failed() => Err(error.into()),
+        result = work => result,
     };
+    let settled = settle(log, pool, children, sessions).await;
+    log.check()?;
     let outcome = match driven {
         Ok(outcome) => outcome,
         Err(RuntimeError::Log(e)) => return Err(e.into()),
         Err(e) => Outcome::Failed { error: e.to_string() },
     };
-    settle(&log, &pool, children.as_deref(), sessions).await?;
+    settled?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
     Ok(outcome)
@@ -215,15 +255,22 @@ pub async fn settle(
     children: Option<&Router>,
     sessions: Option<Arc<dyn crate::Sessions>>,
 ) -> Result<(), RuntimeError> {
+    if lock(pool).active_children() > 0 {
+        if let Some(children) = children {
+            children.cancel_all();
+        }
+        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
+    }
     if let Some(sessions) = sessions {
         let settler = sessions.clone();
         let settled = tokio::task::spawn_blocking(move || settler.settle())
             .await
             .map_err(|e| RuntimeError::Protocol(format!("session settlement task failed: {e}")))?;
         let step = log.with_events(latest_step);
+        let mut recording = Ok(());
         for settlement in settled {
             let (value, subject) = settlement.result();
-            log.append(EventData::ToolResult(ToolResult {
+            let result = log.append(EventData::ToolResult(ToolResult {
                 step,
                 call_id: format!("session-{}-settle", settlement.status.id),
                 name: crate::session::SESSION_TOOL.into(),
@@ -235,15 +282,15 @@ pub async fn settle(
                 subject: Some(subject),
                 duration_ms: 0,
                 synthetic: true,
-            }))?;
+            }));
+            if result.is_err() && settlement.released_to_task {
+                let stopper = sessions.clone();
+                let _ = tokio::task::spawn_blocking(move || stopper.stop(settlement.status.id)).await;
+            }
+            recording = recording.and(result.map(|_| ()));
         }
+        recording?;
         post_session_exits(log, Some(&sessions))?;
-    }
-    if lock(pool).active_children() > 0 {
-        if let Some(children) = children {
-            children.cancel_all();
-        }
-        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
     }
     for data in log.with_events(seed::closing_events) {
         log.append(data)?;
@@ -340,7 +387,7 @@ impl Episode {
         initialize(&p.log, &p.start)?;
         let events = p.log.events();
         let state = fold::fold(&events)?;
-        events.iter().for_each(|e| lock(&p.pool).apply(&e.data));
+        lock(&p.pool).restore(&events, foe_log::append::now_millis());
         Ok(Self {
             inbox: Inbox::from_state(&state),
             header: state.header_seq.zip(state.header),
@@ -763,13 +810,7 @@ fn learned_findings(log: &Log, candidate: &Value) -> String {
             let Some(result) = result else {
                 return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
             };
-            if !result.spill.as_ref().is_none_or(|file| {
-                Path::new(file).file_name().is_some_and(|name| name == std::ffi::OsStr::new(file))
-                    && std::fs::read(log.dir().join("spill").join(file)).is_ok_and(|bytes| {
-                        result.value == json!({ "spill": file, "bytes": bytes.len(), "is_error": false })
-                            && serde_json::from_slice::<Value>(&bytes).is_ok()
-                    })
-            }) {
+            if foe_log::artifact::read_canonical(&log.dir().join("spill"), seq, result).is_err() {
                 return format!("`learned[{index}].seq` {seq} does not reconstruct");
             }
         }
@@ -831,7 +872,7 @@ fn append_result(
         let archive = crate::retrieval::retain(spill_dir, step, &call.id, &archive)?;
         log.append(EventData::ToolRenderingArchive(archive))?;
     }
-    let (value, mut rendered, spill) = spill(spill_dir, &call.id, value)?;
+    let (value, mut rendered, spill) = spill(spill_dir, value)?;
     let mut inner = lock(&log.inner);
     if cite_seq {
         rendered.insert_str(0, &format!("[seq {}]\n", inner.0.next_seq()))
@@ -849,8 +890,7 @@ fn append_result(
         duration_ms,
         synthetic,
     };
-    let event = inner.0.append(EventData::ToolResult(result.clone()))?;
-    inner.1.push(event);
+    log.record(&mut inner, EventData::ToolResult(result.clone()))?;
     Ok(result)
 }
 
@@ -937,9 +977,13 @@ async fn run_calls(
                 index: 0.into(),
             }) as Arc<dyn crate::Composer>
         });
+        let log = log.clone();
         let task = async move {
             let started = Instant::now();
-            let value = registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await;
+            let value = match log.check() {
+                Ok(()) => registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await,
+                Err(error) => ToolValue::from_cap_error(&call.name, crate::CapError::Log(error)),
+            };
             (i, value, started.elapsed().as_millis() as u64)
         };
         if concurrent {
@@ -957,32 +1001,31 @@ async fn run_calls(
         .collect()
 }
 
-/// Writes a canonical value to `spill/<call_id>.json` when it exceeds
+/// Writes a canonical value to a content-derived file under `spill/` when it exceeds
 /// [`SPILL_LIMIT`]. Returns the inlined value, which is then a locator, the
 /// rendered text, and the spill file name.
-fn spill(spill_dir: &Path, call_id: &str, value: ToolValue) -> Result<(Value, String, Option<String>), RuntimeError> {
+fn spill(spill_dir: &Path, value: ToolValue) -> Result<(Value, String, Option<String>), RuntimeError> {
     let canonical =
         serde_json::to_vec(&value.value).map_err(|e| RuntimeError::Protocol(format!("tool value serializes: {e}")))?;
     let rendered = value.rendered.unwrap_or_else(|| String::from_utf8_lossy(&canonical).into_owned());
     if canonical.len() <= SPILL_LIMIT {
         return Ok((value.value, rendered, None));
     }
-    std::fs::create_dir_all(spill_dir).map_err(foe_log::LogError::Io)?;
-    let safe: String =
-        call_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-    let file = format!("{safe}.json");
-    std::fs::write(spill_dir.join(&file), &canonical).map_err(foe_log::LogError::Io)?;
+    let digest = crate::retrieval::digest(&canonical);
+    let file = format!("result-{}.json", digest.trim_start_matches("sha256:"));
+    foe_log::artifact::retain(&spill_dir.join(&file), &canonical).map_err(foe_log::LogError::Io)?;
     let framed = text::fill(
         text::SPILL_FRAME,
         &[("bytes", &canonical.len().to_string()), ("path", &format!("spill/{file}")), ("head", &rendered)],
     );
-    let locator = serde_json::json!({ "spill": file, "bytes": canonical.len(), "is_error": value.is_error });
+    let locator =
+        serde_json::json!({ "spill": file, "bytes": canonical.len(), "is_error": value.is_error, "digest": digest });
     Ok((locator, framed, Some(file)))
 }
 
 /// Records streamed chunks as `assistant/chunk` events and assembles the
-/// message. A log write failure is kept and reported after the stream. The
-/// workflow executor records its recovery requests through it as well.
+/// message. The shared log retains a recording failure and wakes the
+/// executor, which cancels the stream. Workflow recovery uses the same recorder.
 pub struct Recorder {
     log: Arc<Log>,
     step: u32,
@@ -994,7 +1037,6 @@ pub struct Recorder {
     thinking: Vec<ThinkingBlock>,
     open_thinking: Option<String>,
     terminal: Option<Chunk>,
-    failure: Option<LogError>,
 }
 
 impl Recorder {
@@ -1008,7 +1050,6 @@ impl Recorder {
             thinking: Vec::new(),
             open_thinking: None,
             terminal: None,
-            failure: None,
         }
     }
 
@@ -1026,7 +1067,7 @@ impl Recorder {
     }
 
     pub fn check(&mut self) -> Result<(), RuntimeError> {
-        self.failure.take().map_or(Ok(()), |e| Err(e.into()))
+        Ok(self.log.check()?)
     }
 
     /// The `Done` or `Error` chunk that ended the stream, taken once.
@@ -1055,10 +1096,13 @@ impl Recorder {
 
 impl ChunkSink for Recorder {
     fn push(&mut self, chunk: Chunk) {
+        if self.log.check().is_err() {
+            return;
+        }
         let event =
             EventData::AssistantChunk { step: self.step, request_id: self.request_id.clone(), chunk: chunk.clone() };
-        if let Err(e) = self.log.append(event) {
-            self.failure.get_or_insert(e);
+        if self.log.append(event).is_err() {
+            return;
         }
         match chunk {
             Chunk::Text { delta } => {

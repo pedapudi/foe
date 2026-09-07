@@ -17,17 +17,10 @@ Each name resolves against three sources, checked in this order.
 
 1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
    six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
-   `python` specified below;
+   `compose_tools` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
-   `block`, by which the model reports a blocking condition; `spawn`, which
-   starts a child episode, and `wait`, which blocks until every child this
-   episode started has ended or, with `until`, until an arrival matches one
-   of its conditions — a child reaching an outcome, a session exiting, or
-   an inbox arrival by source — bounded by
-   `timeout_seconds`; `steer`, which sends a message to a running
-   child, and `notify`, which sends one to the episode that started this
-   one; and `send` and `team`, which address a teammate through the lead
-   and list the team's roster. [design.md](design.md) and
+   `block`, by which the model reports a blocking condition; and the six
+   team tools specified below. [design.md](design.md) and
    [log-format.md](log-format.md) specify `block`, spawning, waiting, and
    teams. One further tool, `return`, is synthesized rather than named in
    `tools`: a `done_when.returns` schema adds it to the registry, and
@@ -190,11 +183,42 @@ source cannot change the run. The configured source path remains the command
 reported to the model and in errors. The invocation name becomes argument zero
 for multicall dispatch and participates in the contract fingerprint.
 
+## Built-in team tools
+
+Every episode has an effective team containing itself and its root task. A
+contract exposes only the team tools named in its `tools` list. The absence
+of those schemas keeps the one-agent request header unchanged.
+
+| tool | effect | behavior |
+|---|---|---|
+| `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `scope` lists advisory write paths. |
+| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, or inbox source. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
+| `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
+| `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. |
+| `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
+
+Each returned member includes its roster `phase`. A member assigned through
+the board also includes `task_status`, derived from the task whose owner is
+that member. The rendered summary uses task status when it is available.
+
+`spawn` returns the complete current task revision. A ready task normally
+returns with `status: running` and an owner episode. A concurrency-bound task
+returns with `status: queued`; the runtime starts it when another member
+settles. Other exhausted structural or spend limits settle the task with
+`status: exhausted`. Invalid dependencies fail the tool call.
+
+The root task uses `task_root`. Added tasks use `task_01`, `task_02`, and
+later identifiers in creation order. A dependency on `task_root` is refused
+because the root episode settles after its delegated tasks. Every other
+dependency must already exist. These two rules keep dependency scheduling
+finite and acyclic without a model-driven claim protocol.
+
 ## Built-in coding tools
 
 The six coding tools live in the `foe-code` crate, which exposes two
 functions. `foe_code::all()` returns every coding tool; `foe_code::readonly()`
-returns only `read` and `grep`. The `bash`, `session`, and `python` tools
+returns only `read` and `grep`. The `bash`, `session`, and `compose_tools` tools
 are compiled
 only when the crate's `exec` feature is enabled, which they are by default.
 A build without that feature contains no code path that starts a process.
@@ -214,7 +238,7 @@ the first `read` root, and paths in results are shown relative to it.
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
 | `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `duration_ms`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial` |
 | `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial`; `bytes`; `signal` |
-| `python` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
+| `compose_tools` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -233,7 +257,7 @@ model received.
 | `edit` | `src/parser.rs: 2 edit(s), +2 -2 lines`, the same line the rendering leads with | the error, which names the file and which edit failed |
 | `bash` | `cargo test -p parser · exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |
 | `session` | `session 2: postgres · alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |
-| `python` | `python: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
+| `compose_tools` | `compose_tools: 6 call(s), 0 error(s), 123 bytes returned`, the derivation and the returned size | the first line of what ended the source, after the call count |
 
 A tool reports what the call did rather than what it was asked for, because
 the arguments are already in the log: `grep` states how many matches it
@@ -506,13 +530,13 @@ how a granted port is served across calls — a server it holds keeps its
 listener until the session ends. Widening outbound access is a separate
 design; no grant kind opens it.
 
-### `python`
+### `compose_tools`
 
 The tool runs model-written Python source in an isolated interpreter whose
 only capability is calling this episode's tools, and returns the value its
 zero-argument `main` computed. The runtime records every inner
 call in the log; the model sees the returned value, a derivation summary,
-and the process's own output as diagnostics. [code-mode.md](code-mode.md)
+and the process's own output as diagnostics. [tool-composition.md](tool-composition.md)
 specifies the source, confinement, bounds, and log
 representation; [log-format.md](log-format.md) specifies the
 `tool/inner-call` event. The interpreter is `/usr/bin/python3`, named by

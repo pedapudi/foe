@@ -1,5 +1,9 @@
 #!/usr/bin/python3
-"""Record the clean Foe source tree and runtime binary used by an evaluation."""
+"""Shared support for the harnesses that run the Foe binary.
+
+Two duties: record the clean source tree and runtime binary an evaluation
+used, and read what a launched run announced about itself.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +39,26 @@ def clean_source_tree(path: Path) -> str:
     object_format = _git(root, "rev-parse", "--show-object-format")
     tree = _git(root, "rev-parse", "HEAD^{tree}")
     return f"git-tree-{object_format}:{tree}"
+
+
+# The fixed prefix of the line a run writes on standard error to name the
+# directory it created for the episode, which docs/design.md "The command
+# line" states.
+LOG_DIRECTORY_LINE = "foe: log "
+
+
+def announced_log_dir(stderr: str, named: Path) -> Path:
+    """The episode directory the run announced on its standard error.
+
+    A run creates its own directory under the one `--log-dir` names. A run
+    that failed before creating one announced nothing, and the directory it
+    named stands in so that the caller reports an absent log rather than
+    raising.
+    """
+    for line in stderr.splitlines():
+        if line.startswith(LOG_DIRECTORY_LINE):
+            return Path(line[len(LOG_DIRECTORY_LINE) :].strip())
+    return named
 
 
 def sha256_file(path: Path) -> str:

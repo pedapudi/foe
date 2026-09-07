@@ -174,10 +174,11 @@ Outcome =
 vocabulary so that a supervising episode can route on it. The vocabulary is
 listed in [log-format.md](log-format.md#blocked-codes).
 
-A finished episode is never extended. An interrupted one — a log without
-`episode/end` — is continued by launching over its directory, under "The
-command line" below. A later episode may be seeded from a prefix of any
-log, which is how replay and forking work.
+A finished episode is never extended. An interrupted episode without a workflow can
+continue under the rules in "The command line" below. A workflow launch
+refuses a log containing recorded workflow execution because scheduler state
+is not restored. A later episode can retain a log prefix through seeding;
+execution of that prefix remains subject to these launch rules.
 
 The model's context is a projection of the log, and the projection is
 bounded. When a configuration enables compaction and the next request is
@@ -261,8 +262,9 @@ log alone.
 The cost model behind the loop is that model turns are the expensive
 resource and wall-clock time the cheap one. `wait` is the sanctioned
 trade between them: it spends wall-clock time so that no model turn is
-spent polling. Bare, it blocks until every child has ended. With `until`,
-it blocks until an arrival matches one of the named conditions, each in
+spent polling. Bare, it blocks until every added board task has settled and
+no child reservation remains. With `until`, it blocks until an arrival
+matches one of the named conditions, each in
 outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
 named outcome kind, a session (by id, or `any`) exiting, or an inbox
 arrival by source; `timeout_seconds` returns the call after that long
@@ -274,7 +276,7 @@ elapsed time, and `wait` is itself a tool call, so all blocking happens
 where blocking already happens.
 
 The same pieces form the verified-future pattern foe implements: `spawn`
-returns the handle, `done_when.returns` is the future's type,
+returns the durable task state, `done_when.returns` is the future's type,
 `done_when.verify` is the resolution predicate, and `wait` is the join.
 The predicate self-repairs: findings return to the model for another
 attempt, and retries spent reject the future into a typed `Blocked`. A
@@ -512,7 +514,7 @@ Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
 1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
-   `python`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a
@@ -545,12 +547,22 @@ prefix.
 [tools.md](tools.md#the-turn-budget) specifies the division and the
 notice.
 
-## Subagents and teams
+## Agent teams
 
-An episode with a `spawn` grant may start child episodes. A child is a
-separate process with its own log, its own grants, and a budget reserved from
-its parent's remaining budget. The child's log header names the parent.
-The child may select a model or inherit the nearest ancestor's selection.
+Every episode leads a team. The team initially contains the lead episode and
+the invocation task assigned to it. The lifecycle events already identify
+that member, task, inbox, and outcome. The runtime writes no team event and
+starts no child for this one-agent case.
+
+The `spawn` capability expands the team. One call adds a durable task to the
+lead's board. The runtime starts a child episode for that task when its
+dependencies have completed and the episode has capacity. The child receives
+the task as its first inbox item. Each child is a member of its parent's team
+and the lead of its own team, which permits the same mechanism at every depth.
+
+A child is a separate process with its own log, grants, and reserved budget.
+The child's log header names its parent and team lead. The child may select a
+model or inherit the nearest ancestor's selection.
 
 The parent writes the declared child contract unchanged. It writes the
 effective runtime allowance and the expected declared-contract fingerprint in
@@ -573,10 +585,9 @@ Source-path replacement, in-place modification, and deletion therefore cannot
 change child fingerprint or execution.
 
 Child creation separates identifier allocation from launch. Allocating an
-identifier reserves no budget and starts no process. A parent appends the
-event that names the child before launch can reserve budget or create the
-process. A workflow therefore records `workflow/node-start` before its
-spawner records `budget/reserve` and `spawn/start`.
+identifier reserves no budget and starts no process. A workflow records
+`workflow/node-start` before its spawner records `budget/reserve` and
+`spawn/start`.
 
 ```
    root   budget: 40 calls, 320k input, 80k output
@@ -600,43 +611,63 @@ its remaining input allowance. Concurrent descendants can each cross their
 reserved allowances. The runtime clamps a supported provider's output cap to
 the remaining output allowance.
 
-A spawn that would pass a cap fails as a tool call with a result naming the
-limit, and no child starts; the model reads that result like any other.
-A parent observes a child as settled only after it has appended `spawn/end`
-and `budget/release` and returned the child's reservation to the pool, so
-anything waiting on the child sees the account of it already closed.
+A task remains queued while `max_concurrent` prevents a launch. The scheduler
+starts it after a running child returns capacity. Another exhausted limit
+settles the task as exhausted with the limit recorded in its outcome.
+A clean resume also schedules tasks whose queued revision was durable before
+the prior process stopped.
+The child outcome writes the terminal task revision before its reservation
+returns. A parent observes a completed wait only after `spawn/end` and
+`budget/release` have closed the child account.
+
+The board contains the root task followed by added tasks in creation order.
+An added task records its identifier, revision, child contract, description,
+status, owner, dependencies, and advisory write scope. Each revision is a
+complete snapshot. Only the lead process appends revisions. This single
+writer assigns each ready task to one new child, which removes agent-side
+claim races and makes assignment deterministic.
+
+A dependency names an earlier task on the same board. This ordering makes a
+cycle unrepresentable. A dependent task starts after every dependency
+completes. A dependency with another terminal status settles the dependent
+task as blocked. Advisory write scopes expose likely overlap to agents and
+the viewer. Filesystem grants remain the enforced authority.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
-the same way. A steer arrives in the child's next request; nothing
-interrupts a request in flight. A parent that has delegated work calls
-`wait` to hold until its children have ended, so that their reports are in
-the request that follows.
+the same way. A steer arrives in the child's next request. A request in
+flight continues uninterrupted. A parent calls `wait` after delegation. The
+call consumes no model request while tasks are queued or running, and returns
+after every task has settled.
 
-A team is a set of episodes that share a lead. The lead's log holds the
-roster and the queue of messages between members.
+The lead's log also holds the roster and the queue of messages between
+members.
 
 ```
    lead log                                   member log
    ────────                                   ──────────
+   team/task      {task, revision, status, owner}
    team/roster    {member, name, phase}
    team/message   {id, from, to, content}  ──►  inbox/item {source: peer, message_id}
    team/delivered {id, to}                 ◄──  (written after the member's append)
 ```
 
-Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on an
-episode's own children. `notify`, `send`, and `team` act on the team the
-episode belongs to: in an episode with a parent they are host tool calls that the
-parent answers, as the [protocol](protocol.md#children) describes; in a
-root, `send` and `team` act on its own roster, and `notify` fails because
-no parent exists.
+Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on the team
+an episode leads. `notify` and `send` act on the team the episode belongs to.
+The `team` tool lists the parent-led team by default and accepts `scope: led`
+to list the team that the current episode leads. A root's parent-led and led
+team are the same team. The [protocol](protocol.md#children) carries member
+calls to the lead process.
 
 A message is durable in the lead's log before delivery is attempted. The
 member's receipt is recorded after the member has written the message to its
 own log. Messages queued and never delivered are redelivered when a member
 restarts, and the member drops duplicates by `message_id`. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
-state exists.
+state exists. A newly assigned member learns about its board task through the
+task inbox item that starts its episode. Other coordination uses the board
+projection and durable peer messages, so no idle worker or broadcast poll is
+required.
 
 ## Workspace notes
 
@@ -722,51 +753,81 @@ access of its own.
 The binary has one running form and five forms that run nothing.
 
 ```
-foe "task" [--config FILE] [--log-dir DIR] [--no-open]   run; serve the viewer; print the outcome
-foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--key-file PATH] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
-foe "task" --headless                                    run; no viewer; print the outcome
-foe "task" --fork SOURCE_DIR --at SEQ                    run a fresh episode seeded from a prefix of SOURCE_DIR's log
+foe "task" [--config FILE] [--log-dir DIR]               run; serve the viewer; print the outcome; --log-dir holds the created episode directory
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
+foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
+foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
+foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
 foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
-foe login [PROVIDER [--model MODEL]] [--status]          configure a provider's credential and the default model
+foe login [PROVIDER [--model MODEL] [--key-file PATH]] [--status]   configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
-foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; without --config, list the built-in tools
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
 foe plan --schema                                        print the JSON Schema for the configuration
 foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
 ```
 
 One declarative table in `crates/cli/src/main.rs` names every form, its
 positional shape, and each option it accepts with that option's value
-placeholder, its default, and its meaning. The parser and both help screens
-read that table and nothing else, so an option the parser accepts is
-documented and an option the table omits is refused. `foe --help`, which
+placeholder, its default, its meaning, and the heading its help lists it
+under. The parser and both help screens read that table and nothing else, so
+an option the parser accepts is documented and an option the table omits is
+refused. The running form's help lists its options under four headings, each
+saying what the options beneath it decide: what runs, holding `--config`,
+`--log-dir`, and `--from`; built-in documents only, holding `--verify` and
+`--sandbox`; the model when the document names none, holding `--model` and
+`--service-tier`; and how you watch it, holding `--viewer` and
+`--conversation`. `--host` is listed above all four, because it selects a
+different way to run rather than adjusting a run. Every other form names no
+heading on any row, so its help prints one list. `foe --help`, which
 `foe help` repeats, prints the running form's options and every other
 command word; `foe <command> --help`, which `foe help <command>` repeats,
 prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
-reprinting every form.
+reprinting every form. The table also holds the spellings the running form
+dropped — `--fork`, `--at`, `--no-open`, `--headless`, and `--key-file` —
+so each is refused by its own name with the option that says the same
+thing.
 
-In every running form except `--host`, standard output receives exactly one
-line when the episode ends: the outcome as JSON. A shell reads it with one
-`read`; another process parses it with one `json.loads`. The exit code is 0
-for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1 for `failed`.
-Progress goes to standard error. The log goes to the file.
+By default, a run writes one JSON outcome line to standard output when the
+episode ends. This also applies to interactive terminals. A shell reads it
+with one `read`; another process parses it with one `json.loads`.
+`--conversation` selects a readable conversation and execution tree on
+standard output, including returned branch results and the final outcome.
+The browser viewer serves as usual. `--conversation` cannot be combined
+with `--host`.
+[viewer.md](viewer.md#terminal-conversation) specifies the terminal display.
+`--host` selects the log protocol described in [protocol.md](protocol.md).
+The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
+for `failed`. Diagnostics go to standard error. The log goes to the file.
 
-The log directory is `--log-dir` when given and `.foe/<episode-id>` under
-the current directory otherwise. A directory that already holds a log is
-continued under the log's own episode id. One whose log ends at `seed/end`
+Every run creates a directory of its own for the log, named by the episode
+id, under `--log-dir` when the command line gives one and under `.foe` in
+the current directory otherwise. Two runs given the same directory therefore
+keep separate logs. The run prints the directory it created on standard
+error as `foe: log PATH`, and a caller reads the directory from that line
+rather than assembling it. A run that prints its outcome as JSON ends with
+`foe: view the episode with foe view PATH` on standard error, because the
+live viewer leaves with the process and the command outlives it. `foe view DIR` renders a directory of episodes
+side by side, so the directory a series of runs shares is also what the
+viewer takes. A directory holding `child-launch.json`, which a parent
+process writes for a child, is the child's own directory rather than a
+parent of one, because the parent chose the directory and the episode id
+together. A workflow launch over a directory with
+recorded `workflow/*` events is refused before queued tasks or nodes start.
+The restriction also applies to forks containing those events. Execution without a workflow
+can continue under the log's episode id. A log ending at `seed/end`
 — a prepared fork — or at an event boundary with every binding obligation
 closed continues in place. An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean
-boundary into a fresh directory beside it, named on standard error, which
-the run then continues. Resuming requires the execution contract that ran.
+boundary into a fresh directory beside it, which the run then continues and
+names on standard error. Resuming requires the execution contract that ran.
 A configuration whose fingerprint differs from the log's
 `episode/start.contract_fingerprint` is refused with both fingerprints
 named. A log ending at `seed/end` is
 exempt from the resume comparison. An ordinary seeded `episode/start`
 records its source's contract. A spawned child instead checks the expected
-fingerprint in its launch metadata before reaching resume. A finished log — one with
-`episode/end` — accepts nothing and is forked instead. A `child-launch.json`
+fingerprint in its launch metadata before reaching resume. A `child-launch.json`
 beside the log, which a parent writes for a child, supplies the child's
 id, its parent, its team lead, its expected contract fingerprint, and its
 effective runtime allowance.
@@ -777,30 +838,89 @@ contract in that event, so resume compares the recorded child fingerprint before
 continuing it. An ordinary command-line fork preserves its source contract in
 the start event and remains exempt from that comparison at `seed/end`.
 
-`--fork SOURCE_DIR --at SEQ` runs a fresh episode seeded from the source
-log's events below SEQ under the seeding rules of
-[log-format.md](log-format.md): the new episode draws a fresh id, its
-`episode/start.fork_origin` names the source episode and the boundary, and
-the task the launch carries — the positional task, or the document's task
-under `--config` — is appended as a `system` inbox item after `seed/end`,
-since the one `task` item per log is the copied one. The boundary's
-validity is the seeding API's rule, surfaced as the seeding error states
-it. The fork's directory is `--log-dir` when given, refused when it
-already holds a log, and `.foe/<episode-id>` otherwise. A slate — several
-forks from one prefix — is a caller-side loop over this form;
+`--from DIR[@SEQ]` continues or forks the episode whose log is in DIR. DIR
+is one episode's own directory, the one a run names as `foe: log PATH`; a
+directory holding no `episode.jsonl`, such as the one `--log-dir` names, is
+refused with the missing file named. What the run does is a function of the
+source log's state and of whether the command line gives a task of its own.
+
+| command | source log | result |
+|---|---|---|
+| `foe --from DIR` | has not ended | continues that episode: same id, same task, same contract required, recorded allowance restored |
+| `foe --from DIR` | ended | refused: the episode ended, so a task to continue from its whole conversation or `@SEQ` to fork earlier |
+| `foe "task" --from DIR` | has not ended | refused: a continued episode keeps its task, so `@SEQ` to fork with a new one |
+| `foe "task" --from DIR` | ended | forks at the end of the conversation: the whole conversation as context, the new task as the directive |
+| `foe "task" --from DIR@SEQ` | either | forks at SEQ: the events below SEQ as context, the new task as the directive |
+| `foe --from DIR@SEQ` | either | forks at SEQ under the task the source recorded, a rerun from that point |
+
+Without `@SEQ` the run continues one episode and refuses anything that would
+change it. With `@SEQ` the run always makes a new episode. Which of the
+three the run chose is printed on standard error under the log directory.
+
+A fork is seeded from the source log's events below SEQ under the seeding
+rules of [log-format.md](log-format.md): the new episode draws a fresh id,
+its `episode/start.fork_origin` names the source episode and the boundary,
+and the task the launch carries is appended as a `system` inbox item after
+`seed/end`, since the one `task` item per log is the copied one. The task
+the source recorded is the exception, because the copied prefix already
+carries it; such a run reruns the conversation from the boundary and appends
+nothing. The boundary's validity is the seeding API's rule, surfaced as the
+seeding error states it. A fork restores the conversation up to the boundary
+and nothing else: the filesystem is whatever it is when the fork runs, so a
+fork over changed files sees the changed files. The fork's directory is a
+fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
+several forks from one prefix — is a caller-side loop over this form;
 [deferred.md](deferred.md) states what first-class support would add and
 the evidence that would justify it.
 
-A task given with `--config` replaces the document's own `task`. A task given
-without `--config` uses a built-in coding workflow. An implementation episode
-changes the current directory. A fresh assessment episode independently checks
-the task and implementation claim. It either accepts the artifacts or activates
-a fresh repair episode with its typed findings.
+A built-in document carries no task of its own, so `foe --from DIR` and
+`foe --from DIR@SEQ` without one take the task the source log recorded.
+A document in a file carries its own task, which directs the fork.
+
+What runs is the document `--config` names, else `.foe/contract.json` in the
+working directory, else the built-in coding workflow. `--config` takes a
+file path or the name of a document the binary carries, written
+`builtin:NAME`. The binary carries two documents. `builtin:coding` is the
+coding workflow this section describes, and it is the default because the
+failure it prevents is a task reported complete on a wrong result.
+`builtin:single` is the plain form: that workflow's implementation episode
+alone, under the same instructions, tools, return schema, grants, and
+sandbox mode, with no assessment episode and no repair episode. It suits a
+task whose result a person reads directly. Every other name is refused with
+the names the binary carries. A command line naming no document examines the
+working directory alone and searches no ancestor directory. A run that reads
+`.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
+standard error, where NAME is the document's `name`. A task given on the
+command line replaces the document's own `task`. A host passes a document
+file: `--host` takes the task of the run from the document, and a built-in
+document carries no task, so `--config builtin:NAME` beside `--host` is
+refused.
+
+`--verify` and `--sandbox` configure either built-in document. A document in
+a file states that behavior in its own keys, so pairing either option with a
+file document, the discovered one included, is refused. The log records the
+full contract and its fingerprint, so a run is reproducible from its log
+whether or not the command line named the document.
+
+An implementation episode changes the current directory. A fresh assessment
+episode independently checks the task and implementation claim. It either
+accepts the artifacts or activates a fresh repair episode with its typed
+findings.
 
 The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
 fills its task, model, current-directory grants, executable inventory, sandbox
 mode, credential path, and optional verifier before resolving it as an ordinary
 contract document.
+
+The single document is built from that same file. The implementation node's
+contract becomes the whole document, under the name `single`, and the CLI
+fills the same values around it. The document declares no workflow, so the
+run is one episode of the direct loop, its lifetime episode count is one, and
+its allowance is that episode's 60-call backstop. With `--verify` the episode
+completes on the verifier's acceptance under the same twelve retries the
+coding workflow receives; a finding re-fires inside the episode, so the
+episode count stays at one. The two documents state the implementation once
+between them and fingerprint apart, so a log names which of them ran.
 
 The implementation and repair episodes have `read`, `grep`, `edit`, and
 `bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
@@ -824,8 +944,9 @@ completion. With `--verify`, both corrective nodes may fire thirteen times.
 The root lifetime cap grows to sixteen episodes so all twelve retries can run.
 
 `--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
-workflow. The default is `best-effort`. A contract document declares
-its own `sandbox.mode`, so `--sandbox` cannot accompany `--config`.
+workflow. The default is `best-effort`. A contract document in a file
+declares its own `sandbox.mode`, so `--sandbox` accompanies a built-in
+document alone.
 
 Before confinement, the CLI checks fixed standard paths for common compilers,
 interpreters, and repository tools. All three episodes receive the recorded
@@ -877,22 +998,45 @@ xhigh effort for assessment and repair. An explicit reasoning effort applies
 to all three episodes. Other models carry the root model options into every
 stage.
 
-`--service-tier TIER` sets the model request's `service_tier` field to
-`default` or `priority` for all three episodes. When the option is absent, the
-default model file's value remains in effect. Otherwise the provider applies
-its own default.
+`--service-tier TIER` asks the provider to process the model requests of all
+three episodes in the named tier. A tier is one provider's vocabulary, so the
+command line accepts any value and the provider table judges it: each row
+names the request field the tier travels in and every value that provider
+accepts, and a provider whose row carries no tier refuses the option.
+[models.md](models.md) lists the values per provider. When the option is
+absent, the default model file's value remains in effect. Otherwise the
+provider applies its own default.
 
-`--key-file` names the provider credential file explicitly. It supplies an API
-key file, OAuth token state, or managed-cloud credential according to the
-selected provider. Without it, a required convention file under
+A credential file is named where a model is configured rather than on the
+running command line. `foe login PROVIDER --key-file PATH` records the file
+for later runs, and a document's `model` block names one for a single
+contract, through the credential option its provider defines: an API key
+file, OAuth token state, or a managed-cloud credential, according to the
+provider. Where no option names a file, a required convention file under
 `~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
 an explicitly named file and sends no authentication header when none is
 named. The home directory comes from the passwd database, never from the
 environment.
 
+`--model` and `--service-tier` describe one `model` block between them, and
+the document under `--config` decides whether they apply. A document that
+declares a `model` block owns its model, so both are refused. A document
+that declares no `model` block has stated that it names no model, so the two
+supply one exactly as they do for the built-in document; without either such
+a document runs under a host. The block they supply changes no fingerprint,
+which covers what a model can observe rather than the transport that reaches
+it. `--verify` and `--sandbox` are refused with a document in a file
+whatever it declares, because a document carries its own completion gate and
+sandbox mode.
+
 `foe login` configures one provider. It asks for the endpoint-specific values
 and writes any supplied credential under `~/.config/foe/credentials/` with
-mode 0600. It sets the default model when none is set. [models.md](models.md)
+mode 0600. It sets the default model when none is set.
+`foe login PROVIDER --key-file PATH` asks nothing and records PATH as the
+file that provider's credential is read from, by naming it in the default
+model block through the provider's credential option. That command needs a
+model of the provider: `--model MODEL` names one, and a recorded default of
+the same provider supplies one otherwise. [models.md](models.md)
 specifies the providers, validation, and flows.
 
 `foe init --repository PATH` writes a starting execution contract to
@@ -912,16 +1056,17 @@ default. The placeholder verifier rejects every completion candidate with
 one finding naming the file a person must replace, so a run against the
 untouched document ends blocked rather than completed, and the verifier's
 capture at contract construction keeps the active episode judging by the
-captured bytes while a future run reads the file as it then exists. The
-runtime reads configuration from no well-known location: only `foe init`
-and the document it writes name these paths, and the report the command
-prints states every one of these decisions.
+captured bytes while a future run reads the file as it then exists. The file
+this command writes is the file a later run in that repository root uses
+when its command line names no document, under the rule "The command line"
+states. The report the command prints states every one of these decisions.
 
-Without `--headless` and without `--host`, the binary serves the viewer on
+Under `--viewer open` or `--viewer serve`, and without `--host`, the binary
+serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
-`/usr/bin/xdg-open` unless `--no-open` is given, and keeps serving for
-three seconds after the episode ends so that an open page receives the
-final events. `foe view DIR --serve` serves a finished directory for as
+`/usr/bin/xdg-open` under `--viewer open`, and keeps serving for
+three seconds after the outcome is written so that an open page receives
+the final events. `foe view DIR --serve` serves a finished directory for as
 long as the process runs.
 
 ## The viewer
@@ -957,9 +1102,9 @@ not finished.
     type,            resolution,        registry,    ├── crates/transport
     serde,           tool specs,        grants,      │    model clients, credentials
     serde_json       schema subset,     budget,      │
-                     harness text,      spawn,       ├── crates/workflow
-                     fingerprint,          teams,       │    graph scheduling and recovery
-                     inspection    result budget,    │
+                     harness text,      spawn,       ├── crates/team
+                     fingerprint,       result       │    roster, messages, coordination tools
+                     inspection         budget,      ├── crates/workflow
                                         exec,        ├── crates/context
                                         landlock,    │    projection, cut, summarization prompt
                                         protocol,    │
@@ -1050,10 +1195,12 @@ document that gains a key must not buy room in the loop, and because the
 claim the kernel's number supports is about the machine that runs a contract
 rather than about the data model it runs.
 
-The tool surface in `crates/code` is budgeted apart, under 2,350 lines on
-the same terms. It is separate because it grows a tool at a time: a new
-tool adds capability without touching the kernel, so room for tools must
-not become room for the loop. The workflow executor in `crates/workflow`
+The coding tools in `crates/code` stay under 1,900 lines. Team coordination
+in `crates/team` stays under 800 lines. Coding tools and team coordination
+together stay under 2,700 lines. The separate limits keep coordination
+independent of filesystem and process tools. The combined limit prevents a
+crate boundary from increasing the total implementation allowance. The
+workflow executor in `crates/workflow`
 stays under 1,050 lines. It schedules the graph, bounds text entering model
 nodes, and routes failures through recovery. Inspection of a configured
 contract tree remains in `foe_contract::inspect`, beside the model it analyses.
@@ -1062,7 +1209,7 @@ episode. The executor realizes the rule as an ordinary spawn. Inspection reads
 the same rule as reachability. The compaction policy in `crates/context` stays
 under 500.
 
-The viewer is budgeted apart from the runtime: `crates/view` under 600 lines,
+The viewer is budgeted apart from the runtime: `crates/view` under 780 lines,
 and the browser bundle it serves under 150 KB compressed. It is separate
 because it delivers a record of a run rather than running one, so a viewer
 that grows must not force the runtime to shrink. The browser viewer's HTML,
@@ -1077,7 +1224,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 1,650 lines. It is separate because it serves a person at a terminal
+under 1,950 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
@@ -1098,11 +1245,15 @@ crates. See [evidence.md](evidence.md).
 
 The model clients in `crates/transport` stay under 2,700 lines. They own the
 HTTP formats, credential sources, endpoint table, and request loop.
-Continuous integration enforces every budget as a test.
+Continuous integration enforces every budget as a test. `scripts/loc.sh`
+holds each ceiling once and fails when this document, `AGENTS.md`, or
+`README.md` quotes a different number.
 
 The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
-there is to read.
+there is to read. A ceiling moves in either direction only in a commit of
+its own that states the reason, under the rule in `AGENTS.md`; a commit
+that adds behavior fits inside the ceilings as they stand.
 
 ## Status
 

@@ -5,7 +5,6 @@ use crate::{CallCtx, RuntimeError, Tool, ToolValue};
 use foe_contract::{fingerprint::sha256_hex, harness_text as text, Effect, ToolSpec};
 use foe_log::{Event, EventData, RenderingArchive};
 use serde_json::{json, Value};
-use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -41,17 +40,13 @@ pub fn cursor(step: u32, call_id: &str, rendering: &str, offset: usize) -> Strin
 /// Context policies use this form so archived bytes remain outside their
 /// projection boundary.
 pub fn cursor_for_digest(step: u32, call_id: &str, digest: &str, offset: usize) -> String {
-    make_cursor(step, call_id, digest, offset)
+    let key = source_key(step, call_id, digest);
+    let body = format!("r1.{key}.{offset:x}");
+    format!("{body}.{}", sha256_hex(body.as_bytes()))
 }
 
 pub fn digest(bytes: &[u8]) -> String {
     format!("sha256:{}", sha256_hex(bytes))
-}
-
-fn make_cursor(step: u32, call_id: &str, digest: &str, offset: usize) -> String {
-    let key = source_key(step, call_id, digest);
-    let body = format!("r1.{key}.{offset:x}");
-    format!("{body}.{}", sha256_hex(body.as_bytes()))
 }
 
 fn source_key(step: u32, call_id: &str, digest: &str) -> String {
@@ -106,48 +101,15 @@ fn source(events: &[Event], spill_dir: &Path, current_step: u32, key: &str) -> R
             continue;
         }
         let bytes = match archive {
-            Some((seq, archive)) => read_archive(spill_dir, seq, archive)?,
+            Some((seq, archive)) => {
+                foe_log::artifact::read_rendering(spill_dir, seq, archive).map_err(|e| format!("retrieve: {e}"))?
+            }
             None => result.rendered.as_bytes().to_vec(),
         };
+        std::str::from_utf8(&bytes).map_err(|e| format!("retrieve at event {}: {e}", event.seq))?;
         return Ok(Source { seq: event.seq, step: result.step, call_id: result.call_id.clone(), digest, bytes });
     }
     Err(text::RETRIEVE_UNAVAILABLE.into())
-}
-
-fn read_archive(spill_dir: &Path, seq: u64, archive: &RenderingArchive) -> Result<Vec<u8>, String> {
-    let expected = foe_log::digest::rendering_file(&archive.digest);
-    if expected.as_deref() != Some(&archive.file) {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} has a path that does not match {}",
-            archive.digest
-        ));
-    }
-    let path = spill_dir.join(&archive.file);
-    let bytes = std::fs::read(&path).map_err(|error| {
-        format!(
-            "retrieve: rendering archive event {seq} at spill/{} for {} cannot be read: {error}",
-            archive.file, archive.digest
-        )
-    })?;
-    if bytes.len() as u64 != archive.bytes {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} at spill/{} for {} has {} bytes; expected {}",
-            archive.file,
-            archive.digest,
-            bytes.len(),
-            archive.bytes
-        ));
-    }
-    let actual = digest(&bytes);
-    if actual != archive.digest {
-        return Err(format!(
-            "retrieve: rendering archive event {seq} at spill/{} has digest {actual}; expected {}",
-            archive.file, archive.digest
-        ));
-    }
-    std::str::from_utf8(&bytes)
-        .map_err(|_| format!("retrieve: rendering archive event {seq} for {} is not UTF-8", archive.digest))?;
-    Ok(bytes)
 }
 
 pub struct ArchivedRendering {
@@ -164,27 +126,7 @@ pub fn retain(
     let Some(file) = foe_log::digest::rendering_file(&archived.digest) else {
         return Err(RuntimeError::Protocol("tool rendering archive: digest is invalid".into()));
     };
-    let path = spill_dir.join(&file);
-    std::fs::create_dir_all(path.parent().expect("an archive has a parent")).map_err(foe_log::LogError::Io)?;
-    if path.exists() {
-        let bytes = std::fs::read(&path).map_err(foe_log::LogError::Io)?;
-        if digest(&bytes) != archived.digest || bytes != archived.complete.as_bytes() {
-            return Err(RuntimeError::Protocol(format!(
-                "tool rendering archive spill/{file}: existing content does not match {}",
-                archived.digest
-            )));
-        }
-    } else {
-        let temporary = path.with_extension("tmp");
-        let io = |error| RuntimeError::Log(foe_log::LogError::Io(error));
-        if temporary.exists() {
-            std::fs::remove_file(&temporary).map_err(io)?;
-        }
-        let mut output = std::fs::OpenOptions::new().write(true).create_new(true).open(&temporary).map_err(io)?;
-        output.write_all(archived.complete.as_bytes()).map_err(io)?;
-        output.sync_all().map_err(io)?;
-        std::fs::rename(temporary, &path).map_err(io)?;
-    }
+    foe_log::artifact::retain(&spill_dir.join(&file), archived.complete.as_bytes()).map_err(foe_log::LogError::Io)?;
     Ok(RenderingArchive {
         step,
         call_id: call_id.into(),

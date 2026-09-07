@@ -8,7 +8,7 @@ description = "Built-in coding tools: read, grep, edit, bash, session, python"
 
 [features]
 default = ["exec"]
-# The `bash`, `session`, and `python` tools. A build without this feature
+# The `bash`, `session`, and `compose_tools` tools. A build without this feature
 # contains no code that starts a process.
 exec = []
 
@@ -20,7 +20,7 @@ serde_json.workspace = true
 async-trait.workspace = true
 sha2.workspace = true
 hex.workspace = true
-# The `python` tool serves its interpreter's dispatch socket without
+# The `compose_tools` tool serves its interpreter's dispatch socket without
 # blocking the executor thread that owns the process.
 tokio = { workspace = true, features = ["net"] }
 grep-searcher = "0.1"

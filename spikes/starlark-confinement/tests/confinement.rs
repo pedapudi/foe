@@ -1,4 +1,4 @@
-//! The evaluator confinement suite from docs/code-mode.md "Evaluation
+//! The evaluator confinement suite from docs/tool-composition.md "Evaluation
 //! requirements", item 2: tests attempt filesystem, process, network,
 //! clock, randomness, module loading, memory exhaustion, and
 //! non-termination. The suite also measures fuel accounting, memory
@@ -166,7 +166,7 @@ fn randomness_is_undefined() {
 }
 
 /// Two evaluations of one source with one dispatcher produce identical
-/// values and identical step counts. docs/code-mode.md: evaluation is
+/// values and identical step counts. docs/tool-composition.md: evaluation is
 /// deterministic given the source and the sequence of inner tool results.
 #[test]
 fn evaluation_is_deterministic() {
@@ -385,7 +385,7 @@ fn cancellation_interrupts_a_running_evaluation() {
     assert!(elapsed < Duration::from_secs(2), "cancellation took {elapsed:?}");
 }
 
-/// docs/code-mode.md: inner dispatch is unavailable while the evaluator
+/// docs/tool-composition.md: inner dispatch is unavailable while the evaluator
 /// loads the source. A top-level `call_tool` fails before any effect.
 #[test]
 fn dispatch_is_disabled_during_module_load() {
@@ -409,7 +409,7 @@ fn dispatch_is_disabled_during_module_load() {
     assert!(!calls.load(Ordering::Relaxed), "dispatcher ran during load");
 }
 
-/// The worked example from docs/code-mode.md "Outer call contract": a
+/// The worked example from docs/tool-composition.md "Outer call contract": a
 /// contract narrows a tool result and returns a JSON value.
 #[test]
 fn a_contract_narrows_a_tool_result() {

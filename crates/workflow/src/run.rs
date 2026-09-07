@@ -19,7 +19,7 @@ use foe_contract::tools::Source;
 use foe_contract::workflow::{ancestors, Node, WorkflowConfig};
 use foe_contract::{Effect, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::loop_::{initialize, lock, settle, until, verify_recorded, wait_stop, Log, Params, Recorder};
+use foe_core::loop_::{finish, initialize, lock, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
 use foe_core::{
     CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolFailure, ToolFailureCode, ToolValue, Transport,
@@ -47,13 +47,26 @@ pub struct WorkflowParams {
     pub workflow: WorkflowConfig,
 }
 
+/// Refuses recorded workflow execution until its scheduling state can be restored.
+pub fn validate_resume(events: &[Event]) -> Result<(), RuntimeError> {
+    if let Some(event) = events.iter().find(|e| e.data.type_name().starts_with("workflow/")) {
+        return Err(RuntimeError::Protocol(format!(
+            "workflow resume at event {}: recorded firings require scheduler restoration; no node was started",
+            event.seq
+        )));
+    }
+    Ok(())
+}
+
 /// Runs the workflow to its end and writes `episode/end`.
 pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let p = params.episode;
+    p.log.with_events(validate_resume)?;
     let log = p.log.clone();
     let text = p.start.task.clone();
     let runtime_build = p.start.runtime.build.clone();
     initialize(&log, &p.start)?;
+    log.with_events(|events| lock(&p.pool).restore(events, foe_log::append::now_millis()));
     // The task item is at seq 1 in every log (docs/log-format.md), so a
     // firing that follows `task` names that event among its inputs.
     let task = Produced { value: Value::String(text.clone()), rendered: text, seq: 1 };
@@ -73,16 +86,8 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         header: Mutex::new(None),
         effectful: Arc::new(Semaphore::new(1)),
     });
-    let mut executor = Executor::new(shared, String::new(), &params.workflow);
-    let outcome = match executor.drive().await {
-        Ok(outcome) => outcome,
-        Err(RuntimeError::Log(e)) => return Err(e.into()),
-        Err(e) => Outcome::Failed { error: e.to_string() },
-    };
-    settle(&log, &shared_pool, children.as_deref(), sessions).await?;
-    log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
-    log.sync()?;
-    Ok(outcome)
+    let work = async move { Executor::new(shared, String::new(), &params.workflow).drive().await };
+    finish(&log, &shared_pool, children.as_deref(), sessions, work).await
 }
 
 /// What every executor over one log shares, nested ones included.

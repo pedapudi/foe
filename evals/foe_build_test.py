@@ -70,6 +70,15 @@ class FoeBuildTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source tree is not clean"):
                 foe_build.clean_source_tree(root)
 
+    def test_announced_log_dir_reads_the_line_the_run_printed(self) -> None:
+        stderr = "foe: using .foe/contract.json, workflow coding\nfoe: log /runs/named/ep_8f3a\n"
+        self.assertEqual(
+            foe_build.announced_log_dir(stderr, Path("/runs/named")), Path("/runs/named/ep_8f3a")
+        )
+
+    def test_announced_log_dir_falls_back_to_the_named_directory(self) -> None:
+        self.assertEqual(foe_build.announced_log_dir("config: no such file\n", Path("/runs/named")), Path("/runs/named"))
+
     def test_evaluated_foe_requires_both_digests(self) -> None:
         with self.assertRaisesRegex(ValueError, "runtime_binary is missing or malformed"):
             foe_build.require_evaluated_foe(

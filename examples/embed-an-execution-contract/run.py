@@ -224,13 +224,17 @@ async def main() -> None:
     log_dirs: dict[str, Path] = {}
     for name in REPORTS:
         report_path = reports_dir / f"{name}.txt"
-        log_dirs[name] = run_dir / name
-        outcomes[name] = await contract.run(
+        handle = await contract.start(
             task=f"Triage the defect report at {report_path}.",
             model_backend=model_backend_from(answers_for(name, report_path)),
             binary=binary,
-            log_dir=log_dirs[name],
+            log_dir=run_dir / name,
         )
+        outcomes[name] = await handle.wait()
+        # The binary created its own directory for this episode under the one
+        # named, and the handle carries it.
+        assert handle.log_dir is not None
+        log_dirs[name] = handle.log_dir
         print(f"  {act_on(name, outcomes[name])}")
 
     check(outcomes, log_dirs)

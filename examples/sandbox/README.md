@@ -51,7 +51,7 @@ The materialized paths differ on every run. Their relationship stays fixed:
 target/foe-sandbox-demo.XXXXXX/
 ├── project/allowed.txt          read grant covers this file
 ├── outside-grant/denied.txt     no grant covers this file
-└── episode/episode.jsonl
+└── episode/<episode-id>/episode.jsonl
 ```
 
 The configured `cat` tool grants execute access to `read-file.sh`. The child

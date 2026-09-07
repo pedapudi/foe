@@ -23,7 +23,7 @@ CODES = {
 }
 
 # Every tool the mistake episode's contract declares.
-DECLARED = {"read", "grep", "edit", "bash", "session", "python", "retrieve"}
+DECLARED = {"read", "grep", "edit", "bash", "session", "compose_tools", "retrieve"}
 
 
 class CaseTable(unittest.TestCase):

@@ -36,7 +36,7 @@ mkdir -p "$output_dir"
 run_dir=$(mktemp -d "$output_dir/foe-sandbox-demo.XXXXXX")
 project_dir="$run_dir/project"
 denied_dir="$run_dir/outside-grant"
-log_dir="$run_dir/episode"
+log_parent="$run_dir/episode"
 mkdir -p "$project_dir" "$denied_dir"
 printf 'visible through the read grant\n' > "$project_dir/allowed.txt"
 printf 'hidden outside the read grant\n' > "$denied_dir/denied.txt"
@@ -48,8 +48,15 @@ printf 'hidden outside the read grant\n' > "$denied_dir/denied.txt"
   /home/user/foe "$repo_dir"
 
 echo "Running the sandbox demo in $run_dir"
+status=0
 /usr/bin/python3 "$repo_dir/examples/support/run_with_host.py" \
-  "$binary" "$run_dir/config.json" "$log_dir" "$repo_dir/examples/support/responses.py" sandbox
+  "$binary" "$run_dir/config.json" "$log_parent" "$repo_dir/examples/support/responses.py" sandbox 2>"$run_dir/foe.err" || status=$?
+cat "$run_dir/foe.err" >&2
+[ "$status" -eq 0 ] || exit "$status"
+# The run creates its own directory for the episode under the one named
+# and prints it on standard error, which docs/design.md "The command line"
+# fixes.
+log_dir=$(sed -n 's/^foe: log //p' "$run_dir/foe.err" | head -n 1)
 
 grep -q "visible through the read grant" "$log_dir/episode.jsonl"
 grep -q "Permission denied" "$log_dir/episode.jsonl"

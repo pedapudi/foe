@@ -7,14 +7,15 @@ reserved for it. A reserved event type has a variant in `crates/log/src/lib.rs`
 so that a log format version 3 reader parses a later log. The current runtime
 emits none of these reserved events.
 A feature with nothing reserved is listed so that a reader does not search
-for it.
+for it. The final section lists features the design rejects, with the
+reason, so that a reader does not propose them again without new evidence.
 
 ## Candidate slates
 
 A candidate slate runs several forks from one prefix, so that the shared
 prefix is materialized once and the branches are causally independent, and
 then selects among their outcomes. Forking itself is implemented: the
-running form's `--fork SOURCE_DIR --at SEQ` seeds a new episode from a
+running form's `--from SOURCE_DIR@SEQ` seeds a new episode from a
 prefix of an existing log, under "Seeding" in
 [log-format.md](log-format.md). A slate today is a caller-side loop over
 that form: N launches from one source and boundary produce N independent
@@ -24,14 +25,6 @@ outcomes. It waits for evidence that either is needed: a measured
 prefix-materialization cost that the per-launch copy makes significant,
 or a consumer that needs foe to witness the selection among outcomes. No
 event type or configuration key is reserved.
-
-## Team task board
-
-A team task board is a list of tasks shared by a lead and its members, held
-in the lead's log, from which a member claims a task, reports progress, and
-marks completion. The board would be folded from the lead's log in the same
-way as the roster and the message queue. The task board is not implemented.
-Reserved event type: `team/task`, carrying an unconstrained JSON object.
 
 ## Correlated request and response over the inbox
 
@@ -55,6 +48,20 @@ No event type or configuration key is reserved. The evidence that would
 justify building it is a consumer needing first-completion-wins — a
 trajectory that waits on `any`, then pays for children whose results it
 discards.
+
+## Workflow continuation after process interruption
+
+Workflow continuation would restore completed firings, input versions,
+branch choices, verification retries, and recovery allowances from the log.
+The runtime refuses continuation from recorded workflow execution. Log
+inspection and evidence retention remain available.
+
+Supporting continuation requires a workload whose retained progress
+justifies scheduler recovery, explicit attribution of scheduling decisions,
+and a policy for tool calls whose results were never recorded. A process can
+stop after an external effect succeeds and before its result reaches the log.
+Resumption alone cannot guarantee that effects occur once. No event type or
+configuration key is reserved for workflow continuation.
 
 ## Event-conditioned workflow edges
 
@@ -139,11 +146,11 @@ definitions in a file or find the definition of a name without reading whole
 files. Tree-sitter symbols are not implemented. No event type or
 configuration key is reserved.
 
-## Default adoption of the python tool
+## Default adoption of tool composition
 
-The built-in `python` tool lets the model write a short Python script that calls
+The built-in `compose_tools` tool lets the model write a short Python script that calls
 several tools and returns a combined value; inner results remain in the
-log and never re-enter the conversation. [code-mode.md](code-mode.md)
+log and never re-enter the conversation. [tool-composition.md](tool-composition.md)
 specifies the implemented tool and the `tool/inner-call` event. What is
 deferred is default adoption: the built-in coding workflow does not list
 the tool until the task-quality, cost, and simpler-alternative evidence
@@ -237,3 +244,22 @@ vectors verified against real token structure, which cannot be taken from
 documentation alone; until then GitHub tokens are matched by prefix and
 length like every other provider prefix. No event type or configuration
 key is reserved.
+
+## Considered and rejected
+
+### An executable model transport
+
+An executable model transport is a separate process that the runtime would
+start once per model request to perform the call, holding its own
+credential and answering in the `model/request` and `model/chunk` shapes of
+[protocol.md](protocol.md) over standard input and output. foe does not
+offer one. A model call is made by one of the HTTP clients built into the
+binary, specified in [models.md](models.md), or by the host over the
+protocol when no `model` block is present. A transport process would be a
+second captured-executable path beside configured tools and verifiers, and
+the one sandboxed executable that both reads a credential and opens
+outbound TCP; a configured tool with `network: true` opens TCP and reads no
+key file. Its optional presence would also select the binary's contents at
+build time, doubling the release matrix. No event type or configuration key
+is reserved; a `model` block whose `provider` is not in the provider table
+receives an error that lists the known names.

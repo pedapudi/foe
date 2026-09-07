@@ -15,6 +15,7 @@ foe-log = { path = "../log" }
 foe-contract = { path = "../contract" }
 foe-telemetry = { path = "../telemetry" }
 foe-core = { path = "../core" }
+foe-team = { path = "../team" }
 foe-code = { path = "../code" }
 foe-view = { path = "../view" }
 foe-workflow = { path = "../workflow" }

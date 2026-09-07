@@ -22,22 +22,35 @@ use std::process::{ExitCode, Stdio};
 type Text = &'static str;
 
 /// One option, and the form that accepts it: the command word of that form,
-/// the flag, the value placeholder, empty for a switch, what applies when
-/// the option is absent, and what it does. `absent` is the literal
-/// `required` when the form refuses to run without the option, otherwise the
-/// default in words, or empty when a switch that is simply off has nothing
-/// to say.
+/// the heading its help screen lists the option under, the flag, the value
+/// placeholder, empty for a switch, what applies when the option is absent,
+/// and what it does. `absent` is the literal `required` when the form
+/// refuses to run without the option, otherwise the default in words, or
+/// empty when a switch that is simply off has nothing to say. An empty
+/// `group` lists the option above every heading.
 struct Opt {
     command: Text,
+    group: Text,
     flag: Text,
     value: Text,
     absent: Text,
     meaning: Text,
 }
 
-const fn opt(command: Text, flag: Text, value: Text, absent: Text, meaning: Text) -> Opt {
-    Opt { command, flag, value, absent, meaning }
+const fn opt(command: Text, group: Text, flag: Text, value: Text, absent: Text, meaning: Text) -> Opt {
+    Opt { command, group, flag, value, absent, meaning }
 }
+
+/// The headings the running form's help lists its options under, in order.
+/// Each says what the options beneath it decide, so a reader looking for one
+/// decision reads one group. Every running option names exactly one, except
+/// `--host`, which selects a different way to run rather than adjusting a
+/// run and is listed above them all.
+const WHAT_RUNS: Text = "what runs";
+const BUILT_IN_ONLY: Text = "built-in documents only";
+const THE_MODEL: Text = "the model, when the document names none";
+const WATCHING: Text = "how you watch it";
+const GROUPS: &[Text] = &[WHAT_RUNS, BUILT_IN_ONLY, THE_MODEL, WATCHING];
 
 /// One command form: the word that selects it, empty for the bare running
 /// form; its positional arguments in usage shape, where a bracketed word is
@@ -68,43 +81,123 @@ const FORMS: &[Form] = &[
 /// is not accepted, and one present here is documented. `--help` is accepted
 /// by every form and so appears once, under no command.
 const OPTS: &[Opt] = &[
-    opt("", "--config", "FILE", "the built-in coding workflow", "the contract document to run"),
-    opt("", "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
-    opt("", "--service-tier", "TIER", "the model configuration's value", "request service tier: default or priority"),
     opt(
+        "",
+        WHAT_RUNS,
+        "--config",
+        "FILE",
+        ".foe/contract.json in the working directory, else builtin:coding",
+        "the contract document to run: a file, builtin:coding, the careful default that implements and then \
+         assesses, or builtin:single, the plain form of one implementation episode",
+    ),
+    opt("", WHAT_RUNS, "--log-dir", "DIR", ".foe", "the directory this episode's own directory is created under"),
+    opt(
+        "",
+        WHAT_RUNS,
+        "--from",
+        "DIR[@SEQ]",
+        "a fresh episode",
+        "continue the episode logged in DIR, or with @SEQ fork it at that seq into a new episode",
+    ),
+    opt(
+        "",
+        BUILT_IN_ONLY,
+        "--verify",
+        "PATH",
+        "a built-in document has no verifier gate",
+        "an executable verifier whose acceptance completes the built-in document",
+    ),
+    opt(
+        "",
+        BUILT_IN_ONLY,
+        "--sandbox",
+        "MODE",
+        "best-effort",
+        "kernel confinement mode: best-effort, required, or off",
+    ),
+    opt("", THE_MODEL, "--model", "PROVIDER/MODEL", "the default model `foe login` wrote", "the model that answers"),
+    opt(
+        "",
+        THE_MODEL,
+        "--service-tier",
+        "TIER",
+        "the model configuration's value",
+        "the provider's request service tier; docs/models.md lists the values each provider accepts",
+    ),
+    opt(
+        "",
+        WATCHING,
+        "--viewer",
+        "MODE",
+        "open, and off under --host",
+        "the browser viewer: open a browser on it, serve without opening one, or off",
+    ),
+    opt(
+        "",
+        WATCHING,
+        "--conversation",
+        "",
+        "",
+        "show the conversation and execution tree on standard output; --viewer applies as given",
+    ),
+    opt(
+        "",
+        "",
+        "--host",
+        "",
+        "",
+        "answer model requests over the protocol on standard input; --config carries the task",
+    ),
+    opt("login", "", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
+    opt(
+        "login",
         "",
         "--key-file",
         "PATH",
-        "the provider's file under ~/.config/foe/credentials/",
-        "the provider credential file to use",
+        "the key this command asks for, written under ~/.config/foe/credentials/",
+        "record this file as the provider's credential, asking nothing",
     ),
     opt(
+        "init",
         "",
-        "--verify",
+        "--repository",
         "PATH",
-        "the built-in workflow has no verifier gate",
-        "an executable verifier whose acceptance completes the built-in workflow",
+        "required",
+        "the repository to write .foe/contract.json and .foe/verify for",
     ),
-    opt("", "--sandbox", "MODE", "best-effort", "kernel confinement mode: best-effort, required, or off"),
-    opt("", "--log-dir", "DIR", ".foe/<episode-id>", "where the episode log is written"),
-    opt("", "--fork", "SOURCE_DIR", "", "seed the log from a prefix of SOURCE_DIR's log; the task is the fork's task"),
-    opt("", "--at", "SEQ", "", "the --fork boundary: source events with seq below SEQ are copied"),
-    opt("", "--no-open", "", "", "serve the viewer without opening a browser on it"),
-    opt("", "--headless", "", "", "run with no viewer at all"),
-    opt("", "--host", "", "", "answer model requests over the protocol on standard input; --config carries the task"),
-    opt("login", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
-    opt("init", "--repository", "PATH", "required", "the repository to write .foe/contract.json and .foe/verify for"),
-    opt("login", "--status", "", "", "print the default model and every configured credential path"),
-    opt("view", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
-    opt("view", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
-    opt("plan", "--config", "FILE", "the built-in tools alone", "the contract document to resolve"),
-    opt("plan", "--json", "", "", "print one JSON object instead of the report"),
-    opt("plan", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
-    opt("telemetry", "--json", "", "", "print that payload as JSON instead of a summary"),
+    opt("login", "", "--status", "", "", "print the default model and every configured credential path"),
+    opt("view", "", "--serve", "", "", "serve the directory instead of writing the page to standard output"),
+    opt("view", "", "--port", "N", "an ephemeral port, printed as the first line", "the port to serve on"),
+    opt(
+        "plan",
+        "",
+        "--config",
+        "FILE",
+        "the built-in tools alone",
+        "the contract document to resolve: a file, builtin:coding, or builtin:single",
+    ),
+    opt("plan", "", "--json", "", "", "print one JSON object instead of the report"),
+    opt("plan", "", "--schema", "", "", "print the JSON Schema of the contract document and nothing else"),
+    opt("telemetry", "", "--json", "", "", "print that payload as JSON instead of a summary"),
 ];
 
 /// The `--help` row, accepted by every form and listed in every help screen.
-const HELP: Opt = opt("*", "--help", "", "", "print this help and exit");
+const HELP: Opt = opt("*", "", "--help", "", "", "print this help and exit");
+
+/// Spellings the running form does not accept, each with the option that
+/// says the same thing. A command line using one is refused by its own name,
+/// because what it asked for is still available under another spelling.
+const RETIRED: &[(Text, Text)] = &[
+    ("--fork", "write --from DIR@SEQ instead"),
+    ("--at", "write --from DIR@SEQ instead"),
+    ("--no-open", "write --viewer serve instead"),
+    ("--headless", "write --viewer off instead"),
+    (
+        "--key-file",
+        "record the credential once with `foe login PROVIDER --key-file PATH`, or name it in the document's \
+         `model` block",
+    ),
+];
 
 /// How a message names a form: `foe` alone for the bare running form.
 fn spelled(form: &Form) -> String {
@@ -166,6 +259,10 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
         }
         let Some(o) = accepted(form).find(|o| o.flag == arg.as_str()) else {
             let it = spelled(form);
+            let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg.as_str());
+            if let Some((_, advice)) = retired {
+                return Err(format!("`{it}` no longer takes {arg}; {advice}"));
+            }
             return Err(format!("unknown option {arg} for `{it}`; run `{it} --help` for the options it takes"));
         };
         let value = match o.value.is_empty() {
@@ -177,10 +274,23 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
     Ok(out)
 }
 
+/// One option's line in a help screen: the flag with its value placeholder,
+/// what the option does, and what applies when it is absent.
+fn row(o: &Opt) -> String {
+    let flag = format!("{} {}", o.flag, o.value);
+    let absent = match o.absent {
+        "" => String::new(),
+        "required" => " (required)".to_string(),
+        text => format!(" (default: {text})"),
+    };
+    format!("  {:<24}{}{}\n", flag.trim_end(), o.meaning, absent)
+}
+
 /// `foe <command> --help`: the usage line, what the form does, and every
-/// option with its meaning and what applies when it is absent. For the
-/// running form this is `foe --help`, which adds the other command words,
-/// because a bare `foe` is the running form.
+/// option with its meaning and what applies when it is absent, listed under
+/// the heading its row names. For the running form this is `foe --help`,
+/// which adds the other command words, because a bare `foe` is the running
+/// form.
 fn help(form: &'static Form) -> String {
     let mut line = format!("usage: foe {} {}", form.name, form.args);
     for o in OPTS.iter().filter(|o| o.command == form.name) {
@@ -190,14 +300,14 @@ fn help(form: &'static Form) -> String {
     }
     let line = line.split_whitespace().collect::<Vec<&str>>().join(" ");
     let mut out = format!("{line}\n\n{}\n\noptions:\n", form.about);
-    for o in accepted(form) {
-        let flag = format!("{} {}", o.flag, o.value);
-        let absent = match o.absent {
-            "" => String::new(),
-            "required" => " (required)".to_string(),
-            text => format!(" (default: {text})"),
-        };
-        writeln!(out, "  {:<24}{}{}", flag.trim_end(), o.meaning, absent).ok();
+    for o in accepted(form).filter(|o| o.group.is_empty()) {
+        out.push_str(&row(o));
+    }
+    for group in GROUPS.iter().filter(|group| accepted(form).any(|o| o.group == **group)) {
+        writeln!(out, "\n{group}:").ok();
+        for o in accepted(form).filter(|o| o.group == *group) {
+            out.push_str(&row(o));
+        }
     }
     if form.name.is_empty() {
         out.push_str("\ncommands:\n");
@@ -212,9 +322,9 @@ fn help(form: &'static Form) -> String {
 enum Command {
     Run(run::Options),
     Init { repository: PathBuf },
-    Login { provider: Option<String>, model: Option<String>, status: bool },
+    Login(login::Options),
     View { dir: PathBuf, serve: bool, port: u16 },
-    Plan { config: Option<PathBuf>, json: bool },
+    Plan { config: Option<String>, json: bool },
     Schema,
     Telemetry { logs: Vec<String>, json: bool },
     Help(&'static Form),
@@ -251,7 +361,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
         },
         "plan" => {
             let (schema, json) = (args.switch("--schema"), args.switch("--json"));
-            let config = args.value("--config").map(PathBuf::from);
+            let config = args.value("--config");
             if schema && (config.is_some() || json) {
                 return Err("`foe plan --schema` prints the schema and takes no other option".into());
             }
@@ -269,35 +379,56 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 .map(PathBuf::from)
                 .ok_or("`foe init` takes --repository PATH; run `foe init --help`")?,
         },
-        "login" => Command::Login {
+        "login" => Command::Login(login::Options {
             provider: args.positional.pop(),
             model: args.value("--model"),
+            key_file: args.value("--key-file").map(PathBuf::from),
             status: args.switch("--status"),
-        },
+        }),
         _ => {
+            // `--from DIR@SEQ` names a boundary; a value whose last `@` is
+            // followed by anything else is a path in full.
+            let boundary = |text: &str| text.rsplit_once('@').and_then(|(d, n)| Some((d.to_string(), n.parse().ok()?)));
+            let (from, at) = match args.value("--from") {
+                Some(text) => match boundary(&text) {
+                    Some((dir, at)) => (Some(PathBuf::from(dir)), Some(at)),
+                    None => (Some(PathBuf::from(text)), None),
+                },
+                None => (None, None),
+            };
+            // `--host` gives standard output to the log, so it runs with no
+            // viewer whatever the command line named. A named value is still
+            // read, so a value none of the three matches is reported.
+            let host = args.switch("--host");
+            let named_viewer = args.value("--viewer").map(|value| run::Viewer::parse(&value)).transpose()?;
             let options = run::Options {
                 task: args.positional.pop(),
-                config: args.value("--config").map(PathBuf::from),
+                config: args.value("--config"),
                 model: args.value("--model"),
                 service_tier: args.value("--service-tier"),
-                key_file: args.value("--key-file").map(PathBuf::from),
                 verify: args.value("--verify").map(PathBuf::from),
                 sandbox: args.value("--sandbox"),
                 log_dir: args.value("--log-dir").map(PathBuf::from),
-                no_open: args.switch("--no-open"),
-                headless: args.switch("--headless"),
-                host: args.switch("--host"),
-                fork: args.value("--fork").map(PathBuf::from),
-                at: args.value("--at").map(|t| t.parse().map_err(|_| format!("--at: {t} is not a seq"))).transpose()?,
+                viewer: match host {
+                    true => run::Viewer::Off,
+                    false => named_viewer.unwrap_or_default(),
+                },
+                conversation: args.switch("--conversation"),
+                host,
+                from,
+                at,
             };
-            if options.fork.is_some() != options.at.is_some() {
-                return Err("--fork SOURCE_DIR and --at SEQ come together; run `foe --help`".into());
+            if options.host && options.conversation {
+                return Err("--conversation cannot be combined with --host".into());
             }
-            if options.task.is_none() && options.config.is_none() {
-                return Err("give a task or --config FILE; run `foe --help`".into());
+            if options.task.is_none() && options.config.is_none() && options.from.is_none() {
+                return Err("give a task, --config FILE, or --from DIR; run `foe --help`".into());
             }
             if options.host && (options.task.is_some() || options.config.is_none()) {
                 return Err("--host takes the task from --config FILE".into());
+            }
+            if options.host && options.config.as_deref().is_some_and(|c| c.starts_with(run::BUILTIN_PREFIX)) {
+                return Err("--host takes the task from a document file; a built-in name carries no task".into());
             }
             Command::Run(options)
         }
@@ -323,17 +454,13 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     match command {
         Command::Help(form) => printed(&help(form)),
         Command::Schema => printed(SCHEMA),
-        Command::Plan { config, json } => plan(config.as_deref(), json),
+        Command::Plan { config, json } => plan(config, json),
         Command::View { dir, serve, port } => view(&dir, serve, port),
         Command::Init { repository } => printed(&init::init(&repository)?),
-        Command::Login { provider, model, status } => login(provider, model, status),
+        Command::Login(options) => login::login(options),
         Command::Telemetry { logs, json } => telemetry::preview(&logs, json).map(|()| ExitCode::SUCCESS),
         Command::Run(options) => run::run(options),
     }
-}
-
-fn login(provider: Option<String>, model: Option<String>, status: bool) -> Result<ExitCode, String> {
-    login::login(login::Options { provider, model, status })
 }
 
 /// Starts the user's browser on a URL. A running form calls this before the
@@ -368,12 +495,22 @@ fn load(config: &Path) -> Result<foe_contract::document::ResolvedContract, Strin
 /// forms report the resolved tools with the source each name resolved in
 /// and the tools reachable from the root. Without `--json`, a
 /// workflow is followed by the report docs/workflow.md "Firing" describes.
-fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
+/// `--config` names a file or a built-in document, and a built-in document
+/// resolves here exactly as it resolves for a run of the same name.
+fn plan(config: Option<String>, json: bool) -> Result<ExitCode, String> {
     let Some(config) = config else {
         let builtins = std::iter::once(block_spec(false)).chain(run::extra_builtin_specs());
         return printed(&builtins.map(|spec| tool_row(&spec, "built-in")).collect::<String>());
     };
-    let contract = load(config)?;
+    let source = run::contract_source(&config)?;
+    let named = source.describe();
+    let contract = match &source {
+        run::ContractSource::Builtin(name) => {
+            let document = run::builtin_plan_document(name)?;
+            foe_contract::document::resolve(&document).map_err(|e| format!("{named}: {e}"))?
+        }
+        run::ContractSource::File(path) => load(path)?,
+    };
     let fingerprint = run::fingerprint(&contract)?;
     let value = contract.to_value();
     let model_endpoint = contract.model.as_ref().map(|_| run::describe_model_endpoint(&contract));
@@ -395,7 +532,7 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         });
         let report = serde_json::json!({
             "contract_fingerprint": fingerprint.hash, "fingerprint_document": fingerprint.document, "contract": value,
-            "model_endpoint": model_endpoint, "workflow": workflow, "context": context,
+            "model_endpoint": model_endpoint, "execution": plan::execution(&contract), "workflow": workflow, "context": context,
             "reachable_tools": reachable_tools, "resolved_permissions": resolved_permissions, "warnings": warnings,
         });
         println!("{report}");
@@ -410,8 +547,10 @@ fn plan(config: Option<&Path>, json: bool) -> Result<ExitCode, String> {
         println!("{}", serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?);
         if contract.workflow.is_some() {
             print!("{}", plan::workflow_report(&contract)?);
+        } else {
+            print!("{}", plan::root_agent_report(&contract));
         }
-        print!("tools\n{}", tool_rows(config, &contract)?);
+        print!("tools\n{}", tool_rows(&named, &contract)?);
         print!("{}", plan::reachable_tools_report(&reachable_tools));
         print!("{}", plan::permissions_report(&resolved_permissions));
         print!("{}", plan::warnings_report(&warnings));
@@ -428,10 +567,11 @@ fn tool_row(spec: &foe_contract::ToolSpec, source: &str) -> String {
     format!("{:<10} {:<10} {:<7} {first}\n", spec.name, source, effect.unwrap_or_default())
 }
 
-/// The resolved tools of the root contract, one row each.
-fn tool_rows(config: &Path, contract: &foe_contract::document::ResolvedContract) -> Result<String, String> {
+/// The resolved tools of the root contract, one row each. `source` is what
+/// `--config` named, which an error repeats.
+fn tool_rows(source: &str, contract: &foe_contract::document::ResolvedContract) -> Result<String, String> {
     let extra = run::extra_builtin_specs();
-    let specs = resolve_specs(contract, &extra).map_err(|e| format!("{}: {e}", config.display()))?;
+    let specs = resolve_specs(contract, &extra).map_err(|e| format!("{source}: {e}"))?;
     let sources = plan::tool_sources(contract, &extra)?;
     let named = |i: usize| match sources.get(i) {
         Some(Source::Builtin) => "built-in",

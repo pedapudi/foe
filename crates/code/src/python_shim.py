@@ -1,4 +1,4 @@
-# The shim the `python` tool prepends to the model's source on the
+# The shim the `compose_tools` tool prepends to the model's source on the
 # interpreter's standard input. It exposes call_tool and fail, speaks JSON
 # lines over the inherited socket on file descriptor 3, and reports the
 # value main returned or the failure that ended the source. python.rs
@@ -58,4 +58,3 @@ def _foe_run():
         import traceback
 
         _foe_send({"failed": traceback.format_exc(limit=5)})
-

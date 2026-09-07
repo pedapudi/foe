@@ -1,4 +1,4 @@
-use super::{learned_findings, parse_tolerant, run, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{learned_findings, parse_tolerant, run, spill, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
@@ -6,7 +6,7 @@ use crate::test_util::{
     call, contract_with, done, registry_for, text as text_chunk, tmp, turn, verifier_spec, Probe, ScratchDir,
     ScriptedTransport, Verifier,
 };
-use crate::{Tool, Transport};
+use crate::{Tool, ToolValue, Transport};
 use foe_contract::document::ResolvedContract;
 use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
@@ -37,6 +37,62 @@ fn start(contract: &ResolvedContract) -> EpisodeStart {
         },
         effective_budget: None,
     }
+}
+
+/// docs/log-format.md "Team": duplicate detection and insertion are one
+/// operation even when several deliveries arrive concurrently.
+#[test]
+fn simultaneous_peer_deliveries_append_one_inbox_item() {
+    let dir = tmp("concurrent-inbox");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    super::initialize(&log, &start(&contract)).unwrap();
+    let barrier = Arc::new(std::sync::Barrier::new(16));
+    let retained = std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..16)
+            .map(|_| {
+                let (log, barrier) = (log.clone(), barrier.clone());
+                scope.spawn(move || {
+                    barrier.wait();
+                    super::append_inbox_item(
+                        &log,
+                        foe_log::InboxItem {
+                            source: InboxSource::Peer,
+                            content: vec![],
+                            from: Some("ep_sender".into()),
+                            message_id: Some("ep_lead:tm_01".into()),
+                        },
+                    )
+                    .unwrap()
+                    .is_some()
+                })
+            })
+            .collect();
+        workers.into_iter().map(|worker| usize::from(worker.join().unwrap())).sum::<usize>()
+    });
+    assert_eq!(retained, 1);
+    assert_eq!(foe_log::fold::read_all(&dir).unwrap().len(), 3);
+}
+
+/// docs/log-format.md "Writers": initialization resumes the task item from the recorded start.
+#[test]
+fn interrupted_initialization_restores_the_recorded_task_once() {
+    let dir = tmp("interrupted-initialization");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let mut recorded = start(&contract);
+    recorded.task = "retain this task".into();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    log.append(EventData::EpisodeStart(recorded.clone())).unwrap();
+    drop(log);
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let supplied = start(&contract);
+    super::initialize(&log, &supplied).unwrap();
+    super::initialize(&log, &supplied).unwrap();
+    let events = log.events();
+    assert_eq!(events.len(), 2);
+    let EventData::InboxItem(item) = &events[1].data else { panic!("the second event must carry the task") };
+    assert_eq!(item.source, InboxSource::Task);
+    assert_eq!(item.content, vec![foe_log::ContentBlock::Text { text: recorded.task }]);
 }
 
 struct Fixture {
@@ -896,10 +952,12 @@ async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
     let dir = fx.dir.clone();
     let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
     let r = results(&events)[0];
-    assert_eq!(r.spill.as_deref(), Some("a.json"));
-    assert_eq!(r.value["spill"], "a.json");
+    let file = r.spill.as_ref().unwrap();
+    assert!(file.starts_with("result-") && file.ends_with(".json"));
+    assert_eq!(r.value["spill"], *file);
     assert!(r.rendered.starts_with("The canonical value was") && r.rendered.len() < SPILL_LIMIT);
-    let spilled: serde_json::Value = serde_json::from_slice(&std::fs::read(dir.join("spill/a.json")).unwrap()).unwrap();
+    let spilled: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("spill").join(file)).unwrap()).unwrap();
     assert_eq!(spilled["big"].as_str().unwrap().len(), SPILL_LIMIT + 1);
 }
 
@@ -1009,6 +1067,8 @@ async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only
 #[derive(Default)]
 struct FakeSessions {
     exits: Mutex<Vec<(std::time::Instant, crate::SessionStatus)>>,
+    settlements: Mutex<Vec<crate::SessionSettlement>>,
+    stopped: Mutex<Vec<u64>>,
 }
 
 fn exited(id: u64) -> crate::SessionStatus {
@@ -1028,11 +1088,12 @@ impl crate::Sessions for FakeSessions {
     fn signal(&self, _id: u64, _signal: &str) -> Result<crate::SessionStatus, crate::CapError> {
         Err(crate::CapError::Invalid("unused".into()))
     }
-    fn stop(&self, _id: u64) -> Result<crate::SessionStatus, crate::CapError> {
-        Err(crate::CapError::Invalid("unused".into()))
+    fn stop(&self, id: u64) -> Result<crate::SessionStatus, crate::CapError> {
+        self.stopped.lock().unwrap().push(id);
+        Ok(exited(id))
     }
     fn settle(&self) -> Vec<crate::SessionSettlement> {
-        Vec::new()
+        std::mem::take(&mut *self.settlements.lock().unwrap())
     }
     fn take_exited(&self) -> Vec<crate::SessionStatus> {
         let now = std::time::Instant::now();
@@ -1042,6 +1103,79 @@ impl crate::Sessions for FakeSessions {
         *exits = later;
         ready
     }
+}
+
+/// docs/log-format.md "Writers": recording failure interrupts a pending
+/// response and stops a task session whose release cannot be recorded.
+#[tokio::test(start_paused = true)]
+async fn recording_failure_cancels_streaming_and_cleans_up_without_more_events() {
+    struct RejectChunks;
+    impl std::io::Write for RejectChunks {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let event: Event = serde_json::from_slice(bytes).unwrap();
+            if matches!(event.data, EventData::AssistantChunk { .. }) {
+                return Err(std::io::Error::other("fixture mirror closed"));
+            }
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    struct PendingResponse(Arc<std::sync::atomic::AtomicBool>);
+    #[async_trait::async_trait]
+    impl Transport for PendingResponse {
+        fn route(&self) -> foe_log::ModelRoute {
+            foe_log::ModelRoute { provider: "test".into(), model: "pending".into() }
+        }
+        async fn stream(&self, _req: crate::ModelRequestBody, sink: &mut (dyn crate::ChunkSink + Send)) {
+            struct Dropped(Arc<std::sync::atomic::AtomicBool>);
+            impl Drop for Dropped {
+                fn drop(&mut self) {
+                    self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
+            let _dropped = Dropped(self.0.clone());
+            sink.push(text_chunk("first"));
+            sink.push(text_chunk("second"));
+            std::future::pending().await
+        }
+    }
+    let dir = tmp("log-failure-cleanup");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let log = Arc::new(Log::create_or_open(&dir, Some(Box::new(RejectChunks))).unwrap());
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let sessions = Arc::new(FakeSessions::default());
+    sessions.settlements.lock().unwrap().push(crate::SessionSettlement {
+        status: crate::SessionStatus { id: 1, name: "service".into(), alive: true, exit_code: None, seconds: 0 },
+        pid: 1,
+        process_group: 1,
+        released_to_task: true,
+    });
+    let (_, stop) = watch::channel(None);
+    let error = run(Params {
+        log: log.clone(),
+        start: start(&contract),
+        registry: Arc::new(registry_for(&contract, vec![], vec![Box::new(Probe::new("p", Effect::Pure))]).unwrap()),
+        pool: Arc::new(Mutex::new(Pool::new(contract.budget.clone()))),
+        contract,
+        handles: Handles::default(),
+        transport: Arc::new(PendingResponse(dropped.clone())),
+        stop,
+        children: None,
+        sessions: Some(sessions.clone()),
+        context: None,
+    })
+    .await
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("fixture mirror closed"), "{error}");
+    assert!(dropped.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(*sessions.stopped.lock().unwrap(), [1]);
+    let events = foe_log::fold::read_all(&dir).unwrap();
+    assert!(foe_log::fold::fold(&events).is_ok());
+    assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::AssistantChunk { .. })).count(), 1);
+    assert!(!events.iter().any(|e| matches!(e.data, EventData::EpisodeEnd { .. })));
 }
 
 /// docs/log-format.md "Inbox": a session exit reaches the log as one
@@ -1158,7 +1292,7 @@ fn tolerant_parsing_closes_what_a_truncated_stream_left_open() {
     assert_eq!(parse_tolerant("not json"), json!({}));
 }
 
-/// A tool named `python` that drives the composer it receives: one ordinary
+/// A tool named `compose_tools` that drives the composer it receives: one ordinary
 /// inner call, one whose arguments are not an object, and one naming an
 /// excluded control tool.
 struct ComposeProbe {
@@ -1188,8 +1322,8 @@ impl Tool for ComposeProbe {
     }
 }
 
-/// docs/code-mode.md and docs/log-format.md: the loop hands a composer to
-/// the call named `python` alone; every inner dispatch is recorded as
+/// docs/tool-composition.md and docs/log-format.md: the loop hands a composer to
+/// the call named `compose_tools` alone; every inner dispatch is recorded as
 /// `tool/inner-call` and its ordinary `tool/result`, an inner argument
 /// violation is an error result, derived messages carry the outer result
 /// alone, and the obligations balance through fold validation.
@@ -1257,4 +1391,21 @@ async fn a_composing_call_records_inner_calls_and_excludes_them_from_derived_mes
         })
         .collect();
     assert_eq!(tools, ["tc_p"], "the outer result alone reaches the model");
+}
+
+/// docs/log-format.md `tool/result`: distinct canonical values retain distinct immutable content paths.
+#[test]
+fn repeated_spills_preserve_prior_canonical_content() {
+    let scratch = tempfile::tempdir().unwrap();
+    let make = |letter: char| ToolValue::ok(json!({"content":letter.to_string().repeat(SPILL_LIMIT + 1)}), "large");
+    let first = spill(scratch.path(), make('a')).unwrap();
+    let second = spill(scratch.path(), make('b')).unwrap();
+    let repeated = spill(scratch.path(), make('a')).unwrap();
+    assert_ne!(first.2, second.2);
+    assert_eq!(first, repeated);
+    for (value, _, file) in [first, second] {
+        let bytes = std::fs::read(scratch.path().join(file.unwrap())).unwrap();
+        assert_eq!(value["digest"], crate::retrieval::digest(&bytes));
+        assert_eq!(value["bytes"], bytes.len());
+    }
 }

@@ -39,26 +39,26 @@ runner prints is the command that serves the viewer for that log.
 The project holds two modules that read a configuration key named
 `timeout`. The task is to rename that key to `timeout_seconds` in both.
 
-1. The parent spawns two children, one per module, each with the task of
-   reporting where its module reads the key.
+1. The parent adds two board tasks, one per module. Both tasks are ready, so
+   the runtime assigns each one to a child that reports where its module reads
+   the key.
 2. Each child greps its module, reports what it found with `notify`, and
    ends. The report reaches the parent as a message.
-3. The parent calls `wait`, which returns once every child it started has
-   ended and the `spawn/end` and `budget/release` each one owes are in the
-   parent's log. Both reports have arrived by then.
+3. The parent calls `wait`. It returns after both tasks have settled and each
+   child's `spawn/end` and `budget/release` are in the parent log. Both reports
+   have arrived by then.
 4. The parent applies the rename to both modules and finishes.
 
 ## Waiting for the children
 
-`wait` is a built-in tool that takes no arguments. It returns when no child
-of this episode is still running, or when the episode's `seconds` budget
-runs out, and it reports an error in the second case. One call buys the
-whole wait, so the parent spends one model call on waiting rather than one
-per poll.
+`wait` is a built-in tool that takes no arguments. It returns when every
+added task has settled and no child reservation remains. The episode's
+`seconds` budget bounds the wait. One call buys the whole wait, so the parent
+spends one model call on waiting rather than one per poll.
 
-Without it a parent has no way to hold: `spawn` returns as soon as the child
-starts, and an assistant turn with no tool calls completes the parent at
-once. A parent that means to abandon its children still ends that way. The
+Without it a parent has no way to hold: `spawn` returns after recording and
+scheduling the task, and an assistant turn with no tool calls completes the
+parent at once. A parent that means to abandon its children still ends that way. The
 episode's teardown then asks each child still running to end and waits for
 its `spawn/end` and `budget/release`, so the log accounts for every
 reservation the episode made whichever way the parent finishes.
@@ -90,15 +90,17 @@ children and forbids grandchildren. `max_episodes: 4` allows four episodes
 in the whole tree over the life of the run, which here is the parent and
 three children; it is a reservation dimension like the others, and a child
 that may start none of its own asks for one. `max_concurrent: 2` allows two
-children running at once, counting one episode's direct children alone. A `spawn` call that would pass any cap, or that
-asks for more budget than remains, returns an error result naming the limit,
-and no child starts; the model reads that result like any other.
+children running at once, counting one episode's direct children alone. A
+third ready task would remain queued until one child returned capacity. A
+task that cannot reserve another structural or spend limit settles as
+exhausted and records the limit in its outcome.
 
 ## What to look for
 
-Each `spawn` call produces, in the parent's log, a `budget/reserve` naming
-the child and the amount taken from the remainder, then a `spawn/start` with
-`context: "fresh"` and the id of the tool call that spawned it:
+Each `spawn` call first records a queued `team/task` revision. Assignment
+then produces a `budget/reserve` naming the child and the amount taken from
+the remainder. A `spawn/start` follows with `context: "fresh"` and the id of
+the tool call that added the task:
 
 ```json
 {"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}

@@ -1,19 +1,10 @@
 #!/usr/bin/python3
-"""Deterministic host responses for a lead, reviewer, and tester."""
-
-import time
+"""Deterministic responses for a lead and its two-level team."""
 
 from response_chunks import call, done, error, step, text, tool_names
 
 QUESTION = "Which checks cover src/cli.py?"
 ANSWER = "tests/check.py covers src/cli.py with three cases, one of them the dry run."
-WAIT_SECONDS = 0.05
-WAIT_LIMIT = 60
-WAITING = [
-    ("read", {"path": "src/cli.py"}),
-    ("grep", {"pattern": "dry_run", "path": "src"}),
-    ("grep", {"pattern": "def ", "path": "src/cli.py"}),
-]
 
 DRY_RUN_EDITS = [
     {
@@ -57,15 +48,14 @@ def received(request: dict, fragment: str) -> bool:
     return any(fragment in item for item in user_texts(request))
 
 
-def wait_for_message(request: dict, chunks: list[dict], waiting_for: str) -> None:
-    """Append one read-only call while waiting for a peer message."""
-    turn = step(request)
-    if turn > WAIT_LIMIT:
-        error(chunks, f"{waiting_for} did not arrive within {WAIT_LIMIT} steps")
-        return
-    time.sleep(WAIT_SECONDS)
-    name, args = WAITING[turn % len(WAITING)]
-    call(chunks, f"tc_wait_{turn}", name, args)
+def wait_for_peer(request: dict, chunks: list[dict]) -> None:
+    """Wait mechanically for one peer inbox item."""
+    call(
+        chunks,
+        f"tc_wait_peer_{step(request)}",
+        "wait",
+        {"until": [{"inbox": "peer"}], "timeout_seconds": 30},
+    )
     done(chunks, "tool")
 
 
@@ -81,13 +71,35 @@ def lead(request: dict) -> list[dict]:
             chunks,
             "tc_spawn_reviewer",
             "spawn",
-            {"contract": "reviewer", "task": "Review the change to src/cli.py, which adds a --dry-run flag."},
+            {
+                "contract": "reviewer",
+                "task": "Review the change to src/cli.py, which adds a --dry-run flag.",
+                "name": "reviewer",
+                "scope": ["src/cli.py"],
+            },
         )
         call(
             chunks,
             "tc_spawn_tester",
             "spawn",
-            {"contract": "tester", "task": "Run `python3 -B tests/check.py` and report the result."},
+            {
+                "contract": "tester",
+                "task": "Run `python3 -B tests/check.py` and report the result.",
+                "name": "tester",
+                "scope": ["tests/check.py"],
+            },
+        )
+        call(
+            chunks,
+            "tc_spawn_integration",
+            "spawn",
+            {
+                "contract": "integration",
+                "task": "Inspect both reports, delegate a usage audit, and run the complete check.",
+                "name": "integration",
+                "blocked_by": ["task_01", "task_02"],
+                "scope": ["src/cli.py", "tests/check.py"],
+            },
         )
         done(chunks, "tool")
         return chunks
@@ -95,10 +107,10 @@ def lead(request: dict) -> list[dict]:
         call(chunks, "tc_wait", "wait", {})
         done(chunks, "tool")
         return chunks
-    if sum(1 for item in user_texts(request) if " ended: " in item) < 2:
-        error(chunks, "wait returned before both members had ended")
+    if sum(1 for item in user_texts(request) if " ended: " in item) < 3:
+        error(chunks, "wait returned before all three board tasks had ended")
         return chunks
-    text(chunks, "The reviewer and the tester both reported. src/cli.py now takes --dry-run.")
+    text(chunks, "Review, testing, nested usage audit, and integration completed for --dry-run.")
     done(chunks, "end")
     return chunks
 
@@ -115,7 +127,7 @@ def reviewer(request: dict) -> list[dict]:
         done(chunks, "tool")
         return chunks
     if not received(request, "tests/check.py covers"):
-        wait_for_message(request, chunks, "the tester's answer")
+        wait_for_peer(request, chunks)
         return chunks
     if not called(request, "notify"):
         finding = "1. --dry-run returns before perform() runs, and the tester confirms a case covers it."
@@ -135,7 +147,7 @@ def tester(request: dict) -> list[dict]:
         done(chunks, "tool")
         return chunks
     if not received(request, QUESTION):
-        wait_for_message(request, chunks, "the reviewer's question")
+        wait_for_peer(request, chunks)
         return chunks
     if not called(request, "send"):
         call(chunks, "tc_send", "send", {"to": "reviewer", "content": ANSWER})
@@ -151,11 +163,83 @@ def tester(request: dict) -> list[dict]:
     return chunks
 
 
+def integration(request: dict) -> list[dict]:
+    """Inspect the parent board, delegate an audit, and run the final check."""
+    chunks: list[dict] = []
+    if not called(request, "team"):
+        call(chunks, "tc_parent_board", "team", {})
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "spawn"):
+        call(
+            chunks,
+            "tc_spawn_usage_auditor",
+            "spawn",
+            {
+                "contract": "usage-auditor",
+                "task": "Confirm the usage text and dry-run check agree.",
+                "name": "usage-auditor",
+                "scope": ["src/cli.py", "tests/check.py"],
+            },
+        )
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "wait"):
+        call(chunks, "tc_wait_audit", "wait", {})
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "bash"):
+        call(chunks, "tc_integration_check", "bash", {"command": "python3 -B tests/check.py"})
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "notify"):
+        call(
+            chunks,
+            "tc_integration_report",
+            "notify",
+            {"content": "integration passed after the nested usage audit: python3 -B tests/check.py"},
+        )
+        done(chunks, "tool")
+        return chunks
+    text(chunks, "The nested audit and complete check passed.")
+    done(chunks, "end")
+    return chunks
+
+
+def usage_auditor(request: dict) -> list[dict]:
+    """Check the command usage against its dry-run case."""
+    chunks: list[dict] = []
+    if not called(request, "read"):
+        call(chunks, "tc_read_check", "read", {"path": "tests/check.py"})
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "grep"):
+        call(chunks, "tc_usage", "grep", {"pattern": "usage: cli.py [--dry-run]", "path": "src/cli.py", "literal": True})
+        done(chunks, "tool")
+        return chunks
+    if not called(request, "notify"):
+        call(
+            chunks,
+            "tc_usage_report",
+            "notify",
+            {"content": "usage audit passed: the help text and dry-run case agree"},
+        )
+        done(chunks, "tool")
+        return chunks
+    text(chunks, "Reported the usage audit to the integration lead.")
+    done(chunks, "end")
+    return chunks
+
+
 def respond(request: dict) -> list[dict]:
     """Select a team role by the tools offered to the episode."""
     tools = tool_names(request)
-    if "spawn" in tools:
+    if "edit" in tools:
         return lead(request)
+    if "spawn" in tools:
+        return integration(request)
     if "bash" in tools:
         return tester(request)
-    return reviewer(request)
+    if "send" in tools:
+        return reviewer(request)
+    return usage_auditor(request)

@@ -22,6 +22,17 @@ validate a document and offer completions. `foe plan --config FILE` prints
 the resolved contract, its fingerprint, and every tool definition the contract's
 reachable tree can invoke, without running anything.
 
+What a run uses is the document `--config` names, else `.foe/contract.json`
+in the working directory, else the built-in coding workflow the binary
+carries. `--config` takes a file path or the name of a built-in document,
+written `builtin:NAME`: `builtin:coding` is that coding workflow,
+`builtin:single` is its implementation episode alone, and
+`foe plan --config builtin:NAME` resolves either as it resolves a file. A run
+that reads `.foe/contract.json` because its command line named no document
+prints one line on standard error naming the file and the document's `name`.
+docs/design.md "The command line" states the rule and what the built-in
+coding workflow does.
+
 `foe init --repository PATH` writes a starting document for a repository to
 `PATH/.foe/contract.json`, with a placeholder verifier at `PATH/.foe/verify`
 that rejects every completion candidate until a person replaces it with a
@@ -208,7 +219,7 @@ participates in fingerprint.
 
 A name resolves against three sources, checked in this order:
 
-1. Built-in tools: `read`, `grep`, `edit`, `bash`, `session`, `python`,
+1. Built-in tools: `read`, `grep`, `edit`, `bash`, `session`, `compose_tools`,
    `retrieve`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, `team`.
 2. Entries in `tool_defs`.
 3. Entries in `host_tools`.
@@ -281,7 +292,7 @@ Object. Required. Names what the episode may reach.
 | `read` | list of strings | yes, at least one | absolute directories the episode may read |
 | `write` | list of strings | no | absolute directories the episode may write; default empty |
 | `execute` | list of strings | no | absolute files or directories that a tool subprocess may read and execute; default empty |
-| `spawn` | list of strings | no | names from `child_contracts` the episode may start; default empty |
+| `spawn` | list of strings | no | names from `child_contracts` that board tasks may assign to child episodes; default empty |
 | `bind` | list of integers | no | TCP ports, 1 to 65535, that a process of the episode may bind; default empty |
 | `task_session` | boolean | no | permits `session start` with `lifetime: "task"`; default false |
 
@@ -349,6 +360,11 @@ included in contract fingerprint.
 The kinds present and the count of each participate in fingerprint. The paths
 do not.
 
+A nonempty `grants.spawn` list authorizes the `spawn` tool to add board tasks
+for the named child contracts. The grant does not add a tool schema. The
+contract must also list `spawn` in `tools` before its model can delegate.
+Each added task uses the selected child contract's grants and budget.
+
 ### `budget`
 
 Object. Required.
@@ -363,6 +379,14 @@ Object. Required.
 | `max_episodes` | integer | no | 8 | lifetime count of episodes in the tree, including this one |
 | `max_concurrent` | integer | no | 4 | direct children of this episode running at once |
 | `loop_threshold` | integer | no | 8 | consecutive identical tool calls, or identical assistant turns, that end the episode as blocked |
+
+On resume, recorded model usage and child reservations are restored before
+any queued team task or workflow node starts. Restoration occurs once per
+pool, so executor startup cannot charge the same events twice. The seconds
+allowance includes whole seconds elapsed since the recorded episode start,
+including downtime. Restoration starts the remaining timer after subtracting
+that elapsed time, so setup time is charged once. A fresh fork starts its own
+wall-clock allowance.
 
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
@@ -409,10 +433,11 @@ child's `workflow` each make the child able to start descendants, and the
 model node counts at every level of nested workflows.
 
 `max_concurrent` and `loop_threshold` apply to one episode. `max_concurrent`
-counts the direct children of the episode that declares it, so a child with
-its own children answers to its own value. The number of episodes running at
-once anywhere in the tree is bounded instead by `max_episodes`, which every
-episode in the tree draws from.
+counts the direct children of the episode that declares it. A ready board
+task remains queued while that many children run. The scheduler starts the
+task after a running child returns capacity. A child applies its own value to
+the team it leads. `max_episodes` bounds the number of episodes that can run
+across the complete tree.
 
 ### `done_when`
 
@@ -460,6 +485,7 @@ runtime requires at least one observation. Each `seq` must name a successful
 `tool/result` in the same episode. An inlined canonical value is
 reconstructable from the event. A spilled canonical value must still be
 readable as JSON at the single-component path and byte length in the event.
+A recorded digest must also match the stored bytes.
 
 An invalid citation returns a `system` inbox finding and the episode
 continues. The runtime does not judge whether the result supports the claim.
@@ -534,8 +560,10 @@ credential then reads `~/.config/foe/credentials/<provider>.json`, the file
 `foe login` writes. `compatible-http` reads only an explicitly named key file
 and sends no authentication header when the option is absent. An explicit
 `api_key_file`, `token_file`, or `credentials_file` replaces a convention
-path. A resolved path is written into the block that
-`episode/start.contract` records. Nothing is read from the environment.
+path, and is where a document that needs a credential of its own names one:
+the running command line has no credential option. A resolved path is
+written into the block that `episode/start.contract` records. Nothing is
+read from the environment.
 
 One block per provider:
 
@@ -602,6 +630,12 @@ count includes every `follows` entry, branch successor, and
 `recovery.follows` entry. Construction checks this count before building
 graph indexes. The graph participates in fingerprint as workflow.md "Fingerprint"
 lists.
+
+When this field is absent, planning and viewing project one terminal
+`root-agent` node that follows the invocation task and runs in the root
+episode. Execution uses the direct agent loop. The projection adds no
+configuration value, fingerprint input, log event, budget reservation, or
+child episode.
 
 ### `task`
 

@@ -42,6 +42,17 @@ choice. The graph determines which choices exist. The model never adds an
 edge, reads a node it does not follow, invents a node, extends a budget, or
 skips a verification. The model decides, within those bounds, what to do.
 
+## Restart
+
+The runtime refuses to continue a log that contains workflow firing events.
+It reports the first workflow event before scheduling a node or a queued
+team task. A recorded successful operation may already have changed external
+state. Repeating it requires an explicit application decision.
+
+A log ending before its first workflow event can start the graph. Resuming
+completed firings, restoring their outputs, and continuing recovery decisions
+require scheduler restoration, which is unsupported.
+
 ## The graph
 
 ```json
@@ -83,6 +94,17 @@ A `workflow` key in a configuration replaces the free loop for that
 episode. The configuration's permissions and budget become the workflow's
 ceiling: every node draws from them and none exceeds them. "Model nodes"
 below states the rule for each field.
+
+A contract without `workflow` has one effective execution node named
+`root-agent`. That node follows the invocation task, runs the contract's
+agent loop in the root episode, and is terminal. This normalized form is a
+plan and viewer projection. The direct loop remains its runtime
+implementation and writes no workflow event. The absent configuration field
+also remains absent from contract identity.
+
+The root-bound node is specific to the one-node projection. An author-written
+model node inside a declared workflow runs in a child episode. That isolation
+keeps the node's conversation limited to its declared predecessors.
 
 The invocation task, the configuration's `task` string, enters the graph
 through one built-in source named `task`. A node that lists `task` in its
@@ -332,6 +354,19 @@ succeeds. The spawner then records `budget/reserve` and `spawn/start` before
 creating the process. A failed node-start append therefore leaves no child or
 reservation. The log remains interrupted because an append error does not
 establish whether every destination received the event.
+
+### Interrupted execution
+
+Workflow execution cannot resume from recorded `workflow/*` events. A launch
+with a workflow configuration refuses such a log before scheduling queued
+team tasks or starting nodes. The restriction applies to in-place resume and
+to a fork that contains those events. A log containing initialization alone
+can start its workflow.
+
+Recovery requires a separate invocation whose task accounts for the retained
+evidence and the actual state of affected files or services. A missing tool
+result does not establish whether the tool changed external state. Retrying
+such an action can repeat its effects.
 
 ### Completion
 

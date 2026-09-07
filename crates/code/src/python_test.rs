@@ -46,6 +46,14 @@ async fn run_source(source: &str, composer: Arc<FakeComposer>) -> ToolValue {
     run_with(&fx, sandbox, composer, json!({ "source": source })).await
 }
 
+#[test]
+fn the_spec_explains_exact_names_and_configured_output() {
+    let tool = Python::new();
+    assert!(tool.spec.description.contains("exact tool name"));
+    assert!(tool.spec.description.contains("value[\"stdout\"]"));
+    assert!(tool.spec.instruction.as_deref().unwrap().contains("without adding a namespace prefix"));
+}
+
 #[tokio::test]
 async fn source_composes_inner_calls_and_returns_a_derived_value() {
     if !interpreter_present() {
@@ -89,7 +97,7 @@ async fn the_environment_is_empty() {
     assert!(env.keys().all(|key| key == "LC_CTYPE"), "{env:?}");
 }
 
-/// docs/code-mode.md "Confinement": the interpreter reads `/usr` alone, so
+/// docs/tool-composition.md "Confinement": the interpreter reads `/usr` alone, so
 /// source that opens a workspace file fails where Landlock enforces.
 #[tokio::test]
 async fn a_workspace_open_is_denied_under_enforcement() {
@@ -216,7 +224,7 @@ async fn a_dispatch_without_a_composer_is_an_error() {
     assert!(value.rendered.unwrap().contains("composer"));
 }
 
-/// docs/code-mode.md: one scripted episode whose model turn submits a
+/// docs/tool-composition.md: one scripted episode whose model turn submits a
 /// Python source composing several inner calls. The episode completes, the log
 /// records each inner call and its result, derived messages carry the
 /// outer result alone, and the folded log balances.
@@ -261,7 +269,7 @@ mod episode {
                        \x20   return {\"lines\": len(data[\"value\"][\"content\"].splitlines()), \"missing\": missing[\"is_error\"]}\n";
         let config: foe_contract::ContractDocument = serde_json::from_value(json!({
             "version": 4, "name": "compose", "instructions": { "role": "compose" },
-            "tools": ["python", "read"],
+            "tools": [foe_core::COMPOSING_TOOL, "read"],
             "grants": { "read": [root], "write": [root] },
             "budget": { "model_calls": 4 }, "task": "count the lines"
         }))
@@ -271,7 +279,7 @@ mod episode {
         let registry = Arc::new(Registry::new(&resolved, &executables, vec![], crate::all()).unwrap());
         let args = json!({ "source": source }).to_string();
         let turn = vec![
-            Chunk::ToolCallStart { id: "tc_py".into(), name: "python".into() },
+            Chunk::ToolCallStart { id: "tc_py".into(), name: foe_core::COMPOSING_TOOL.into() },
             Chunk::ToolCallDelta { id: "tc_py".into(), delta: args },
             Chunk::ToolCallEnd { id: "tc_py".into() },
             Chunk::Done { stop: StopReason::Tool, usage: Usage::default() },

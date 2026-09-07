@@ -187,11 +187,18 @@ def test_the_built_binary_states_the_versions_the_package_pins(
 ) -> None:
     """The supported pair: the package runs a document the binary accepts, and reads what it writes."""
     contract = contract_using_runtime_http(tmp_path, model_endpoint)
-    log_dir = tmp_path / "episode"
     # The binary accepted a document stating this configuration format version.
     assert contract.to_dict("Count the references.")["version"] == foe.CONFIG_VERSION
-    outcome = asyncio.run(contract.run(task="Count the references.", binary=BINARY, log_dir=log_dir))
+
+    async def scenario() -> tuple[foe.Outcome, Path]:
+        handle = await contract.start(task="Count the references.", binary=BINARY, log_dir=tmp_path / "episodes")
+        outcome = await handle.wait()
+        assert handle.log_dir is not None
+        return outcome, handle.log_dir
+
+    outcome, log_dir = asyncio.run(scenario())
     assert outcome == foe.Completed(SUMMARY)
+    assert log_dir.parent == tmp_path / "episodes", "the run created its own directory under the one named"
     first = json.loads((log_dir / "episode.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert first["version"] == foe.LOG_FORMAT_VERSION
     assert first["data"]["runtime"]["version"].startswith(f"{foe.PROTOCOL_VERSION}.")

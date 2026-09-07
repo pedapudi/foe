@@ -45,6 +45,21 @@ The caller therefore treats the log as interrupted. Child launch ordering
 ensures that an append error before an owning event returns leaves no child
 process or budget reservation to settle.
 
+An I/O failure makes the writer unusable until the log is reopened. Later
+appends and synchronization attempts return the original failure without
+writing more bytes. The runtime stops scheduling work on any recording
+failure and cleans up running children and sessions before returning the error.
+A task-lifetime session whose release cannot be recorded is stopped.
+The interrupted log receives no terminal outcome after recording fails.
+
+Reopening requires a complete final line. An incomplete trailing line makes
+the writer refuse to append, and its bytes remain available for inspection.
+Forking at a complete event boundary can retain the readable prefix.
+
+If initialization stops after recording only `episode/start`, continuation
+writes the task inbox item from that recorded start before admitting work.
+Initialization preserves an existing task item.
+
 ## Envelope
 
 One JSON object per line.
@@ -338,13 +353,26 @@ prompt. The field is optional and absent when a tool states none, which is
 the case for host tools and for every log written before tools stated it.
 
 `spill` names a file under `spill/` when the canonical value was too large to
-inline; the inlined `value` is then a locator object, and `rendered` states
-the file and carries the rendering. `synthetic` is true
+inline. The locator in `value` carries `spill`, `bytes`, `is_error`, and
+`digest`. The digest is SHA-256 of the stored JSON bytes, formatted as
+`sha256:` followed by lowercase hexadecimal. The filename is
+`result-<hexadecimal digest>.json`. `rendered` states the file and carries
+the rendering. File creation synchronizes the complete bytes before the
+result is recorded. An existing file must have identical content.
+
+Readers accept locators without `digest` for compatibility. They require a
+single-component filename, matching locator fields, a regular file, the
+recorded byte length, and valid JSON. When present, the digest must match.
+Locators without a digest cannot detect substitutions that preserve length
+and valid JSON.
+
+`synthetic` is true
 when the result was written by the seeding step or by request failure
 recovery rather than by running the tool: a call left without a result when
 the episode was interrupted receives a result with `synthetic: true` and
-`is_error: true`. The rejection of every call in a response that hit the
-output length limit is `is_error: true` with `synthetic: false`, because the
+`is_error: true`. A missing result leaves the call's external effects unknown.
+The synthetic result states that repeating the call may repeat those effects.
+The rejection of every call in a response that hit the output length limit is `is_error: true` with `synthetic: false`, because the
 runtime produced that result in the ordinary course of the step. At episode
 settlement the runtime also writes one result with `synthetic: true` for
 each surviving process session. An episode-lifetime result records the
@@ -389,8 +417,8 @@ emitted so that the host can execute it. The result arrives as an ordinary
 
 `tool/inner-call` — implemented. One inner dispatch a composing tool
 performed through the registry while its own model-issued call ran. The
-built-in `python` tool is the one composing tool;
-[code-mode.md](code-mode.md) specifies it, and the generic event name is
+built-in `compose_tools` tool is the one composing tool;
+[tool-composition.md](tool-composition.md) specifies it, and the generic event name is
 shared by design with any future composing tool.
 
 ```json
@@ -548,7 +576,10 @@ These events appear only in a lead's log.
 { "member_id": "ep_a1", "name": "reviewer", "description": "…", "phase": "active" }
 ```
 
-`phase` is one of `provisioning`, `active`, `failed`.
+`phase` is `provisioning`, `active`, or `failed`. It records roster admission
+and abnormal process termination. The member's board task records ordinary
+settlement as `completed`, `blocked`, or `exhausted` without another roster
+event.
 
 `team/message` — implemented. A message queued for delivery.
 
@@ -567,7 +598,53 @@ Messages with a `team/message` and no matching `team/delivered` are
 redelivered when the target restarts. The target deduplicates by
 `message_id`.
 
-`team/task` — reserved, for a shared task board.
+Message identifiers include the lead episode identity and an ordinal derived
+from its recorded queue. Allocation and queue insertion share the lead's
+operation lock. Resume continues that queue, while a fork has a distinct
+lead identity. Readers treat message identifiers as opaque strings.
+Duplicate detection and inbox insertion hold the same log lock, so concurrent
+redelivery creates one peer inbox item.
+
+`team/task` — implemented. One complete revision of a task added through
+`spawn`.
+
+```json
+{
+  "task_id": "task_03",
+  "revision": 1,
+  "name": "integration",
+  "contract": "integration",
+  "description": "Run the complete test suite.",
+  "context": "fresh",
+  "status": "running",
+  "owner": "ep_b2",
+  "blocked_by": ["task_01", "task_02"],
+  "scope": ["tests"],
+  "call_id": "tc_07"
+}
+```
+
+`status` is `queued`, `running`, `completed`, `blocked`, `exhausted`, or
+`failed`. A queued task has no owner. A running or settled task names its
+child episode in `owner`. A terminal revision carries that episode's
+`outcome`. Each revision increases `revision` by one and leaves the task
+identifier, name, contract, description, context, dependencies, scope, and
+originating call unchanged.
+
+The first task on every board is derived from `episode/start`. It has
+identifier `task_root`, revision zero, and the lead episode as its owner.
+An `episode/end` projects its terminal revision. Neither projection writes a
+`team/task` event. Added task identifiers start at `task_01` and follow
+creation order.
+
+Only the lead process writes `team/task`. A task may depend only on tasks
+already present in the same lead log. The runtime assigns a ready task by
+recording a child launch and then a running revision under the lead's team
+operation lock. Observing a child outcome writes the terminal task revision.
+The reservation returns after that revision and after `spawn/end` and
+`budget/release` close the child's obligations.
+A clean resume schedules a task whose latest durable revision is queued.
+Recorded budget consumption is restored before that scheduling pass.
 
 ### Sandbox
 
@@ -832,29 +909,36 @@ Given a source log and a boundary `seq` N:
    settlement and did not receive it. Charging the reservation is the
    conservative reading, so a synthetic release never understates a
    subtree.
-5. Copy each rendering archive whose archive event and matching tool result
-   were copied. Verify the source before copying and the destination after
-   copying. Do not copy an archive referenced only at or after N.
+5. Copy each canonical spill referenced by a copied tool result and each
+   rendering archive whose archive event and matching tool result were
+   copied. Validate the source and verify identical destination bytes.
+   Do not copy files referenced only at or after N.
 6. Append `seed/end`.
 7. Continue with live events.
 
-The destination contains its own archive files. Retrieval from a seeded log
-does not open the source episode. A missing archive, an unexpected path, a
-length mismatch, or a digest mismatch makes seeding fail with the archive
-event and violated rule named.
+The destination contains its own canonical spills and rendering archives.
+Reading retained evidence does not open the source episode. A missing file,
+an invalid locator, malformed canonical JSON, or a content mismatch makes
+seeding fail before `seed/end`. The error names the event, file, and rule.
+A destination with `fork_origin` and no `seed/end` records incomplete seeding.
+Opening or resuming that destination is refused before execution.
 
 Copied `team/*` events belong to the source episode and are excluded from the
 new episode's team fold. A fold reads team events only when the log's own
 `episode/start.team_id` matches or the log is itself the lead.
 
 The command line reaches seeding in two ways. The running form's
-`--fork SOURCE_DIR --at SEQ` seeds a fresh directory from the source's
-prefix at N equal to SEQ and runs it: the new `episode/start` draws a
+`--from SOURCE_DIR@SEQ` seeds a fresh directory from the source's
+prefix at N equal to SEQ and runs it, and a task given with
+`--from SOURCE_DIR` over a log that ended does the same at N equal to the
+log's length: the new `episode/start` draws a
 fresh id, its `fork_origin` names the source, and the task the launch
 carries is appended as a live `system` inbox item after `seed/end`,
 because rule 1 copies the `task` item and the format admits one per log.
-Launching with `--log-dir DIR` where DIR holds a log without `episode/end`
-resumes that episode under the execution contract that ran it. The launch is
+A run whose task the source log recorded appends nothing, because the copied
+prefix already carries that task.
+`--from SOURCE_DIR` without a boundary resumes that episode
+under the execution contract that ran it. The launch is
 refused, with both fingerprints named, when the given configuration's
 fingerprint differs from `episode/start.contract_fingerprint`. A log ending at
 `seed/end` instead uses the execution contract recorded by its source's
@@ -863,6 +947,10 @@ boundary with every binding obligation closed, including one ending at
 `seed/end`, is appended to as it stands; one cut short mid-line or with a
 binding obligation open is seeded at N equal to its count of complete
 events into a fresh directory beside it, which the run then continues.
+A workflow configuration refuses execution when the resulting log contains
+any `workflow/*` event. Seeding preserves workflow evidence without restoring
+its scheduler. The restrictions are specified in
+[workflow.md](workflow.md#interrupted-execution).
 
 A replay is a seed at N equal to the source log's length, with the model
 responses replayed from `assistant/chunk` events rather than requested.

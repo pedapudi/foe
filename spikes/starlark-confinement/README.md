@@ -1,6 +1,6 @@
 # Starlark confinement spike
 
-docs/code-mode.md proposes a `code` tool whose child_contracts run in a confined
+docs/tool-composition.md records the earlier `code` tool whose child contracts ran in a confined
 Starlark evaluator. The design forbids the runtime from taking an
 evaluator dependency before a spike demonstrates five properties: fuel
 accounting, memory accounting, cancellation, a disabled module loader,
@@ -83,7 +83,7 @@ Each item names the tests that demonstrate it.
   an error and the dispatcher never runs, which implements the contract's
   rule that inner dispatch is unavailable while the evaluator loads the
   source (`dispatch_is_disabled_during_module_load`).
-- **Outer call contract.** The worked contract from docs/code-mode.md runs
+- **Outer call contract.** The worked contract from docs/tool-composition.md runs
   unchanged: struct field access on the result, `is_error` inspection,
   and a narrowed JSON return value (`a_contract_narrows_a_tool_result`,
   `a_contract_inspects_an_inner_error_and_continues`). `fail(message)`
@@ -111,7 +111,7 @@ Each item names the tests that demonstrate it.
 - **A blocking native call is not interrupted.** The cancellation flag is
   read between evaluator steps. While `call_tool` waits on a tool, the
   evaluator cannot act on the flag; the runtime must cancel the inner
-  tool itself, which docs/code-mode.md already requires of ordinary tool
+  tool itself, which docs/tool-composition.md already requires of ordinary tool
   teardown. The upstream crate states that its limits are protection
   against accidental blowups rather than a security boundary against
   malicious code, which matches this design: the registry and the sandbox

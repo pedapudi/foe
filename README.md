@@ -29,6 +29,13 @@ The log is the only state: the viewer, replay, forking, budget accounting, and
 team coordination are derived from it. Nothing is reachable unless a
 configuration grants it.
 
+Every episode is also a one-agent team with one task and one inbox. Granting
+`spawn` lets its lead add durable board tasks for child episodes. Dependencies,
+capacity, and child outcomes drive scheduling inside the runtime. The same
+mechanism applies recursively, so one episode can expand into nested teams
+without a separate orchestration service. [examples/team](examples/team)
+demonstrates concurrent work, dependencies, peer messages, and a nested team.
+
 ## The name
 
 A foe is a unit of energy equal to 10^51 ergs, the energy released by one
@@ -68,10 +75,13 @@ foe "describe what this repository does"
 ```
 
 The first command asks for an API key, checks it, stores it under
-`~/.config/foe/`, and sets the default model. The second runs the built-in
-coding configuration against the current directory. The runtime supports
-API-key endpoints, OAuth-backed coding endpoints, compatible HTTP endpoints,
-and managed-cloud endpoints.
+`~/.config/foe/`, and sets the default model. The second runs a task against
+the current directory. What it runs is the document `--config` names, else
+`.foe/contract.json` in the working directory, else the built-in coding
+workflow, which `--config builtin:coding` names explicitly.
+`--config builtin:single` runs that workflow's implementation episode alone.
+The runtime supports API-key endpoints, OAuth-backed coding endpoints,
+compatible HTTP endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
 
 `foe --help` prints the command set and the options a bare `foe` takes;
@@ -98,13 +108,26 @@ that directs the binary to call a configured model endpoint.
 foe --config hello.json
 ```
 
-foe validates the document, writes `episode.jsonl` under
-`.foe/<episode-id>` in the current directory or under `--log-dir`, serves a
+foe validates the document, writes `episode.jsonl` in a directory of its
+own named by the episode id, under `.foe` in the current directory or under
+the directory `--log-dir` names, prints that directory on standard error as
+`foe: log PATH`, serves a
 viewer on the loopback interface while the episode runs, and prints the
 outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
 when failed. Under `--host`, standard output carries the log instead and a
 host process answers model requests; see [docs/protocol.md](docs/protocol.md).
+
+For a terminal conversation with branch connectors and readable results, run:
+
+```sh
+foe --config hello.json --conversation
+```
+
+This opt-in display hides tool requests and responses, shows completed
+messages as they arrive, and ends with the `foe view` command for the episode.
+The browser viewer serves as usual. JSON remains the default output. See [the terminal display specification](docs/viewer.md#terminal-conversation).
+
 `examples/` holds thirteen examples, each of which runs. Every one builds a
 disposable project, uses deterministic responses, checks its own result, and
 leaves an episode to read. None needs a credential or external network
@@ -151,23 +174,27 @@ model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 
-Ten line budgets bound the Rust source, excluding tests and generated code.
+Eleven line budgets bound the Rust source, excluding tests and generated code.
 
 | surface | line ceiling |
 |---|---:|
 | kernel (`log` and `core`) | 6,250 |
 | execution contracts | 1,575 |
-| tools | 2,350 |
+| coding tools | 1,900 |
+| team coordination | 800 |
 | workflows | 1,050 |
 | compaction | 500 |
-| viewer server | 600 |
-| command line | 1,650 |
+| viewer server | 780 |
+| command line | 1,950 |
 | model transports | 2,700 |
 | telemetry | 1,000 |
 | evidence | 500 |
 
-The separate budgets keep growth in one surface from enlarging another.
-`scripts/loc.sh` enforces all ten. Continuous integration also limits the
+Coding tools and team coordination together stay under 2,700 lines. The
+separate budgets keep growth in one surface from enlarging another.
+`scripts/loc.sh` enforces all eleven ceilings and the combined one, and
+fails when this table, `AGENTS.md`, or `docs/design.md` quotes a ceiling it
+does not hold. Continuous integration also limits the
 compressed browser bundle to 150 KB and the stripped release binary with that
 bundle embedded to 8 MiB. [docs/design.md](docs/design.md#size) explains what
 each boundary protects.
@@ -181,7 +208,7 @@ each boundary protects.
 | [docs/evaluation.md](docs/evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [docs/self-improvement.md](docs/self-improvement.md) | how foe evaluates and improves its own source, including measured results and operating guidance |
 | [docs/evidence.md](docs/evidence.md) | portable evidence for accepting a proposed execution contract |
-| [docs/code-mode.md](docs/code-mode.md) | the `python` tool: bounded model-written scripts that compose granted tools through the registry |
+| [docs/tool-composition.md](docs/tool-composition.md) | the `compose_tools` tool: bounded scripts that pass canonical values between granted tools |
 | [docs/config.md](docs/config.md) | every configuration key, its domain, and its default |
 | [docs/models.md](docs/models.md) | model endpoints, credentials, and `foe login` |
 | [docs/log-format.md](docs/log-format.md) | every log event, the derived message rule, and seeding |

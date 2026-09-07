@@ -24,11 +24,16 @@ error and terminates the episode with `failed`.
 foe --config <path> --host [--log-dir <path>]
 ```
 
+`--log-dir` names the directory the episode's own directory is created
+under, as it does for every run, and the run prints the directory it created
+on standard error. A host reads the log from standard output and needs
+neither.
+
 `--host` selects this protocol. Standard output then carries the log, and
 standard input carries the host's answers. Without `--host`, standard output
-carries one JSON line at the end, the outcome, so that a shell or another
-contract invoking foe reads a single result; the log still goes to the file.
-The two modes are exclusive, and this document describes `--host` only.
+carries one JSON outcome line at the end by default. `--conversation` selects
+a readable terminal display and cannot be combined with `--host`.
+The log also goes to the file. This document specifies `--host`.
 
 The host supplies a configuration file. foe validates it, writes
 `episode/start`, and begins. When the configuration has no `model` block,
@@ -196,6 +201,10 @@ is a protocol error.
 
 ## Timeouts
 
+After episode cleanup, the command-line process reports its outcome or
+recording error without waiting for the host to close standard input.
+An idle input read does not extend the completed invocation.
+
 foe waits for a `model/chunk` and for a `tool/result` up to the `seconds`
 remaining in the episode's budget. When the budget's `seconds` elapse with
 an answer outstanding, foe ends the episode as `exhausted` with limit
@@ -270,14 +279,17 @@ child enters the prepared boundary before its runtime code executes. The
 child refuses launch metadata whose episode path differs from its current
 cgroup or whose task path lies outside the invocation hierarchy.
 
-A child's `notify`, `send`, and `team` tools are host tools from the child's
-point of view, and the parent foe process is the host that implements them.
+A child's `notify`, `send`, and parent-scoped `team` calls cross the host
+protocol, and the parent foe process implements them. A child resolves
+`team` with `scope: led` inside its own process.
 A child's call to `notify` arrives at the parent as a `host/tool-call`; the
 parent appends an `inbox/item` with source `child` to its own log and
 answers with a `tool/result`. A call to `send` arrives the same way at the
 lead, which appends `team/message` to its log, delivers the message to the
 target member as an `inbox/item` with source `peer`, and appends
-`team/delivered` when the member's log has recorded it. These calls are
+`team/delivered` when the member's log has recorded it. A parent-scoped
+`team` call folds the lead's root task, added tasks, and roster from its log.
+These calls are
 never forwarded above the parent. A message from a member therefore reaches
 the lead's log through the same two line types every other host exchange
 uses.

@@ -25,7 +25,7 @@ the suite could not run. Unit tests of the case table and checks run with
 
 ## What the suite covers
 
-Forty-two cases across `read`, `grep`, `edit`, `bash`, `session`, `python`,
+Forty-two cases across `read`, `grep`, `edit`, `bash`, `session`, `compose_tools`,
 and `retrieve`, keyed by tool, failure code, and the field at fault. The
 mistake kinds are: a wrong field name, a missing required field, a wrong
 type, an out-of-range value, a value the schema cannot judge (an absent

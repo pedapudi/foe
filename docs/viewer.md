@@ -1,5 +1,104 @@
 # Viewer
 
+## Terminal conversation
+
+`foe --conversation` shows conversation text and the execution tree on
+standard output. The flag is off by default, including in interactive
+terminals. It chooses what standard output shows and changes nothing else
+about a run: `--viewer` decides whether the browser viewer serves and
+whether a browser opens on it, `--conversation` composes with each of its
+three values, and the viewer address goes to standard error when serving
+starts. `--conversation` cannot be combined with `--host`.
+
+The display appends blocks to terminal scrollback. Each active episode has
+a column of tree connectors. A branch opens a column; its return joins
+that column to its parent and displays the outcome. A returned result
+means the child finished; it does not establish that its parent accepted
+or incorporated the result.
+
+The conversation shows the root task, parent and peer messages, nonempty assistant
+messages, returned child outcomes, and the final outcome. Tool requests,
+tool responses, reasoning, system instructions, and internal notifications
+are hidden. Child task inputs are hidden because workflow inputs can include
+full tool results. An image appears as a text placeholder.
+
+Messages appear after their complete `assistant/message` event is recorded.
+Polling reads appended log bytes every 100 milliseconds while execution
+runs. Before displaying a returned result, the display reads every
+available message from that child. Independent episodes can be displayed
+in discovery order; the display does not claim a global event order.
+Existing recorded messages are displayed when execution resumes.
+
+While execution runs and standard output is a terminal, one line at the
+bottom of scrollback reports progress and is redrawn in place on every poll
+tick:
+
+```
+◎  [assess-task]  [12 s]  [3 tool calls]
+```
+
+The leading glyph advances one frame per tick through the eleven frames
+[docs/brand/README.md](brand/README.md) defines, so the frame follows the
+number of ticks rather than the clock. The name in brackets is the episode
+whose event arrived most recently. The seconds count from the moment the
+display started. The tool-call count is the number of tool calls the
+assistant has requested since the last displayed assistant message; a
+parent or peer message and a returned result leave the count as it is. The
+line is erased before any block is appended and before a display error is
+reported, so scrollback holds blocks alone. It is drawn only while standard
+output is a terminal, so redirected output holds no progress line. In color the glyph takes the brand accent as a 24-bit
+color, the episode name takes the cyan of a block heading, the tool-call
+count is green, and the seconds and every bracket are dim. Deciding whether
+a terminal supports 24-bit color requires an environment variable, and no
+environment variable is read anywhere, so a terminal limited to 256 colors
+approximates the accent. With color off the same layout appears as plain
+text. The episode name is shortened to whatever the terminal width leaves,
+so the redraw stays on one row.
+
+A string value appears as text; a string holding a JSON object or array is
+displayed as that object or array. An object opens with its `summary` field
+as a paragraph without a label. Every other field is a section, in
+alphabetical order, whose title is the field name with underscores replaced
+by spaces and the first letter capitalized. An array of strings is a bullet
+list. An array of objects has one bullet per object, with the object's
+scalar fields on the bullet line as `key: value` and its nested fields
+indented beneath. An item of the `learned` field of the built-in coding
+workflow, an object with `claim` and `seq`, is displayed as the claim
+followed by ` (seq N)`, where N is the log sequence the claim cites. A
+nested object is displayed as `key: value` lines, with a nested array or
+object indented under its key. A field holding an empty string, array, or
+object is omitted. Markdown remains readable source text. A blocked,
+exhausted, or failed outcome is one labeled heading followed by its
+message.
+Colors distinguish headings in an interactive terminal, and section titles
+are bold; redirected output uses plain text with Unicode connectors.
+Control characters other than line feeds and tabs are removed.
+
+Body text is wrapped to the terminal width, read from the window size of
+standard output; 80 columns are assumed when standard output has no window
+size. A line breaks at a space, and a word is split only when the word
+alone exceeds the width. A continuation line repeats the leading whitespace
+of its source line and, for a list item, the width of the item's marker, so
+that continuation text aligns with the item's text. Every emitted line,
+including a wrapped continuation and the blank line that ends a block,
+begins with the connector cells of the active episodes and a two-column
+gutter before the text. A connector cell is never split. The text column is
+at least 20 characters wide, so a deeply nested episode can exceed the
+terminal width.
+
+The final block shows the outcome and ends with the line `Viewer: foe view
+PATH`, written whole without wrapping, where PATH is the episode directory.
+The live viewer address goes to standard error when the run starts and the
+served page leaves with the process, three seconds after the final block
+is written, so the command is the reference that outlives the run.
+
+The display retains read offsets and episode labels, and reads logs through
+the viewer crate. It does not alter execution or retained evidence.
+A display error is reported on standard error while the episode continues
+to settle. Outcome exit codes retain their usual meanings.
+
+## Browser viewer
+
 The viewer renders an episode directory, which is the log of one episode
 and the logs of every descendant under `children/`, or a directory of such
 directories, whose episodes are shown side by side as independent runs.
@@ -23,14 +122,14 @@ Below the top bar the page has four regions.
   each episode ran and what it did.
 - The **main** region, below the trajectory, holds one tab at a time for
   the selected episode: **conversation**, **raw events**, **diff**,
-  **workflow**, and **statistics**. The digits `1` to `5` select them in
-  that order. The workflow tab is present only for an episode whose
-  contract declares a graph; the other four are always present.
+  **workflow**, **tasks**, and **statistics**. The digits `1` to `6` select
+  them in that order.
 
 The main region holds one episode, the selected one, however many the
 viewer shows. Reading several episodes against each other is what the
-other figures are for: the trajectory draws every episode as a row, the
-statistics tab gives every root a row of its own, and the diff tab sets
+other views are for. The trajectory draws every episode as a row. The tasks
+tab follows coordination through the selected episode's descendant tree.
+The statistics tab gives every root a row of its own. The diff tab sets
 the suffixes of two forked episodes side by side. A second conversation
 pane would take width from those three and answer a narrower question than
 any of them.
@@ -377,8 +476,8 @@ theme, the typeface and the text size.
 
 With the outline showing the run it stands in for the episode rail, the
 trajectory region and the conversation tab together, and those are not
-drawn; the raw events, diff, workflow and statistics tabs are readings of
-something else and stay reachable below it.
+drawn. The raw events, diff, workflow, tasks, and statistics tabs are other
+readings and stay reachable below it.
 
 ### The channels of a row
 
@@ -571,13 +670,16 @@ episode, and `j` and `k` move between rows.
 
 ## The workflow view
 
-The workflow tab draws the graph an episode declares and the run that went
-through it, in one figure. Both halves are drawn, because the argument of a
-declared workflow is that the graph bounds what the model may do while the
-model chooses freely inside it: a figure of the firings alone would show
-the choices and lose the bound.
+The workflow tab draws an episode's effective execution graph and the run
+that went through it. A contract without a `workflow` field appears as one
+terminal `root-agent` node that follows the invocation task. The node runs
+inside the root episode. This projection adds no workflow event or child.
 
-The declaration comes from `episode/start`, whose `contract` is the resolved
+A declared workflow shows its declared graph and its firings in one figure.
+The graph bounds what the model may do. The firings show the choices made
+inside that bound.
+
+The declared graph comes from `episode/start`, whose `contract` is the resolved
 configuration with the task removed and whose `workflow` key holds the node
 declaration that [workflow.md](workflow.md) specifies. The run comes from
 `workflow/node-start`, `workflow/node-end`, `workflow/branch`, and
@@ -642,6 +744,30 @@ The gap between two columns holds the branch labels of the left one and is
 never narrower than the longest of them needs. A pane too narrow for the
 figure shrinks the boxes to their minimum; below that the figure keeps its
 own width and the pane scrolls it sideways.
+
+## The tasks view
+
+The tasks tab folds task boards from the selected episode and its descendant
+episodes. Every episode leads a team. Its first board row is the invocation
+task, derived from `episode/start` and `episode/end`. This singleton board
+requires no `team/task` event.
+
+Each `team/task` event is a complete revision of an added task. The view
+keeps the greatest revision for current state and retains the revision order
+as the task's history. A row shows status, owner, dependencies, advisory
+write scope, and the transitions recorded so far. Clicking an owner selects
+that member's episode.
+
+The selected episode's board is always present. A descendant board appears
+when its lead adds a task. This rule keeps singleton child boards from
+repeating the episode tree while preserving nested coordination. Selecting a
+child shows its own singleton board.
+
+The live server and static export run this same fold over the same events.
+A live board changes when a task revision arrives. A static board reconstructs
+the final state and the full transition history from the completed logs.
+Dependencies are displayed by task identifier. Board order remains creation
+order, which is also the scheduler's assignment order among ready tasks.
 
 ## The statistics view
 

@@ -1,4 +1,4 @@
-// The workflow tab: the graph an episode declares, with the run drawn over
+// The workflow tab: the effective execution graph, with the run drawn over
 // it. Line art in the register docs/design-language.md sets out.
 //
 // Both halves are on the page at once. Structure is faint: every declared
@@ -58,7 +58,7 @@ export class WorkflowView {
       h(
         "div",
         { class: "fig-head" },
-        h("h3", null, "declared graph"),
+        h("h3", null, "execution graph"),
         h("span", { class: "spacer" }),
         legend(),
       ),
@@ -86,7 +86,7 @@ export class WorkflowView {
     if (!workflow) {
       this.digest = "";
       clear(this.figure);
-      this.figure.appendChild(h("div", { class: "empty sub" }, "this episode declares no workflow"));
+      this.figure.appendChild(h("div", { class: "empty sub" }, "waiting for the episode contract"));
       this.caption.textContent = "";
       return;
     }
@@ -111,10 +111,11 @@ export class WorkflowView {
     this.figure.appendChild(this.build(workflow, layout));
     const fired = workflow.nodes.filter((n) => n.firings.length > 0).length;
     clear(this.caption);
-    this.caption.textContent =
-      `${workflow.nodes.length} declared node${workflow.nodes.length === 1 ? "" : "s"}, ${fired} of which fired.` +
-      " A solid edge carried a value and a faint one was declared and never traversed; " +
-      "the accented label is the one a firing chose.";
+    this.caption.textContent = workflow.source === "root-agent"
+      ? "The contract uses one root-bound agent node. Its direct loop adds no workflow events or child episode."
+      : `${workflow.nodes.length} declared node${workflow.nodes.length === 1 ? "" : "s"}, ${fired} of which fired.` +
+        " A solid edge carried a value and a faint one was declared and never traversed; " +
+        "the accented label is the one a firing chose.";
   }
 
   private build(workflow: Workflow, layout: WorkflowLayout): SVGSVGElement {

@@ -129,7 +129,7 @@ class WideningRejectionTest(EvaluatorCase):
         self.assertIn("no-unrelated-widening", self.failed_checks(result))
 
     def test_rejects_an_added_tool(self):
-        self.candidate["tools"] = [*self.candidate["tools"], "python"]
+        self.candidate["tools"] = [*self.candidate["tools"], "compose_tools"]
         result = self.evaluate()
         self.assertIn("no-unrelated-widening", self.failed_checks(result))
 
