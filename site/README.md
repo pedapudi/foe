@@ -20,7 +20,7 @@ and a change to a fixture changes the page.
 | `public/index.html` | the whole page: markup, stylesheet and scripts in one file |
 | `public/favicon.svg` | the brand mark, drawn in the brand accent |
 | `public/*.woff2` | the typeface the page sets, copied from `view/fonts` |
-| `public/install.sh` | a copy of the repository's installer, so `foe.sh/install.sh` resolves |
+| `public/install.sh` | a copy of the repository's installer, which is what the page's install command fetches |
 
 The page fetches nothing. Every style, script, font and image is either inline
 or a file beside it, so it renders the same offline as on the network.
