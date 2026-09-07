@@ -3,7 +3,6 @@
 // One function applies each setting, and every control that changes a
 // value goes through it, so the controls never disagree with the page.
 
-import { brandPulse } from "./brand.js";
 import {
   DEFAULT_FONTSIZE,
   DEFAULT_THEME_DARK,
@@ -412,36 +411,11 @@ export function buildScalePill(): HTMLElement {
   return h("span", { class: "scale-pill" }, range, readout, reset);
 }
 
-// ---- the status pill ----
-
-export type ConnectionState = "file" | "connected" | "reconnecting" | "ended" | "unavailable";
-
-export class StatusPill {
-  readonly el: HTMLElement;
-  private readonly dot = h("span", { class: "status-dot" });
-  private readonly word = h("span", { class: "status-text" });
-  private readonly pulse = brandPulse();
-  /** What a screen reader is told, since the mark itself is decorative. */
-  private readonly spoken = h("span", { class: "sr-only", "aria-live": "polite" });
-
-  constructor() {
-    this.el = h("span", { class: "status" }, this.dot, this.word, this.pulse.el, this.spoken);
-  }
-
-  // Work in flight is said by the mark pulsing and by nothing else. The badge
-  // that stood here read `running 2 in flight`, which said the same thing
-  // three ways: a pulsing dot, a word, and a count of what the word already
-  // implied. The count survives in the mark's tooltip and for a reader who
-  // cannot see it pulse.
-  set(state: ConnectionState, detail: string, running: number): void {
-    this.el.className = `status ${state}`;
-    this.word.textContent = detail || state;
-    this.word.title = detail;
-    this.pulse.run(running);
-    const spoken = running === 1 ? "one episode running" : `${running} episodes running`;
-    if (this.spoken.textContent !== spoken) this.spoken.textContent = running === 0 ? "" : spoken;
-  }
-}
+// The connection state has no pill. It is a property of the page's link to a
+// running process, not of the run being read, and the words it showed —
+// `connected`, `file` — told a reader nothing they could act on. What matters
+// is said elsewhere: an episode still running pulses the mark on its own row,
+// and a link that broke stops the page from growing, which the rows show.
 
 // ---- the top bar ----
 
@@ -487,7 +461,6 @@ function buildLayoutToggle(): HTMLElement {
 
 export class Topbar {
   readonly el: HTMLElement;
-  readonly status = new StatusPill();
   private readonly up: HTMLButtonElement;
   private readonly crumbs = h("nav", { class: "crumbs", "aria-label": "episode path" });
   private crumbDigest = "";
@@ -506,7 +479,6 @@ export class Topbar {
       buildSwatchDropdown(),
       buildTypefacePopover(),
       buildScalePill(),
-      this.status.el,
     );
   }
 

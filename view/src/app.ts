@@ -5,7 +5,8 @@
 import { causalityOutline, readCausality } from "./causality.js";
 import type { CausalityEpisode, CausalityOutline, ConversationScope, Depth } from "./causality.js";
 import { Topbar, applyDepth, currentDepth, currentFontScale, currentLayout, onSettingsChange } from "./chrome.js";
-import type { ConnectionState, Crumb } from "./chrome.js";
+import type { Crumb } from "./chrome.js";
+import type { ConnectionState } from "./source.js";
 import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
@@ -64,6 +65,7 @@ export class App implements Sink {
   private sidebarScheduled = false;
   private treeDigest = "";
   private infoDigest = "";
+  /** The link to the process, which the source reports and nothing draws. */
   private connection: { state: ConnectionState; detail: string } = { state: "file", detail: "" };
   private readonly scrollMemory = new Map<HTMLElement, number>();
 
@@ -192,7 +194,6 @@ export class App implements Sink {
     this.applyLayoutMode();
     this.renderSidebar();
     this.renderMain();
-    this.renderStatus();
   }
 
   /**
@@ -309,13 +310,11 @@ export class App implements Sink {
     state.conv.apply(patches);
     if (this.diff && (id === this.diff.a.id || id === this.diff.b.id)) this.diff.apply(id, patches);
     this.scheduleSidebar();
-    this.renderStatus();
     if (this.selected === null) this.select(id);
   }
 
   status(state: ConnectionState, detail: string): void {
     this.connection = { state, detail };
-    this.renderStatus();
   }
 
   // State changes
@@ -422,11 +421,6 @@ export class App implements Sink {
       id = s.parentId ?? s.forkOrigin?.episodeId ?? null;
     }
     return chain;
-  }
-
-  private renderStatus(): void {
-    const running = this.live ? this.summaries().filter((s) => s.lastSeq >= 0 && s.outcome === null).length : 0;
-    this.topbar.status.set(this.connection.state, this.connection.detail, running);
   }
 
   private renderSidebar(): void {

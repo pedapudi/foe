@@ -9,6 +9,7 @@ import type { Summary } from "../fold.js";
 import { flatten, contractRuns, shortFingerprint, siblingShares, spentTokens } from "../episode-tree.js";
 import { identityColor } from "../identity.js";
 import type { TreeNode } from "../episode-tree.js";
+import { pulseMark } from "../brand.js";
 import { str } from "../types.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
 
@@ -146,7 +147,19 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
         ? `spawned by ${s.parentId}`
         : "root episode";
     g.append(title, hit, spine);
-    g.appendChild(svg("circle", { class: `dot ${role}`, cx: x, cy: y, r: DOT_R }));
+    // The row's mark says how the episode ended. One that has not ended draws
+    // the brand mark instead, pulsing, which is what a terminal running the
+    // same episode draws on its progress line.
+    if (s.outcome === null && s.lastSeq >= 0) {
+      const mark = svg("text", { class: "dot-pulse", x, y: y + DOT_R, "text-anchor": "middle" });
+      const spoken = svg("title");
+      spoken.textContent = "running";
+      mark.appendChild(spoken);
+      pulseMark(mark);
+      g.appendChild(mark);
+    } else {
+      g.appendChild(svg("circle", { class: `dot ${role}`, cx: x, cy: y, r: DOT_R }));
+    }
 
     const textX = x + DOT_R + 9;
     const textW = Math.max(24, width - textX - COMPARE_W - 6);

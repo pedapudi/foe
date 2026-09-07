@@ -14,6 +14,7 @@
 // judgement of the work on it.
 
 import { h } from "../dom.js";
+import { pulseMark } from "../brand.js";
 import { identityStyle } from "../identity.js";
 import { outcomeLabel } from "../fold.js";
 import { edgePath } from "../causality.js";
@@ -175,6 +176,15 @@ export function laneStrokes(
 function laneElement(lane: CausalityLane, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
   const group = svg("g", { class: `caus-lane tone-${lane.tone} ${lane.kind}` });
   group.appendChild(svg("line", { class: "line", x1: lane.x, y1: lane.y1, x2: lane.x, y2: lane.y2 }));
+  // An episode still running ends in the brand mark, pulsing, where a
+  // finished one ends in the mark of its outcome. A graph lane is not an
+  // episode and ends in neither.
+  if (lane.outcome === null && lane.kind === "episode") {
+    const mark = svg("text", { class: "caus-pulse", x: lane.x, y: lane.y2 + 4, "text-anchor": "middle" });
+    pulseMark(mark);
+    card.attach(mark, () => "running", () => lane.label, () => "");
+    group.appendChild(mark);
+  }
   if (lane.outcome !== null) {
     const role = outcomeRole(lane.outcome);
     const kind = str(lane.outcome.kind) === "failed" ? "error" : "settled";

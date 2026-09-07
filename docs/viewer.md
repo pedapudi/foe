@@ -191,7 +191,11 @@ version and build hash are fingerprint inputs. Two runs of one configuration sep
 a rebuild are therefore two contract groups here, and they are drawn as two.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
-coloured by outcome, the contract name in that agent's identity colour at
+coloured by outcome, or, for an episode that has not ended, the brand mark
+pulsing in `--foe-accent` through the eleven frames
+[brand/README.md](brand/README.md) fixes, one frame per hundred
+milliseconds, which is the drawing a terminal running the same episode makes
+on its progress line; then the contract name in that agent's identity colour at
 the page's base size, the episode
 id in mono beside it, a second line reading the outcome word with the code
 of a `blocked` outcome or the limit of an `exhausted` one, and under those a
@@ -354,9 +358,11 @@ conversation show every pass over the node.
 Each lane is one continuous line at its own column, from its first row to
 its last, stretched to reach every curve that joins it; a lane of one row
 gets a short stub, so its own elbow and its merge have ground between
-them. A lane that ended runs a little past its last row, because its
-outcome mark sits at the foot rather than on the last row, and the curves
+them. An episode lane runs a little past its last row, because its
+mark sits at the foot rather than on the last row, and the curves
 leave and rejoin at those two ends rather than at the first and last rows.
+The mark is the outcome's for a lane that ended and the pulsing brand mark
+for one still running; a graph lane is not an episode and carries neither.
 A parent therefore reaches past every child's foot: a child branches from
 its parent above the child's own first row and folds back below the child's
 own foot, so the two never coincide and the order they happened in reads

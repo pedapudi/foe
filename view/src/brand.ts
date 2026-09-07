@@ -7,7 +7,7 @@
 // docs/brand/README.md states the geometry and the rules: the mark is
 // never stretched or recoloured, and the dashed limit stays. The one
 // animation the brand allows is the single-glyph text pulse a progress
-// indicator draws, which `brandPulse` below renders and this lockup never
+// indicator draws, which `pulseMark` below draws and this lockup never
 // does.
 
 import { h } from "./dom.js";
@@ -80,34 +80,41 @@ export const PULSE_FRAMES = ["\u00b7", "\u2736", "\u2737", "\u2738", "\u229b", "
 /** One poll tick of the runtime, which is one frame of the pulse. */
 const PULSE_MS = 100;
 
+/** Whether the reader asked for nothing to move. */
+const still = (): boolean => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+// Every mark on the page advances together, off one interval, so two running
+// episodes never pulse out of step. A mark leaves the set when the figure
+// that drew it is replaced, which is what `isConnected` reports, and the
+// interval stops with the last of them: nothing ticks while nothing runs.
+const marks = new Set<Element>();
+let ticker: ReturnType<typeof setInterval> | undefined;
+let frame = 0;
+
+function advance(): void {
+  frame = (frame + 1) % PULSE_FRAMES.length;
+  for (const mark of marks) {
+    if (mark.isConnected) mark.textContent = PULSE_FRAMES[frame]!;
+    else marks.delete(mark);
+  }
+  if (marks.size > 0) return;
+  clearInterval(ticker);
+  ticker = undefined;
+}
+
 /**
- * A pulsing text rendering of the mark, in the brand accent. It advances one
- * frame per tick only while `run` is called with work in flight; nothing
- * ticks while nothing runs. A reader who asked for reduced motion gets the
- * peak frame, held: the mark still says that something is running, and
- * nothing moves.
+ * Draws `mark` as the pulsing mark, for as long as it stays in the document.
+ * The element carries the glyph as text, which is the one animation the brand
+ * allows; an HTML span and an SVG `text` both work. A reader who asked for
+ * reduced motion gets the peak frame, held: the mark still says that
+ * something is running, and nothing moves.
  */
-export function brandPulse(): { el: HTMLElement; run(count: number): void } {
-  const el = h("span", { class: "brand-pulse", "aria-hidden": "true" }, PULSE_FRAMES[0]);
-  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let frame = 0;
-  return {
-    el,
-    run(count: number): void {
-      el.hidden = count === 0;
-      el.title = count === 1 ? "one episode running" : `${count} episodes running`;
-      if (count === 0 || still) {
-        if (timer !== undefined) clearInterval(timer);
-        timer = undefined;
-        el.textContent = still ? PULSE_FRAMES[5]! : PULSE_FRAMES[0]!;
-        return;
-      }
-      if (timer !== undefined) return;
-      timer = setInterval(() => {
-        frame = (frame + 1) % PULSE_FRAMES.length;
-        el.textContent = PULSE_FRAMES[frame]!;
-      }, PULSE_MS);
-    },
-  };
+export function pulseMark(mark: Element): void {
+  if (still()) {
+    mark.textContent = PULSE_FRAMES[5]!;
+    return;
+  }
+  mark.textContent = PULSE_FRAMES[frame]!;
+  marks.add(mark);
+  ticker ??= setInterval(advance, PULSE_MS);
 }

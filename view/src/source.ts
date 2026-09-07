@@ -2,7 +2,8 @@
 // live mode fetches the episode tree and subscribes to each episode's
 // server-sent-events stream. Both feed the same sink.
 
-import type { ConnectionState } from "./chrome.js";
+/** The page's link to whatever is producing the logs it reads. */
+export type ConnectionState = "file" | "connected" | "reconnecting" | "ended" | "unavailable";
 import { arr, num, obj, str } from "./types.js";
 import type { LogEvent } from "./types.js";
 

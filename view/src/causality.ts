@@ -893,9 +893,10 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
       lane.y1 -= STUB / 2;
       lane.y2 += STUB / 2;
     }
-    // The foot carries the outcome mark, which is the last thing on the
-    // lane and so sits below the last row rather than on it.
-    if (lane.outcome !== null) lane.y2 += OUTCOME_TAIL;
+    // The foot carries the mark, which is the last thing on the lane and so
+    // sits below the last row rather than on it. An episode lane that has no
+    // outcome yet gets the same room: its mark is the brand mark, pulsing.
+    if (lane.outcome !== null || lane.kind === "episode") lane.y2 += OUTCOME_TAIL;
   }
 
   // A lane reaches past its children, because a child branches from it above
