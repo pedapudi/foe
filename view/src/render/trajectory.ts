@@ -20,6 +20,7 @@
 // it would draw changes.
 
 import { layoutCausality, scopeFor } from "../causality.js";
+import { identityStyle } from "../identity.js";
 import type { CausalityEpisode, CausalityLayout, ConversationScope } from "../causality.js";
 import { currentFontScale } from "../chrome.js";
 import { clear, fmtDuration, fmtTime, h } from "../dom.js";
@@ -399,7 +400,9 @@ export class TrajectoryView {
 
     // The label names the contract. The episode id stands beside it in the
     // sidebar and in the breadcrumbs, so the row does not repeat it.
-    const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5 });
+    // The label carries the episode's identity color, the same color its
+    // name takes in the tree, the outline, and the terminal transcript.
+    const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5, style: identityStyle(row.name) });
     label.textContent = row.label;
     label.addEventListener("click", () => this.handlers.select(row.id));
     // The card carries the id the label no longer prints, and the whole

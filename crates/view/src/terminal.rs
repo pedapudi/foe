@@ -30,8 +30,19 @@ const ERASE: &str = "\r\x1b[K";
 /// accent is always 24-bit and a terminal limited to 256 colors approximates
 /// it with the nearest index it holds.
 const ACCENT: &str = "\x1b[38;2;199;121;26m";
-/// The cyan of a block heading, also for the episode name on the progress line.
+/// The cyan of a block heading.
 const CYAN: &str = "\x1b[1;36m";
+/// The eight colors that name an episode, one per hue of the identity palette
+/// in `view/src/tokens.css` and in the same order, so a name that reads blue
+/// in the browser reads blue here. A block heading, a branch line, and the
+/// progress line write an episode's name in the color its name hashes to, so
+/// two episodes writing into one transcript are told apart by eye. These are
+/// the terminal's own palette entries rather than 24-bit values, because the
+/// terminal's theme has already tuned them for its background, which no
+/// program can read. Yellow is left out: it is where the brand accent sits.
+/// docs/design-language.md states what the channel means.
+const IDENTITY: [&str; 8] =
+    ["\x1b[1;34m", "\x1b[1;32m", "\x1b[1;95m", "\x1b[1;36m", "\x1b[1;92m", "\x1b[1;31m", "\x1b[1;96m", "\x1b[1;35m"];
 /// Green, for the tool-call count on the progress line.
 const GREEN: &str = "\x1b[32m";
 /// Dim, for the elapsed seconds and every bracket on the progress line.
@@ -72,7 +83,9 @@ struct Terminal<W> {
     interactive: bool,
     width: usize,
     offsets: BTreeMap<PathBuf, (u64, String)>,
-    lanes: Vec<(String, String)>,
+    /// One entry per open lane: the episode id, its name, and the index of
+    /// the identity color the name holds.
+    lanes: Vec<(String, String, usize)>,
     /// When the display started, on the runtime clock.
     started: tokio::time::Instant,
     /// Poll ticks since the display started. The progress frame is this count
@@ -119,7 +132,9 @@ impl<W: Write> Terminal<W> {
         let calls = format!("{} tool call{}", self.calls, if self.calls == 1 { "" } else { "s" });
         let room = self.width.saturating_sub(seconds.chars().count() + calls.chars().count() + 13);
         let lane: String = self.active.chars().take(room).collect();
-        let fields = [self.bracket(CYAN, &lane), self.bracket(DIM, &seconds), self.bracket(GREEN, &calls)];
+        let held = self.lanes.iter().find(|(_, name, _)| *name == self.active);
+        let code = held.map_or(IDENTITY[identity(&self.active)], |(_, _, slot)| IDENTITY[*slot]);
+        let fields = [self.bracket(code, &lane), self.bracket(DIM, &seconds), self.bracket(GREEN, &calls)];
         self.drawn = true;
         write!(self.output, "{ERASE}{mark}  {}", fields.join("  "))?;
         self.output.flush()
@@ -169,15 +184,29 @@ impl<W: Write> Terminal<W> {
     }
 
     fn lane(&mut self, id: &str) -> usize {
-        if let Some(i) = self.lanes.iter().position(|(key, _)| key == id) {
+        if let Some(i) = self.lanes.iter().position(|(key, ..)| key == id) {
             return i;
         }
-        self.lanes.push((id.into(), id.into()));
-        self.lanes.len() - 1
+        self.lanes.push((id.into(), id.into(), 0));
+        let last = self.lanes.len() - 1;
+        self.rename(last, id.into());
+        last
+    }
+
+    /// Names lane `i` and gives the name a color: the one it hashes to, or
+    /// the next free one when another open lane already holds that. Eight
+    /// colors over four names collide more often than not, and two lanes on
+    /// screen together in one color is what this channel exists to prevent.
+    fn rename(&mut self, i: usize, name: String) {
+        let taken: Vec<usize> = self.lanes.iter().enumerate().filter(|(k, _)| *k != i).map(|(_, l)| l.2).collect();
+        let first = identity(&name);
+        let free = |n: &usize| !taken.contains(n);
+        self.lanes[i].2 = (0..IDENTITY.len()).map(|n| (first + n) % IDENTITY.len()).find(free).unwrap_or(first);
+        self.lanes[i].1 = name;
     }
 
     fn event(&mut self, id: &str, data: &EventData) -> io::Result<()> {
-        if let Some((_, label)) = self.lanes.iter().find(|(key, _)| key == id) {
+        if let Some((_, label, _)) = self.lanes.iter().find(|(key, ..)| key == id) {
             self.active = label.clone();
         }
         // A tool call is carried by the assistant message that requests it
@@ -192,23 +221,21 @@ impl<W: Write> Terminal<W> {
         match data {
             EventData::EpisodeStart(start) => {
                 let i = self.lane(id);
-                self.lanes[i].1 = start.contract["name"].as_str().unwrap_or(id).into();
+                self.rename(i, start.contract["name"].as_str().unwrap_or(id).into());
                 self.active = self.lanes[i].1.clone();
             }
             EventData::InboxItem(item)
                 if matches!(item.source, InboxSource::Parent | InboxSource::Peer)
-                    || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, _)| key == id)) =>
+                    || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, ..)| key == id)) =>
             {
                 let i = self.lane(id);
-                let body = item
-                    .content
-                    .iter()
-                    .map(|b| match b {
+                fn text(block: &ContentBlock) -> &str {
+                    match block {
                         ContentBlock::Text { text } => text.as_str(),
                         ContentBlock::Image { .. } => "[image]",
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
+                    }
+                }
+                let body = item.content.iter().map(text).collect::<Vec<_>>().join("\n\n");
                 self.block(i, item.from.as_deref().unwrap_or("You"), &[Row::Text(body)])?;
             }
             EventData::AssistantMessage(message) if !message.text.trim().is_empty() => {
@@ -219,17 +246,20 @@ impl<W: Write> Terminal<W> {
             EventData::SpawnStart { child_id, contract, .. } => {
                 let parent = self.lane(id);
                 let child = self.lane(child_id);
-                self.lanes[child].1 = contract.clone();
-                self.edge(parent, child, "╮ ", &format!("Branch: {contract}"))?;
+                self.rename(child, contract.clone());
+                let code = IDENTITY[self.lanes[child].2];
+                self.edge(parent, child, "╮ ", &[(CYAN, "Branch: ".into()), (code, contract.clone())])?;
             }
             EventData::SpawnEnd { child_id, outcome } => {
                 let parent = self.lane(id);
                 let child = self.lane(child_id);
                 let (status, body) = result_text(outcome);
-                let label = format!("{} → {} · {status}", self.lanes[child].1, self.lanes[parent].1);
-                self.edge(parent, child, "╯ ", &label)?;
-                self.lanes[child] = (String::new(), String::new());
-                while self.lanes.last().is_some_and(|(id, _)| id.is_empty()) {
+                let (a, b) = (self.lanes[child].1.clone(), self.lanes[parent].1.clone());
+                let (ca, cb) = (IDENTITY[self.lanes[child].2], IDENTITY[self.lanes[parent].2]);
+                let ends = [(ca, a), (DIM, " → ".into()), (cb, b), (CYAN, format!(" · {status}"))];
+                self.edge(parent, child, "╯ ", &ends)?;
+                self.lanes[child] = (String::new(), String::new(), 0);
+                while self.lanes.last().is_some_and(|(id, ..)| id.is_empty()) {
                     self.lanes.pop();
                 }
                 self.body(&body)?;
@@ -240,34 +270,36 @@ impl<W: Write> Terminal<W> {
     }
 
     fn prefix(&self) -> Vec<&str> {
-        self.lanes.iter().map(|(id, _)| if id.is_empty() { "  " } else { "│ " }).collect()
+        self.lanes.iter().map(|(id, ..)| if id.is_empty() { "  " } else { "│ " }).collect()
     }
 
-    fn heading(&mut self, prefix: &str, label: &str) -> io::Result<()> {
+    /// One heading line: the connector prefix in dim, then the fields, each
+    /// in the color given for it. Without color the codes are dropped and the
+    /// texts are concatenated, so a redirected transcript reads the same.
+    fn heading(&mut self, prefix: &str, fields: &[(&'static str, String)]) -> io::Result<()> {
         self.erase()?;
-        let label = clean(label).replace('\n', " ");
-        if self.color {
-            writeln!(self.output, "{DIM}{prefix}\x1b[0m{CYAN}{label}\x1b[0m")
-        } else {
-            writeln!(self.output, "{prefix}{label}")
-        }
+        let sgr = |code: &'static str| if self.color { code } else { "" };
+        let field =
+            |(c, t): &(&'static str, String)| format!("{}{}{}", sgr(c), clean(t).replace('\n', " "), sgr("\x1b[0m"));
+        writeln!(self.output, "{}{prefix}{}{}", sgr(DIM), sgr("\x1b[0m"), fields.iter().map(field).collect::<String>())
     }
 
     fn block(&mut self, lane: usize, label: &str, body: &[Row]) -> io::Result<()> {
         let mut prefix = self.prefix();
         prefix[lane] = "● ";
-        self.heading(&prefix.concat(), &format!("{} · {label}", self.lanes[lane].1))?;
+        let (name, code) = (self.lanes[lane].1.clone(), IDENTITY[self.lanes[lane].2]);
+        self.heading(&prefix.concat(), &[(code, name), (CYAN, format!(" · {label}"))])?;
         self.body(body)
     }
 
-    fn edge(&mut self, parent: usize, child: usize, end: &str, label: &str) -> io::Result<()> {
+    fn edge(&mut self, parent: usize, child: usize, end: &str, fields: &[(&'static str, String)]) -> io::Result<()> {
         let mut prefix = self.prefix();
         for segment in &mut prefix[parent.min(child)..parent.max(child)] {
             *segment = if *segment == "│ " { "┼─" } else { "──" };
         }
         prefix[parent] = "├─";
         prefix[child] = end;
-        self.heading(&prefix.concat(), label)
+        self.heading(&prefix.concat(), fields)
     }
 
     /// Writes the rows under the current lanes, then one blank line. Every
@@ -294,11 +326,9 @@ impl<W: Write> Terminal<W> {
     /// whole. The live viewer leaves with the process, so the command is the
     /// reference that outlives the run.
     fn finish(&mut self, result: &Result<Outcome, String>, dir: &Path) -> io::Result<()> {
-        let (label, body) = match result {
-            Ok(outcome) => result_text(outcome),
-            Err(error) => ("Failed", vec![Row::Text(error.clone())]),
-        };
-        self.heading("● ", &format!("Final · {label}"))?;
+        let failed = |error: &String| ("Failed", vec![Row::Text(error.clone())]);
+        let (label, body) = result.as_ref().map_or_else(failed, result_text);
+        self.heading("● ", &[(CYAN, format!("Final · {label}"))])?;
         self.lanes.clear();
         self.body(&body)?;
         writeln!(self.output, "{GUTTER}Viewer: foe view {}", dir.display())?;
@@ -457,6 +487,15 @@ fn title(key: &str) -> String {
     let spaced = key.replace('_', " ");
     let mut chars = spaced.chars();
     chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// The color that names `name`: FNV-1a over its UTF-16 code units, reduced to
+/// one of `IDENTITY`. The same function is written in `view/src/identity.ts`
+/// and in the landing page's scripts, so one name resolves to one color
+/// wherever it is written.
+fn identity(name: &str) -> usize {
+    let step = |hash: u32, unit| (hash ^ u32::from(unit)).wrapping_mul(0x0100_0193);
+    name.encode_utf16().fold(0x811c_9dc5_u32, step) as usize % IDENTITY.len()
 }
 
 fn clean(text: &str) -> String {

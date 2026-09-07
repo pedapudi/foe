@@ -1885,8 +1885,10 @@ table.events td.type.error {
   fill: var(--v2-rule-soft);
 }
 
+/* The row names an agent, so it takes that agent's identity color, which
+ * the row sets in `--id`. The selected rule follows this one. */
 .traj-label {
-  fill: var(--v2-ink-soft);
+  fill: var(--id, var(--v2-ink-soft));
   font-family: var(--v2-sans);
   font-size: 11px;
   cursor: pointer;
@@ -2429,8 +2431,11 @@ table.events td.type.error {
   text-align: left;
 }
 
+/* An agent's name takes its identity color, which the row sets in `--id`.
+ * A selected lead and a hovered owner keep the accent, because those rules
+ * follow this one. */
 .team-lead {
-  color: var(--v2-ink);
+  color: var(--id, var(--v2-ink));
   font-weight: 600;
 }
 
@@ -2513,8 +2518,13 @@ table.events td.type.error {
 }
 
 .task-owner {
-  color: var(--v2-ink-soft);
+  color: var(--id, var(--v2-ink-soft));
   font: inherit;
+}
+
+/* A name written in the identity color the element sets in `--id`. */
+.identity {
+  color: var(--id, inherit);
 }
 
 .task-owner:hover {
@@ -3541,6 +3551,11 @@ kbd {
   color: var(--v2-ink-soft);
 }
 
+/* An episode lane names an agent, in that agent's identity color. */
+.caus-label.episode .name {
+  color: var(--id, var(--v2-ink));
+}
+
 .caus-label.node .name {
   font-family: var(--v2-mono);
 }
@@ -3851,8 +3866,11 @@ kbd {
   text-overflow: ellipsis;
 }
 
+/* An episode row names an agent, so it takes that agent's identity color,
+ * which the row sets in `--id`. The selected and failed rules follow this
+ * one, so selection and failure still win. */
 .outline-row.kind-episode .outline-name .label {
-  color: var(--v2-ink);
+  color: var(--id, var(--v2-ink));
   font-weight: 600;
 }
 

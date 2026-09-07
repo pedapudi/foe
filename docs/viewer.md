@@ -16,6 +16,17 @@ that column to its parent and displays the outcome. A returned result
 means the child finished; it does not establish that its parent accepted
 or incorporated the result.
 
+An episode's name is written in one of eight colours, which is how two
+episodes writing into one transcript are told apart: a block heading names
+the episode that produced it, a branch line names the child it opens, and a
+return line names both ends. The colour is the one the name hashes to, moved
+on to the next free colour when another open episode already holds it, so a
+name keeps one colour for the rest of the run. The eight are the terminal's
+own palette entries rather than fixed values, because the terminal's theme
+has already tuned them for its background. The rest of a heading stays cyan.
+[docs/design-language.md](design-language.md) states the same channel for the
+browser viewer.
+
 The conversation shows the root task, parent and peer messages, nonempty assistant
 messages, returned child outcomes, and the final outcome. Tool requests,
 tool responses, reasoning, system instructions, and internal notifications
@@ -47,7 +58,7 @@ parent or peer message and a returned result leave the count as it is. The
 line is erased before any block is appended and before a display error is
 reported, so scrollback holds blocks alone. It is drawn only while standard
 output is a terminal, so redirected output holds no progress line. In color the glyph takes the brand accent as a 24-bit
-color, the episode name takes the cyan of a block heading, the tool-call
+color, the episode name takes that episode's own colour, the tool-call
 count is green, and the seconds and every bracket are dim. Deciding whether
 a terminal supports 24-bit color requires an environment variable, and no
 environment variable is read anywhere, so a terminal limited to 256 colors
@@ -178,7 +189,8 @@ version and build hash are fingerprint inputs. Two runs of one configuration sep
 a rebuild are therefore two contract groups here, and they are drawn as two.
 
 The episodes tree gives each episode a row about 40 pixels tall: a dot
-coloured by outcome, the contract name at the page's base size, the episode
+coloured by outcome, the contract name in that agent's identity colour at
+the page's base size, the episode
 id in mono beside it, a second line reading the outcome word with the code
 of a `blocked` outcome or the limit of an `exhausted` one, and under those a
 measure of what the episode spent. A spawned child hangs under its parent on

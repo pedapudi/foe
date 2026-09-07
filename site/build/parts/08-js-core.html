@@ -45,6 +45,37 @@ function sv(name, attrs){
   return n;
 }
 function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+/* The colour that names an agent. The name's hash picks it, by FNV-1a over
+   the UTF-16 code units, so one role keeps one colour everywhere it is
+   written; crates/view/src/terminal.rs and view/src/identity.ts write the
+   same function. Eight colours over four names collide more often than not,
+   so claim() moves a name on to the next free colour when the one it hashes
+   to is already held, and keeps what it gave out. */
+var HELD = {};
+function idslot(name){
+  var h = 0x811C9DC5;
+  for(var i = 0; i < name.length; i++){
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % 8;
+}
+function claim(names){
+  var used = {}, key;
+  for(key in HELD) used[HELD[key]] = 1;
+  names.slice().sort().forEach(function(name){
+    if(HELD[name] != null) return;
+    var slot = idslot(name);
+    for(var step = 0; step < 8 && used[slot]; step++) slot = (slot + 1) % 8;
+    used[slot] = 1;
+    HELD[name] = slot;
+  });
+}
+function idcolor(name){
+  var slot = HELD[name] == null ? idslot(name) : HELD[name];
+  return "var(--foe-id-" + (slot + 1) + ")";
+}
+claim(NAMES);
 function opt(sel, tag){ return $(sel) || document.createElement(tag || "button"); }
 function group(picker, onPick){
   $$("[role=radio]", picker).forEach(function(b, i){
@@ -158,12 +189,10 @@ function transcriptLines(cols, blocks){
   var lines = [], at = -1e9;
   function push(t, segs){ at = Math.max(t, at + LINE_MS); lines.push({ t: at, segs: segs }); }
   blocks.forEach(function(b){
+    /* The heading arrives as segments: the class each part is drawn in and
+       its text, so an agent's name carries its own identity colour. */
     var head = [seg(b.hp, "cx")];
-    if(b.oc){
-      var cut = b.label.lastIndexOf(" – ");
-      head.push(seg(b.label.slice(0, cut + 3), "hd"));
-      head.push(seg(b.label.slice(cut + 3), "hd oc-" + b.oc));
-    } else head.push(seg(b.label, "hd"));
+    b.label.forEach(function(part){ head.push(seg(part[1], part[0])); });
     push(b.t, head);
     if(b.nobody) return;
     var room = Math.max(MIN_TEXT, cols - b.bp.length - GUTTER.length);
@@ -255,10 +284,14 @@ function Terminal(root, spec){
     var row = el("span", "ln");
     row.appendChild(el("span", "pulse", FRAMES[ticks % FRAMES.length]));
     row.appendChild(el("span", "cx", "  "));
-    [[st.active.slice(0, room), "pr"], [seconds, "cx"], [calls, "pr"]].forEach(function(f, k){
+    /* The episode that acted most recently is named in its own colour, the
+       way the runtime redraws it. */
+    var active = el("span", "id", st.active.slice(0, room));
+    active.style.color = idcolor(st.active);
+    [[active, "pr"], [seconds, "cx"], [calls, "pr"]].forEach(function(f, k){
       if(k) row.appendChild(el("span", "cx", "  "));
       row.appendChild(el("span", "cx", "["));
-      row.appendChild(el("span", f[1], f[0]));
+      row.appendChild(typeof f[0] === "string" ? el("span", f[1], f[0]) : f[0]);
       row.appendChild(el("span", "cx", "]"));
     });
     return row;

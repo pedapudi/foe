@@ -26,6 +26,26 @@ DARK_THEME = os.environ.get("FOE_DARK", "espresso")
 BRAND_ACCENT = {"light": "#C7791A", "dark": "#E8A43E"}
 
 
+def identity(ground):
+    """The eight colours that name an agent, for a light or a dark ground.
+
+    tokens.css states each set once for a ground rather than per theme, so
+    they are read from the light-theme rule and from the bare `:root` rule
+    that carries the dark values.
+    """
+    css = open(os.path.join(REPO, "view/src/tokens.css")).read()
+    opening = ':root[data-theme="paper"] {' if ground == "light" else ":root {"
+    at = 0
+    while True:
+        at = css.index(opening, at) + 1
+        body = css[at:css.index("}", at)]
+        if "--foe-id-1" in body:
+            break
+    tokens = re.findall(r"(--foe-id-\d+):\s*(#[0-9A-Fa-f]{6})", body)
+    assert len(tokens) == 8, (ground, len(tokens))
+    return tokens
+
+
 def palette(theme, ground, indent):
     css = open(os.path.join(REPO, "view/src/tokens.css")).read()
     # The light-ground themes also appear in a shared --foe-accent rule, so
@@ -39,6 +59,7 @@ def palette(theme, ground, indent):
     tokens = re.findall(r"(--v2-[a-z-]+):\s*(#[0-9A-Fa-f]{6})", body)
     assert len(tokens) == 15, (theme, len(tokens))
     tokens.append(("--foe-accent", BRAND_ACCENT[ground]))
+    tokens.extend(identity(ground))
     lines, row = [], []
     for name, value in tokens:
         row.append("%s:%s;" % (name, value))

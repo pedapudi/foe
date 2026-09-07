@@ -208,7 +208,7 @@ fn terminal_controls_are_removed_and_color_is_optional() {
     terminal.event("lead", &start("lead")).unwrap();
     terminal.event("lead", &message("Safe\x1b[2J\r\x08\u{009b}31mtext\n\tIndented")).unwrap();
     let output = String::from_utf8(terminal.output).unwrap();
-    assert!(output.contains("\x1b[1;36mlead · Assistant\x1b[0m"));
+    assert!(output.contains("\x1b[1;35mlead\x1b[0m\x1b[1;36m · Assistant\x1b[0m"));
     assert!(output.contains("Safe[2J31mtext\n│   \tIndented"));
     assert!(!output.contains("\x1b[2J"));
     assert_eq!(rendered(json!({"empty": [], "count": 0})), "[Count]\n0");
@@ -326,13 +326,13 @@ async fn the_progress_line_yields_to_blocks_and_to_redirected_output() {
     let line = String::from_utf8(terminal.output.clone()).unwrap();
     assert_eq!(
         line,
-        "\r\x1b[K\x1b[38;2;199;121;26m·\x1b[0m  \x1b[2m[\x1b[0m\x1b[1;36mlead\x1b[0m\x1b[2m]\x1b[0m  \
+        "\r\x1b[K\x1b[38;2;199;121;26m·\x1b[0m  \x1b[2m[\x1b[0m\x1b[1;35mlead\x1b[0m\x1b[2m]\x1b[0m  \
          \x1b[2m[\x1b[0m\x1b[2m0 s\x1b[0m\x1b[2m]\x1b[0m  \x1b[2m[\x1b[0m\x1b[32m0 tool calls\x1b[0m\x1b[2m]\x1b[0m"
     );
     terminal.event("lead", &message("Recorded.")).unwrap();
     let output = String::from_utf8(terminal.output.clone()).unwrap();
     let block = output.strip_prefix(&line).unwrap();
-    assert!(block.starts_with("\r\x1b[K\x1b[2m● \x1b[0m\x1b[1;36mlead · Assistant"), "{block}");
+    assert!(block.starts_with("\r\x1b[K\x1b[2m● \x1b[0m\x1b[1;35mlead\x1b[0m\x1b[1;36m · Assistant"), "{block}");
     terminal.status().unwrap();
     terminal.erase().and_then(|()| terminal.erase()).unwrap();
     assert!(String::from_utf8(terminal.output.clone()).unwrap().ends_with("]\x1b[0m\r\x1b[K"));
@@ -352,4 +352,47 @@ async fn the_progress_line_stays_inside_the_terminal_width() {
     let line = progress(&terminal.output).pop().unwrap();
     assert_eq!(line, "·  [a-contract-n]  [0 s]  [0 tool calls]");
     assert_eq!(line.chars().count(), 40);
+}
+
+/// docs/design-language.md: an episode's name is written in the color its
+/// name hashes to, the same hash the browser bundle and the landing page use,
+/// so two episodes in one transcript are told apart by eye. A branch line
+/// names the child in the child's color and the return line names both ends
+/// in theirs.
+#[test]
+fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
+    assert_eq!(IDENTITY[identity("lead")], "\x1b[1;35m");
+    assert_eq!(IDENTITY[identity("reviewer")], "\x1b[1;95m");
+
+    let mut terminal = Terminal::new(Vec::new(), true, false, 80);
+    terminal.event("lead", &start("lead")).unwrap();
+    terminal.event("lead", &spawn("reviewer")).unwrap();
+    terminal.event("reviewer", &start("reviewer")).unwrap();
+    terminal.event("reviewer", &message("Read it.")).unwrap();
+    terminal.event("lead", &returned("reviewer", "Approved.")).unwrap();
+    let output = String::from_utf8(terminal.output).unwrap();
+    assert!(output.contains("\x1b[1;36mBranch: \x1b[0m\x1b[1;95mreviewer\x1b[0m"), "{output}");
+    assert!(output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[1;36m · Assistant\x1b[0m"), "{output}");
+    assert!(
+        output.contains("\x1b[1;95mreviewer\x1b[0m\x1b[2m → \x1b[0m\x1b[1;35mlead\x1b[0m\x1b[1;36m · Completed\x1b[0m"),
+        "{output}"
+    );
+
+    // `survey-propose-apply` and `propose` hash to one color, so the second
+    // lane to open moves on to the next free one rather than repeating it.
+    assert_eq!(identity("survey-propose-apply"), identity("propose"));
+    let mut collide = Terminal::new(Vec::new(), true, false, 80);
+    collide.event("root", &start("survey-propose-apply")).unwrap();
+    collide.event("root", &spawn("propose")).unwrap();
+    assert_ne!(collide.lanes[0].2, collide.lanes[1].2);
+
+    // Without color the same transcript carries the words and no codes.
+    let mut plain = Terminal::new(Vec::new(), false, false, 80);
+    plain.event("lead", &start("lead")).unwrap();
+    plain.event("lead", &spawn("reviewer")).unwrap();
+    plain.event("lead", &returned("reviewer", "Approved.")).unwrap();
+    let plain = String::from_utf8(plain.output).unwrap();
+    assert!(plain.contains("Branch: reviewer"), "{plain}");
+    assert!(plain.contains("reviewer → lead · Completed"), "{plain}");
+    assert!(!plain.contains('\x1b'), "{plain}");
 }

@@ -10,6 +10,7 @@ import { clear, h } from "./dom.js";
 import { EpisodeFold } from "./fold.js";
 import type { Patch, Summary } from "./fold.js";
 import { buildTree, flatten, sharedPrefix } from "./episode-tree.js";
+import { claim } from "./identity.js";
 import type { TreeNode } from "./episode-tree.js";
 import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } from "./panes.js";
 import { ConversationView } from "./render/conversation.js";
@@ -384,7 +385,13 @@ export class App implements Sink {
   }
 
   private summaries(): Summary[] {
-    return [...this.episodes.values()].map((e) => e.fold.summary);
+    const summaries = [...this.episodes.values()].map((e) => e.fold.summary);
+    // Every view that names an episode reads this list, so it is where each
+    // name is given the identity colour it keeps for the rest of the run. An
+    // episode whose `episode/start` has not been read yet stands under its
+    // own id, which is not a name and takes no colour of its own.
+    claim(summaries.filter((s) => s.name !== s.id).map((s) => s.name));
+    return summaries;
   }
 
   private summaryMap(): Map<string, Summary> {

@@ -28,6 +28,7 @@
 import { clear, fmtInt, h } from "../dom.js";
 import { DEPTHS, layoutLanes, visibleRows } from "../causality.js";
 import type { CausalityOutline, CausalityRow, Depth } from "../causality.js";
+import { identityStyle } from "../identity.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
 import { languageForPath } from "./shape.js";
 import { Hovercard } from "./hovercard.js";
@@ -143,7 +144,15 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
     "div",
     { class: "outline-name" },
     caret,
-    row.label ? h("span", { class: "label" }, row.label) : null,
+    // An episode row names an agent, so its label carries that agent's
+    // identity color; every other row names an event and takes plain ink.
+    row.label
+      ? h(
+          "span",
+          row.kind === "episode" ? { class: "label identity", style: identityStyle(row.label) } : { class: "label" },
+          row.label,
+        )
+      : null,
     row.aside ? h("span", { class: "aside" }, row.aside) : null,
     row.kind === "node" && row.firings.length > 1 ? h("span", { class: "aside" }, `${row.firings.length} passes`) : null,
   );

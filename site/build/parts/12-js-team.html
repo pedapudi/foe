@@ -20,6 +20,7 @@
     { id: "integration", what: "takes both reports", depth: 1, at: 2 },
     { id: "usage-auditor", what: "compares the usage text", depth: 2, at: 3, parent: 3 }
   ];
+  claim(TREE.map(function(n){ return n.id; }));
   var NOTES = [
     "one task, one agent",
     "one grant of spawn, and two more open together",
@@ -51,7 +52,10 @@
       g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="7" fill="none" stroke="' +
            (open ? hue : "var(--v2-rule)") + '" stroke-width="1.8"/>';
       if(open) g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="2.8" fill="' + hue + '"/>';
-      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="17.5" fill="' + ink + '">' + esc(n.id) + '</text>';
+      /* An agent's name carries its identity colour, the same colour that
+         names it in the viewer and in the terminal transcript. */
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="17.5" font-weight="700" fill="' +
+           (open ? idcolor(n.id) : ink) + '">' + esc(n.id) + '</text>';
       g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="14.5" fill="' + soft + '">' + esc(n.what) + '</text>';
       g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="14.5" fill="' +
            (open && done ? "var(--v2-good)" : soft) + '">' +

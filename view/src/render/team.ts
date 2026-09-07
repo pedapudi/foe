@@ -3,6 +3,7 @@
 // at the same time in both live and static views.
 
 import { clear, h } from "../dom.js";
+import { identityStyle } from "../identity.js";
 import { readTaskBoard } from "../team.js";
 import type { TaskBoard, TeamEpisode, TeamTask } from "../team.js";
 
@@ -17,9 +18,21 @@ function direction(status: string): string {
   return "running";
 }
 
-function taskRow(task: TeamTask, handlers: TeamHandlers): HTMLElement {
+// An owner is written as the episode id the board records, in the identity
+// color of the name that episode runs under, so the owner of a task and the
+// lead of its team read as the same agent.
+function taskRow(task: TeamTask, names: Map<string, string>, handlers: TeamHandlers): HTMLElement {
   const owner = task.owner
-    ? h("button", { class: "task-owner", type: "button", onclick: () => handlers.select(task.owner!) }, task.owner)
+    ? h(
+        "button",
+        {
+          class: "task-owner",
+          type: "button",
+          style: identityStyle(names.get(task.owner) ?? task.owner),
+          onclick: () => handlers.select(task.owner!),
+        },
+        task.owner,
+      )
     : "unassigned";
   const dependencies = task.blockedBy.length ? `after ${task.blockedBy.join(", ")}` : "ready";
   const scope = task.scope.length ? task.scope.join(", ") : "unspecified";
@@ -49,12 +62,18 @@ function taskRow(task: TeamTask, handlers: TeamHandlers): HTMLElement {
   );
 }
 
-function boardElement(board: TaskBoard, selected: string | null, handlers: TeamHandlers): HTMLElement {
+function boardElement(
+  board: TaskBoard,
+  names: Map<string, string>,
+  selected: string | null,
+  handlers: TeamHandlers,
+): HTMLElement {
   const lead = h(
     "button",
     {
       class: `team-lead${board.leadId === selected ? " selected" : ""}`,
       type: "button",
+      style: identityStyle(board.leadName),
       onclick: () => handlers.select(board.leadId),
     },
     board.leadName,
@@ -64,7 +83,7 @@ function boardElement(board: TaskBoard, selected: string | null, handlers: TeamH
     "section",
     { class: "task-board", style: `--team-depth: ${board.depth}` },
     h("div", { class: "task-board-head" }, lead, h("span", { class: "task-count" }, `${board.tasks.length} tasks`)),
-    h("div", { class: "task-list" }, board.tasks.map((task) => taskRow(task, handlers))),
+    h("div", { class: "task-list" }, board.tasks.map((task) => taskRow(task, names, handlers))),
   );
 }
 
@@ -76,6 +95,7 @@ export class TeamView {
 
   update(episodes: TeamEpisode[], selected: string | null): void {
     const boards = episodes.map(readTaskBoard).filter((board, index) => index === 0 || board.tasks.length > 1);
+    const names = new Map(episodes.map((episode) => [episode.id, episode.name]));
     const digest = JSON.stringify([selected, boards]);
     if (digest === this.digest) return;
     this.digest = digest;
@@ -89,7 +109,7 @@ export class TeamView {
         h("span", { class: "spacer" }),
         h("span", { class: "fig-total" }, `${boards.length} teams · ${taskCount} tasks`),
       ),
-      h("div", { class: "task-boards" }, boards.map((board) => boardElement(board, selected, this.handlers))),
+      h("div", { class: "task-boards" }, boards.map((board) => boardElement(board, names, selected, this.handlers))),
       h(
         "div",
         { class: "fig-caption" },

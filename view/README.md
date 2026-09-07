@@ -413,7 +413,11 @@ to `:root[data-theme="<id>"]`. That file is the only place a raw hex colour
 appears in the stylesheet, and it also holds the two values of
 `--foe-accent`, the brand accent that fills the lockup's core:
 `#C7791A` on the five light-ground themes and `#E8A43E` on the other
-eleven. The swatch preview strips in `src/chrome.ts`
+eleven. It holds one further palette outside the theme blocks:
+`--foe-id-1` through `--foe-id-8`, the colours that name an agent, stated
+once for a light ground and once for a dark one. `src/identity.ts` chooses
+one per episode name, and only text that names an agent takes one;
+`docs/design-language.md` under "Identity" states the rule. The swatch preview strips in `src/chrome.ts`
 carry the tuples from zicato's `ui.js` `COLOR_THEMES`, including the
 substituted preview accent for `lunaria-eclipse`. When no theme is stored
 and the host page has stamped none, `prefers-color-scheme` selects
@@ -469,6 +473,7 @@ src/messages.ts               the derived-messages rule
 src/episode-tree.ts           the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
 src/marks.ts                  the six states a row or a figure's leaf draws
+src/identity.ts               the colour that names an agent
 src/render/conversation.ts    the dialogue rows
 src/render/mark.ts            building one conversation mark
 src/render/trajectory.ts      the timeline figure and the reading control

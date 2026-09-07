@@ -30,18 +30,22 @@ changing theme is a re-skin with no re-render.
 | `--v2-bad`, `--v2-bad-soft` | the worse outcome and its tinted fill |
 | `--v2-caution` | a limit reached |
 | `--v2-flat` | unchanged or recognized |
+| `--foe-id-1` … `--foe-id-8` | the eight colours that name an agent |
 
-Four rules govern their use.
+Five rules govern their use.
 
 - `good` and `bad` are earned by direction and never by category. A child
   episode is not coloured for being a child. An outcome is `good` when it is
   `completed`, `bad` when it is `failed`, `caution` when it is `exhausted`,
   and `flat` when it is `blocked`, because `blocked` is a recognized state
   rather than a failure. A running episode is neutral.
-- Hue carries direction and nothing else. A mark's kind is carried by four
-  channels that hue does not touch: the lane the mark sits in, its shape,
-  its thickness, and its ink weight. The section below states why hue is
-  unavailable for kind and how the four channels are assigned.
+- Hue carries direction and nothing else in a figure. A mark's kind is
+  carried by four channels that hue does not touch: the lane the mark sits
+  in, its shape, its thickness, and its ink weight. The section below states
+  why hue is unavailable for kind and how the four channels are assigned.
+- An agent's name, written as text, is the one exception, and it uses a
+  palette of its own rather than the role tokens. "Identity" below states
+  where the exception holds and where it does not.
 - The accent appears once per figure, on the element that carries the
   meaning. A selected episode, a current step, or a focused control takes
   it. Nothing decorative does.
@@ -94,6 +98,40 @@ The four channels that do carry kind are assigned as follows.
   channel, which is the register's depth channel. Structure that measures
   nothing, such as an episode-tree connector, a depth guide, or a group bracket,
   takes `--v2-rule` and never an ink.
+
+### Identity
+
+A run interleaves several agents. The transcript a terminal writes, the tree,
+the trajectory, the outline, the causality figure, and the task boards all
+name them, and a reader who has to match `lead` against `surveyor` by reading
+the word each time loses the thread. Eight colours name them instead.
+
+The channel is bounded in two ways, so that it cannot be confused with
+direction.
+
+- It applies to an agent's name set as text, never to a mark in a figure. A
+  dot, a bar, a ring, and a lane keep the direction rule exactly as stated
+  above: a coloured mark still means completed, failed, exhausted, or a limit
+  reached, and nothing else.
+- It uses `--foe-id-1` through `--foe-id-8`, which are not role tokens. They
+  are stated once for a light ground and once for a dark one in
+  `view/src/tokens.css`, beside `--foe-accent` and outside the sixteen theme
+  blocks, so the themes stay copies of `console.css`.
+
+The eight hues are spread around the colour circle with amber left out,
+because amber is the brand accent, and they are ordered so that consecutive
+slots sit at least 75 degrees apart. A name's colour is the slot its FNV-1a
+hash selects, so one role keeps one colour wherever it is written. Eight
+colours over four names collide more often than not, so a name whose slot is
+already held by another agent on screen moves on to the next free slot, and
+keeps what it was given for the rest of the run. Past the eighth agent the
+colours repeat.
+
+Three implementations write the same hash: `view/src/identity.ts` for the
+browser, `crates/view/src/terminal.rs` for the terminal conversation, where
+the eight are the terminal's own palette entries rather than 24-bit values
+because the terminal's theme has already tuned them for a background no
+program can read, and `site/build` for the landing page.
 
 The sixteen themes are copied from `console.css` without modification:
 `monokai`, `solarized-dark`, `solarized-light`, `google-light`,

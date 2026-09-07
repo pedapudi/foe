@@ -115,8 +115,10 @@ function detailOf(e){
       var s = evs[0].t, e2 = evs[evs.length - 1].t;
       if(T < s) return;
       line(x(ei), y(s), x(ei), y(Math.min(T, e2)), "var(--v2-ink)");
-      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="14.5" fill="' +
-           (T <= e2 ? "var(--v2-ink)" : "var(--v2-ink-faint)") + '">' + NAMES[ei] + '</text>';
+      /* The lane's name carries its identity colour, so the lead and the
+         episode it opened are told apart at a glance. */
+      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="14.5" font-weight="700" fill="' +
+           idcolor(NAMES[ei]) + '" opacity="' + (T <= e2 ? 1 : 0.55) + '">' + NAMES[ei] + '</text>';
       evs.forEach(function(ev){
         if(ev.t > T) return;
         var wdt = (ev.ty === "assistant/message" || ev.ty === "tool/result") ? 5 : 3;
@@ -167,7 +169,11 @@ function detailOf(e){
       for(var k = 0; k < n; k++){
         var e = RUN[k], r = el("div", "erow" + (k === n - 1 && n > shownN && !reduced() ? " fresh" : ""));
         r.appendChild(el("span", "s", String(e.s)));
-        r.appendChild(el("span", "c", NAMES[e.ep]));
+        /* The episode column names the agent in its identity colour, which is
+           what tells two interleaved logs apart. */
+        var who = el("span", "c", NAMES[e.ep]);
+        who.style.color = idcolor(NAMES[e.ep]);
+        r.appendChild(who);
         r.appendChild(el("span", "t", e.ty));
         r.appendChild(el("span", "d", detailOf(e)));
         tape.appendChild(r);

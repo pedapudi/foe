@@ -79,6 +79,49 @@
   --foe-accent: #C7791A;
 }
 
+
+/* Identity colors, which name an agent rather than judge it. An episode's
+ * name is written in the color its name hashes to, so the same role keeps one
+ * color everywhere it is written and two agents on screen together are told
+ * apart by eye. The eight hues are spread around the circle with amber left
+ * out, because amber is the brand accent, and they are ordered so that
+ * consecutive slots sit at least 75 degrees apart: a hash puts two names in
+ * neighboring slots as readily as in distant ones, and neighbors that differ
+ * by one step of hue would not be told apart. They apply to a name set as text
+ * and never to a mark in a figure, where color still means direction alone
+ * (docs/design-language.md, "Identity"). Each set is stated once for a ground
+ * rather than per theme, since the sixteen theme blocks are copied from
+ * console.css unchanged.
+ *
+ * Light ground reaches at least 4.4:1 against the palest paper of the five
+ * light themes; dark ground reaches at least 3.8:1 against the palest panel
+ * of the eleven dark ones. */
+:root {
+  --foe-id-1: #7BA8D5; --foe-id-2: #7BD592; --foe-id-3: #D57BB7; --foe-id-4: #7BC6D5;
+  --foe-id-5: #A1D57B; --foe-id-6: #D5837B; --foe-id-7: #7BD5BF; --foe-id-8: #BF7BD5;
+}
+
+:root:not([data-theme]) {
+  --foe-id-1: #1B4C7E; --foe-id-2: #1B7E34; --foe-id-3: #7E1B5D; --foe-id-4: #1B6E7E;
+  --foe-id-5: #447E1B; --foe-id-6: #7E231B; --foe-id-7: #1B7E65; --foe-id-8: #651B7E;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --foe-id-1: #7BA8D5; --foe-id-2: #7BD592; --foe-id-3: #D57BB7; --foe-id-4: #7BC6D5;
+    --foe-id-5: #A1D57B; --foe-id-6: #D5837B; --foe-id-7: #7BD5BF; --foe-id-8: #BF7BD5;
+  }
+}
+
+:root[data-theme="solarized-light"],
+:root[data-theme="google-light"],
+:root[data-theme="lunaria-light"],
+:root[data-theme="belafonte-day"],
+:root[data-theme="paper"] {
+  --foe-id-1: #1B4C7E; --foe-id-2: #1B7E34; --foe-id-3: #7E1B5D; --foe-id-4: #1B6E7E;
+  --foe-id-5: #447E1B; --foe-id-6: #7E231B; --foe-id-7: #1B7E65; --foe-id-8: #651B7E;
+}
+
 /* Monokai. */
 :root[data-theme="monokai"] {
   --v2-paper:      #1e1f1c;

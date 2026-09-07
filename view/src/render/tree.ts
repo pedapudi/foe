@@ -7,6 +7,7 @@ import type { Child } from "../dom.js";
 import { completionProvenance, outcomeLabel, provenanceText } from "../fold.js";
 import type { Summary } from "../fold.js";
 import { flatten, contractRuns, shortFingerprint, siblingShares, spentTokens } from "../episode-tree.js";
+import { identityColor } from "../identity.js";
 import type { TreeNode } from "../episode-tree.js";
 import { str } from "../types.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
@@ -152,7 +153,9 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     // First line: the contract name, then the episode id when it fits.
     const name = svg("text", { class: "name", x: textX, y: y - 4 });
     const nameText = fit(s.name, textW * 0.66, NAME_CHAR);
-    const nameSpan = svg("tspan");
+    // The name carries this episode's identity color, so one role reads the
+    // same here as on its board and in its transcript.
+    const nameSpan = svg("tspan", { fill: identityColor(s.name) });
     nameSpan.textContent = nameText;
     name.appendChild(nameSpan);
     const idRoom = textW - nameText.length * NAME_CHAR - 10;

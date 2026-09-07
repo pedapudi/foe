@@ -83,6 +83,17 @@ def display_value(value):
         rows += [("t", ln) for ln in lines_of(k, v, 0)]
     return rows
 
+def identity(name):
+    """The colour an agent's name hashes to: FNV-1a over the name's UTF-16
+    code units, reduced to one of eight. crates/view/src/terminal.rs and
+    view/src/identity.ts write the same function, so one role keeps one
+    colour in the terminal, the viewer, and this page."""
+    h = 0x811C9DC5
+    for ch in name:
+        h = ((h ^ ord(ch)) * 0x01000193) & 0xFFFFFFFF
+    return h % 8
+
+
 def result_text(o):
     k = o["kind"]
     if k == "completed": return "Completed", display_value(o["value"])
@@ -95,25 +106,43 @@ class Term:
         self.lanes = []; self.active = ""; self.calls = 0; self.out = []
 
     def lane(self, i):
-        for k, (key, _) in enumerate(self.lanes):
+        for k, (key, _, _) in enumerate(self.lanes):
             if key == i: return k
-        self.lanes.append([i, i]); return len(self.lanes) - 1
+        self.lanes.append([i, i, 0])
+        self.rename(len(self.lanes) - 1, i)
+        return len(self.lanes) - 1
+
+    def rename(self, i, name):
+        """Names lane i and gives the name a colour: the one it hashes to, or
+        the next free one when another open lane already holds that, so two
+        lanes on screen together never wear one colour."""
+        taken = [lane[2] for k, lane in enumerate(self.lanes) if k != i]
+        first = identity(name)
+        free = [(first + n) % 8 for n in range(8) if (first + n) % 8 not in taken]
+        self.lanes[i][1] = name
+        self.lanes[i][2] = free[0] if free else first
+
+    def cls(self, i):
+        return "id id-%d" % (self.lanes[i][2] + 1)
 
     def prefix(self):
-        return ["│ " if key else "  " for key, _ in self.lanes]
+        return ["│ " if key else "  " for key, _, _ in self.lanes]
 
-    def emit(self, t, hp, label, bp, rows, outcome=None, tail=None, nobody=False, ep=None, child=None):
+    def emit(self, t, hp, label, bp, rows, tail=None, nobody=False, ep=None, child=None):
+        # `label` is the heading as segments: the class each part is drawn in
+        # and its text, so an agent's name carries its own identity colour.
         b = {"t": t, "hp": hp, "label": label, "bp": bp, "rows": [[k, clean(v)] for k, v in rows]}
         if ep: b["ep"] = ep
         if child: b["child"] = child
-        if outcome: b["oc"] = outcome
         if tail: b["tail"] = tail
         if nobody: b["nobody"] = 1
         self.out.append(b)
 
     def block(self, t, lane, label, rows, ep=None):
         p = self.prefix(); p[lane] = "● "
-        self.emit(t, "".join(p), "%s – %s" % (self.lanes[lane][1], label), "".join(self.prefix()), rows, ep=ep)
+        name = self.lanes[lane][1]
+        head = [[self.cls(lane), name], ["hd", " – %s" % label]]
+        self.emit(t, "".join(p), head, "".join(self.prefix()), rows, ep=ep)
 
     def edge_prefix(self, parent, child, end):
         p = self.prefix()
@@ -124,14 +153,14 @@ class Term:
 
     def event(self, e):
         t, eid, ty, d = e["time"], e["_ep"], e["type"], e["data"]
-        for key, label in self.lanes:
+        for key, label, _ in self.lanes:
             if key == eid: self.active = label
         if ty == "assistant/message":
             if d["text"].strip(): self.calls = 0
             self.calls += len(d.get("tool_calls", []))
         if ty == "episode/start":
             i = self.lane(eid)
-            self.lanes[i][1] = d["contract"]["name"]; self.active = self.lanes[i][1]
+            self.rename(i, d["contract"]["name"]); self.active = self.lanes[i][1]
         elif ty == "inbox/item" and (d["source"] in ("parent", "peer")
                                      or (d["source"] == "task" and self.lanes and self.lanes[0][0] == eid)):
             i = self.lane(eid)
@@ -143,25 +172,27 @@ class Term:
                        display_value(d["text"]), ep=eid)
         elif ty == "spawn/start":
             parent, child = self.lane(eid), self.lane(d["child_id"])
-            self.lanes[child][1] = d["contract"]
+            self.rename(child, d["contract"])
             hp = self.edge_prefix(parent, child, "╮ ")
-            self.emit(t, hp, "Branch: %s" % d["contract"], "".join(self.prefix()), [], nobody=True,
-                      ep=eid, child=d["child_id"])
+            head = [["hd", "Branch: "], [self.cls(child), d["contract"]]]
+            self.emit(t, hp, head, "".join(self.prefix()), [], nobody=True, ep=eid, child=d["child_id"])
         elif ty == "spawn/end":
             parent, child = self.lane(eid), self.lane(d["child_id"])
             status, body = result_text(d["outcome"])
-            label = "%s → %s – %s" % (self.lanes[child][1], self.lanes[parent][1], status)
+            a, b = self.lanes[child][1], self.lanes[parent][1]
+            head = [[self.cls(child), a], ["cx", " → "], [self.cls(parent), b], ["hd", " – "],
+                    ["hd oc-%s" % status.lower(), status]]
             hp = self.edge_prefix(parent, child, "╯ ")
-            self.lanes[child] = ["", ""]
+            self.lanes[child] = ["", "", 0]
             while self.lanes and self.lanes[-1][0] == "": self.lanes.pop()
-            self.emit(t, hp, label, "".join(self.prefix()), body, outcome=status.lower(),
-                      ep=eid, child=d["child_id"])
+            self.emit(t, hp, head, "".join(self.prefix()), body, ep=eid, child=d["child_id"])
         return {"t": t, "active": self.active, "calls": self.calls}
 
     def finish(self, t, outcome, path):
         status, body = result_text(outcome)
         self.lanes = []
-        self.emit(t, "● ", "Final – %s" % status, "", body, outcome=status.lower(), ep="final")
+        head = [["hd", "Final – "], ["hd oc-%s" % status.lower(), status]]
+        self.emit(t, "● ", head, "", body, ep="final")
 
 events = load()
 term = Term()

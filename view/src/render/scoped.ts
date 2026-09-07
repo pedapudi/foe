@@ -13,6 +13,7 @@
 import { h } from "../dom.js";
 import type { ConversationScope, ScopeSegment } from "../causality.js";
 import type { Row } from "../fold.js";
+import { identityStyle } from "../identity.js";
 import { renderRow } from "./conversation.js";
 import type { RenderContext } from "./conversation.js";
 
@@ -63,17 +64,27 @@ export function renderScope(
 /**
  * What one section is: the node's own name in the role column, the pass it
  * is when the node was entered more than once, and the episode the rows
- * came from when they came from a node below.
+ * came from when they came from a node below. The episode's name is written
+ * in its identity color, so consecutive sections from different episodes are
+ * told apart without reading them.
  */
 function sectionHead(segment: ScopeSegment, name: string, rows: Row[]): HTMLElement {
-  const detail = [segment.pass, `${rows.length} row${rows.length === 1 ? "" : "s"}`, name]
-    .filter((part) => part !== "")
-    .join(" · ");
+  const before = [segment.pass, `${rows.length} row${rows.length === 1 ? "" : "s"}`].filter((part) => part !== "");
   return h(
     "div",
     { class: "row scope-section" },
     h("div", { class: "gutter" }, `${segment.from}–${segment.to}`),
     h("div", { class: "role" }, segment.title),
-    h("div", { class: "body" }, h("span", { class: "meta" }, detail)),
+    h(
+      "div",
+      { class: "body" },
+      h(
+        "span",
+        { class: "meta" },
+        before.join(" · "),
+        name === "" ? null : before.length === 0 ? null : " · ",
+        name === "" ? null : h("span", { class: "identity", style: identityStyle(name) }, name),
+      ),
+    ),
   );
 }

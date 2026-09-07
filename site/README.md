@@ -8,7 +8,8 @@ python3 site/build/build.py
 
 The build reads the repository rather than restating it: the brand lockup and
 the favicon come from `docs/brand`, the colour tokens from two of the themes
-in `view/src/tokens.css`, and every log line, event row, figure and number on
+in `view/src/tokens.css` along with the eight colours that name an agent, and
+every log line, event row, figure and number on
 the page from the fixtures in `view/fixtures`. Nothing on the page is invented,
 and a change to a fixture changes the page.
 
