@@ -783,7 +783,15 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;
-    announce_log_directory(&log_dir);
+    // Only a run a person launched names its directory. A spawned child's
+    // standard error is relayed to that person's terminal a line at a time,
+    // where it lands wherever the cursor happens to be: on the progress line
+    // of an opt-in conversation, which is redrawn in place and is not the
+    // display's to erase once someone else has written past it. The child's
+    // directory is under the parent's and the parent already named that.
+    if launch.parent_id.is_none() {
+        announce_log_directory(&log_dir);
+    }
     if let Some(note) = note {
         eprintln!("foe: {note}");
     }
@@ -920,7 +928,8 @@ fn serves_viewer(options: &Options) -> bool {
 const LOG_DIRECTORY_LINE: &str = "foe: log ";
 
 /// Names the created log directory, before the episode starts and before
-/// anything the episode itself reports.
+/// anything the episode itself reports. A spawned child does not: see the
+/// one call site.
 fn announce_log_directory(dir: &Path) {
     eprintln!("{LOG_DIRECTORY_LINE}{}", dir.display());
 }

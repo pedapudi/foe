@@ -101,10 +101,21 @@ fn config(dir: &Path, edit: impl FnOnce(&mut Value)) -> Value {
 }
 
 /// The episode directory a run announced, which is what a caller reads its
-/// log from. docs/design.md "The command line" fixes the line.
-fn announced_log(stderr: &str) -> PathBuf {
-    let named = stderr.lines().find_map(|line| line.strip_prefix("foe: log "));
-    PathBuf::from(named.unwrap_or_else(|| panic!("the run announced no log directory:\n{stderr}")))
+/// log from. docs/design.md "The command line" fixes the line. A run that
+/// carries a parent announces nothing, because its standard error is relayed
+/// to whatever the parent is drawing on, so a test that launches such a run
+/// directly reads it from the directory it gave.
+fn announced_log(stderr: &str, given: &Path) -> PathBuf {
+    if let Some(named) = stderr.lines().find_map(|line| line.strip_prefix("foe: log ")) {
+        return PathBuf::from(named);
+    }
+    // A child writes into the directory its parent created and gave it, so
+    // there is no directory of its own to name and nothing is announced.
+    assert!(
+        given.join("episode.jsonl").is_file(),
+        "no log directory was announced and {given:?} holds none:\n{stderr}"
+    );
+    given.to_path_buf()
 }
 
 /// Runs the binary under `--host`, answering each `model/request` with the
@@ -188,7 +199,7 @@ fn host_run_with_log(
     let code = child.wait().unwrap().code().unwrap();
     let mut err = String::new();
     std::io::Read::read_to_string(&mut stderr, &mut err).unwrap();
-    let log_dir = announced_log(&err);
+    let log_dir = announced_log(&err, &dir.join("log"));
     let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
     let written: Vec<Value> = file.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_eq!(written, events, "standard output is the log, line for line");
@@ -381,7 +392,7 @@ fn headless_run(dir: &Path, config: &Value) -> (Vec<Vec<Value>>, i32) {
         .output()
         .unwrap();
     let code = run.status.code().unwrap();
-    let log_dir = announced_log(&String::from_utf8_lossy(&run.stderr));
+    let log_dir = announced_log(&String::from_utf8_lossy(&run.stderr), &dir.join("log"));
     fn read(dir: &Path, logs: &mut Vec<Vec<Value>>) {
         let file = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
         logs.push(file.lines().map(|l| serde_json::from_str(l).unwrap()).collect());
@@ -2096,7 +2107,7 @@ fn interrupted_log(dir: &Path) -> (PathBuf, PathBuf, String, u64) {
     let extra = ["--log-dir", parent.to_str().unwrap()];
     let (events, code, err) = drive(&config_path, &extra, vec![first], Some("host/tool-call"), false);
     assert_eq!(code, None, "the launch was killed, not ended");
-    let log_dir = announced_log(&err);
+    let log_dir = announced_log(&err, &dir.join("log"));
     assert_eq!(types(&events).last(), Some(&"assistant/message"), "the tool call is open in the log");
     let written = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap().lines().count() as u64;
     let mut file = std::fs::OpenOptions::new().append(true).open(log_dir.join("episode.jsonl")).unwrap();
@@ -2122,7 +2133,7 @@ fn each_run_creates_its_own_directory_under_the_one_named() {
         let responses = vec![vec![text("done"), done("end")]];
         let (events, code, err) = drive(&config_path, &extra, responses, None, false);
         assert_eq!(code, Some(0), "{err}");
-        let log_dir = announced_log(&err);
+        let log_dir = announced_log(&err, &dir.join("log"));
         assert_eq!(log_dir.parent(), Some(parent.as_path()), "the directory named is the parent");
         assert_eq!(log_dir.file_name().unwrap().to_str(), events[0]["data"]["id"].as_str());
         assert!(log_dir.join("episode.jsonl").is_file(), "the announced directory holds the log");
@@ -2176,7 +2187,7 @@ fn a_finished_episode_refuses_to_continue_and_forks_under_a_new_task() {
     let first = ["--config", config, "--log-dir", parent.to_str().unwrap(), "--viewer", "off"];
     let (code, err) = cli_run(&dir, &first);
     assert_eq!(code, 0, "{err}");
-    let source = announced_log(&err);
+    let source = announced_log(&err, &dir.join("log"));
     let named = source.to_str().unwrap();
 
     let (code, err) = cli_run(&dir, &["--config", config, "--from", named, "--viewer", "off"]);
@@ -2190,7 +2201,7 @@ fn a_finished_episode_refuses_to_continue_and_forks_under_a_new_task() {
     let (code, err) = cli_run(&dir, &argv);
     assert_eq!(code, 0, "{err}");
     assert!(err.contains(&format!("fork of {named} at seq")), "the mode is announced: {err}");
-    let events = log_events(&announced_log(&err));
+    let events = log_events(&announced_log(&err, &dir.join("log")));
     let source_id = log_events(&source)[0]["data"]["id"].as_str().unwrap().to_string();
     assert_eq!(events[0]["data"]["fork_origin"]["episode_id"], json!(source_id));
     let kinds = types(&events);
@@ -2238,7 +2249,7 @@ fn an_unfinished_episode_refuses_a_new_task_and_forks_at_a_boundary() {
     let (code, err) = cli_run(&dir, &rerun);
     assert_eq!(code, 0, "{err}");
     assert!(err.contains(&format!("fork of {named} at seq 2")), "the mode is announced: {err}");
-    let events = log_events(&announced_log(&err));
+    let events = log_events(&announced_log(&err, &dir.join("log")));
     assert_eq!(events[0]["data"]["fork_origin"], json!({ "episode_id": "ep_unfinished", "seq": 2 }));
     assert_ne!(events[0]["data"]["id"], "ep_unfinished", "a boundary always makes a new episode");
     let kinds = types(&events);
@@ -2355,7 +2366,7 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
     let (events, code, err) =
         drive(&config_path, &extra, vec![vec![text("the first outcome"), done("end")]], None, false);
     assert_eq!(code, Some(0));
-    let log_dir = announced_log(&err);
+    let log_dir = announced_log(&err, &dir.join("log"));
     let source_id = events[0]["data"]["id"].as_str().unwrap().to_string();
     let boundary = events.iter().find(|e| e["type"] == "assistant/message").unwrap()["seq"].as_u64().unwrap() + 1;
     let mut forked = config.clone();
@@ -2448,7 +2459,7 @@ fn a_fork_boundary_outside_the_source_log_is_refused() {
     let extra = ["--log-dir", parent.to_str().unwrap()];
     let (_, code, err) = drive(&config_path, &extra, vec![vec![text("done"), done("end")]], None, false);
     assert_eq!(code, Some(0));
-    let log_dir = announced_log(&err);
+    let log_dir = announced_log(&err, &dir.join("log"));
     let fork_dir = dir.join("fork");
     let source = format!("{}@999", log_dir.display());
     let extra = ["--from", &source, "--log-dir", fork_dir.to_str().unwrap()];

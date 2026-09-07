@@ -806,7 +806,10 @@ id, under `--log-dir` when the command line gives one and under `.foe` in
 the current directory otherwise. Two runs given the same directory therefore
 keep separate logs. The run prints the directory it created on standard
 error as `foe: log PATH`, and a caller reads the directory from that line
-rather than assembling it. A run that prints its outcome as JSON ends with
+rather than assembling it. A spawned child prints no such line: it writes
+into the directory its parent created and gave it, and its standard error is
+relayed a line at a time onto whatever the parent is drawing on, where a line
+it did not ask for lands wherever the cursor sits. A run that prints its outcome as JSON ends with
 `foe: view the episode with foe view PATH` on standard error, because the
 live viewer leaves with the process and the command outlives it. `foe view DIR` renders a directory of episodes
 side by side, so the directory a series of runs shares is also what the
