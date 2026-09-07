@@ -1,0 +1,100 @@
+
+/* ===== one agent, then several ========================================
+   The five agents of examples/team and the order they open in: the lead
+   changes the program, a reviewer and a tester run together, an integration
+   agent follows both, and it opens an auditor of its own. The names and the
+   nesting come from examples/team/config.json; the order comes from
+   examples/team/README.md. */
+(function(){
+  var svg = $("#boardfig");
+  var note = opt("#bdnote", "p");
+  var play = opt("#bdplay"), stepBtn = opt("#bdstep"), reset = $("#bdreset"),
+      scrub = opt("#bdscrub", "input"), pos = opt("#bdpos", "span");
+
+  var CALLS = {};
+  TEAM.contracts.forEach(function(c, i){ CALLS[i ? c.name : "lead"] = c.calls; });
+  var TREE = [
+    { id: "lead", what: "changes the program", depth: 0, at: 0 },
+    { id: "reviewer", what: "reads the change", depth: 1, at: 1 },
+    { id: "tester", what: "runs the checks", depth: 1, at: 1 },
+    { id: "integration", what: "takes both reports", depth: 1, at: 2 },
+    { id: "usage-auditor", what: "compares the usage text", depth: 2, at: 3, parent: 3 }
+  ];
+  var NOTES = [
+    "one task, one agent",
+    "one grant of spawn, and two more open together",
+    "a third follows the two that ran",
+    "a child opens a child of its own",
+    "every episode ends on its own"
+  ];
+  var at = 0, playing = false, acc = 0;
+
+  function paint(){
+    var W = Math.max(280, svg.clientWidth || svg.getBoundingClientRect().width || 520);
+    var PITCH = 78, TOP = 24, IND = 54, g = "";
+    function esc(t){ return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+    function y(i){ return TOP + i * PITCH; }
+    function x(d){ return 12 + d * IND; }
+    /* the connector from a parent's lane down to each open child */
+    TREE.forEach(function(n, i){
+      if(!n.depth || at < n.at) return;
+      var p = n.parent == null ? 0 : n.parent;
+      var px = x(TREE[p].depth) + 5, cx = x(n.depth) + 5;
+      g += '<path d="M' + px + ' ' + (y(p) + 10) + ' V ' + (y(i) - 2) + ' Q ' + px + ' ' + y(i) +
+           ', ' + (px + 8) + ' ' + y(i) + ' H ' + (cx - 7) + '" fill="none" stroke="var(--v2-ink-faint)" stroke-width="1.8"/>';
+    });
+    TREE.forEach(function(n, i){
+      var open = at >= n.at, done = at >= 4;
+      var ink = open ? "var(--v2-ink)" : "var(--v2-rule)";
+      var soft = open ? "var(--v2-ink-soft)" : "var(--v2-rule)";
+      var hue = open && done ? "var(--v2-good)" : ink;
+      g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="7" fill="none" stroke="' +
+           (open ? hue : "var(--v2-rule)") + '" stroke-width="1.8"/>';
+      if(open) g += '<circle cx="' + (x(n.depth) + 5) + '" cy="' + y(i) + '" r="2.8" fill="' + hue + '"/>';
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 4) + '" font-size="16" fill="' + ink + '">' + esc(n.id) + '</text>';
+      g += '<text x="' + (x(n.depth) + 16) + '" y="' + (y(i) + 17) + '" font-size="13" fill="' + soft + '">' + esc(n.what) + '</text>';
+      g += '<text x="' + (W - 6) + '" y="' + (y(i) + 4) + '" text-anchor="end" font-size="13" fill="' +
+           (open && done ? "var(--v2-good)" : soft) + '">' +
+           (open ? (done ? "completed" : "running") : "") + '</text>';
+      if(open)
+        g += '<text x="' + (W - 6) + '" y="' + (y(i) + 17) + '" text-anchor="end" font-size="15" fill="var(--v2-ink-faint)">' +
+             CALLS[n.id] + ' model calls</text>';
+    });
+    var H = y(TREE.length - 1) + 26;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.style.height = H + "px";
+    svg.innerHTML = g;
+    note.textContent = NOTES[at];
+    reset.disabled = at < NOTES.length - 1;
+    pos.textContent = at + " of " + (NOTES.length - 1);
+    if(document.activeElement !== scrub) scrub.value = String(at);
+  }
+
+  scrub.addEventListener("input", function(){ playing = false; play.textContent = "play"; play.setAttribute("aria-pressed", "false"); at = parseInt(scrub.value, 10); paint(); });
+  stepBtn.addEventListener("click", function(){ playing = false; play.textContent = "play"; play.setAttribute("aria-pressed", "false"); at = Math.min(NOTES.length - 1, at + 1); paint(); });
+  reset.addEventListener("click", function(){ at = 0; acc = 0; playing = !reduced(); play.textContent = playing ? "pause" : "play"; play.setAttribute("aria-pressed", String(playing)); paint(); });
+  play.addEventListener("click", function(){
+    if(at >= NOTES.length - 1) at = 0;
+    playing = !playing; acc = 0;
+    play.textContent = playing ? "pause" : "play";
+    play.setAttribute("aria-pressed", String(playing));
+  });
+  FRAMEHOOKS.push(function(dt){
+    if(!playing) return;
+    acc += dt;
+    if(acc < 1400) return;
+    acc = 0; at += 1;
+    if(at >= NOTES.length - 1){ at = NOTES.length - 1; playing = false; play.textContent = "play"; play.setAttribute("aria-pressed", "false"); }
+    paint();
+  });
+  window.addEventListener("resize", paint);
+  RESTING.push(function(){ at = NOTES.length - 1; playing = false; paint(); });
+  if(reduced()) at = NOTES.length - 1;
+  paint();
+  if(!reduced() && window.IntersectionObserver){
+    var io = new IntersectionObserver(function(es){
+      es.forEach(function(e){ if(e.isIntersecting){ at = 0; playing = true; play.textContent = "pause"; play.setAttribute("aria-pressed", "true"); io.disconnect(); } });
+    }, { threshold: 0.3 });
+    io.observe(svg);
+  }
+})();

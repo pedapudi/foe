@@ -1,0 +1,206 @@
+
+/* ===== state folded out of the log ==================================== */
+function reservedFor(childId){
+  for(var i = 0; i < RUN.length; i++)
+    if(RUN[i].ty === "budget/reserve" && RUN[i].d.child_id === childId) return RUN[i].d.reserved.model_calls;
+  return 0;
+}
+function fold(n){
+  var eps = IDS.map(function(id, i){
+    return { i: i, name: NAMES[i], started: false, steps: 0, calls: 0, tin: 0, tout: 0, state: "" };
+  });
+  var st = { reserved: 0, childSpent: 0, ownCalls: 0, compactions: 0, retries: 0, spawned: 0, outcome: null };
+  for(var k = 0; k < n; k++){
+    var e = RUN[k], p = eps[e.ep], d = e.d;
+    if(e.ty === "episode/start"){ p.started = true; p.state = "running"; }
+    else if(e.ty === "model/request"){ p.steps = Math.max(p.steps, d.step); if(e.ep === 0) st.ownCalls++; }
+    else if(e.ty === "assistant/message"){ p.tin += d.usage.input; p.tout += d.usage.output; }
+    else if(e.ty === "tool/result") p.calls++;
+    else if(e.ty === "request/retry") st.retries++;
+    else if(e.ty === "compaction/start") st.compactions++;
+    else if(e.ty === "budget/reserve"){ st.reserved += d.reserved.model_calls; st.spawned++; }
+    else if(e.ty === "budget/release"){
+      /* The reservation returns whole and the child's own spend is charged. */
+      st.reserved -= reservedFor(d.child_id);
+      st.childSpent += d.spent.model_calls;
+    }
+    else if(e.ty === "episode/end"){
+      p.state = d.outcome.kind;
+      if(e.ep === 0) st.outcome = d.outcome;
+    }
+  }
+  return { eps: eps, st: st };
+}
+function firstLine(s){ return String(s).split("\n")[0]; }
+function detailOf(e){
+  var d = e.d;
+  switch(e.ty){
+    case "episode/start": return d.name + " – " + d.budget.model_calls + " model calls" + (d.landlock_abi ? " – landlock abi " + d.landlock_abi : "");
+    case "inbox/item": return d.source + " – " + d.text;
+    case "request/header": return d.reason + " – tools " + d.tools.join(" ");
+    case "model/request": return "step " + d.step + " – attempt " + d.attempt + " – " + d.request_id;
+    case "assistant/message":
+      return "step " + d.step + " – " + (d.tool_calls.length
+        ? d.tool_calls.map(function(c){ return c.name; }).join(" ")
+        : "stop " + d.stop) + " – " + d.usage.input + " in " + d.usage.output + " out";
+    case "tool/result": return d.name + " – " + (d.subject || firstLine(d.rendered));
+    case "budget/reserve": return d.child_id + " – " + d.reserved.model_calls + " model calls set aside";
+    case "budget/release": return d.child_id + " – spent " + d.spent.model_calls + " model calls";
+    case "spawn/start": return d.contract + " – " + d.child_id;
+    case "spawn/end": return d.child_id + " – " + d.outcome.kind;
+    case "compaction/start": return "seq " + d.covered.first_seq + "–" + d.covered.last_seq + " – " + d.trigger;
+    case "request/retry": return d.cause + " – wait " + d.delay_ms + " ms";
+    case "episode/end": return d.outcome.kind;
+  }
+  return "";
+}
+
+/* ===== the pinned stage: scroll position is the run position ========== */
+(function(){
+  var track = $("#track"), stage = $(".stage", track), lanesEl = $("#lanes");
+  var tape = $("#tape"), posEl = $("#stagepos"), meter = $("#meterread"), ticksEl = $("#ticks");
+  var scrub = opt("#stagescrub", "input"), playBtn = $("#stageplay");
+  var manual = reduced(), T = manual ? SPAN : 0, playing = false, shownN = -1, lastKey = "";
+  var scrollY = window.pageYOffset || 0, i;
+
+  for(i = 0; i < DECLARED; i++) ticksEl.appendChild(el("i"));
+  window.addEventListener("scroll", function(){ scrollY = window.pageYOffset; }, { passive: true });
+
+  /* The run begins as the figure rises into view and ends when the track lets
+     the stage go, so the section is never blank at rest. */
+  function geom(){
+    /* The run starts once the figure is on screen, while the heading above
+       it is still climbing, so the reader watches it advance from the first
+       events rather than arriving to find it part way through. */
+    var lead = innerHeight * 0.62;
+    var top = track.offsetTop - lead, h = track.offsetHeight, sh = stage.offsetHeight;
+    return { top: top, span: Math.max(1, h - sh + lead) };
+  }
+  function fromScroll(){ var g = geom(); return clamp((scrollY - g.top) / g.span, 0, 1) * SPAN; }
+  function toScroll(v){ var g = geom(); return g.top + (v / SPAN) * g.span; }
+
+  scrub.addEventListener("input", function(){
+    var v = parseFloat(scrub.value);
+    playing = false; playBtn.textContent = "play"; playBtn.setAttribute("aria-pressed", "false");
+    if(manual){ T = v; update(true); } else window.scrollTo(0, toScroll(v));
+  });
+  /* Replay runs the section again from its first event: under reduced
+     motion by resetting the position, otherwise by returning the page to
+     where the run begins, since scrolling is what drives it. */
+  playBtn.addEventListener("click", function(){
+    if(manual){ T = 0; update(true); return; }
+    window.scrollTo({ top: toScroll(0), behavior: "smooth" });
+  });
+
+  function count(){ var n = 0; for(var k = 0; k < RUN.length; k++) if(RUN[k].t <= T) n++; return n; }
+
+  function drawLanes(){
+    var w = lanesEl.clientWidth, h = lanesEl.clientHeight;
+    if(!w || !h) return;
+    lanesEl.setAttribute("viewBox", "0 0 " + w + " " + h);
+    /* The foot of the plot leaves room for the outcome word under the last
+       ring, which is drawn fifteen units below it. */
+    var top = 22, bot = 30, L = 46, R = w - 10, step = (R - L) / IDS.length, g = "";
+    function x(k){ return L + step * k + step / 2; }
+    function y(t){ return top + (t / SPAN) * (h - top - bot); }
+    function line(x1, y1, x2, y2, stroke){
+      g += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) +
+           '" y2="' + y2.toFixed(1) + '" stroke="' + stroke + '" stroke-width="1.8"/>';
+    }
+    [0, 4000, 8000].forEach(function(ms){
+      g += '<text x="4" y="' + (y(ms) + 3.5).toFixed(1) + '" fill="var(--v2-ink-faint)" font-size="13.5">' + (ms / 1000) + ' s</text>';
+    });
+    IDS.forEach(function(id, ei){
+      var evs = RUN.filter(function(e){ return e.ep === ei; });
+      var s = evs[0].t, e2 = evs[evs.length - 1].t;
+      if(T < s) return;
+      line(x(ei), y(s), x(ei), y(Math.min(T, e2)), "var(--v2-ink)");
+      g += '<text x="' + x(ei).toFixed(1) + '" y="12" text-anchor="middle" font-size="13" fill="' +
+           (T <= e2 ? "var(--v2-ink)" : "var(--v2-ink-faint)") + '">' + NAMES[ei] + '</text>';
+      evs.forEach(function(ev){
+        if(ev.t > T) return;
+        var wdt = (ev.ty === "assistant/message" || ev.ty === "tool/result") ? 5 : 3;
+        line(x(ei) - wdt, y(ev.t), x(ei) + wdt, y(ev.t), "var(--v2-ink-faint)");
+      });
+      if(T >= e2){
+        var last = evs[evs.length - 1];
+        var done = last.ty === "episode/end" ? last.d.outcome.kind : null;
+        var hue = done ? "var(--v2-good)" : "var(--v2-ink-faint)";
+        g += '<circle cx="' + x(ei).toFixed(1) + '" cy="' + y(e2).toFixed(1) + '" r="3.2" fill="none" stroke="' + hue + '" stroke-width="1.8"/>';
+        if(done)
+          g += '<text x="' + x(ei).toFixed(1) + '" y="' + (y(e2) + 15).toFixed(1) +
+               '" text-anchor="middle" font-size="13.5" fill="' + hue + '">' + done + '</text>';
+      }
+    });
+    /* Only the edges the log carries: a reservation opening a child, a return closing it. */
+    RUN.forEach(function(ev){
+      if(ev.t > T) return;
+      if(ev.ty === "budget/reserve"){
+        var ci = IDS.indexOf(ev.d.child_id); if(ci < 0) return;
+        var cs = RUN.filter(function(e){ return e.ep === ci; })[0].t;
+        if(T < cs) return;
+        g += '<path d="M' + x(0).toFixed(1) + ' ' + y(ev.t).toFixed(1) + ' C ' + ((x(0) + x(ci)) / 2).toFixed(1) + ' ' +
+             y(ev.t).toFixed(1) + ', ' + ((x(0) + x(ci)) / 2).toFixed(1) + ' ' + y(cs).toFixed(1) + ', ' +
+             x(ci).toFixed(1) + ' ' + y(cs).toFixed(1) + '" fill="none" stroke="var(--v2-ink-faint)" stroke-width="1.8"/>';
+      }
+      if(ev.ty === "spawn/end"){
+        var cj = IDS.indexOf(ev.d.child_id); if(cj < 0) return;
+        var ce = RUN.filter(function(e){ return e.ep === cj; }).slice(-1)[0].t;
+        g += '<path d="M' + x(cj).toFixed(1) + ' ' + y(ce).toFixed(1) + ' C ' + ((x(0) + x(cj)) / 2).toFixed(1) + ' ' +
+             y(ce).toFixed(1) + ', ' + ((x(0) + x(cj)) / 2).toFixed(1) + ' ' + y(ev.t).toFixed(1) + ', ' +
+             x(0).toFixed(1) + ' ' + y(ev.t).toFixed(1) + '" fill="none" stroke="var(--v2-ink-faint)" stroke-width="1.8"/>';
+      }
+    });
+    line(40, y(T), R, y(T), "var(--v2-accent)");
+    lanesEl.innerHTML = g;
+  }
+
+  function update(force){
+    var n = count();
+    var key = n + "|" + Math.round(T / 40) + "|" + lanesEl.clientWidth + "x" + lanesEl.clientHeight;
+    if(!force && key === lastKey) return;
+    lastKey = key;
+    posEl.textContent = "seq " + n + " of " + RUN.length + " – " + (T / 1000).toFixed(2) + " s";
+    if(document.activeElement !== scrub) scrub.value = String(Math.round(T));
+    if(n !== shownN){
+      tape.textContent = "";
+      for(var k = 0; k < n; k++){
+        var e = RUN[k], r = el("div", "erow" + (k === n - 1 && n > shownN && !reduced() ? " fresh" : ""));
+        r.appendChild(el("span", "s", String(e.s)));
+        r.appendChild(el("span", "c", NAMES[e.ep]));
+        r.appendChild(el("span", "t", e.ty));
+        r.appendChild(el("span", "d", detailOf(e)));
+        tape.appendChild(r);
+      }
+      while(tape.children.length > 1 && tape.scrollHeight > tape.clientHeight) tape.removeChild(tape.firstChild);
+      shownN = n;
+    }
+    var st = fold(n).st, own = st.ownCalls, kids = st.childSpent, res = st.reserved;
+    var cells = ticksEl.children;
+    for(var c = 0; c < DECLARED; c++)
+      cells[c].className = c < own ? "spent" : (c < own + kids ? "child" : (c < own + kids + res ? "res" : ""));
+    meter.textContent = "lead " + own + " – children " + kids + " – reserved " + res +
+                        " – free " + Math.max(0, DECLARED - own - kids - res);
+    drawLanes();
+  }
+
+  RESTING.push(function(){ manual = true; T = SPAN; update(true); });
+  FRAMEHOOKS.push(function(dt){
+    if(playing){
+      if(manual){ T = Math.min(SPAN, T + dt); if(T >= SPAN) playing = false; }
+      else {
+        var v = Math.min(SPAN, fromScroll() + dt);
+        window.scrollTo(0, toScroll(v));
+        if(v >= SPAN) playing = false;
+      }
+      if(!playing){ playBtn.textContent = "play"; playBtn.setAttribute("aria-pressed", "false"); }
+    }
+    if(!manual) T = fromScroll();
+    playBtn.disabled = T < SPAN - 5;
+    var r = track.getBoundingClientRect();
+    if(r.bottom > -200 && r.top < innerHeight + 200) update(false);
+  });
+  window.addEventListener("resize", function(){ update(true); });
+  update(true);
+})();
+

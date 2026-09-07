@@ -1,0 +1,168 @@
+
+/* ===== the numbers the log adds up to ================================
+   Three of the figures the viewer's statistics tab draws, over the events
+   this page carries: what the run spent against what it declared, how much
+   of its input came from cache, and where its tool time went. Each row puts
+   its own quantity against the largest in its group, and the largest takes
+   the accent. docs/viewer.md "The figures" specifies all nine. */
+(function(){
+  var host = $("#stats");
+  if(!host) return;
+  var lead = RUNWF[0].d.budget, spent = { model_calls: 0, input_tokens: 0, output_tokens: 0 };
+  var cache = 0, tools = {}, eps = {};
+  RUNWF.forEach(function(e){
+    eps[e.ep] = true;
+    if(e.ty === "model/request") spent.model_calls++;
+    if(e.ty === "assistant/message" && e.d.usage){
+      spent.input_tokens += e.d.usage.input || 0;
+      spent.output_tokens += e.d.usage.output || 0;
+      cache += e.d.usage.cache_read || 0;
+    }
+    if(e.ty === "tool/result"){
+      var t = tools[e.d.name] || (tools[e.d.name] = { calls: 0, ms: 0, errors: 0 });
+      t.calls++; t.ms += e.d.duration_ms || 0; if(e.d.is_error) t.errors++;
+    }
+  });
+  function n(v){ return String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function pct(part, whole){ return whole > 0 ? Math.round(part / whole * 100) : 0; }
+  function group(name){
+    var g = el("div", "figgrp");
+    g.appendChild(el("p", "figname", name));
+    host.appendChild(g);
+    return g;
+  }
+  function row(g, key, value, share, lead){
+    var r = el("div", "figrow" + (lead ? " lead" : ""));
+    r.appendChild(el("span", "k", key));
+    r.appendChild(el("span", "v", value));
+    var bar = el("div", "bar"), fill = el("i");
+    fill.style.width = Math.max(share, 0.6) + "%";
+    bar.appendChild(fill); r.appendChild(bar);
+    g.appendChild(r);
+  }
+
+  var scope = group("this run");
+  row(scope, "episodes", String(Object.keys(eps).length), 100, false);
+
+  var budget = group("budget, and what the run spent");
+  var limits = [["model calls", "model_calls", n], ["input tokens", "input_tokens", n], ["output tokens", "output_tokens", n]];
+  var shares = limits.map(function(l){ return pct(spent[l[1]], lead[l[1]]); });
+  var biggest = Math.max.apply(null, shares);
+  limits.forEach(function(l, i){
+    row(budget, l[0], l[2](spent[l[1]]) + " of " + l[2](lead[l[1]]) + " – " + shares[i] + "%", shares[i], shares[i] === biggest);
+  });
+
+  var reads = group("where the input came from");
+  var fromCache = pct(cache, spent.input_tokens);
+  row(reads, "read from cache", n(cache) + " – " + fromCache + "%", fromCache, fromCache >= 50);
+  row(reads, "sent as new text", n(spent.input_tokens - cache) + " – " + (100 - fromCache) + "%", 100 - fromCache, fromCache < 50);
+
+  var names = Object.keys(tools).sort(function(x, y){ return tools[y].ms - tools[x].ms; });
+  if(names.length){
+    var calls = group("tool time"), longest = tools[names[0]].ms;
+    names.forEach(function(name, i){
+      var t = tools[name];
+      row(calls, name + " – " + t.calls + (t.calls === 1 ? " call" : " calls"),
+          (t.ms / 1000).toFixed(1) + " s – " + t.errors + " failed",
+          pct(t.ms, longest), i === 0);
+    });
+  }
+})();
+
+/* ===== the shell blocks, coloured ====================================
+   The prompt and the comments recede, the command leads its line, and a
+   quoted string takes the accent. The tokenizer's output concatenates back
+   to its input, the rule src/render/highlight.ts follows in the viewer. */
+(function(){
+  var WORD = /^[a-z][a-z0-9_.\/-]*/;
+  function colour(code){
+    var text = code.textContent, out = document.createDocumentFragment();
+    text.split("\n").forEach(function(line, i){
+      if(i) out.appendChild(document.createTextNode("\n"));
+      var rest = line, m;
+      if(rest.slice(0, 2) === "$ "){ out.appendChild(el("span", "c-pr", "$ ")); rest = rest.slice(2); }
+      if(rest.charAt(0) === "#"){ out.appendChild(el("span", "c-cm", rest)); return; }
+      if((m = WORD.exec(rest))){ out.appendChild(el("span", "c-cd", m[0])); rest = rest.slice(m[0].length); }
+      var note = rest.indexOf("  #"), tail = "";
+      if(note >= 0){ tail = rest.slice(note); rest = rest.slice(0, note); }
+      var str = /"[^"]*"/g, at = 0;
+      while((m = str.exec(rest))){
+        if(m.index > at) out.appendChild(document.createTextNode(rest.slice(at, m.index)));
+        out.appendChild(el("span", "c-st", m[0]));
+        at = m.index + m[0].length;
+      }
+      if(at < rest.length) out.appendChild(document.createTextNode(rest.slice(at)));
+      if(tail) out.appendChild(el("span", "c-cm", tail));
+    });
+    code.textContent = "";
+    code.appendChild(out);
+  }
+  $$(".cmd code").forEach(colour);
+})();
+
+/* ===== the page below the opening screen ==============================
+   It is present and laid out from the start, so the scroll positions the
+   pinned figure depends on are correct; only its opacity waits. */
+(function(){
+  var root = document.documentElement;
+  if(reduced()) return;
+  /* The page below the opening screen follows the scroll position over the
+     first stretch of the page: it fades in as the reader leaves the top and
+     back out on the way up, rather than switching once. */
+  var RUN_IN = 190;
+  var pending = 0;
+  function paint(){
+    pending = 0;
+    var y = window.pageYOffset || 0;
+    root.style.setProperty("--reveal", Math.min(1, Math.max(0, y / RUN_IN)).toFixed(3));
+  }
+  function onScroll(){ if(!pending) pending = requestAnimationFrame(paint); }
+  paint();
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll, { passive: true });
+})();
+
+/* ===== which section the reader is in ================================= */
+(function(){
+  var links = $$(".top nav a.navlink");
+  if(!window.IntersectionObserver || !links.length) return;
+  var secs = links.map(function(a){ return document.getElementById(a.getAttribute("href").slice(1)); });
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      var i = secs.indexOf(e.target);
+      if(i < 0 || !e.isIntersecting) return;
+      links.forEach(function(a, k){ a.setAttribute("aria-current", k === i ? "true" : "false"); });
+    });
+  }, { rootMargin: "-45% 0px -50% 0px" });
+  secs.forEach(function(s){ if(s) io.observe(s); });
+})();
+
+/* ===== one animation frame drives every clock on the page ============= */
+(function(){
+  var last = 0;
+  function frame(ts){
+    TICKED = true;
+    var dt = last ? Math.min(64, ts - last) : 16;
+    last = ts;
+    TERMINALS.forEach(function(t){ t.tick(dt); });
+    FRAMEHOOKS.forEach(function(f){ f(dt); });
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.addEventListener("resize", function(){
+    TERMINALS.forEach(function(t){ if(t.build()) t.render(true); });
+  });
+  if(!reduced()) TERMINALS.forEach(function(t){ t.replay(); });
+  /* A browser that never runs an animation frame still shows the finished
+     page rather than a first line. Every control keeps working from there. */
+  setTimeout(function(){
+    if(TICKED) return;
+    TERMINALS.forEach(function(t){ t.playing = false; t.clock = t.endT; t.render(true); });
+    RESTING.forEach(function(f){ f(); });
+  }, 700);
+})();
+
+})();
+</script>
+</body>
+</html>

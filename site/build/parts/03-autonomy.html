@@ -1,0 +1,40 @@
+
+<!-- ========================== autonomy ========================== -->
+<section id="autonomy" aria-labelledby="h-auto">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="h-auto">Autonomy you can trust</h2>
+      <p class="cap">Verifiers ensure that you and foe agree on a successful outcome.</p>
+      <div class="cmd" style="margin-top:16px;max-width:46em"><code id="cmd-verify">$ cat check
+#!/bin/sh
+pytest -q >/dev/null 2>&1 || echo "the failing test still fails"
+
+$ foe --verify ./check "fix the failing test"</code></div>
+    </div>
+  </div>
+
+  <div class="track" id="track">
+    <div class="stage">
+      <div class="wrap" style="display:flex;flex-direction:column;height:100%">
+        <div class="stagehead">
+          <code>episode.jsonl</code>
+          <code class="pos" id="stagepos">seq 0 of 33 &middot; 0.00 s</code>
+          <span class="grp" style="display:flex;margin-left:auto;align-items:center">
+            <button class="ctl icon" type="button" id="stageplay" aria-label="replay" title="replay" disabled>__REPLAY__</button>
+          </span>
+        </div>
+        <div class="stagebody">
+          <div class="lanepane">
+            <div class="lanewrap"><svg id="lanes" role="img" preserveAspectRatio="none" aria-label="Two episode lanes down the run's 11.8 seconds. The lead opens the surveyor at 2.0 seconds, the surveyor returns into the lead's lane when it ends, both lanes end completed, and a rule marks the position the run has reached."></svg></div>
+            <div class="meter">
+              <div>model calls, of the 20 declared</div>
+              <div class="ticks" id="ticks" aria-hidden="true"></div>
+              <div id="meterread">lead 0 &middot; children 0 &middot; reserved 0 &middot; free 20</div>
+            </div>
+          </div>
+          <div class="tape" id="tape" role="group" aria-label="The log as far as the run has gone: one row per event, newest last"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

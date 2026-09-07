@@ -1,0 +1,173 @@
+
+/* ===== the terminals ================================================== */
+var runTerm = new Terminal($("[data-term=run]"), {
+  status: true,
+  /* The runtime erases the progress line before it appends a block, and the
+     final block is the last thing it writes, so the line stops there. */
+  statusUntil: function(){ return TERM.blocks[TERM.blocks.length - 1].t; },
+  lines: function(cols){
+    return [promptLine(-2600, 1700, "$ foe --config survey.json --conversation")]
+      .concat(transcriptLines(cols, TERM.blocks));
+  }
+});
+
+/* The viewer section plays the other run: a declared graph whose nodes fired
+   three child episodes, one of them twice. */
+new Terminal($("[data-term=viewer]"), {
+  lines: function(cols){ return transcriptLines(cols, TERMWF.blocks); }
+});
+
+/* ===== the mark, drawn from the log ===================================
+   docs/brand/README.md's geometry table: six spikes at 90 + k*60 from radius
+   11 to 46, six rays between them to 30, twelve hair rays between those to
+   22, shells at 26 and 38, the dashed limit at 52, and a core of radius 5.
+   Rays light clockwise from the top. */
+function ring(count, first, step, r0, r1, cls){
+  var out = [], i;
+  for(i = 0; i < count; i++) out.push({ a: first + step * i, r0: r0, r1: r1, cls: cls });
+  return out.sort(function(x, y){ return ((90 - x.a + 720) % 360) - ((90 - y.a + 720) % 360); });
+}
+var RAYS = {
+  heavy: ring(6, 90, 60, 11, 46, "r-heavy"),
+  mid:   ring(6, 120, 60, 11, 30, "r-mid"),
+  hair:  ring(12, 105, 30, 11, 22, "r-hair")
+};
+var GHOST = 0.15;
+function pt(a, r){ var rad = a * Math.PI / 180; return [60 + r * Math.cos(rad), 60 - r * Math.sin(rad)]; }
+function rayPath(ray){
+  var p0 = pt(ray.a, ray.r0), p1 = pt(ray.a, ray.r1);
+  return "M" + p0[0].toFixed(2) + "," + p0[1].toFixed(2) + " L" + p1[0].toFixed(2) + "," + p1[1].toFixed(2);
+}
+function makeMark(cx, cy, scale, label){
+  var g = sv("g", { "class": "mark", opacity: 0,
+    transform: "translate(" + cx + "," + cy + ") scale(" + scale + ") translate(-60,-60)" });
+  var parts = { heavy: [], mid: [], hair: [] };
+  ["heavy", "mid", "hair"].forEach(function(kind){
+    RAYS[kind].forEach(function(ray){
+      var p = sv("path", { "class": "ray " + ray.cls, d: rayPath(ray), opacity: GHOST });
+      g.appendChild(p); parts[kind].push(p);
+    });
+  });
+  g.appendChild(sv("circle", { "class": "shell-in", cx: 60, cy: 60, r: 26 }));
+  g.appendChild(sv("circle", { "class": "shell-out", cx: 60, cy: 60, r: 38 }));
+  var spin = "rotate(-90 60 60)";
+  var spent = sv("circle", { "class": "arc arc-spent", cx: 60, cy: 60, r: 26, pathLength: 100, transform: spin, "stroke-dasharray": "0 100" });
+  var held = sv("circle", { "class": "arc arc-held", cx: 60, cy: 60, r: 38, pathLength: 100, transform: spin, "stroke-dasharray": "0 100" });
+  g.appendChild(spent); g.appendChild(held);
+  g.appendChild(sv("circle", { "class": "limit", cx: 60, cy: 60, r: 52 }));
+  g.appendChild(sv("circle", { "class": "core", cx: 60, cy: 60, r: 5 }));
+  var text = null;
+  if(label){
+    text = sv("text", { x: 60, y: 126, "text-anchor": "middle", fill: "currentColor", opacity: 0.55 });
+    text.textContent = label;
+    g.appendChild(text);
+  }
+  return {
+    g: g, scale: scale, label: text,
+    set: function(st){
+      var i;
+      for(i = 0; i < parts.heavy.length; i++) parts.heavy[i].setAttribute("opacity", i < st.msg ? 1 : (i < st.req ? 0.45 : GHOST));
+      for(i = 0; i < parts.mid.length; i++) parts.mid[i].setAttribute("opacity", i < st.tool ? 0.6 : GHOST);
+      for(i = 0; i < parts.hair.length; i++) parts.hair[i].setAttribute("opacity", i < st.other ? 0.35 : GHOST);
+      spent.setAttribute("stroke-dasharray", (clamp(st.spent, 0, 1) * 100).toFixed(2) + " 100");
+      held.setAttribute("stroke-dasharray", (clamp(st.held, 0, 1) * 100).toFixed(2) + " 100");
+      if(st.outcome) g.setAttribute("data-outcome", st.outcome); else g.removeAttribute("data-outcome");
+      g.setAttribute("opacity", st.present ? 1 : 0);
+      if(text) text.setAttribute("opacity", st.present ? 0.55 : 0);
+    }
+  };
+}
+/* Stroke weights are declared in viewport pixels, so each mark is told how
+   many pixels one of its own units takes. A floor keeps the hair rays of a
+   small child mark above half a pixel. */
+function weigh(svg, marks){
+  var vb = svg.viewBox.baseVal, w = svg.clientWidth || svg.getBoundingClientRect().width;
+  if(!vb || !vb.width || !w) return;
+  var per = w / vb.width;
+  marks.forEach(function(m){
+    m.g.style.setProperty("--mw", Math.max(per * m.scale, 0.42).toFixed(3) + "px");
+    if(m.label) m.label.setAttribute("font-size", (11 / (per * m.scale)).toFixed(2));
+  });
+}
+
+/* ===== what the events up to a moment say ============================= */
+var RESERVED = {};
+RUN.forEach(function(e){ if(e.ty === "budget/reserve") RESERVED[e.d.child_id] = e.d.reserved.model_calls; });
+
+function foldMark(events, upto){
+  var eps = {}, tree = { calls: 0, started: 0, outcome: null };
+  function ep(id){
+    if(!eps[id]) eps[id] = { req: 0, msg: 0, tool: 0, other: 0, calls: 0, held: 0, present: false, outcome: null };
+    return eps[id];
+  }
+  events.forEach(function(e){
+    if(e.t > upto) return;
+    var id = IDS[e.ep], s = ep(id);
+    if(e.ty === "model/request"){ s.req++; s.calls++; tree.calls++; }
+    else if(e.ty === "assistant/message") s.msg++;
+    else if(e.ty === "tool/result") s.tool++;
+    else {
+      s.other++;
+      if(e.ty === "episode/start"){ s.present = true; tree.started++; }
+      if(e.ty === "budget/reserve"){ s.held += e.d.reserved.model_calls; ep(e.d.child_id).present = true; }
+      if(e.ty === "budget/release") s.held -= RESERVED[e.d.child_id] || 0;
+      if(e.ty === "episode/end"){ s.outcome = e.d.outcome; if(e.ep === 0) tree.outcome = e.d.outcome; }
+    }
+  });
+  return { eps: eps, tree: tree };
+}
+
+(function(){
+  var svg = $("#hero-mark");
+  /* One mark, unlabelled: the page carries the brand here, and the run
+     itself is read in the terminal below. */
+  var LEAD = IDS[0], marks = {};
+  var m = makeMark(78, 68, 1, null);
+  svg.appendChild(m.g); marks[LEAD] = m;
+  var all = [m];
+  function reweigh(){ weigh(svg, all); }
+  reweigh();
+  if(window.ResizeObserver) new ResizeObserver(reweigh).observe(svg);
+  window.addEventListener("resize", reweigh);
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(reweigh);
+
+  var END = RUN.reduce(function(m, e){ return e.t > m ? e.t : m; }, 0);
+  var lastKey = "";
+  function paint(t){
+    var f = foldMark(RUN, t);
+    var key = String(Math.round(t / 40));
+    if(key === lastKey) return;
+    lastKey = key;
+    var s = f.eps[LEAD] || { req: 0, msg: 0, tool: 0, other: 0, calls: 0, held: 0, present: false, outcome: null };
+    marks[LEAD].set({
+      req: s.req, msg: s.msg, tool: s.tool, other: s.other,
+      spent: f.tree.calls / DECLARED,
+      held: s.held / DECLARED,
+      outcome: s.outcome ? s.outcome.kind : null,
+      present: s.present
+    });
+  }
+  /* The mark is the brand, and it draws itself once. The terminal beside it
+     carries the run, so the mark fills in over one second and then holds the
+     finished episode. */
+  var REVEAL = 1000, elapsed = 0, settled = false;
+  function settle(){ settled = true; lastKey = ""; paint(END); }
+  function reveal(dt){
+    if(settled) return;
+    elapsed += dt;
+    if(elapsed >= REVEAL){ settle(); return; }
+    paint(elapsed / REVEAL * END);
+  }
+  RESTING.push(settle);
+  if(reduced()) settle();
+  else {
+    paint(0);
+    FRAMEHOOKS.push(reveal);
+    /* Pointing at the mark draws it again, once the draw it is already
+       doing has finished. */
+    svg.addEventListener("pointerenter", function(){
+      if(!settled || reduced()) return;
+      settled = false; elapsed = 0; lastKey = "";
+    });
+  }
+})();

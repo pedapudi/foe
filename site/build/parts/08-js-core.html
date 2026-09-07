@@ -1,0 +1,322 @@
+<script>
+(function(){
+"use strict";
+
+/* ===== data ===========================================================
+   RUN   the two episode logs of one run, merged by timestamp, with the
+         fields this page derives from kept and the tool schemas dropped.
+   TERM  the transcript `foe --conversation` writes for those logs, from a
+         port of crates/view/src/terminal.rs: lanes, connector cells, the
+         two-column gutter, block headings and the value renderer. Wrapping
+         is left to this page, which measures its own column count.
+   RUNWF the four episode logs of a run against a declared graph, and
+         TERMWF the transcript of that run, which the viewer section reads.
+   WF    three workflow documents and the firings one of them recorded.
+   TEAM  the contracts examples/team declares.
+   ==================================================================== */
+var RUN = __RUN__;
+var TERM = __TERM__;
+var RUNWF = __RUNWF__;
+var TERMWF = __TERMWF__;
+var WF = __WF__;
+var TEAM = __TEAM__;
+
+var NAMES = ["lead", "surveyor"];
+var IDS = ["ep_over_parent", "ep_over_child"];
+var SPAN = RUN[RUN.length - 1].t;    /* the run, in milliseconds */
+/* The eleven frames of the brand pulse, opening and closing on the
+   smallest mark the page draws. */
+var FRAMES = ["◦", "✶", "✷", "✸", "⊛", "◎", "⊛", "✸", "✷", "✶", "◦"];
+var GUTTER = "  ";
+var MIN_TEXT = 20;
+var LINE_MS = 24;                    /* run-time between two written lines */
+var DECLARED = RUN[0].d.budget.model_calls;   /* what the lead declared */
+var SVGNS = "http://www.w3.org/2000/svg";
+
+var TICKED = false, RESTING = [], TERMINALS = [], FRAMEHOOKS = [];
+var rmq = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+function reduced(){ return !!rmq.matches; }
+function $(s, r){ return (r || document).querySelector(s); }
+function $$(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+function el(t, c, x){ var n = document.createElement(t); if(c) n.className = c; if(x != null) n.textContent = x; return n; }
+function sv(name, attrs){
+  var n = document.createElementNS(SVGNS, name);
+  for(var k in attrs) if(attrs[k] != null) n.setAttribute(k, attrs[k]);
+  return n;
+}
+function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+function opt(sel, tag){ return $(sel) || document.createElement(tag || "button"); }
+function group(picker, onPick){
+  $$("[role=radio]", picker).forEach(function(b, i){
+    b.addEventListener("click", function(){
+      $$("[role=radio]", picker).forEach(function(o, k){ o.setAttribute("aria-checked", k === i ? "true" : "false"); });
+      onPick(i, b);
+    });
+  });
+}
+
+/* ===== ground ========================================================= */
+(function(){
+  var root = document.documentElement, light = $("#ground-light"), dark = $("#ground-dark");
+  function set(name){
+    root.setAttribute("data-ground", name);
+    light.setAttribute("aria-pressed", String(name === "light"));
+    dark.setAttribute("aria-pressed", String(name === "dark"));
+    try { localStorage.setItem("foe.site.ground", name); } catch(e){}
+  }
+  var stored = null;
+  try { stored = localStorage.getItem("foe.site.ground"); } catch(e){}
+  /* A host page that stamps a theme decides the ground until a reader chooses. */
+  var host = root.getAttribute("data-theme");
+  var prefersDark = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+  set(stored || (host === "dark" || host === "light" ? host : (prefersDark ? "dark" : "light")));
+  light.addEventListener("click", function(){ set("light"); });
+  dark.addEventListener("click", function(){ set("dark"); });
+})();
+
+/* ===== copy =========================================================== */
+$$("[data-copy]").forEach(function(b){
+  b.addEventListener("click", function(){
+    var src = document.getElementById(b.getAttribute("data-copy"));
+    var text = src.textContent;
+    function done(){
+      b.classList.add("copied");
+      b.setAttribute("aria-label", "copied");
+      setTimeout(function(){ b.classList.remove("copied"); b.setAttribute("aria-label", "copy"); }, 1400);
+    }
+    function fallback(){
+      var t = el("textarea"); t.value = text; t.setAttribute("readonly", "");
+      t.style.cssText = "position:fixed;left:-9999px";
+      document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); done(); } catch(e){}
+      document.body.removeChild(t);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  });
+});
+
+/* ===== wrapping, ported from crates/view/src/terminal.rs ==============
+   A line breaks at a space; a word alone longer than the room is cut at the
+   room; a continuation repeats the leading whitespace plus the width of a
+   list marker. */
+function markerWidth(text){
+  var digits = 0;
+  while(digits < text.length && text[digits] >= "0" && text[digits] <= "9") digits++;
+  var tail = text.slice(digits);
+  if(digits === 0) return (tail.indexOf("- ") === 0 || tail.indexOf("* ") === 0 || tail.indexOf("• ") === 0) ? 2 : 0;
+  return (tail.indexOf(". ") === 0 || tail.indexOf(") ") === 0) ? digits + 2 : 0;
+}
+function wrap(line, width){
+  var indent = /^\s*/.exec(line)[0], rest = line.slice(indent.length);
+  var hang = new Array(indent.length + markerWidth(rest) + 1).join(" ");
+  var head = indent, out = [];
+  for(;;){
+    var room = Math.max(1, width - head.length);
+    if(rest.length <= room){ out.push(head + rest); return out; }
+    var cut;
+    if(rest.charAt(room) === " ") cut = room;
+    else { var i = rest.lastIndexOf(" ", room - 1); cut = i > 0 ? i : room; }
+    out.push((head + rest.slice(0, cut)).replace(/\s+$/, ""));
+    rest = rest.slice(cut).replace(/^ +/, "");
+    head = hang;
+  }
+}
+function seg(s, c){ return { s: s, c: c || "" }; }
+/* The six cells the connector column uses, as the arms each one draws. */
+var CELLS = { "\u2502": "u d", "\u251c": "u d r", "\u2500": "l r",
+              "\u256e": "l d", "\u256f": "u l", "\u253c": "u d l r" };
+function drawCells(row, text){
+  /* The cells are taken out of the text flow and placed over the row, so a
+     rule can run the whole height of the row and meet the row below it. The
+     flow keeps a space per cell, which holds the columns. */
+  var flow = "";
+  for(var i = 0; i < text.length; i++){
+    var ch = text.charAt(i), arms = CELLS[ch];
+    if(arms){
+      var cell = el("i", "cell " + arms);
+      cell.style.left = i + "ch";
+      row.appendChild(cell);
+      flow += " ";
+    } else {
+      flow += ch;
+    }
+  }
+  row.insertBefore(el("span", "cx", flow), row.firstChild);
+}
+/* One emitted line: the connector cells and the gutter, then the text, with
+   the whole line trimmed at its end the way the runtime trims it. */
+function bodyLine(bp, text, title){
+  var full = bp + GUTTER + text, trimmed = full.replace(/\s+$/, "");
+  var n = Math.min(bp.length + GUTTER.length, trimmed.length);
+  return [seg(trimmed.slice(0, n), "cx"), seg(trimmed.slice(n), title ? "ti" : "")];
+}
+/* Blocks the poller appended on one tick share a log time. Lines still arrive
+   one after another, so each line lands at its block's time or one line after
+   the previous line, whichever is later. */
+function transcriptLines(cols, blocks){
+  var lines = [], at = -1e9;
+  function push(t, segs){ at = Math.max(t, at + LINE_MS); lines.push({ t: at, segs: segs }); }
+  blocks.forEach(function(b){
+    var head = [seg(b.hp, "cx")];
+    if(b.oc){
+      var cut = b.label.lastIndexOf(" – ");
+      head.push(seg(b.label.slice(0, cut + 3), "hd"));
+      head.push(seg(b.label.slice(cut + 3), "hd oc-" + b.oc));
+    } else head.push(seg(b.label, "hd"));
+    push(b.t, head);
+    if(b.nobody) return;
+    var room = Math.max(MIN_TEXT, cols - b.bp.length - GUTTER.length);
+    b.rows.concat([["t", ""]]).forEach(function(r){
+      r[1].replace(/\n+$/, "").split("\n").forEach(function(one){
+        wrap(one, room).forEach(function(w){ push(b.t, bodyLine(b.bp, w, r[0] === "T")); });
+      });
+    });
+    if(b.tail) push(b.t, [seg(b.tail, "pr")]);
+  });
+  return lines;
+}
+
+/* ===== the terminal player ============================================ */
+function Terminal(root, spec){
+  var body = $(".termbody", root), code = $("code", body), self = this;
+  var probe = el("span");
+  probe.textContent = new Array(41).join("0");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+
+  this.cols = 80; this.clock = 0; this.playing = false; this.rate = 1;
+  this.lines = []; this.shown = -1; this.follow = true; this.spec = spec;
+
+  this.measure = function(){
+    body.appendChild(probe);
+    var w = probe.getBoundingClientRect().width / 40;
+    body.removeChild(probe);
+    var inner = body.clientWidth - 24;
+    return clamp(w > 0 ? Math.floor(inner / w) : 80, 28, 200);
+  };
+  this.load = function(keepClock){
+    this.lines = spec.lines(this.cols);
+    this.startT = this.lines.length ? this.lines[0].t : 0;
+    this.endT = this.lines.length ? this.lines[this.lines.length - 1].t + 260 : 0;
+    if(!keepClock) this.clock = reduced() ? this.endT : this.startT;
+    this.shown = -1;
+  };
+  this.build = function(){
+    var cols = this.measure();
+    if(cols === this.cols && this.lines.length) return false;
+    this.cols = cols;
+    this.load(true);
+    return true;
+  };
+  this.render = function(force){
+    var n = 0, i;
+    for(i = 0; i < this.lines.length; i++) if(this.lines[i].t <= this.clock) n++;
+    var last = n > 0 ? this.lines[n - 1] : null;
+    var partial = !!(last && last.typed && this.clock < last.t + last.dur);
+    var key = n + (partial ? ":" + Math.floor((this.clock - last.t) / last.dur * 90) : "");
+    if(spec.status) key += ":" + Math.floor(this.clock / 100);
+    if(!force && key === this.shown) return;
+    this.shown = key;
+    var frag = document.createDocumentFragment();
+    for(i = 0; i < n; i++){
+      var ln = this.lines[i], row = el("span", "ln"), segs = ln.segs;
+      if(ln.typed){
+        var text = ln.segs[0].s;
+        var show = (i === n - 1 && partial)
+          ? text.slice(0, Math.max(1, Math.floor((this.clock - ln.t) / ln.dur * text.length)))
+          : text;
+        segs = [seg(show, ln.segs[0].c)];
+      }
+      segs.forEach(function(s){
+        if(s.s === "") return;
+        if(s.c && s.c.indexOf("cx") === 0) drawCells(row, s.s);
+        else row.appendChild(el("span", s.c, s.s));
+      });
+      frag.appendChild(row);
+    }
+    var stop = spec.statusUntil == null ? this.endT : spec.statusUntil();
+    if(spec.status && n > 0 && this.clock >= 0 && this.clock < stop){
+      frag.appendChild(this.statusLine());
+    } else if(n > 0 && this.clock < this.endT){
+      var c = el("span", "ln"); c.appendChild(el("span", "caret")); frag.appendChild(c);
+    }
+    code.textContent = "";
+    code.appendChild(frag);
+    if(this.follow) body.scrollTop = body.scrollHeight;
+  };
+  /* The progress line the runtime redraws on every hundred-millisecond tick. */
+  this.statusLine = function(){
+    var ticks = Math.max(0, Math.floor(this.clock / 100));
+    var st = { active: "", calls: 0 }, i;
+    for(i = 0; i < TERM.status.length; i++) if(TERM.status[i].t <= this.clock) st = TERM.status[i];
+    var seconds = Math.max(0, Math.floor(this.clock / 1000)) + " s";
+    var calls = st.calls + " tool call" + (st.calls === 1 ? "" : "s");
+    var room = Math.max(0, this.cols - (seconds.length + calls.length + 13));
+    var row = el("span", "ln");
+    row.appendChild(el("span", "pulse", FRAMES[ticks % FRAMES.length]));
+    row.appendChild(el("span", "cx", "  "));
+    [[st.active.slice(0, room), "pr"], [seconds, "cx"], [calls, "pr"]].forEach(function(f, k){
+      if(k) row.appendChild(el("span", "cx", "  "));
+      row.appendChild(el("span", "cx", "["));
+      row.appendChild(el("span", f[1], f[0]));
+      row.appendChild(el("span", "cx", "]"));
+    });
+    return row;
+  };
+  this.replay = function(){
+    this.build();
+    this.clock = this.startT; this.follow = true;
+    this.playing = !reduced();
+    this.sync(); this.render(true);
+  };
+  this.toggle = function(on){
+    if(this.clock >= this.endT && on !== false) this.clock = this.startT;
+    this.playing = (on === undefined) ? !this.playing : on;
+    this.sync();
+  };
+  this.step = function(){
+    this.playing = false;
+    var next = this.endT;
+    for(var i = 0; i < this.lines.length; i++) if(this.lines[i].t > this.clock + 1){ next = this.lines[i].t; break; }
+    this.clock = next; this.follow = true; this.sync(); this.render(true);
+  };
+  this.sync = function(){
+    var t = $("[data-act=toggle]", root);
+    if(t){ t.textContent = this.playing ? "pause" : "play"; t.setAttribute("aria-pressed", this.playing ? "true" : "false"); }
+    /* Replay is the one control, and it answers only once the transcript
+       this terminal is playing has finished. */
+    var r = $("[data-act=replay]", root);
+    if(r) r.disabled = this.clock < this.endT;
+  };
+  this.tick = function(dt){
+    if(this.playing){
+      this.clock += dt * this.rate;
+      if(this.clock >= this.endT){ this.clock = this.endT; this.playing = false; this.sync(); }
+    }
+    this.render(false);
+  };
+  body.addEventListener("scroll", function(){
+    self.follow = body.scrollHeight - body.scrollTop - body.clientHeight < 26;
+  });
+  $$("[data-act]", root).forEach(function(b){
+    var a = b.getAttribute("data-act");
+    b.addEventListener("click", function(){
+      if(a === "replay") self.replay();
+      else if(a === "toggle") self.toggle();
+      else if(a === "step") self.step();
+    });
+  });
+  var rates = $$("[data-rate]", root);
+  rates.forEach(function(b){
+    b.addEventListener("click", function(){
+      self.rate = parseFloat(b.getAttribute("data-rate"));
+      rates.forEach(function(o){ o.setAttribute("aria-checked", o === b ? "true" : "false"); });
+    });
+  });
+  this.cols = this.measure();
+  this.load(false);
+  this.sync();
+  this.render(true);
+  TERMINALS.push(this);
+}
+function promptLine(t, dur, text){ return { t: t, dur: dur, typed: true, segs: [seg(text, "pr")] }; }

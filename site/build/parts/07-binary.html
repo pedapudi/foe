@@ -1,0 +1,33 @@
+
+<!-- =========================== binary =========================== -->
+<section id="binary" aria-labelledby="h-bin">
+  <div class="wrap">
+    <div class="head">
+      <h2 id="h-bin">Efficient harness</h2>
+      <p class="cap">6 MB for the runtime, the viewer, and 14 built-in tools. That's it.</p>
+    </div>
+
+    <div>
+      <div>
+        <div class="cmd" style="margin-top:14px"><code id="cmd-first">foe login openai-codex
+foe "describe what this repository does"</code><button class="ctl icon" type="button" aria-label="copy" title="copy" data-copy="cmd-first">__COPY__</button></div>
+        <p class="cap" style="margin-top:14px">Friendly to local models.</p>
+        <div class="cmd" style="margin-top:10px"><code id="cmd-local">echo '{
+  "provider": "compatible-http",
+  "model": "MODEL",
+  "base_url": "http://127.0.0.1:11434/v1"
+}' > ~/.config/foe/default-model.json
+foe "describe what this repository does"</code><button class="ctl icon" type="button" aria-label="copy" title="copy" data-copy="cmd-local">__COPY__</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap footline">
+    <p>A foe is 10<sup>51</sup> ergs, the energy one core-collapse supernova releases. One foe represents a lot of work!</p>
+    <p class="lic">Apache-2.0</p>
+  </div>
+</footer>

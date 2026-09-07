@@ -1,0 +1,57 @@
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap row">
+    <div class="brand">
+      <span class="lockup" aria-hidden="true">__LOCKUP__</span>
+      <span class="sr">foe</span>
+      <span class="respreview" role="note" aria-label="research preview"><span>research</span><span>preview</span></span>
+    </div>
+    <nav aria-label="Sections">
+      <a class="navlink" href="#autonomy">autonomy</a>
+      <a class="navlink" href="#workflows">workflows</a>
+      <a class="navlink" href="#teams">teams</a>
+      <a class="navlink" href="#viewer">viewer</a>
+      <a class="navlink" href="#binary">binary</a>
+      <span class="ground" role="group" aria-label="Ground">
+        <button type="button" id="ground-light" aria-label="light ground" title="light ground" aria-pressed="true">__SUN__</button>
+        <button type="button" id="ground-dark" aria-label="dark ground" title="dark ground" aria-pressed="false">__MOON__</button>
+      </span>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================ hero ============================ -->
+<section id="run" aria-labelledby="h-run">
+  <div class="wrap">
+
+    <div class="two herorow">
+      <div class="herotext">
+        <h1 id="h-run"><span class="wordmark">foe</span><span class="tagline">a friendly autonomous coding agent</span></h1>
+      </div>
+      <div class="heromarkcol">
+        <figure class="fig heromark">
+          <svg id="hero-mark" viewBox="22 12 112 112" role="img"
+               aria-label="The foe mark: a core, twelve rays in three weights, two rings measuring what the run spent against what it held in reserve, and a dashed ring at the limit the run never crosses."></svg>
+        </figure>
+      </div>
+    </div>
+
+    <div class="cmd install" style="margin-top:clamp(20px,3vw,34px)">
+      <code id="cmd-install">curl -fsSL foe.sh/install.sh | sh</code>
+      <button class="ctl icon" type="button" aria-label="copy" title="copy" data-copy="cmd-install">__COPY__</button>
+    </div>
+
+    <div style="margin-top:clamp(18px,2.4vw,30px)">
+      <div>
+        <div class="term term--tall floated" data-term="run">
+          <button class="ctl icon" type="button" data-act="replay" aria-label="replay" title="replay" disabled>__REPLAY__</button>
+          <pre class="termbody" tabindex="0" aria-label="Terminal transcript: the whole run as foe --conversation prints it"><code></code></pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>

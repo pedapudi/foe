@@ -1,0 +1,58 @@
+# The landing page
+
+`site/public` is the page GitHub Pages serves. `site/build` produces it, and
+`site/fonts` holds the two typefaces it ships.
+
+```sh
+python3 site/build/build.py
+```
+
+The build reads the repository rather than restating it: the brand lockup and
+the favicon come from `docs/brand`, the colour tokens from two of the themes
+in `view/src/tokens.css`, and every log line, event row, figure and number on
+the page from the fixtures in `view/fixtures`. Nothing on the page is invented,
+and a change to a fixture changes the page.
+
+## What the build writes
+
+| file | what it is |
+|---|---|
+| `public/index.html` | the whole page: markup, stylesheet and scripts in one file |
+| `public/favicon.svg` | the brand mark, drawn in the brand accent |
+| `public/*.woff2` | Ubuntu, Ubuntu Mono, and Inconsolata for the box-drawing characters |
+| `public/install.sh` | a copy of the repository's installer, so `foe.sh/install.sh` resolves |
+
+The page fetches nothing. Every style, script, font and image is either inline
+or a file beside it, so it renders the same offline as on the network.
+
+## Choosing the palette and the typeface
+
+Both are named at build time and read out of `view/src/tokens.css`, so the page
+and the viewer cannot drift apart.
+
+```sh
+FOE_LIGHT=paper FOE_DARK=espresso python3 site/build/build.py
+FOE_TYPEFACE=technical-ubuntu python3 site/build/build.py
+```
+
+The palette defaults to `paper` on a light ground and `espresso` on a dark one.
+The typeface defaults to `technical-ubuntu`, which is Ubuntu for prose and
+Ubuntu Mono for data and code. Only faces this directory ships can be chosen,
+because the page performs no network fetch; `technical-source` and
+`technical-inconsolata` are the other two the build knows.
+
+Box-drawing characters are the exception to the chosen face. Ubuntu Mono has
+none, and a substitute face renders them at a different advance, which breaks
+the connector column in the transcripts. Those code points come from
+Inconsolata, which carries them at the advance Ubuntu Mono uses.
+
+## The fonts
+
+Ubuntu and Ubuntu Mono are under the Ubuntu Font Licence 1.0, in
+`fonts/UFL-Ubuntu.txt`. Inconsolata is the file `view/fonts` already carries.
+
+## Publishing
+
+`site/public` is the published tree. GitHub Pages serves it from the branch and
+folder named in the repository's Pages settings. No workflow builds or deploys
+it; a person runs the build and pushes the result.

@@ -14,3 +14,4 @@ __pycache__/
 /view/.test-build
 /view/node_modules
 /bazel-*
+/site/build/*.json

@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>foe</title>
+<link rel="icon" type="image/svg+xml" href="__FAVICON__">
+<style>
+/* ===== fonts ========================================================== */
+__FONTS__
+
+/* ===== role tokens ==================================================== */
+:root{
+__LIGHT__
+__FACES__
+  --step:8px;
+  --pad:clamp(16px,4vw,40px);
+  color-scheme:light;
+}
+/* The ground follows three signals, in this order: the reader's own choice on
+   this page (data-ground), a theme a host page stamps on the root
+   (data-theme), and the system setting. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-ground="light"]):not([data-theme="light"]){
+__DARKI__
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]:not([data-ground="light"]),
+:root[data-ground="dark"]{
+__DARK__
+  color-scheme:dark;
+}
+
+/* ===== base =========================================================== */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; background:var(--v2-paper)}
+body{
+  margin:0; background:var(--v2-paper); color:var(--v2-ink);
+  font-family:var(--prose); font-size:17px; line-height:1.62;
+  font-variant-ligatures:none; overflow-x:hidden;
+}
+h1,h2,h3,p,figure,table,dl,ul{margin:0}
+ul{padding:0; list-style:none}
+img,svg{max-width:100%}
+svg :is(path,line,rect,circle,polyline,polygon,ellipse){vector-effect:non-scaling-stroke}
+:focus-visible{outline:2px solid var(--v2-accent); outline-offset:2px}
+.skip{position:absolute; left:-9999px; top:0; z-index:60; background:var(--v2-paper); padding:8px 12px; border:1px solid var(--v2-rule)}
+.skip:focus{left:8px; top:8px}
+/* Every scrolling region uses the same thin bar, drawn in the theme's own
+   faint ink on the ground it sits on, so a scroll region does not import a
+   colour the page never chose. */
+*{scrollbar-width:thin; scrollbar-color:var(--v2-rule) transparent}
+::-webkit-scrollbar{width:9px; height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--v2-rule); border-radius:6px;
+  border:2px solid transparent; background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--v2-ink-faint); background-clip:content-box}
+::-webkit-scrollbar-corner{background:transparent}
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap}
+code{font-family:var(--code); font-size:.95em; color:var(--v2-ink)}
+.wrap{max-width:1240px; margin:0 auto; padding-left:var(--pad); padding-right:var(--pad)}
+.cap{color:var(--v2-ink-soft); font-size:16.5px; max-width:74ch}
+.small{font-size:14.5px; color:var(--v2-ink-soft)}
+.faint{color:var(--v2-ink-faint)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ===== brand ========================================================== */
+.lockup{display:block; color:var(--v2-ink); height:26px}
+.lockup svg{display:block; height:100%; width:auto}
+.lockup svg :is(path,circle){vector-effect:none}
+.respreview{
+  display:flex; flex-direction:column; pointer-events:none; user-select:none;
+  font-size:11px; line-height:1.05; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--v2-accent); padding-top:2px;
+}
+
+/* ===== top bar ======================================================== */
+.top{position:sticky; top:0; z-index:30; background:var(--v2-paper); border-bottom:1px solid var(--v2-rule)}
+.top .row{display:flex; align-items:center; gap:14px; height:54px}
+.brand{display:flex; align-items:center; gap:10px; height:26px}
+.top nav{margin-left:auto; display:flex; align-items:center; gap:16px}
+.top nav a{
+  text-decoration:none; color:var(--v2-ink-soft); font-size:14.5px;
+  padding:2px 0; border-bottom:1px solid transparent;
+}
+.top nav a:hover,.top nav a[aria-current="true"]{color:var(--v2-ink); border-bottom-color:var(--v2-rule)}
+@media (max-width:900px){ .top nav a.navlink{display:none} }
+.ground{display:flex; align-items:center; gap:6px; font-size:14px}
+.ground button{font:inherit; background:none; border:0; padding:3px; margin:0; line-height:0; color:var(--v2-ink-faint); cursor:pointer}
+.ground button svg{display:block; width:17px; height:17px}
+.ground button:hover{color:var(--v2-ink)}
+.ground button[aria-pressed="true"]{color:var(--v2-accent)}
+
+/* ===== sections ======================================================= */
+/* Sections are told apart by the space around them and by their headings.
+   A rule between them would be a fourth stroke weight competing with the
+   figures, which are the only place this page draws a line. */
+main>section{padding:clamp(40px,6.5vw,84px) 0}
+/* The opening screen stands alone until the reader scrolls. Only opacity
+   moves, because a transform on these sections would become the containing
+   block for the pinned figure inside one of them. */
+main>section:not(#run),footer{opacity:var(--reveal,1); transition:opacity .42s ease-out}
+@media (prefers-reduced-motion:reduce){
+  main>section:not(#run),footer{opacity:1; transition:none}
+}
+main>section:first-child{padding-top:clamp(20px,3vw,40px)}
+h1{font-size:clamp(25px,3.8vw,40px); line-height:1.2; font-weight:700; letter-spacing:-.01em}
+h2{font-size:clamp(23px,3vw,31px); line-height:1.28; font-weight:700}
+h3{font-size:16px; font-weight:700}
+.head{margin-bottom:22px}
+.head h2{margin-bottom:8px}
+.two{display:grid; gap:calc(var(--step)*3); grid-template-columns:minmax(0,1fr)}
+.two>*{min-width:0}
+@media (min-width:940px){ .two{grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start} }
+.wide{display:grid; gap:calc(var(--step)*3); grid-template-columns:minmax(0,1fr)}
+.wide>*{min-width:0}
+@media (min-width:940px){ .wide{grid-template-columns:minmax(0,5fr) minmax(0,7fr); align-items:start} }
+
+/* ===== controls ======================================================= */
+.ctl{font:inherit; font-size:14.5px; color:var(--v2-ink-soft); background:none; border:0;
+  border-bottom:1px solid transparent; padding:2px 0; cursor:pointer; white-space:nowrap}
+.ctl:hover:not(:disabled){color:var(--v2-ink); border-bottom-color:var(--v2-rule)}
+/* Replay answers once the run it repeats has finished, so it reads as
+   unavailable until then. */
+.ctl:disabled{color:var(--v2-ink-faint); cursor:default}
+/* Replay is drawn rather than spelled, so it reads at a glance and takes
+   the same room in every region. */
+.ctl.icon{display:inline-flex; align-items:center; padding:2px; border-bottom:0; font-size:15px}
+.ctl.icon svg{display:block; width:1em; height:1em}
+.ctl.icon.copied{color:var(--v2-accent)}
+/* A mark inside a command block is the size of the command it copies. */
+.cmd .ctl.icon{font-size:clamp(15px,1.5vw,18px)}
+.cmd.install .ctl.icon{font-size:clamp(17px,2.3vw,26px)}
+/* A terminal carries no header bar: its replay control floats above the box,
+   at the right edge, and the box itself is the only frame. */
+.term.floated{position:relative; margin-top:30px; overflow:visible}
+.term.floated > .ctl.icon{position:absolute; top:-27px; right:0}
+.term.floated > .ctlname{position:absolute; top:-26px; left:0; margin:0}
+.term.floated > .termbody{border-radius:2px}
+.ctl.icon:hover:not(:disabled){border-bottom-color:transparent; color:var(--v2-accent)}
+.ctl[aria-pressed="true"],.ctl[aria-checked="true"]{color:var(--v2-accent)}
+.ctl[aria-checked="true"] code,.ctl[aria-checked="true"] .v{color:var(--v2-accent)}
+/* The conversation and the numbers behind it stand side by side, the way the
+   viewer sets a transcript against its statistics. */
+.viewpanes{margin-top:clamp(20px,3vw,34px); align-items:start}
+@media (min-width:900px){ .viewpanes{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)} }
+.statpane .figs{margin-top:10px}
+/* The statistics figures: a row states its quantity and a hairline bar puts
+   that quantity against the largest in its group, which is what the viewer's
+   own budget, cache and tool figures do. The largest share takes the accent. */
+.figgrp + .figgrp{margin-top:18px}
+.figname{font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--v2-ink-faint)}
+.figrow{font-family:var(--code); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 12px;
+  padding:8px 0; border-top:1px solid var(--v2-rule); font-size:14px}
+.figgrp .figname + .figrow{border-top:0}
+.figrow .k{color:var(--v2-ink-soft); min-width:0}
+.figrow .v{color:var(--v2-ink); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap}
+.figrow .bar{grid-column:1 / -1; height:3px; background:var(--v2-cell-empty); position:relative}
+.figrow .bar i{position:absolute; left:0; top:0; bottom:0; background:var(--v2-ink-faint)}
+.figrow.lead .bar i{background:var(--v2-accent)}
+.ctlname{font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--v2-ink-faint)}
+input[type=range]{
+  -webkit-appearance:none; appearance:none; background:none; height:18px; cursor:pointer;
+  flex:1 1 120px; min-width:80px; margin:0;
+}
+input[type=range]::-webkit-slider-runnable-track{height:1px; background:var(--v2-rule)}
+input[type=range]::-moz-range-track{height:1px; background:var(--v2-rule)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:3px; height:15px; background:var(--v2-ink); margin-top:-7px; border-radius:0}
+input[type=range]::-moz-range-thumb{width:3px; height:15px; background:var(--v2-ink); border:0; border-radius:0}
+
+/* ===== terminal ======================================================= */
+.term{border:1px solid var(--v2-rule); background:var(--v2-paper); border-radius:2px; overflow:hidden}
+.termbody{margin:0; padding:10px 12px; overflow:auto; font-family:var(--code);
+  font-size:clamp(13.5px,1.35vw,15.5px);
+  /* The connector column is drawn with box characters, and they only
+     meet when a line box is the height of the glyph. */
+  /* The bar glyph is 1.05 em tall, so the line box is the same height and
+     the column has no seam between rows. */
+  line-height:1.05; white-space:pre; tab-size:8; color:var(--v2-ink-soft)}
+.term--tall .termbody{height:min(56vh,430px)}
+.termbody .ln{display:block; min-height:1.45em}
+.termbody .cx{color:var(--v2-ink-faint)}
+.termbody .hd,.termbody .ti{color:var(--v2-ink); font-weight:700}
+.termbody .pr{color:var(--v2-ink)}
+.termbody .er{color:var(--v2-ink-faint)}
+.termbody .oc-completed{color:var(--v2-good)}
+.termbody .oc-blocked{color:var(--v2-flat)}
+.termbody .oc-exhausted{color:var(--v2-caution)}
+.termbody .oc-failed{color:var(--v2-bad)}
+/* The eleven pulse frames are wider than one cell in every face that has
+   them, so the glyph is centred in a cell of its own and the line keeps
+   its columns. */
+/* One connector cell, drawn over the row rather than typed into it: each arm
+   is a hairline, and a cell that carries the line down runs the full height of
+   the row, so the column continues into the row below with no seam. */
+.ln{position:relative; display:block}
+.cell{position:absolute; top:0; bottom:0; width:1ch; color:var(--v2-ink-faint)}
+.cell::before,.cell::after{content:""; position:absolute; background:currentColor}
+.cell::before{left:calc(50% - .5px); width:1px; top:50%; height:0}
+.cell::after{top:calc(50% - .5px); height:1px; left:50%; width:0}
+.cell.u::before{top:0; height:50%}
+.cell.d::before{top:50%; bottom:0; height:auto}
+.cell.u.d::before{top:0; bottom:0; height:auto}
+.cell.l::after{left:0; width:50%}
+.cell.r::after{left:50%; width:50%}
+.cell.l.r::after{left:0; width:100%}
+.pulse{color:var(--foe-accent); display:inline-block; width:1ch; text-align:center}
+.caret{display:inline-block; width:.62em; height:1.05em; vertical-align:-.18em;
+  background:var(--v2-ink); animation:blink 1.06s steps(1,end) infinite}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+
+/* ===== install line =================================================== */
+.cmd .c-pr,.cmd .c-cm{color:var(--v2-ink-faint)}
+.cmd .c-st{color:var(--v2-accent)}
+.cmd .c-cd{color:var(--v2-ink); font-weight:700}
+/* The install line is the one command a reader is meant to run, so it is
+   set larger than the commands that illustrate. */
+.cmd.install{padding:15px 18px; width:max-content; max-width:100%; gap:20px}
+.cmd.install code{font-size:clamp(17px,2.3vw,26px); flex:1 1 auto}
+.cmd{border:1px solid var(--v2-rule); border-radius:2px; padding:9px 12px;
+  display:flex; align-items:center; gap:12px; background:var(--v2-paper)}
+.cmd code{font-size:clamp(14.5px,1.45vw,17px); color:var(--v2-ink); white-space:pre; overflow-x:auto}
+.cmd .ctl{margin-left:auto; flex:0 0 auto}
+@media (max-width:520px){ .cmd{flex-wrap:wrap; gap:4px 12px} .cmd code{flex:1 1 100%} }
+
+/* ===== the mark ======================================================= */
+.fig{border:1px solid var(--v2-rule); background:var(--v2-paper); border-radius:2px; padding:12px}
+.fig svg{display:block; width:100%; height:auto}
+/* A figure that carries a run takes the whole measure, with its replay mark
+   above the frame at the right, the way a terminal is set. */
+.figwide{position:relative; margin-top:34px; padding:clamp(14px,2vw,22px)}
+.figwide > .ctl.icon{position:absolute; top:-27px; right:0}
+/* The mark stands beside the headline as the page's one ornament, and it
+   carries no frame of its own. */
+/* The wordmark and the mark are one row of equal height: the name at
+   display size in the theme accent, the sentence under it as a subtitle,
+   and the drawing set to the same measure so the two align. */
+.herorow{--hero-h:clamp(180px,23vw,290px); align-items:center}
+.herotext{display:flex; flex-direction:column; justify-content:center; min-height:var(--hero-h)}
+.herotext h1{margin:0; display:flex; flex-direction:column; gap:clamp(6px,1vw,12px)}
+.wordmark{font-size:clamp(54px,10vw,116px); line-height:0.9; color:var(--v2-accent); letter-spacing:-0.02em}
+.tagline{font-size:clamp(19px,2.2vw,26px); font-weight:400; color:var(--v2-ink-soft); line-height:1.35}
+.fig.heromark{border:0; background:none; padding:0; margin:0 0 0 auto;
+  height:var(--hero-h); display:flex; align-items:center; justify-content:flex-end}
+.fig.heromark svg{height:100%; width:auto; max-width:100%}
+/* On one column the mark centres under the name and takes its height from
+   the width available, so it neither towers over the wordmark nor leaves a
+   column of empty ground beside it. */
+@media (max-width:720px){
+  body{font-size:18px}
+  /* One column puts the mark first and centres the opening: the mark, the
+     name, the sentence under it, and the command a reader runs. */
+  .herorow{display:flex; flex-direction:column; align-items:center; text-align:center}
+  .heromarkcol{order:-1; width:100%}
+  .herotext{align-items:center}
+  .herotext h1{align-items:center}
+  .fig.heromark{justify-content:center}
+  .cmd.install{margin-left:auto; margin-right:auto}
+  .cap{font-size:17.5px}
+  .cmd code{font-size:15.5px}
+  /* The install command holds one line on a phone: thirty-three characters
+     against the width the screen has. */
+  .cmd.install code,.cmd.install .ctl.icon{font-size:min(19px,4.2vw)}
+  .cmd.install{flex-wrap:nowrap}
+  .cmd.install .ctl.icon{flex:none}
+  .cmd.install{padding:12px 13px; gap:10px}
+  .termbody{font-size:14px}
+  .figrow{font-size:15px}
+  .herorow{--hero-h:clamp(150px,46vw,215px); gap:calc(var(--step)*1.5)}
+  .herotext{min-height:0}
+  .fig.heromark{margin:0 auto; justify-content:center}
+}
+figcaption{color:var(--v2-ink-soft); font-size:14.5px; line-height:1.5; margin-top:8px}
+.mark .ray{fill:none; stroke:currentColor; stroke-linecap:round; transition:opacity .18s linear}
+.mark .r-heavy{stroke-width:calc(var(--mw,1px) * 2.2)}
+.mark .r-mid{stroke-width:calc(var(--mw,1px) * 1.5)}
+.mark .r-hair{stroke-width:calc(var(--mw,1px) * 1.1)}
+.mark .shell-in{fill:none; stroke:currentColor; stroke-width:calc(var(--mw,1px) * 1.5); opacity:.42}
+.mark .shell-out{fill:none; stroke:currentColor; stroke-width:calc(var(--mw,1px) * 1.3); opacity:.28}
+.mark .limit{fill:none; stroke:currentColor; stroke-width:calc(var(--mw,1px) * 1.75); opacity:.55; stroke-dasharray:4 5}
+.mark .arc{fill:none; stroke:currentColor; opacity:.82}
+.mark .arc-spent{stroke-width:calc(var(--mw,1px) * 1.5)}
+.mark .arc-held{stroke-width:calc(var(--mw,1px) * 1.3)}
+.mark .core{fill:var(--foe-accent); stroke:none; transition:fill .25s linear}
+.mark[data-outcome="completed"] .core{fill:var(--v2-good)}
+.mark[data-outcome="exhausted"] .core{fill:var(--v2-caution)}
+.mark[data-outcome="blocked"] .core{fill:var(--v2-flat)}
+.mark[data-outcome="failed"] .core{fill:var(--v2-bad)}
+
+/* ===== readouts and rows ============================================== */
+.o-completed{color:var(--v2-good)} .o-exhausted{color:var(--v2-caution)}
+.o-blocked{color:var(--v2-flat)}   .o-failed{color:var(--v2-bad)}
+.readout dd.o-completed{color:var(--v2-good)} .readout dd.o-blocked{color:var(--v2-flat)}   table{border-collapse:collapse; width:100%; font-size:14.5px}
+th,td{text-align:left; padding:4px 12px 4px 0; border-bottom:1px solid var(--v2-rule-soft); vertical-align:top}
+th{color:var(--v2-ink-faint); font-weight:400; font-size:13px; letter-spacing:.1em; text-transform:uppercase}
+td.n,th.n{text-align:right; padding-right:18px; font-variant-numeric:tabular-nums}
+@media (min-width:620px){ .mechs .m{grid-template-columns:minmax(0,13.5em) minmax(0,1fr)} }
+
+/* ===== the pinned log stage =========================================== */
+.track{position:relative; height:190vh}
+.stage{position:sticky; top:54px; height:min(calc(100vh - 84px),560px); display:flex; flex-direction:column; background:var(--v2-paper)}
+.stagehead{display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; padding:8px 0;
+  border-bottom:1px solid var(--v2-rule); font-size:14px; color:var(--v2-ink-faint)}
+.stagehead .pos{color:var(--v2-ink); font-variant-numeric:tabular-nums}
+.stagebody{flex:1 1 auto; min-height:0; display:grid; border-bottom:1px solid var(--v2-rule);
+  grid-template-rows:minmax(220px,58%) minmax(0,1fr)}
+@media (min-width:880px){ .stagebody{grid-template-rows:none; grid-template-columns:minmax(0,320px) minmax(0,1fr)} }
+.lanepane{border-bottom:1px solid var(--v2-rule); padding:10px 0; display:flex; flex-direction:column; min-height:0}
+@media (min-width:880px){ .lanepane{border-bottom:0; border-right:1px solid var(--v2-rule); padding-right:16px} }
+.lanewrap{flex:1 1 auto; min-height:0; position:relative}
+.lanewrap svg{position:absolute; inset:0; width:100%; height:100%}
+.meter{margin-top:10px; font-size:14.5px; line-height:1.5; color:var(--v2-ink-faint)}
+.ticks{display:flex; gap:2px; margin:5px 0 4px}
+.ticks i{display:block; width:5px; height:12px; border-left:1px solid var(--v2-rule)}
+.ticks i.spent{border-left-color:var(--v2-ink)}
+.ticks i.child{border-left-color:var(--v2-ink-soft)}
+.ticks i.res{border-left-color:var(--v2-ink-faint)}
+.tape{overflow:hidden; min-height:0; display:flex; flex-direction:column; padding:8px 0 8px 16px}
+@media (max-width:879px){ .tape{padding-left:0} }
+.erow{font-family:var(--code); display:grid; grid-template-columns:2.6em 5.4em 10.2em minmax(0,1fr); gap:10px;
+  font-size:15.5px; line-height:1.75; white-space:nowrap}
+.erow .s{text-align:right; color:var(--v2-ink-faint); font-variant-numeric:tabular-nums}
+.erow .c{color:var(--v2-ink-faint); overflow:hidden; text-overflow:ellipsis}
+.erow .t{color:var(--v2-ink)}
+.erow .d{color:var(--v2-ink-soft); overflow:hidden; text-overflow:ellipsis}
+.erow.fresh{animation:land .34s ease-out both}
+@keyframes land{from{opacity:0; transform:translateY(7px)}to{opacity:1; transform:none}}
+@media (max-width:560px){ .erow{grid-template-columns:2.4em 9.6em minmax(0,1fr); font-size:13px} .erow .c{display:none} }
+
+/* ===== graph, board, spans ============================================ */
+/* The figures draw at a hairline and a quarter, so a stroke holds at the
+   sizes this page uses without thickening into a rule. */
+.graph{width:100%; height:auto; display:block; color:var(--v2-ink); stroke-width:1.8}
+.graph text{font-family:var(--code)}
+.glabel{fill:var(--v2-ink-faint)}
+.glabel.on{fill:var(--v2-accent)}
+.board{width:100%; height:auto; display:block; color:var(--v2-ink); stroke-width:1.8}
+.board text{font-family:var(--code); font-size:11.5px; fill:var(--v2-ink-faint)}
+.board text.nm{fill:var(--v2-ink)}
+
+/* ===== outline ======================================================== */
+/* One hairline per level of nesting, the columns the viewer's own outline
+   draws, so a call reads as belonging to the step above it. */
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* ===== bars =========================================================== */
+@media (prefers-reduced-motion: no-preference){ .figrow .bar i{transition:width .5s ease-out} }
+
+/* ===== footer ========================================================= */
+footer{padding:34px 0 46px; font-size:12.5px; color:var(--v2-ink-soft)}
+.footline{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px 24px}
+.footline .lic{margin-left:auto; color:var(--v2-ink-faint); white-space:nowrap}
+footer .lead{color:var(--v2-ink)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important}
+  .caret{animation:none; opacity:1}
+  html{scroll-behavior:auto !important}
+}
+</style>
+</head>
+<body>
