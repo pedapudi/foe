@@ -225,9 +225,11 @@ request; the package has no opinion about its value.
   `foe.Runtime` with the `version` and `build` the binary stated in
   `episode/start`; `build` is `sha256:<hex>` of the running binary, or the
   word `unknown` when the binary could not read its own image;
-- `handle.episode_id`, `handle.log_dir`, `handle.outcome`, and
-  `handle.done`. Ordinary completion sets `done` only after the reader has
-  finished cleanup and reaped the binary.
+- `handle.episode_id` and `handle.outcome`;
+- `handle.log_dir`, the episode directory created under the supplied log
+  directory, or `None` before `episode/start`;
+- `handle.done`, which ordinary completion sets only after reader cleanup
+  has reaped the binary.
 
 Both `pid` and `runtime` hold their values before the episode's first
 model request and first tool call, because `start` returns only after
