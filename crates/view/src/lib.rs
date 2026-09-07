@@ -19,8 +19,22 @@ pub use server::{serve, Bound, Server};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-const JS: &str = include_str!(concat!(env!("OUT_DIR"), "/viewer.js"));
-const CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/viewer.css"));
+// The bundle is embedded deflated, a quarter of its bytes, and inflated once
+// on the first page this process builds. `view/build.mjs` writes the deflated
+// copies and `build.rs` embeds them.
+const JS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/viewer.js.deflate"));
+const CSS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/viewer.css.deflate"));
+
+fn inflate(deflated: &[u8]) -> String {
+    let bytes = miniz_oxide::inflate::decompress_to_vec(deflated).expect("the build deflated this");
+    String::from_utf8(bytes).expect("the bundle is UTF-8")
+}
+
+/// The bundle's script. Computed once.
+fn js() -> &'static str {
+    static TEXT: OnceLock<String> = OnceLock::new();
+    TEXT.get_or_init(|| inflate(JS))
+}
 
 // `FONTS`: the self-hosted font files by the name the bundle's CSS requests
 // under `/fonts/`. `build.rs` names the files and writes the array, so the
@@ -61,7 +75,8 @@ fn page(boot: &str) -> String {
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <title>foe</title><style>{css}</style></head><body><div id=\"app\"></div>\
-         <script>window.__FOE__={boot};</script><script>{JS}</script></body></html>\n"
+         <script>window.__FOE__={boot};</script><script>{}</script></body></html>\n",
+        js()
     )
 }
 
@@ -70,7 +85,7 @@ fn page(boot: &str) -> String {
 fn css() -> &'static str {
     static INLINED: OnceLock<String> = OnceLock::new();
     INLINED.get_or_init(|| {
-        let mut css = CSS.to_string();
+        let mut css = inflate(CSS);
         for (name, bytes) in FONTS.iter().filter(|(_, bytes)| !bytes.is_empty()) {
             let uri = format!("data:font/woff2;base64,{}", base64(bytes));
             css = css.replace(&format!("/fonts/{name}"), &uri);

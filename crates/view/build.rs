@@ -1,9 +1,12 @@
-//! Embeds the browser bundle. `view/dist/viewer.js`, `view/dist/viewer.css`,
-//! and the font files under `view/fonts/` are copied into `OUT_DIR` when
-//! present. An absent script or stylesheet is replaced by a placeholder that
-//! names the build command; an absent font is replaced by an empty file,
-//! which the crate treats as "not embedded". The crate therefore compiles
-//! without Node installed.
+//! Embeds the browser bundle. `view/dist/viewer.js.deflate`,
+//! `view/dist/viewer.css.deflate`, and the font files under `view/fonts/` are
+//! copied into `OUT_DIR` when present. The script and the stylesheet are
+//! embedded deflated, which is a quarter of their bytes and so a quarter of
+//! their share of the binary; `view/build.mjs` writes them beside the plain
+//! files and the crate inflates each once. An absent script or stylesheet is
+//! replaced by a deflated placeholder that names the build command; an absent
+//! font is replaced by an empty file, which the crate treats as "not
+//! embedded". The crate therefore compiles without Node installed.
 //!
 //! Cargo reruns this script whenever a watched path changes. A watched path
 //! that does not exist counts as changed on every build, so a checkout
@@ -15,6 +18,16 @@ use std::path::{Path, PathBuf};
 const JS_PLACEHOLDER: &str = "document.getElementById(\"app\").textContent = \
     \"The viewer bundle was not built. Run `pnpm install && pnpm build` in view/, then rebuild foe.\";";
 const CSS_PLACEHOLDER: &str = "body{font-family:system-ui,sans-serif;margin:2rem}";
+
+/// A placeholder as the crate expects to find it: deflated, like the file it
+/// stands in for. Stored uncompressed, which raw deflate spells as a final
+/// block of literal bytes behind a five-byte header.
+fn deflated(text: &str) -> Vec<u8> {
+    let len = u16::try_from(text.len()).expect("a placeholder is short");
+    let mut out = vec![0x01, (len & 0xff) as u8, (len >> 8) as u8, (!len & 0xff) as u8, (!len >> 8) as u8];
+    out.extend_from_slice(text.as_bytes());
+    out
+}
 const FONTS: [&str; 6] = [
     "Inconsolata-Regular.woff2",
     "Inconsolata-Bold.woff2",
@@ -34,8 +47,8 @@ fn main() {
         let body = fs::read(src).unwrap_or_else(|_| placeholder.to_vec());
         fs::write(out.join(src.file_name().expect("file name")), body).expect("write into OUT_DIR");
     };
-    copy(&view.join("dist/viewer.js"), JS_PLACEHOLDER.as_bytes());
-    copy(&view.join("dist/viewer.css"), CSS_PLACEHOLDER.as_bytes());
+    copy(&view.join("dist/viewer.js.deflate"), &deflated(JS_PLACEHOLDER));
+    copy(&view.join("dist/viewer.css.deflate"), &deflated(CSS_PLACEHOLDER));
     for name in FONTS {
         copy(&view.join("fonts").join(name), b"");
     }

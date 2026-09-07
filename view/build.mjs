@@ -3,8 +3,8 @@
 // together exceed the gzipped size budget from docs/design.md, "Size".
 
 import { build } from "esbuild";
-import { gzipSync } from "node:zlib";
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { deflateRawSync, gzipSync } from "node:zlib";
+import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,11 +46,17 @@ async function buildBundle() {
       process.exit(1);
     }
   }
+  // The binary embeds the deflated copies rather than these, because a
+  // quarter of the bytes is a quarter of the binary; crates/view/src/lib.rs
+  // inflates each once, the first time a page is built. Raw deflate, with no
+  // container, is what `miniz_oxide::inflate::decompress_to_vec` reads.
   let total = 0;
   for (const name of ["viewer.js", "viewer.css"]) {
     const path = join(dist, name);
     const raw = statSync(path).size;
-    const gz = gzipSync(readFileSync(path), { level: 9 }).length;
+    const body = readFileSync(path);
+    const gz = gzipSync(body, { level: 9 }).length;
+    writeFileSync(`${path}.deflate`, deflateRawSync(body, { level: 9 }));
     total += gz;
     console.log(`${name}: ${raw} bytes, ${gz} bytes gzipped`);
   }

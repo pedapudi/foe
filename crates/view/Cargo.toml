@@ -11,6 +11,10 @@ build = "build.rs"
 foe-log = { path = "../log" }
 serde.workspace = true
 serde_json.workspace = true
+# Inflating the embedded bundle, which is stored deflated. Compression is
+# done by view/build.mjs with the zlib Node already links, so nothing here
+# compresses and no build dependency is added.
+miniz_oxide = "0.8"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net"] }
 # Reads the terminal window size for the conversation display.
