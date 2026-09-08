@@ -139,6 +139,39 @@ fn a_spawned_task_is_shown_and_a_long_one_is_bounded() {
     assert!(dropped > 0, "{long}");
 }
 
+/// docs/viewer.md: a workflow node's task carries what earlier nodes
+/// returned, as the JSON those values travel as. It is displayed as the
+/// values they are: the answer's own summary as prose under the node's
+/// name, not a line of braces and quotation marks.
+#[test]
+fn a_task_that_carries_a_returned_value_displays_the_value() {
+    let node = json!({
+        "summary": "Read the parser test and found the failing case.",
+        "changed_paths": [],
+        "learned": ["The fixture is stale."]
+    });
+    let task = format!("## task\n\nFix the failing test.\n\n## implement-task\n\n{node}\n");
+    let rows = display_task(&task);
+    let rendered = rows
+        .iter()
+        .map(|row| match row {
+            Row::Title(title) => format!("[{title}]"),
+            Row::Text(text) => text.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        rendered,
+        "Fix the failing test.\n\n[implement-task]\nRead the parser test and found the failing case.\n\n[Learned]\n- The fixture is stale."
+    );
+    // A task a person wrote carries no heading and stays the prose it is.
+    assert_eq!(display_task("Fix the failing test.").len(), 1);
+    // An empty section adds nothing, and a section keeps the node's own
+    // name rather than a prettified one.
+    assert!(!rendered.contains("[Implement-task]"), "{rendered}");
+    assert!(!rendered.contains("[Task]"), "the block heading already names the task: {rendered}");
+}
+
 /// docs/viewer.md: messages from concurrent and nested branches precede their returned results.
 #[test]
 fn polling_preserves_branch_returns_and_does_not_repeat_messages() {

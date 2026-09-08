@@ -303,7 +303,7 @@ impl<W: Write> Terminal<W> {
                 let root = self.lanes.first().is_some_and(|(key, ..)| key == id);
                 let spawned = item.source == InboxSource::Task && !root;
                 let label = if spawned { "Task" } else { item.from.as_deref().unwrap_or("You") };
-                self.block(i, label, &[Row::Text(body)], spawned.then_some(TASK_LINES))?;
+                self.block(i, label, &display_task(&body), spawned.then_some(TASK_LINES))?;
             }
             EventData::AssistantMessage(message) if !message.text.trim().is_empty() => {
                 let i = self.lane(id);
@@ -476,6 +476,44 @@ fn result_text(outcome: &Outcome) -> (&'static str, Vec<Row>) {
         Outcome::Exhausted { limit } => ("Exhausted", vec![Row::Text(format!("Budget exhausted: {}", wire(limit)))]),
         Outcome::Failed { error } => ("Failed", vec![Row::Text(error.clone())]),
     }
+}
+
+/// Rows for a task. A task a person wrote is prose and stays prose. A task
+/// a workflow node was given is sections named by a `## heading`, and a
+/// section carrying what an earlier node returned holds that value as JSON;
+/// it is displayed as the value it is, which puts the answer's own summary
+/// first and gives every other field a titled section of its own.
+fn display_task(text: &str) -> Vec<Row> {
+    fn close(name: Option<&str>, body: &[&str], rows: &mut Vec<Row>) {
+        let text = body.join("\n");
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        // A section keeps the heading's own text: these are workflow node
+        // names, which a reader matches against the graph. The section
+        // holding the run's own task is titled by the block heading above
+        // it and needs no title of its own.
+        if let Some(name) = name.filter(|name| *name != "task") {
+            if !rows.is_empty() {
+                rows.push(Row::Text(String::new()));
+            }
+            rows.push(Row::Title(name.to_string()));
+        }
+        rows.extend(display_value(&Value::String(text.into())));
+    }
+    let (mut rows, mut name, mut body) = (Vec::new(), None, Vec::new());
+    for line in text.lines() {
+        match line.strip_prefix("## ") {
+            Some(heading) => {
+                close(name, &body, &mut rows);
+                (name, body) = (Some(heading), Vec::new());
+            }
+            None => body.push(line),
+        }
+    }
+    close(name, &body, &mut rows);
+    rows
 }
 
 /// Rows for a value. A string holding a JSON object or array is displayed

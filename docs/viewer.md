@@ -42,6 +42,15 @@ unit of a few sentences, which the bound shows whole, and a workflow node's
 input can be a whole tool result. The bound counts lines carrying text
 because a structured task is mostly headings and blank lines.
 
+A task a person wrote is prose and is set as prose. A task a workflow node
+was given is sections named by a `## heading`, and a section carries what an
+earlier node returned as the JSON that value travels as. Each section is
+displayed as the value it holds, under the node's own name so that a reader
+can match it against the graph, which puts that node's summary first and
+gives every other field a titled section. The section holding the run's own
+task is titled by the block heading above it and carries no title of its
+own.
+
 A forked episode's log opens with a copy of the events its origin wrote,
 ending at `seed/end`. Those events record what the origin did, so the
 conversation skips them and shows the fork's own work alone; without that a
