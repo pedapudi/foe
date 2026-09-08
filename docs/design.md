@@ -946,9 +946,23 @@ tool that could change a file, and is granted no write root. The two kinds
 exist because a grant is a narrowing and not a subtraction of tools: a write
 grant of no roots would leave a worker's `edit` with nothing it may write,
 and the spawn is refused rather than the child left to die at construction.
-Neither kind has a spawn grant, so neither leads a team of its own. Six run
-at once and twelve may open over the run, which is a second round after the
-first. `--verify` gates the lead and every worker, so a unit that broke its
+A worker holds the same two kinds the lead holds, so a unit that turns out
+to divide again is divided by the worker that owns it rather than handed
+back. The document cannot say this by naming itself, because
+`child_contracts` is a tree, so the level that divides is built from the
+level that does not: the same contract with the delegating tools, the spawn
+grant, and those two kinds under it. The kinds under it hold neither, which
+is what ends the tree at a depth of two. A surveyor delegates nothing at any
+level: it answers one question, and a question that divides is a unit for a
+worker.
+
+Six workers run under the lead at once and three under each of those, so
+twelve workers and their sub-workers may open over the run, which is a
+second round at each level after the first. The lead's ceiling is 3,420
+model calls: sixty for its own survey and integration, and the subtree
+allowance of every worker it may open. A worker's is 280, its own forty and
+its sub-workers' over two rounds. A ceiling is what a run may not exceed and
+not what it spends. `--verify` gates the lead and every worker, so a unit that broke its
 own ground does not reach the integration. A worker is not a coding workflow:
 breadth and verification are separate questions, and a document that answered
 both would multiply the episode count of the one it is the default instead

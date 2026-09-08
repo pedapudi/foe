@@ -1775,7 +1775,7 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
     ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
     ("subagents", "sha256:898deb3a02024007c5565b81b8043474805cbc1420b1c6e14f5225947420f4ad"),
-    ("team", "sha256:36156d4f33cc16b6508bc5ca33805eafaff8a37d2dd69c6d2e24039b0f55fcfc"),
+    ("team", "sha256:5eab6c09ef1950da4d1f5bd4346b0beb2f9c11babb0a70878e3d57d59011889e"),
     ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
     ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
     ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),
@@ -1952,13 +1952,23 @@ fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     assert_eq!(surveyor["grants"]["write"], json!([]), "a surveyor writes nowhere");
     for child in [worker, surveyor] {
         assert_eq!(child["grants"]["read"], team["contract"]["grants"]["read"]);
-        assert_eq!(child["grants"]["spawn"], json!([]), "a delegate leads no team of its own");
-        let tools = child["tools"].as_array().unwrap();
-        assert!(!tools.iter().any(|t| t == "spawn"));
     }
     assert!(team["contract"]["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
     assert!(worker["tools"].as_array().unwrap().iter().any(|t| t == "edit"), "a worker does the work");
     assert!(!surveyor["tools"].as_array().unwrap().iter().any(|t| t == "edit"), "a surveyor only reports");
+    // A worker holds the same two kinds the lead holds, so a unit that
+    // divides again is divided by the worker that owns it. The kinds under
+    // it hold neither the grant nor the tool, which is what ends the tree.
+    assert_eq!(worker["grants"]["spawn"], json!(["worker", "surveyor"]));
+    assert_eq!(surveyor["grants"]["spawn"], json!([]), "a surveyor answers and delegates nothing");
+    assert_eq!(team["contract"]["budget"]["max_depth"], json!(2));
+    let under = &worker["child_contracts"];
+    for leaf in ["worker", "surveyor"] {
+        assert_eq!(under[leaf]["grants"]["spawn"], json!([]), "the level under a worker leads nothing");
+        assert!(!under[leaf]["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
+    }
+    assert_eq!(under["worker"]["grants"]["write"], worker["grants"]["write"]);
+    assert_eq!(under["surveyor"]["grants"]["write"], json!([]));
     assert_eq!(team["contract"]["budget"]["max_concurrent"], json!(6));
     assert_ne!(team["contract_fingerprint"], oneshot["contract_fingerprint"], "the forms hash apart");
 

@@ -85,7 +85,8 @@ paths that unit writes, and integrates what they return. The lead writes the
 shared surfaces itself and grants each worker a disjoint part of the tree,
 which the kernel then holds, so two workers cannot touch one file. A unit
 that answers rather than changes goes to a surveyor, which declares no tool
-that could change a file.
+that could change a file. A worker holds the same two kinds, so a unit that
+turns out to divide again is divided by the worker that owns it.
 The runtime supports API-key endpoints, OAuth-backed coding endpoints,
 compatible HTTP endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.

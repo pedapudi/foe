@@ -689,12 +689,19 @@ fn add_verifier(contract: &mut serde_json::Value, def: &serde_json::Value) {
     contract["tool_defs"] = serde_json::json!({ "check": def });
 }
 
-/// Model calls a worker of the team document may spend, and how many of them
-/// run at once. A worker does one unit of the work and reports it, which
-/// costs less than the whole task and more than a survey; the lead surveys
-/// first, writes the shared surfaces, delegates, and integrates.
+/// Model calls a worker of the team document may spend on its own unit, and
+/// how many workers run at once under the lead and under one worker. A
+/// worker does one unit of the work and reports it, which costs less than
+/// the whole task and more than a survey; the lead surveys first, writes the
+/// shared surfaces, delegates, and integrates.
 const BUILTIN_WORKER_CALLS: u64 = 40;
 const BUILTIN_TEAM_WORKERS: u32 = 6;
+const BUILTIN_SUB_WORKERS: u32 = 3;
+
+/// A worker that divides its unit spends its own calls and its sub-workers'
+/// over two rounds, and its subtree holds itself and those sub-workers.
+const DIVIDING_CALLS: u64 = BUILTIN_WORKER_CALLS * (1 + BUILTIN_SUB_WORKERS as u64 * 2);
+const DIVIDING_EPISODES: u32 = BUILTIN_SUB_WORKERS * 2 + 1;
 
 /// The team document: a lead that divides the task into units, gives each
 /// worker the paths that unit writes, and integrates what they return. A
@@ -739,12 +746,32 @@ pub(crate) fn team_contract_document(
         entry["grants"] = serde_json::json!({ "read": [root], "write": write, "execute": BUILTIN_EXECUTE_ROOTS });
         entry["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
     }
-    // The lifetime count is the lead plus the workers it may open in all,
-    // which is twice what may run at once, so a second round is affordable.
+    // A unit can divide again, so the worker the lead spawns holds the same
+    // two kinds it does. `child_contracts` is a tree in the document and
+    // cannot name itself, so the level that divides is built here from the
+    // level that does not: the same contract with the delegating tools, the
+    // spawn grant, and those two kinds under it. The kinds under it hold
+    // neither, which is what ends the tree.
+    let leaves = document["child_contracts"].clone();
+    let worker = &mut document["child_contracts"]["worker"];
+    worker["tools"] =
+        serde_json::json!(["read", "grep", "edit", "bash", "spawn", "wait", "cancel", "send", "ask", "notify", "team"]);
+    worker["grants"]["spawn"] = serde_json::json!(["worker", "surveyor"]);
+    worker["child_contracts"] = leaves;
+    worker["budget"] = serde_json::json!({
+        "model_calls": DIVIDING_CALLS,
+        "max_episodes": DIVIDING_EPISODES,
+        "max_concurrent": BUILTIN_SUB_WORKERS,
+    });
+    // The lifetime count is the lead plus the subtree of every worker it may
+    // open, which is twice what may run at once, so a second round is
+    // affordable at each level.
     document["budget"] = serde_json::json!({
-        "model_calls": BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_WORKER_CALLS * u64::from(BUILTIN_TEAM_WORKERS) * 2,
-        "max_episodes": BUILTIN_TEAM_WORKERS * 2 + 1,
+        "model_calls": BUILTIN_IMPLEMENTATION_CALLS
+            + DIVIDING_CALLS * u64::from(BUILTIN_TEAM_WORKERS) * 2,
+        "max_episodes": BUILTIN_TEAM_WORKERS * 2 * DIVIDING_EPISODES + 1,
         "max_concurrent": BUILTIN_TEAM_WORKERS,
+        "max_depth": 2,
     });
     document["task"] = serde_json::json!(task);
     if let Some(mode) = sandbox {
