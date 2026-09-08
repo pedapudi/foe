@@ -20,7 +20,7 @@ import {
   scopeFor,
   shortenPath,
 } from "../src/causality.js";
-import type { CausalityEpisode, CausalityLayout } from "../src/causality.js";
+import type { CausalityCall, CausalityEpisode, CausalityLayout } from "../src/causality.js";
 import { EpisodeFold } from "../src/fold.js";
 import { buildTree, flatten } from "../src/episode-tree.js";
 import type { Summary } from "../src/fold.js";
@@ -178,6 +178,78 @@ test("a lane column is released when the lane closes and taken by the next", () 
   for (let i = 1; i < spans.length; i += 1) {
     assert.ok(spans[i]![0] > spans[i - 1]![1], "a column is reused only after the lane on it closed");
   }
+});
+
+// Two children a run held open at the same time are two lanes at the same
+// time, whatever order their rows are read in. The rows of a child hang
+// under the call that opened it, so concurrent children occupy sequential
+// row ranges; a column released by row alone would draw them as one lane
+// reused, which is the drawing that says each waited for the one before.
+test("two episodes that overlap in time never share a column", () => {
+  const figure = layout("overlap-parent.jsonl", "overlap-child.jsonl", "rich.jsonl");
+  const first = lane(figure, "ep_over_child");
+  const second = lane(figure, "ep_rich");
+  assert.ok(second.start < (first.end ?? Infinity), "the fixture holds both episodes open at once");
+  assert.notEqual(first.column, second.column);
+});
+
+// One turn that opens several children opens them together. Its own calls
+// are read before any child's transcript, so the fan-out is one row after
+// another rather than a child wedged between two of its siblings' calls,
+// and the columns those children take are as many as ran at once.
+test("the calls of one step are read before the children they opened", () => {
+  const spawnCall = (id: string, child: string): CausalityCall => ({
+    id,
+    name: "spawn",
+    subject: "",
+    failed: false,
+    childId: child,
+    childName: "worker",
+    result: "",
+    resultSeq: 2,
+  });
+  const child = (id: string, start: number, end: number): CausalityEpisode => ({
+    id,
+    name: "worker",
+    depth: 1,
+    parentId: "ep_lead",
+    outcome: { kind: "completed", value: null },
+    startTime: start,
+    endTime: end,
+    lastSeq: 4,
+    steps: [{ step: 1, seq: 1, endSeq: 4, answered: true, text: "", attempts: 1, calls: [] }],
+    firings: [],
+  });
+  const lead: CausalityEpisode = {
+    id: "ep_lead",
+    name: "lead",
+    depth: 0,
+    parentId: null,
+    outcome: null,
+    startTime: 0,
+    endTime: null,
+    lastSeq: 9,
+    steps: [
+      {
+        step: 1,
+        seq: 1,
+        endSeq: 3,
+        answered: true,
+        text: "",
+        attempts: 1,
+        calls: [spawnCall("tc_1", "ep_a"), spawnCall("tc_2", "ep_b")],
+      },
+    ],
+    firings: [],
+  };
+  const episodes = [lead, child("ep_a", 10, 90), child("ep_b", 20, 80)];
+  const outline = causalityOutline(episodes);
+  const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
+  assert.ok(at("ep_lead/step/1/call/tc_1") < at("ep_lead/step/1/call/tc_2"), "the two calls keep their order");
+  assert.ok(at("ep_lead/step/1/call/tc_2") < at("ep_a"), "both calls are read before the first child's rows");
+  assert.ok(at("ep_a") < at("ep_b"), "the children follow in the order their calls opened them");
+  const figure = layoutCausality(episodes);
+  assert.notEqual(lane(figure, "ep_a").column, lane(figure, "ep_b").column, "both were open at once");
 });
 
 test("a lane's column follows occupancy, not tree depth", () => {

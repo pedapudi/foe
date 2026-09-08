@@ -103,6 +103,9 @@ export interface CausalityEpisode {
   depth: number;
   parentId: string | null;
   outcome: Outcome | null;
+  /** When the episode started and settled, on the wall clock. */
+  startTime: number;
+  endTime: number | null;
   /** The last log position read, which bounds a whole-episode scope. */
   lastSeq: number;
   steps: CausalityStep[];
@@ -253,6 +256,13 @@ export interface LaneSpec {
   tone: number;
   /** The typed outcome drawn at the foot; only an episode lane has one. */
   outcome: Outcome | null;
+  /**
+   * When the episode this lane draws ran, on the wall clock. Two lanes
+   * whose intervals overlap were open at the same time and cannot share a
+   * column. `end` is null while the episode has not settled.
+   */
+  start: number;
+  end: number | null;
   /** What the lane is, for the hovercard. */
   label: string;
 }
@@ -431,6 +441,8 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
     depth,
     parentId: summary.parentId,
     outcome: summary.outcome,
+    startTime: summary.startTime,
+    endTime: summary.endTime,
     lastSeq: summary.lastSeq,
     steps,
     firings: summary.firings.map((f) => ({
@@ -578,8 +590,9 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
   // rather than a colour cycled from its position, and the stroke agrees
   // with the name written beside it. A graph lane is not an agent; the
   // stylesheet draws it in neutral ink whatever slot it is given here.
-  const openLane = (id: string, kind: LaneKind, episodeId: string, parentId: string | null, label: string, outcome: Outcome | null): void => {
-    lanes.push({ id, kind, episodeId, parentId, tone: kind === "workflow" ? 0 : identitySlot(label), outcome, label });
+  const openLane = (id: string, kind: LaneKind, of: CausalityEpisode, parentId: string | null, label: string, outcome: Outcome | null): void => {
+    const tone = kind === "workflow" ? 0 : identitySlot(label);
+    lanes.push({ id, kind, episodeId: of.id, parentId, tone, outcome, label, start: of.startTime, end: of.endTime });
   };
 
   const push = (row: Omit<CausalityRow, "appearsAt" | "body" | "failed" | "calls" | "firings" | "opens"> & Partial<CausalityRow>): CausalityRow => {
@@ -598,9 +611,9 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
 
   const emit = (episode: CausalityEpisode, parentLaneId: string | null, parentRow: string | null): void => {
     const laneId = episode.id;
-    openLane(laneId, "episode", episode.id, parentLaneId, episode.name, episode.outcome);
+    openLane(laneId, "episode", episode, parentLaneId, episode.name, episode.outcome);
     const workflowLaneId = episode.firings.length > 0 ? `${episode.id}/workflow` : null;
-    if (workflowLaneId !== null) openLane(workflowLaneId, "workflow", episode.id, laneId, `${episode.name} graph`, null);
+    if (workflowLaneId !== null) openLane(workflowLaneId, "workflow", episode, laneId, `${episode.name} graph`, null);
 
     // The episode itself is a row, not only a lane: read at its coarsest,
     // the outline is the episode rail, and a rail needs a row per episode.
@@ -669,6 +682,11 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
             seq: step.seq,
           });
         }
+        // A turn that opened several children opened them together. Its
+        // own calls are emitted first and the children after, so the
+        // reader sees one turn fanning out rather than one child's whole
+        // transcript wedged between two of its siblings' calls.
+        const opened: { child: CausalityEpisode; callRow: CausalityRow }[] = [];
         for (const call of step.calls) {
           const callRow = push({
             id: `${row.id}/call/${call.id}`,
@@ -705,11 +723,12 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
           const child = call.childId === null ? undefined : byId.get(call.childId);
           if (!child) continue;
           row.opens.push(child.id);
-          // A child hangs under the call that opened it, which is what
-          // makes the outline a hierarchy; it costs global chronology,
-          // which is why every row keeps its sequence number.
-          emit(child, laneId, callRow.id);
+          opened.push({ child, callRow });
         }
+        // A child hangs under the call that opened it, which is what makes
+        // the outline a hierarchy; it costs global chronology, which is why
+        // every row keeps its sequence number.
+        for (const { child, callRow } of opened) emit(child, laneId, callRow.id);
         continue;
       }
       const firing = item.firing!;
@@ -1051,15 +1070,23 @@ function extend(build: LaneBuild): { first: number; last: number } {
  */
 export function allocateColumns(builds: LaneBuild[]): void {
   const order = [...builds].sort((a, b) => a.first - b.first || b.last - a.last || a.lane.id.localeCompare(b.lane.id));
-  /** The row at which each column becomes free again. */
-  const free: number[] = [];
+  /** For each column, the row and the moment at which it becomes free. */
+  const free: { row: number; time: number | null }[] = [];
+  // A column may be reused only by a lane that opened after the lane
+  // holding it had closed. Rows alone do not decide that: a child's rows
+  // hang under the call that opened it, so three children a turn opened
+  // together occupy three sequential row ranges, and a column freed by row
+  // would draw them as one lane reused three times — the drawing that says
+  // each waited for the one before.
   for (const build of order) {
-    let column = free.findIndex((until) => until < build.first);
+    const closed = (until: { row: number; time: number | null }): boolean =>
+      until.row < build.first && until.time !== null && until.time <= build.lane.start;
+    let column = free.findIndex(closed);
     if (column < 0) {
       column = free.length;
-      free.push(0);
+      free.push({ row: 0, time: 0 });
     }
-    free[column] = build.last;
+    free[column] = { row: build.last, time: build.lane.end };
     build.lane.column = column;
     build.lane.x = LANE_LEFT + column * LANE_PITCH;
   }

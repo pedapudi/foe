@@ -360,7 +360,10 @@ it. A **tool call** is a short tick off its step's row with its mark at the
 end; no return edge is drawn, because the lane continuing past the tick is
 the return, a call can neither diverge nor outlive its caller, and calls
 are the largest count in the model. `spawn` is not special-cased: it is
-the call whose tick opens a lane, because what it created can outlive it.
+the call whose tick opens a lane, because what it created can outlive it. A
+step's own calls are all rows before any child they opened, so a turn that
+opened several children reads as one fan-out and each child's transcript
+follows whole.
 
 A workflow node the run entered more than once is one row and a loop edge
 back up to it rather than one row per firing. That is what lets the scoped
@@ -378,8 +381,13 @@ A parent therefore reaches past every child's foot: a child branches from
 its parent above the child's own first row and folds back below the child's
 own foot, so the two never coincide and the order they happened in reads
 down the figure. A lane takes the lowest free column when it opens and releases it
-when it closes, so column is occupancy and not tree depth — tree depth is
-carried by the label's indent instead. The layout claims no room past its
+when the episode it draws has settled, so column is occupancy and not tree
+depth — tree depth is carried by the label's indent instead. Occupancy is
+measured on the clock rather than down the figure: a child's rows hang under
+the call that opened it, so three children one turn opened occupy three
+sequential row ranges, and a column released by row alone would draw them as
+one lane taken three times, which is the drawing that says each waited for
+the one before. The layout claims no room past its
 own marks: it reports the width its strokes take and gives each row an
 indent from wherever its reader sets the text column, so what stands
 beside the drawing is the caller's decision and not the figure's. Edges
