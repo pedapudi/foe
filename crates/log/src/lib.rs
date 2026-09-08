@@ -364,6 +364,10 @@ pub enum BlockedCode {
     ChildBlocked,
     RecoveryExhausted,
     RecoveryFailed,
+    /// The episode was stopped by the one that started it. A lead that
+    /// course-corrects has not found a child that broke, so this is blocked
+    /// rather than failed.
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

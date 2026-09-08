@@ -558,7 +558,7 @@ impl Episode {
             let transport = self.p.transport.clone();
             let streamed = tokio::select! {
                 _ = transport.stream(body, &mut recorder) => None,
-                reason = wait_stop(self.p.stop.clone()) => Some(Outcome::Failed { error: reason }),
+                reason = wait_stop(self.p.stop.clone()) => Some(stopped(reason)),
                 _ = until(self.deadline()) => Some(Outcome::Exhausted { limit: ExhaustedLimit::Seconds }),
             };
             recorder.check()?;
@@ -631,7 +631,7 @@ impl Episode {
             retried = Some((cause, delay_ms));
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(delay_ms)) => {}
-                reason = wait_stop(self.p.stop.clone()) => return Ok(Answer::Ended(Outcome::Failed { error: reason })),
+                reason = wait_stop(self.p.stop.clone()) => return Ok(Answer::Ended(stopped(reason))),
             }
         }
     }
@@ -674,7 +674,7 @@ impl Episode {
         let values = tokio::select! {
             values = run => values,
             e = posting => return Err(e.into()),
-            reason = wait_stop(self.p.stop.clone()) => return Ok(Err(Outcome::Failed { error: reason })),
+            reason = wait_stop(self.p.stop.clone()) => return Ok(Err(stopped(reason))),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };
         // The turn's results are bounded together, before any is appended,
@@ -833,6 +833,17 @@ fn item(source: InboxSource, text: &str) -> InboxItem {
 
 /// Resolves with the reason once the stop signal carries one. Never
 /// resolves when the sender is gone, which is the case without a host.
+/// The outcome a stopped episode ends with. A `cancel` line is a course
+/// correction by whatever started the episode and not a failure, so it ends
+/// blocked; every other stop — a signal, a log that could not be written —
+/// is a failure.
+pub fn stopped(reason: String) -> Outcome {
+    match reason.as_str() {
+        crate::protocol::CANCELLED => Outcome::Blocked { code: BlockedCode::Cancelled, message: reason },
+        _ => Outcome::Failed { error: reason },
+    }
+}
+
 pub async fn wait_stop(mut stop: watch::Receiver<Option<String>>) -> String {
     loop {
         if let Some(reason) = stop.borrow_and_update().clone() {

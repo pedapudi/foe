@@ -194,6 +194,7 @@ of those schemas keeps the one-agent request header unchanged.
 | `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `scope` lists advisory write paths. |
 | `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, or inbox source. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
+| `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
 | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
 | `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |

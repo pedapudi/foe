@@ -19,7 +19,7 @@ use foe_contract::tools::Source;
 use foe_contract::workflow::{ancestors, Node, WorkflowConfig};
 use foe_contract::{Effect, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::loop_::{finish, initialize, lock, until, verify_recorded, wait_stop, Log, Params, Recorder};
+use foe_core::loop_::{finish, initialize, lock, stopped, until, verify_recorded, wait_stop, Log, Params, Recorder};
 use foe_core::registry::{Handles, Registry};
 use foe_core::{
     CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolFailure, ToolFailureCode, ToolValue, Transport,
@@ -515,7 +515,7 @@ impl Executor {
             let (stop, deadline) = (self.shared.stop.clone(), self.deadline());
             let joined = tokio::select! {
                 joined = self.tasks.join_next() => joined,
-                reason = wait_stop(stop) => return Ok(Outcome::Failed { error: reason }),
+                reason = wait_stop(stop) => return Ok(stopped(reason)),
                 _ = until(deadline) => return Ok(Outcome::Exhausted { limit: ExhaustedLimit::Seconds }),
             };
             let fired = joined
@@ -932,7 +932,7 @@ impl Executor {
         let mut recorder = Recorder::new(sh.log.clone(), step, request_id);
         let ended = tokio::select! {
             _ = sh.transport.stream(body, &mut recorder) => None,
-            reason = wait_stop(sh.stop.clone()) => Some(Outcome::Failed { error: reason }),
+            reason = wait_stop(sh.stop.clone()) => Some(stopped(reason)),
             _ = until(self.deadline()) => Some(Outcome::Exhausted { limit: ExhaustedLimit::Seconds }),
         };
         recorder.check()?;

@@ -611,6 +611,15 @@ its remaining input allowance. Concurrent descendants can each cross their
 reserved allowances. The runtime clamps a supported provider's output cap to
 the remaining output allowance.
 
+A lead stops one running member with `cancel`, addressed by roster name. The
+runtime sends the same `cancel` line the teardown sends to every child when an
+episode settles, so the child ends its own episode, writes its own
+`episode/end`, and settles its board task and returns its reservation through
+the path every settlement takes. The outcome is `blocked` with `cancelled`
+rather than `failed`, because a lead that course-corrects has not found a
+child that broke. What the child wrote before it stopped stands. A member that
+has already settled is not an error: the lead asked for a state that holds.
+
 A task remains queued while `max_concurrent` prevents a launch. The scheduler
 starts it after a running child returns capacity. Another exhausted limit
 settles the task as exhausted with the limit recorded in its outcome.

@@ -317,7 +317,7 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
 async fn a_root_serves_send_and_team_from_its_own_roster() {
     let (team, log, _, _) = team();
     let names: Vec<String> = tools(team.clone(), None).iter().map(|t| t.spec().name.clone()).collect();
-    assert_eq!(names, ["spawn", "wait", "steer", "notify", "send", "team"]);
+    assert_eq!(names, ["spawn", "wait", "steer", "cancel", "notify", "send", "team"]);
     assert_eq!(builtin_specs().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
     let send = builtin_specs().into_iter().find(|s| s.name == "send").expect("`send` is built in");
     assert_eq!(send.effect, Effect::Pure, "`send` needs no grant");
@@ -467,4 +467,24 @@ fn every_team_tool_schema_stays_inside_the_implemented_subset() {
     for spec in super::builtin_specs() {
         foe_contract::schema::check(format!("tools.{}.params", spec.name), &spec.params).unwrap();
     }
+}
+
+/// docs/design.md "Agent teams": a lead stops one running member by roster
+/// name. A member no longer running is not an error: the lead asked for a
+/// state that already holds.
+#[test]
+fn cancel_names_a_member_and_is_quiet_about_one_no_longer_running() {
+    let (team, log, _inbox, _router) = team();
+    log.append(start());
+    log.append(EventData::TeamRoster {
+        member_id: "ep_worker".into(),
+        name: "worker".into(),
+        description: "audit one unit".into(),
+        phase: MemberPhase::Active,
+    });
+
+    // The router holds no child, which is a member that has already settled.
+    assert!(team.cancel("worker", "the answer is already in hand").is_ok());
+    let missing = team.cancel("absent", "no such member").unwrap_err();
+    assert!(missing.to_string().contains("no member named absent"), "{missing}");
 }

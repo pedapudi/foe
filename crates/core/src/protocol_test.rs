@@ -303,7 +303,7 @@ async fn inbox_items_are_appended_on_receipt_and_cancel_stops_the_episode() {
         .collect();
     assert_eq!(items.len(), 2, "the duplicate peer message is dropped");
     assert_eq!((items[0].source, items[0].from.as_deref()), (InboxSource::Parent, Some("ep_root")));
-    assert_eq!(stop.borrow().as_deref(), Some("cancelled"));
+    assert_eq!(stop.borrow().as_deref(), Some(super::CANCELLED));
     InboxSink::append(&host, items[0].clone());
     assert_eq!(log.events().len(), 4);
 }
@@ -348,7 +348,7 @@ async fn lines_tagged_for_a_descendant_go_down_unchanged() {
     host.read_lines(std::io::Cursor::new(format!("{tagged}\n{{\"type\":\"cancel\"}}\n").into_bytes())).await;
     assert_eq!(*down.routed.lock().unwrap(), vec![("ep_child".to_string(), tagged.to_string())]);
     assert!(*down.cancelled.lock().unwrap());
-    assert_eq!(stop.borrow().as_deref(), Some("cancelled"));
+    assert_eq!(stop.borrow().as_deref(), Some(super::CANCELLED));
     let (host, stop) = Host::new("ep_self".into(), log, None);
     host.read_lines(std::io::Cursor::new(format!("{tagged}\n").into_bytes())).await;
     assert!(stop.borrow().as_deref().unwrap().contains("ep_child"), "without a downlink a tagged line is an error");

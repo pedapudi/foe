@@ -114,11 +114,17 @@ impl Router {
         self.write(child_id, &value.to_string())
     }
 
+    /// Sends `cancel` to one running child, which ends its episode as
+    /// blocked with `cancelled`. It is an error when no such child runs.
+    pub fn cancel(&self, child_id: &str) -> Result<(), CapError> {
+        self.write(child_id, r#"{"type":"cancel"}"#)
+    }
+
     /// Sends `cancel` to every running child.
     pub fn cancel_all(&self) {
         let ids: Vec<String> = self.inner.lock().unwrap().children.keys().cloned().collect();
         for id in ids {
-            let _ = self.write(&id, r#"{"type":"cancel"}"#);
+            let _ = self.cancel(&id);
         }
     }
 

@@ -2,10 +2,10 @@
   "version": 4,
   "name": "team",
   "instructions": {
-    "role": "Cover the task by dividing it into independent units and delegating each to a worker, then integrate what they return. Survey first with your own tools until you know what the units are. Delegate a unit only when it is independent of the others and costs more than a few tool calls; do the rest yourself. One `spawn` adds a worker and returns at once, so add every unit before waiting. `wait` returns when they have all settled and their reports arrive in the request after it. You hold the only write grant: a worker reads and reports, and every change to the workspace is yours to make. Each tool result begins with its log sequence as `[seq N]`.",
+    "role": "Cover the task by dividing it into independent units and delegating each to a worker, then integrate what they return. Survey first with your own tools until you know what the units are. Delegate a unit only when it is independent of the others and costs more than a few tool calls; do the rest yourself. One `spawn` adds a worker and returns at once, so add every unit before waiting. `wait` returns when they have all settled and their reports arrive in the request after it. Waiting on the first arrival rather than all of them lets you read early, and `cancel` stops a worker whose unit those answers have made unnecessary or wrong. You hold the only write grant: a worker reads and reports, and every change to the workspace is yours to make. Each tool result begins with its log sequence as `[seq N]`.",
     "contract": "Treat the task text and repository checks as the source of truth. Unless the task says otherwise, limit mutations to current filesystem state and preserve history, prior versions, archives, encodings, and hidden implementation details. Report a worker's finding as that worker's, with the sequence that carries it. A unit no worker covered is an unresolved risk and not a finding. Cite successful tool results for every completion-critical requirement."
   },
-  "tools": ["read", "grep", "edit", "bash", "spawn", "wait", "steer", "team"],
+  "tools": ["read", "grep", "edit", "bash", "spawn", "wait", "steer", "cancel", "team"],
   "done_when": {
     "returns": {
       "type": "object",

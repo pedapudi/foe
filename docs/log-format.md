@@ -969,6 +969,7 @@ in version 3. A supervising episode routes on it.
 | `missing-capability` | the task needs a tool or grant the contract lacks |
 | `verification-unsatisfiable` | `done_when` retries were spent with findings still present |
 | `child-blocked` | a child episode was blocked and the parent cannot proceed |
+| `cancelled` | the episode was stopped by whatever started it, through the protocol's `cancel` line |
 | `recovery-exhausted` | request retries were spent, or a workflow reached a recovery bound |
 | `recovery-failed` | a workflow's recovery decision itself failed |
 

@@ -362,6 +362,27 @@ impl Team {
         self.router.send_inbox(&member.member_id, &item)
     }
 
+    /// Stops a running member, addressed by roster name. The child ends its
+    /// own episode as blocked with `cancelled`, which settles its board task
+    /// and returns its reservation through the path every settlement takes.
+    /// A member that has already settled is not an error: the lead asked for
+    /// a state that already holds.
+    pub fn cancel(&self, name: &str, reason: &str) -> Result<(), CapError> {
+        self.log.check()?;
+        let state = self.state();
+        let member = state.member(name).ok_or_else(|| CapError::Invalid(format!("no member named {name}")))?;
+        if !self.router.has_child(&member.member_id) {
+            return Ok(());
+        }
+        self.log.append(EventData::TeamRoster {
+            member_id: member.member_id.clone(),
+            name: name.to_string(),
+            description: format!("stopping: {reason}"),
+            phase: MemberPhase::Active,
+        })?;
+        self.router.cancel(&member.member_id)
+    }
+
     fn set_phase(&self, member_id: &str, phase: MemberPhase) {
         let _guard = self.operations.lock().unwrap();
         let state = self.state();
@@ -455,7 +476,7 @@ impl ChildObserver for Team {
     fn host_call(&self, child_id: &str, name: &str, args: &serde_json::Value) -> Option<ToolValue> {
         let kind: Kind = serde_json::from_value(serde_json::Value::String(name.to_string())).ok()?;
         let content = match kind {
-            Kind::Spawn | Kind::Steer => return None,
+            Kind::Spawn | Kind::Steer | Kind::Cancel => return None,
             Kind::Team => Vec::new(),
             _ => match arg(args, "content") {
                 Ok(text) => text_content(text),
@@ -561,6 +582,7 @@ enum Kind {
     Spawn,
     Wait,
     Steer,
+    Cancel,
     Notify,
     Send,
     Team,
@@ -614,6 +636,16 @@ request that follows.",
                 object(serde_json::json!({ "to": string("roster name"), "content": string("the message") }), &["to", "content"]),
                 Effect::Pure,
             ),
+            Kind::Cancel => (
+                "Stop a running child, addressed by roster name. Its episode ends blocked with `cancelled`, its \
+board task settles, and its unspent reservation returns. Use it to course-correct: a worker whose unit you no \
+longer need, or that the answers already in hand have made wrong. What it wrote before it stopped stands.",
+                object(
+                    serde_json::json!({ "to": string("roster name"), "reason": string("why it is stopping, for the board") }),
+                    &["to"],
+                ),
+                Effect::Pure,
+            ),
             Kind::Notify => (
                 "Send a message to the episode that started this one.",
                 object(serde_json::json!({ "content": string("the message") }), &["content"]),
@@ -640,7 +672,8 @@ request that follows.",
     }
 }
 
-const KINDS: [Kind; 6] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Notify, Kind::Send, Kind::Team];
+const KINDS: [Kind; 7] =
+    [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Cancel, Kind::Notify, Kind::Send, Kind::Team];
 
 /// The specifications of the six team tools, in the order [`tools`] lists
 /// them. Fingerprint and `foe plan` use this without a running team.
@@ -823,6 +856,17 @@ impl Tool for TeamTool {
                 match self.team.steer(to, content) {
                     Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),
                     Err(e) => ToolValue::error(format!("steer: {e}")),
+                }
+            }
+            Kind::Cancel => {
+                let to = match arg(&args, "to") {
+                    Ok(to) => to,
+                    Err(e) => return e,
+                };
+                let reason = args.get("reason").and_then(serde_json::Value::as_str).unwrap_or("no reason given");
+                match self.team.cancel(to, reason) {
+                    Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("stopping {to}")),
+                    Err(e) => ToolValue::error(format!("cancel: {e}")),
                 }
             }
             Kind::Wait => {

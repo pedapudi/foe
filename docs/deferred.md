@@ -36,19 +36,6 @@ same correlation identifier in `message_id`. Correlated exchanges are not
 implemented. Reserved field values: `"request"` and `"response"` for `source`
 in `inbox/item`.
 
-## Cancellation of a running child
-
-Cancellation would let a parent end a child episode it no longer needs —
-the tool that would sit beside `spawn` and `wait` — and with it a
-first-completion-wins composition: wait until any child completes, cancel
-the rest, which is what select and race are. The teardown already ends
-surviving children when the episode ends; what is absent is ending one
-child mid-episode by the model's choice. Cancellation is not implemented.
-No event type or configuration key is reserved. The evidence that would
-justify building it is a consumer needing first-completion-wins — a
-trajectory that waits on `any`, then pays for children whose results it
-discards.
-
 ## Workflow continuation after process interruption
 
 Workflow continuation would restore completed firings, input versions,

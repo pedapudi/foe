@@ -7,6 +7,14 @@
 //! a descendant's `episode_id` is handed to the [`Downlink`] unchanged.
 
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
+
+/// The line type that stops an episode, sent by the process that started it.
+const CANCEL_LINE: &str = "cancel";
+
+/// The stop reason a `cancel` line sets. An episode stopped this way ends
+/// blocked rather than failed: a caller that course-corrects has not found an
+/// episode that broke. `crate::loop_::stopped` reads this value.
+pub const CANCELLED: &str = "stopped by the caller";
 use crate::{CallCtx, ChunkSink, ModelRequestBody, Tool, ToolValue, Transport};
 use foe_contract::document::ResolvedContract;
 use foe_contract::tools::host_spec;
@@ -205,11 +213,11 @@ impl Host {
                 InboxSink::append(self, item);
                 Ok(())
             }
-            "cancel" => {
+            CANCEL_LINE => {
                 if let Some(downlink) = &self.inner.downlink {
                     downlink.cancel_all();
                 }
-                self.stop("cancelled");
+                self.stop(CANCELLED);
                 Ok(())
             }
             other => Err(format!("unknown line type `{other}`")),
