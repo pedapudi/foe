@@ -31,7 +31,7 @@ use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
@@ -348,7 +348,8 @@ impl Spawner for ProcessSpawner {
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
         if !self.contract.permits_spawn(&req.contract) {
-            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list contract {}", req.contract)));
+            let (want, has) = (&req.contract, self.contract.grants.spawn.join(", "));
+            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list {want}; it lists {has}")));
         }
         let contract = self
             .contract
@@ -492,10 +493,18 @@ grant at least one root, or spawn a contract that declares no write tool",
 
 /// The child's diagnostics go to the parent's standard error, one line at a
 /// time, prefixed with the child's id. Standard error is never parsed.
+///
+/// A terminal shows this stream beside whatever the parent draws on its own,
+/// and a conversation display holds an unterminated progress line on the
+/// current row. Each relayed line therefore opens by returning to column one
+/// and clearing that row, so the diagnostic starts a row of its own and the
+/// display redraws below it on its next tick. Redirected standard error
+/// carries no escape.
 fn relay_stderr(child_id: String, stderr: impl std::io::Read + Send + 'static) {
+    let clear = if std::io::stderr().is_terminal() { "\r\x1b[K" } else { "" };
     std::thread::spawn(move || {
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-            eprintln!("[{child_id}] {line}");
+            eprintln!("{clear}[{child_id}] {line}");
         }
     });
 }

@@ -264,6 +264,32 @@ fn a_write_grant_of_no_roots_is_refused_for_a_contract_that_writes() {
     }
 }
 
+/// docs/tools.md `spawn`: a contract name the grant does not carry is
+/// refused with the names it does. The caller reads the tool result and can
+/// name one of them on its next call rather than guessing a second time.
+#[test]
+fn an_ungranted_contract_name_is_refused_with_the_names_the_grant_carries() {
+    let dir = scratch("spawn", "ungranted-contract-name");
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        parent_config(),
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    );
+    let request = SpawnRequest {
+        contract: "auditor".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: None,
+        call_id: "tc".into(),
+    };
+    let Err(denied) = spawner.launch("ep_child".into(), request) else { panic!("an ungranted name is refused") };
+    assert_eq!(denied.to_string(), "capability denied: grants.spawn does not list auditor; it lists worker");
+}
+
 /// docs/config.md `model`: a spawned child's declared model replaces the
 /// parent's selection in the child configuration written to disk.
 #[test]

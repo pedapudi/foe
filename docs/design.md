@@ -841,8 +841,10 @@ keep separate logs. The run prints the directory it created on standard
 error as `foe: log PATH`, and a caller reads the directory from that line
 rather than assembling it. A spawned child prints no such line: it writes
 into the directory its parent created and gave it, and its standard error is
-relayed a line at a time onto whatever the parent is drawing on, where a line
-it did not ask for lands wherever the cursor sits. A run that prints its outcome as JSON ends with
+relayed a line at a time, prefixed with the child's id. On a terminal each
+relayed line first returns to column one and clears the row, so it starts a
+row of its own rather than landing on the unterminated progress line a
+conversation display holds there. A run that prints its outcome as JSON ends with
 `foe: view the episode with foe view PATH` on standard error, because the
 live viewer leaves with the process and the command outlives it. `foe view DIR` renders a directory of episodes
 side by side, so the directory a series of runs shares is also what the
