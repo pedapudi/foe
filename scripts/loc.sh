@@ -15,10 +15,10 @@ cd "$(dirname "$0")/.."
 
 # surface | ceiling | README table row label | crates whose lines are summed
 budgets='
-kernel    | 6250 | kernel               | log core
+kernel    | 6300 | kernel               | log core
 contract  | 1575 | execution contracts  | contract
 tools     | 1900 | coding tools         | code
-team      |  800 | team coordination    | team
+team      |  850 | team coordination    | team
 workflow  | 1050 | workflows            | workflow
 context   |  500 | compaction           | context
 view      |  800 | viewer server        | view

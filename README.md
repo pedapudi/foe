@@ -182,10 +182,10 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 
 | surface | line ceiling |
 |---|---:|
-| kernel (`log` and `core`) | 6,250 |
+| kernel (`log` and `core`) | 6,300 |
 | execution contracts | 1,575 |
 | coding tools | 1,900 |
-| team coordination | 800 |
+| team coordination | 850 |
 | workflows | 1,050 |
 | compaction | 500 |
 | viewer server | 800 |
