@@ -35,6 +35,12 @@ tool responses, reasoning, system instructions, and internal notifications
 are hidden. Child task inputs are hidden because workflow inputs can include
 full tool results. An image appears as a text placeholder.
 
+A forked episode's log opens with a copy of the events its origin wrote,
+ending at `seed/end`. Those events record what the origin did, so the
+conversation skips them and shows the fork's own work alone; without that a
+lead's four forked workers would each redraw the lead's whole history.
+[docs/log-format.md](log-format.md) "Seeding" fixes the boundary.
+
 Messages appear after their complete `assistant/message` event is recorded.
 Polling reads appended log bytes every 100 milliseconds while execution
 runs. Before displaying a returned result, the display reads every
@@ -47,13 +53,18 @@ bottom of scrollback reports progress and is redrawn in place on every poll
 tick:
 
 ```
-◎  [assess-task]  [12 s]  [3 tool calls]
+◎ ◎   ◎   [assess-task]  [12 s]  [3 tool calls]
 ```
 
-The leading glyph advances one frame per tick through the eleven frames
+One glyph is drawn per open lane, in the cells that lane's vertical line
+occupies in the blocks above, so the marks stand at the live feet of those
+lines. A team runs several episodes at once and each of them is marked; the
+column a settled lane held stays blank while a lane to its right is open,
+which is the blank the connector prefix leaves there. Every glyph advances
+one frame per tick through the eleven frames
 [docs/brand/README.md](brand/README.md) defines, so the frame follows the
-number of ticks rather than the clock. The name in brackets is the episode
-whose event arrived most recently. The seconds count from the moment the
+number of ticks rather than the clock, and all of them show one frame. The
+name in brackets is the episode whose event arrived most recently. The seconds count from the moment the
 display started. The tool-call count is the number of tool calls the
 assistant has requested since the last displayed assistant message; a
 parent or peer message and a returned result leave the count as it is. The

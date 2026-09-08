@@ -307,12 +307,12 @@ async fn the_progress_line_pulses_once_per_tick_and_counts_tool_calls() {
     }
     let lines = progress(&terminal.output);
     assert_eq!(lines.len(), 12);
-    assert_eq!(lines[0], "·  [lead]  [12 s]  [3 tool calls]");
+    assert_eq!(lines[0], "·   [lead]  [12 s]  [3 tool calls]");
     assert_eq!(lines.iter().map(|line| line.chars().next().unwrap()).collect::<String>(), "·✶✷✸⊛◎⊛✸✷✶··");
     terminal.event("lead", &message("Done.")).unwrap();
     tokio::time::advance(std::time::Duration::from_secs(1)).await;
     terminal.status().unwrap();
-    assert_eq!(progress(&terminal.output).pop().unwrap(), "✶  [lead]  [13 s]  [1 tool call]");
+    assert_eq!(progress(&terminal.output).pop().unwrap(), "✶   [lead]  [13 s]  [1 tool call]");
 }
 
 /// docs/viewer.md: the progress line carries color on a terminal, is erased
@@ -326,7 +326,7 @@ async fn the_progress_line_yields_to_blocks_and_to_redirected_output() {
     let line = String::from_utf8(terminal.output.clone()).unwrap();
     assert_eq!(
         line,
-        "\r\x1b[K\x1b[38;2;199;121;26m·\x1b[0m  \x1b[2m[\x1b[0m\x1b[1;35mlead\x1b[0m\x1b[2m]\x1b[0m  \
+        "\r\x1b[K\x1b[38;2;199;121;26m·\x1b[0m   \x1b[2m[\x1b[0m\x1b[1;35mlead\x1b[0m\x1b[2m]\x1b[0m  \
          \x1b[2m[\x1b[0m\x1b[2m0 s\x1b[0m\x1b[2m]\x1b[0m  \x1b[2m[\x1b[0m\x1b[32m0 tool calls\x1b[0m\x1b[2m]\x1b[0m"
     );
     terminal.event("lead", &message("Recorded.")).unwrap();
@@ -343,6 +343,58 @@ async fn the_progress_line_yields_to_blocks_and_to_redirected_output() {
     assert!(!String::from_utf8(piped.output).unwrap().contains(ERASE));
 }
 
+/// docs/viewer.md: a team runs several episodes at once, and the progress
+/// line marks every open lane in the column that lane's line stands in, so
+/// the marks read as the live feet of the vertical lines above them.
+#[tokio::test(start_paused = true)]
+async fn the_progress_line_marks_every_open_lane_in_its_own_column() {
+    let mut terminal = Terminal::new(Vec::new(), false, true, 80);
+    terminal.status().unwrap();
+    assert_eq!(progress(&terminal.output).pop().unwrap(), "·   []  [0 s]  [0 tool calls]", "a run with no lane yet");
+    terminal.event("lead", &start("lead")).unwrap();
+    terminal.event("lead", &spawn("first")).unwrap();
+    terminal.event("lead", &spawn("second")).unwrap();
+    terminal.status().unwrap();
+    assert_eq!(progress(&terminal.output).pop().unwrap(), "✶ ✶ ✶   [lead]  [0 s]  [0 tool calls]");
+    // The column a closed lane held stays blank while a lane to its right
+    // is open, which is the blank the connector prefix leaves for it.
+    terminal.event("lead", &returned("first", "Done.")).unwrap();
+    terminal.status().unwrap();
+    assert_eq!(progress(&terminal.output).pop().unwrap(), "✷   ✷   [lead]  [0 s]  [0 tool calls]");
+    terminal.event("lead", &returned("second", "Done.")).unwrap();
+    terminal.status().unwrap();
+    assert_eq!(progress(&terminal.output).pop().unwrap(), "✸   [lead]  [0 s]  [0 tool calls]");
+}
+
+/// docs/log-format.md "Seeding": a forked episode's log opens with a copy of
+/// its origin's events. They record what the origin did, so the transcript
+/// shows this episode's own work alone.
+#[test]
+fn a_forked_log_displays_nothing_it_copied_from_its_origin() {
+    let root = tempfile::tempdir().unwrap();
+    let child = root.path().join("children/forked");
+    append(root.path(), &[start("lead"), spawn("forked")]);
+    let EventData::EpisodeStart(mut forked) = start("forked") else { panic!() };
+    forked.fork_origin = Some(foe_log::ForkOrigin { episode_id: "lead".into(), seq: 2 });
+    append(
+        &child,
+        &[
+            EventData::EpisodeStart(forked),
+            message("Copied from the origin."),
+            spawn("a-child-the-origin-opened"),
+            EventData::SeedEnd {},
+            message("Written by the fork itself."),
+        ],
+    );
+    append(root.path(), &[returned("forked", "Done.")]);
+    let mut terminal = Terminal::new(Vec::new(), false, false, 80);
+    terminal.poll(root.path()).unwrap();
+    let output = String::from_utf8(terminal.output).unwrap();
+    assert!(output.contains("Written by the fork itself."), "{output}");
+    assert!(!output.contains("Copied from the origin."), "{output}");
+    assert!(!output.contains("a-child-the-origin-opened"), "{output}");
+}
+
 /// docs/viewer.md: the episode name is shortened so that the redraw stays on one row.
 #[tokio::test(start_paused = true)]
 async fn the_progress_line_stays_inside_the_terminal_width() {
@@ -350,7 +402,7 @@ async fn the_progress_line_stays_inside_the_terminal_width() {
     terminal.event("lead", &start("a-contract-name-longer-than-the-row")).unwrap();
     terminal.status().unwrap();
     let line = progress(&terminal.output).pop().unwrap();
-    assert_eq!(line, "·  [a-contract-n]  [0 s]  [0 tool calls]");
+    assert_eq!(line, "·   [a-contract-]  [0 s]  [0 tool calls]");
     assert_eq!(line.chars().count(), 40);
 }
 

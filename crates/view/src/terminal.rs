@@ -86,7 +86,9 @@ struct Terminal<W> {
     /// then, so redirected output holds appended blocks alone.
     interactive: bool,
     width: usize,
-    offsets: BTreeMap<PathBuf, (u64, String)>,
+    /// Per log directory: how far it has been read, whose episode it is,
+    /// and whether its seeded prefix is still being skipped.
+    offsets: BTreeMap<PathBuf, Reader>,
     /// One entry per open lane: the episode id, its name, and the index of
     /// the identity color the name holds.
     lanes: Vec<(String, String, usize)>,
@@ -102,6 +104,15 @@ struct Terminal<W> {
     active: String,
     /// Whether the progress line stands on the last line written.
     drawn: bool,
+}
+
+/// How far one log directory has been read and whose episode it holds.
+#[derive(Clone, Default)]
+struct Reader {
+    offset: u64,
+    id: String,
+    /// Inside a forked log's copied prefix, which ends at `seed/end`.
+    seeding: bool,
 }
 
 /// One line of a body: a section title, bold in color mode, or text.
@@ -120,28 +131,53 @@ impl<W: Write> Terminal<W> {
         Self { output, color, interactive, width, offsets, lanes, started, ticks: 0, calls: 0, active, drawn: false }
     }
 
-    /// Redraws the progress line in place: the pulsing mark, the episode that
-    /// acted most recently, the seconds since the display started, and the
-    /// tool calls requested since the last displayed assistant message. The
-    /// episode name is shortened to whatever the width leaves, so the redraw
-    /// stays on one row and `ERASE` reaches all of it.
+    /// Redraws the progress line in place: one pulsing mark per open lane,
+    /// the episode that acted most recently, the seconds since the display
+    /// started, and the tool calls requested since the last displayed
+    /// assistant message. The episode name is shortened to whatever the
+    /// width leaves, so the redraw stays on one row and `ERASE` reaches all
+    /// of it.
+    ///
+    /// The marks occupy the same cells as the connector prefix of the lines
+    /// above, so each one stands at the foot of its own lane's vertical
+    /// line. A team runs several episodes at once and every one of them
+    /// gets a mark; a lane whose column is held open by a lane to its right
+    /// gets the blank the transcript gives it.
     fn status(&mut self) -> io::Result<()> {
         if !self.interactive {
             return Ok(());
         }
-        let mark = FRAMES[self.ticks % FRAMES.len()];
+        let frame = FRAMES[self.ticks % FRAMES.len()];
         self.ticks += 1;
-        let mark = if self.color { format!("{ACCENT}{mark}\x1b[0m") } else { mark.into() };
+        let marks = match self.lanes.is_empty() {
+            true => self.glyph(frame),
+            false => self
+                .lanes
+                .iter()
+                .map(|(id, ..)| if id.is_empty() { "  ".to_string() } else { self.glyph(frame) })
+                .collect(),
+        };
+        let cells = if self.lanes.is_empty() { 2 } else { self.lanes.len() * 2 };
         let seconds = format!("{} s", tokio::time::Instant::now().duration_since(self.started).as_secs());
         let calls = format!("{} tool call{}", self.calls, if self.calls == 1 { "" } else { "s" });
-        let room = self.width.saturating_sub(seconds.chars().count() + calls.chars().count() + 13);
+        let spent = seconds.chars().count() + calls.chars().count() + cells + 12;
+        let room = self.width.saturating_sub(spent);
         let lane: String = self.active.chars().take(room).collect();
         let held = self.lanes.iter().find(|(_, name, _)| *name == self.active);
         let code = held.map_or(IDENTITY[identity(&self.active)], |(_, _, slot)| IDENTITY[*slot]);
         let fields = [self.bracket(code, &lane), self.bracket(DIM, &seconds), self.bracket(GREEN, &calls)];
         self.drawn = true;
-        write!(self.output, "{ERASE}{mark}  {}", fields.join("  "))?;
+        write!(self.output, "{ERASE}{marks}{GUTTER}{}", fields.join("  "))?;
         self.output.flush()
+    }
+
+    /// One cell of the progress line: the pulse frame in the brand accent,
+    /// padded to the two columns a connector cell occupies.
+    fn glyph(&self, frame: &str) -> String {
+        match self.color {
+            true => format!("{ACCENT}{frame}\x1b[0m "),
+            false => format!("{frame} "),
+        }
     }
 
     /// One bracketed field of the progress line, its text in `code` and its
@@ -167,20 +203,30 @@ impl<W: Write> Terminal<W> {
         if !dir.join("episode.jsonl").is_file() {
             return Ok(());
         }
-        let (offset, mut id) = self.offsets.get(dir).cloned().unwrap_or_default();
-        let (events, offset) =
-            foe_log::fold::read_from(dir, offset).map_err(|e| io::Error::other(format!("{}: {e}", dir.display())))?;
+        let mut reader = self.offsets.get(dir).cloned().unwrap_or_default();
+        let (events, offset) = foe_log::fold::read_from(dir, reader.offset)
+            .map_err(|e| io::Error::other(format!("{}: {e}", dir.display())))?;
         for event in events {
+            // Everything between a forked episode's own start and its
+            // `seed/end` was copied from the origin's log. It records what
+            // that episode did, so displaying it here would draw this
+            // episode repeating its origin's work and opening its origin's
+            // children. docs/log-format.md "Seeding" fixes the boundary.
+            if let EventData::EpisodeStart(start) = &event.data {
+                reader.id = start.id.clone();
+                reader.seeding = start.fork_origin.is_some();
+            } else if reader.seeding {
+                reader.seeding = !matches!(&event.data, EventData::SeedEnd {});
+                continue;
+            }
             // A returned result follows every available message from its child.
             if let EventData::SpawnEnd { child_id, .. } = &event.data {
                 self.poll(&dir.join("children").join(child_id))?;
             }
-            if let EventData::EpisodeStart(start) = &event.data {
-                id = start.id.clone();
-            }
-            self.event(&id, &event.data)?;
+            self.event(&reader.id.clone(), &event.data)?;
         }
-        self.offsets.insert(dir.into(), (offset, id));
+        reader.offset = offset;
+        self.offsets.insert(dir.into(), reader);
         for child in crate::project::episode_dirs(&dir.join("children")) {
             self.poll(&child)?;
         }
