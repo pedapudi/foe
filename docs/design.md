@@ -929,11 +929,19 @@ lead surveys with its own tools, writes the shared surfaces itself, adds one
 board task per unit with the paths that unit writes, waits, and integrates
 what the workers return. A worker does its one unit inside the paths it was
 granted, reports a change it needs outside them rather than making it, and
-returns its findings with the log sequences that carry them. Its declared
-write grant is the ceiling a spawn narrows and never what a worker gets: the
-tool states the roots on every call, so a worker whose lead named none writes
-nothing. Two workers therefore cannot touch one file, and there is no merge
-and no lock. A worker has no spawn grant and leads no team of its own. Six run
+returns its findings with the log sequences that carry them. The worker
+contract's declared write grant is the ceiling a spawn narrows and never
+what one worker gets: the tool states the roots on every call, so two
+workers of that contract take disjoint parts of the tree. They therefore
+cannot touch one file, and there is no merge and no lock.
+
+A unit that answers rather than changes goes to a surveyor, the second
+delegate kind. A surveyor reads, searches, and runs commands, declares no
+tool that could change a file, and is granted no write root. The two kinds
+exist because a grant is a narrowing and not a subtraction of tools: a write
+grant of no roots would leave a worker's `edit` with nothing it may write,
+and the spawn is refused rather than the child left to die at construction.
+Neither kind has a spawn grant, so neither leads a team of its own. Six run
 at once and twelve may open over the run, which is a second round after the
 first. `--verify` gates the lead and every worker, so a unit that broke its
 own ground does not reach the integration. A worker is not a coding workflow:

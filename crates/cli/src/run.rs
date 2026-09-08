@@ -724,17 +724,22 @@ pub(crate) fn team_contract_document(
         serde_json::from_str(BUILTIN_TEAM_DOCUMENT).map_err(|e| format!("built-in team document: {e}"))?;
     let environment = builtin_environment(root, Path::is_file);
     document["instructions"]["environment"] = serde_json::json!(environment);
-    document["child_contracts"]["worker"]["instructions"]["environment"] = serde_json::json!(environment);
     document["model"] = serde_json::json!(model);
     document["grants"] = serde_json::json!({
-        "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS, "spawn": ["worker"]
+        "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS, "spawn": ["worker", "surveyor"]
     });
-    // A worker reads everything the lead reads. Its write grant is the
-    // ceiling a spawn narrows, never what a worker gets: the tool states the
-    // roots on every call, and a worker named none writes nothing.
-    document["child_contracts"]["worker"]["grants"] =
-        serde_json::json!({ "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS });
-    document["child_contracts"]["worker"]["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
+    // Both kinds read everything the lead reads and run the same commands.
+    // A worker's write grant is the ceiling a spawn narrows, never what one
+    // worker gets: the tool states the roots on every call. A surveyor
+    // declares no write tool and is granted no write root, which is what
+    // makes it the kind for a unit that answers rather than changes.
+    for (child, write) in [("worker", vec![root]), ("surveyor", vec![])] {
+        let entry = &mut document["child_contracts"][child];
+        entry["instructions"]["environment"] = serde_json::json!(environment);
+        entry["grants"] =
+            serde_json::json!({ "read": [root], "write": write, "execute": BUILTIN_EXECUTE_ROOTS });
+        entry["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
+    }
     // The lifetime count is the lead plus the workers it may open in all,
     // which is twice what may run at once, so a second round is affordable.
     document["budget"] = serde_json::json!({
@@ -749,12 +754,14 @@ pub(crate) fn team_contract_document(
     if let Some(check) = verify {
         let def = verifier_def(check, root)?;
         add_verifier(&mut document, &def);
-        add_verifier(&mut document["child_contracts"]["worker"], &def);
         document["done_when"]["verify"] = serde_json::json!("check");
         document["done_when"]["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
-        let worker = &mut document["child_contracts"]["worker"]["done_when"];
-        worker["verify"] = serde_json::json!("check");
-        worker["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
+        for child in ["worker", "surveyor"] {
+            add_verifier(&mut document["child_contracts"][child], &def);
+            let entry = &mut document["child_contracts"][child]["done_when"];
+            entry["verify"] = serde_json::json!("check");
+            entry["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
+        }
     }
     serde_json::from_value(document).map_err(|e| format!("built-in team document: {e}"))
 }

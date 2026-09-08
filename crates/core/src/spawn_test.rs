@@ -219,6 +219,51 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
     assert_eq!(effective_budget(&contract.budget, &child.budget, granted).max_episodes, 2);
 }
 
+/// docs/tools.md `spawn`: a write grant of no roots is refused for a child
+/// contract that declares a tool that writes. The narrowing bounds where a
+/// tool may write and does not remove the tool, so the child would resolve
+/// to a contract whose `edit` covers nothing and would die at construction
+/// with nothing said about the call that caused it.
+#[test]
+fn a_write_grant_of_no_roots_is_refused_for_a_contract_that_writes() {
+    let dir = scratch("spawn", "empty-write-grant");
+    let mut config = parent_config();
+    config.grants.write = vec!["/tmp".into()];
+    let worker = config.child_contracts.get_mut("worker").expect("the parent declares a worker");
+    worker.tools = vec!["notify".into(), "put".into()];
+    worker.host_tools = serde_json::from_value(serde_json::json!({
+        "put": { "description": "Writes a file.", "params": { "type": "object" }, "effect": "writes" }
+    }))
+    .unwrap();
+    worker.grants.write = vec!["/tmp".into()];
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    );
+    let request = |write: Option<Vec<PathBuf>>| SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write,
+        call_id: "tc".into(),
+    };
+    let Err(refused) = spawner.launch("ep_child".into(), request(Some(Vec::new()))) else {
+        panic!("a write grant of no roots is refused");
+    };
+    let message = refused.to_string();
+    assert!(message.contains("`put`"), "{message}");
+    assert!(message.contains("nothing it may write"), "{message}");
+    // One root is the ordinary narrowing and is not refused here.
+    if let Err(refused) = spawner.launch("ep_other".into(), request(Some(vec![dir.join("unit")]))) {
+        panic!("one root is the ordinary narrowing: {refused}");
+    }
+}
+
 /// docs/config.md `model`: a spawned child's declared model replaces the
 /// parent's selection in the child configuration written to disk.
 #[test]

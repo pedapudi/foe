@@ -26,7 +26,7 @@ use crate::process_boundary::{command_in, ProcessBoundary};
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
 use command_fds::{CommandFdExt, FdMapping};
 use foe_contract::document::{ResolvedContract, CONTRACT_FORMAT_VERSION};
-use foe_contract::{Budget, ContractDocument, ToolSpec};
+use foe_contract::{Budget, ContractDocument, Effect, ToolSpec};
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -368,6 +368,21 @@ impl Spawner for ProcessSpawner {
             roots.iter().map(|root| if root.is_absolute() { root.clone() } else { base.join(root) }).collect::<Vec<_>>()
         });
         if let Some(roots) = &granted {
+            // A grant of no roots leaves a write tool with nothing it may
+            // write. The contract would not resolve, and the child would
+            // die at construction with nothing said about the call that
+            // caused it, so the call is what is refused.
+            if roots.is_empty() {
+                let specs = foe_contract::tools::resolve_specs(contract, &self.builtin_specs)
+                    .map_err(|e| CapError::Invalid(e.to_string()))?;
+                if let Some(tool) = specs.iter().find(|spec| spec.effect == Effect::Writes) {
+                    return Err(CapError::Invalid(format!(
+                        "write [] leaves `{}`, which the {} contract declares, with nothing it may write: \
+grant at least one root, or spawn a contract that declares no write tool",
+                        tool.name, req.contract
+                    )));
+                }
+            }
             if let Some(outside) = roots.iter().find(|root| !foe_contract::contains(&contract.grants.write, root)) {
                 let declared = &contract.grants.write;
                 return Err(CapError::Invalid(format!(

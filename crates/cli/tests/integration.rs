@@ -1939,23 +1939,29 @@ fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     assert_eq!(oneshot["contract"]["tools"], implementation["tools"]);
     assert_ne!(oneshot["contract_fingerprint"], report["contract_fingerprint"], "the two forms hash apart");
 
-    // The team document delegates: the lead may spawn a worker, the worker
-    // reads everything the lead reads and writes nothing, and every change to
-    // the workspace is therefore made in the one episode that holds the grant.
+    // The team document delegates in two kinds: a worker changes files
+    // inside the roots the lead grants it, and a surveyor answers a question
+    // and declares no tool that could change anything.
     let team = resolved("builtin:team");
     assert_eq!(team["contract"]["name"], "team");
-    assert_eq!(team["contract"]["grants"]["spawn"], json!(["worker"]));
+    assert_eq!(team["contract"]["grants"]["spawn"], json!(["worker", "surveyor"]));
     assert_eq!(team["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
     let worker = &team["contract"]["child_contracts"]["worker"];
+    let surveyor = &team["contract"]["child_contracts"]["surveyor"];
     // The worker's write grant is the ceiling a spawn narrows, not what any
-    // worker gets: the tool states the roots on every call, so a worker whose
-    // lead named none writes nothing.
+    // worker gets: the tool states the roots on every call, so two workers of
+    // one contract take disjoint parts of the tree.
     assert_eq!(worker["grants"]["write"], team["contract"]["grants"]["write"]);
-    assert_eq!(worker["grants"]["read"], team["contract"]["grants"]["read"]);
-    assert_eq!(worker["grants"]["spawn"], json!([]), "a worker leads no team of its own");
+    assert_eq!(surveyor["grants"]["write"], json!([]), "a surveyor writes nowhere");
+    for child in [worker, surveyor] {
+        assert_eq!(child["grants"]["read"], team["contract"]["grants"]["read"]);
+        assert_eq!(child["grants"]["spawn"], json!([]), "a delegate leads no team of its own");
+        let tools = child["tools"].as_array().unwrap();
+        assert!(!tools.iter().any(|t| t == "spawn"));
+    }
     assert!(team["contract"]["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
     assert!(worker["tools"].as_array().unwrap().iter().any(|t| t == "edit"), "a worker does the work");
-    assert!(!worker["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
+    assert!(!surveyor["tools"].as_array().unwrap().iter().any(|t| t == "edit"), "a surveyor only reports");
     assert_eq!(team["contract"]["budget"]["max_concurrent"], json!(6));
     assert_ne!(team["contract_fingerprint"], oneshot["contract_fingerprint"], "the forms hash apart");
 
@@ -2491,3 +2497,4 @@ fn a_fork_boundary_outside_the_source_log_is_refused() {
     assert_eq!((events.len(), code), (0, Some(1)));
     assert!(err.contains("seed boundary lies within the source log"), "{err}");
 }
+

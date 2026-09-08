@@ -83,7 +83,9 @@ workflow, which `--config builtin:coding` names explicitly.
 `--config builtin:team` divides the task into units, gives each worker the
 paths that unit writes, and integrates what they return. The lead writes the
 shared surfaces itself and grants each worker a disjoint part of the tree,
-which the kernel then holds, so two workers cannot touch one file.
+which the kernel then holds, so two workers cannot touch one file. A unit
+that answers rather than changes goes to a surveyor, which declares no tool
+that could change a file.
 The runtime supports API-key endpoints, OAuth-backed coding endpoints,
 compatible HTTP endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
