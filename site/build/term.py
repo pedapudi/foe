@@ -201,6 +201,12 @@ class Term:
     def finish(self, t, outcome, path):
         status, body = result_text(outcome)
         self.lanes = []
+        # A returned object is the last node's own tool payload, which the
+        # figure has already drawn as that node's result. Redrawing its
+        # fields under "Final" tells a reader nothing the run did not
+        # already show, so the closing line carries the outcome alone.
+        if outcome["kind"] == "completed" and not isinstance(outcome["value"], str):
+            body = []
         head = [["hd", "Final" + FIELD], ["hd oc-%s" % status.lower(), status]]
         self.emit(t, "● ", head, "", body, ep="final")
 
