@@ -103,6 +103,9 @@ export interface CausalityEpisode {
   depth: number;
   parentId: string | null;
   outcome: Outcome | null;
+  /** What the episode was told to do: the person's words for a run, and
+   * the words of the episode that opened it for a spawned one. */
+  task: string;
   /** When the episode started and settled, on the wall clock. */
   startTime: number;
   endTime: number | null;
@@ -441,6 +444,7 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
     depth,
     parentId: summary.parentId,
     outcome: summary.outcome,
+    task: summary.task,
     startTime: summary.startTime,
     endTime: summary.endTime,
     lastSeq: summary.lastSeq,
@@ -630,6 +634,26 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
       toSeq: Math.max(0, episode.lastSeq),
       seq: 0,
     });
+
+    // The task hangs under the episode it was given to. It is the one thing
+    // that tells two children of one contract apart, and for a run it is
+    // what the person asked for.
+    if (episode.task !== "") {
+      push({
+        id: `${episode.id}/task`,
+        kind: "prose",
+        episodeId: episode.id,
+        laneId,
+        parent: head.id,
+        depth: episode.depth + 1,
+        label: "",
+        aside: "",
+        body: episode.task,
+        fromSeq: 0,
+        toSeq: 0,
+        seq: 0,
+      });
+    }
 
     // Steps and firings are one sequence down the row: both are marks on
     // this episode's work, and the log's order is the order they happened.

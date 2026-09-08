@@ -73,7 +73,7 @@ fn conversation_includes_only_visible_messages() {
     terminal.event("lead", &EventData::InboxItem(inbox.clone())).unwrap();
     terminal.event("lead", &spawn("worker")).unwrap();
     terminal.event("worker", &start("worker")).unwrap();
-    inbox.content = vec![ContentBlock::Text { text: "hidden-tool-input-in-child-task".into() }];
+    inbox.content = vec![ContentBlock::Text { text: "The unit this worker was given".into() }];
     terminal.event("worker", &EventData::InboxItem(inbox.clone())).unwrap();
     terminal.event("lead", &returned("worker", "Work complete.")).unwrap();
     inbox.source = InboxSource::System;
@@ -93,11 +93,50 @@ fn conversation_includes_only_visible_messages() {
     }
     let output = String::from_utf8(terminal.output).unwrap();
     assert!(output.contains("lead – You\n│   Visible task"), "{output}");
+    // The run's own task came from the person; a spawned episode's came
+    // from the episode that opened it, and is what tells two children of
+    // one contract apart.
+    assert!(output.contains("worker – Task\n│ │   The unit this worker was given"), "{output}");
     assert!(output.contains("Visible response\n│   with a second line"), "{output}");
     assert_eq!(output.matches("– Assistant").count(), 1);
     for hidden in ["hidden-", "import pytest", "tool_calls", "<first>", "\x1b"] {
         assert!(!output.contains(hidden), "{output}");
     }
+}
+
+/// docs/viewer.md: a spawned episode's task is shown under the branch that
+/// opened it, bounded, because a team lead writes a unit of a few sentences
+/// and a workflow node's input can be a whole tool result.
+#[test]
+fn a_spawned_task_is_shown_and_a_long_one_is_bounded() {
+    let task = |text: &str| {
+        EventData::InboxItem(InboxItem {
+            source: InboxSource::Task,
+            content: vec![ContentBlock::Text { text: text.into() }],
+            from: None,
+            message_id: None,
+        })
+    };
+    let render = |text: &str| {
+        let mut terminal = Terminal::new(Vec::new(), false, false, 40);
+        terminal.event("lead", &start("lead")).unwrap();
+        terminal.event("lead", &spawn("worker")).unwrap();
+        terminal.event("worker", &start("worker")).unwrap();
+        terminal.event("worker", &task(text)).unwrap();
+        String::from_utf8(terminal.output).unwrap()
+    };
+    // A unit of a few sentences reaches the reader whole.
+    let short = render("Audit README.md against scripts/loc.sh.");
+    assert!(short.contains("Audit README.md against"), "{short}");
+    assert!(!short.contains("more line"), "{short}");
+    // A long one keeps its opening and says how much it dropped.
+    let long = render(&"word ".repeat(120));
+    let body: Vec<&str> = long.lines().filter(|line| line.contains("word")).collect();
+    assert_eq!(body.len(), TASK_LINES, "the task takes the lines it may and no more");
+    assert!(long.contains("more lines"), "{long}");
+    let dropped: usize =
+        long.lines().find_map(|line| line.split("… ").nth(1)?.split(' ').next()?.parse().ok()).expect("a count");
+    assert!(dropped > 0, "{long}");
 }
 
 /// docs/viewer.md: messages from concurrent and nested branches precede their returned results.

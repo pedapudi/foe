@@ -12,6 +12,10 @@ use std::path::{Path, PathBuf};
 const GUTTER: &str = "  ";
 /// The narrowest text column wrapping produces, however deep the lanes.
 const MIN_TEXT_WIDTH: usize = 20;
+/// Wrapped lines a spawned episode's task may take before a count stands
+/// for the rest. A team lead writes a unit of a few sentences, which this
+/// shows whole; a workflow node's input can be a whole tool result.
+const TASK_LINES: usize = 6;
 /// The width assumed when standard output has no window size.
 const DEFAULT_WIDTH: usize = 80;
 /// The frames of the progress glyph, one per poll tick: the core dot, the
@@ -277,8 +281,12 @@ impl<W: Write> Terminal<W> {
             EventData::InboxItem(item)
                 if matches!(
                     item.source,
-                    InboxSource::Parent | InboxSource::Peer | InboxSource::Request | InboxSource::Response
-                ) || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, ..)| key == id)) =>
+                    InboxSource::Parent
+                        | InboxSource::Peer
+                        | InboxSource::Request
+                        | InboxSource::Response
+                        | InboxSource::Task
+                ) =>
             {
                 let i = self.lane(id);
                 fn text(block: &ContentBlock) -> &str {
@@ -288,12 +296,19 @@ impl<W: Write> Terminal<W> {
                     }
                 }
                 let body = item.content.iter().map(text).collect::<Vec<_>>().join("\n\n");
-                self.block(i, item.from.as_deref().unwrap_or("You"), &[Row::Text(body)])?;
+                // The run's own task came from the person running it; a
+                // spawned episode's came from the episode that opened it,
+                // and is the one thing that tells two children of one
+                // contract apart.
+                let root = self.lanes.first().is_some_and(|(key, ..)| key == id);
+                let spawned = item.source == InboxSource::Task && !root;
+                let label = if spawned { "Task" } else { item.from.as_deref().unwrap_or("You") };
+                self.block(i, label, &[Row::Text(body)], spawned.then_some(TASK_LINES))?;
             }
             EventData::AssistantMessage(message) if !message.text.trim().is_empty() => {
                 let i = self.lane(id);
                 let label = if message.interrupted { "Assistant (interrupted)" } else { "Assistant" };
-                self.block(i, label, &display_value(&message.text.clone().into()))?;
+                self.block(i, label, &display_value(&message.text.clone().into()), None)?;
             }
             EventData::SpawnStart { child_id, contract, .. } => {
                 let parent = self.lane(id);
@@ -317,7 +332,7 @@ impl<W: Write> Terminal<W> {
                 while self.lanes.last().is_some_and(|(id, ..)| id.is_empty()) {
                     self.lanes.pop();
                 }
-                self.body(&body)?;
+                self.body(&body, None)?;
             }
             _ => {}
         }
@@ -339,12 +354,12 @@ impl<W: Write> Terminal<W> {
         writeln!(self.output, "{}{prefix}{}{}", sgr(DIM), sgr("\x1b[0m"), fields.iter().map(field).collect::<String>())
     }
 
-    fn block(&mut self, lane: usize, label: &str, body: &[Row]) -> io::Result<()> {
+    fn block(&mut self, lane: usize, label: &str, body: &[Row], limit: Option<usize>) -> io::Result<()> {
         let mut prefix = self.prefix();
         prefix[lane] = "● ";
         let (name, code) = (self.lanes[lane].1.clone(), IDENTITY[self.lanes[lane].2]);
         self.heading(&prefix.concat(), &[(code, name), (CYAN, format!("{FIELD}{label}"))])?;
-        self.body(body)
+        self.body(body, limit)
     }
 
     fn edge(&mut self, parent: usize, child: usize, end: &str, fields: &[(&'static str, String)]) -> io::Result<()> {
@@ -360,18 +375,44 @@ impl<W: Write> Terminal<W> {
     /// Writes the rows under the current lanes, then one blank line. Every
     /// emitted line starts with the connector cells and the gutter, so a
     /// wrapped continuation or a blank line never breaks a vertical line.
-    fn body(&mut self, rows: &[Row]) -> io::Result<()> {
+    ///
+    /// `limit` bounds the wrapped lines the body may take, and a count
+    /// stands for the rest. Only a spawned episode's task is bounded: a
+    /// team lead writes a unit of a few sentences, and a workflow node's
+    /// input can be a whole tool result.
+    fn body(&mut self, rows: &[Row], limit: Option<usize>) -> io::Result<()> {
         let prefix = self.prefix().concat();
         let room = self.width.saturating_sub(prefix.chars().count() + GUTTER.len()).max(MIN_TEXT_WIDTH);
-        for row in rows.iter().chain(once(&Row::Text(String::new()))) {
+        let mut lines: Vec<(String, bool)> = Vec::new();
+        for row in rows {
             let (text, title) = match row {
                 Row::Title(text) => (text, true),
                 Row::Text(text) => (text, false),
             };
-            for line in clean(text).trim_end_matches('\n').split('\n').flat_map(|line| wrap(line, room)) {
-                let line = if title && self.color { format!("\x1b[1m{line}\x1b[0m") } else { line };
-                writeln!(self.output, "{}", format!("{prefix}{GUTTER}{line}").trim_end())?;
-            }
+            let cleaned = clean(text);
+            let wrapped = cleaned.trim_end_matches('\n').split('\n').flat_map(|line| wrap(line, room));
+            lines.extend(wrapped.map(|line| (line, title)));
+        }
+        // The bound counts lines that carry text: a structured task is
+        // mostly headings and blank lines, and a bound that counted those
+        // would keep almost none of what a reader came for.
+        let mut text = 0;
+        let carries = |(line, _): &(String, bool)| !line.trim().is_empty();
+        if let Some(cut) = limit.and_then(|max| {
+            lines.iter().position(|l| {
+                carries(l) && {
+                    text += 1;
+                    text > max
+                }
+            })
+        }) {
+            let over = lines.len() - cut;
+            lines.truncate(cut);
+            lines.push((format!("… {over} more line{}", if over == 1 { "" } else { "s" }), false));
+        }
+        for (line, title) in lines.into_iter().chain(once((String::new(), false))) {
+            let line = if title && self.color { format!("\x1b[1m{line}\x1b[0m") } else { line };
+            writeln!(self.output, "{}", format!("{prefix}{GUTTER}{line}").trim_end())?;
         }
         Ok(())
     }
@@ -385,7 +426,7 @@ impl<W: Write> Terminal<W> {
         let (label, body) = result.as_ref().map_or_else(failed, result_text);
         self.heading("● ", &[(CYAN, format!("Final{FIELD}{label}"))])?;
         self.lanes.clear();
-        self.body(&body)?;
+        self.body(&body, None)?;
         writeln!(self.output, "{GUTTER}Viewer: foe view {}", dir.display())?;
         self.output.flush()
     }

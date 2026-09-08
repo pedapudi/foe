@@ -163,6 +163,23 @@ test("a node entered twice is one row and a loop edge, not two rows", () => {
   assert.notEqual(loops[0]!.bow, 0, "a loop returning to its own column bows out of it");
 });
 
+// docs/viewer.md: every episode row carries the task the episode was given,
+// which is what tells two children of one contract apart.
+test("an episode's task hangs under its own row", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  for (const episode of outline.episodes) {
+    const row = outline.rows.find((r) => r.id === `${episode.id}/task`);
+    assert.ok(row, `${episode.id} carries its task`);
+    assert.equal(row.body, episode.task);
+    assert.notEqual(episode.task, "", "the fixture episodes were each given one");
+    assert.equal(row.parent, episode.id, "it hangs under the episode row");
+    assert.equal(outline.rows.indexOf(row), outline.rows.findIndex((r) => r.id === episode.id) + 1);
+  }
+  // Two children of one contract are told apart by it and by nothing else.
+  const tasks = outline.episodes.map((e) => e.task);
+  assert.equal(new Set(tasks).size, tasks.length);
+});
+
 // Column reuse.
 
 test("a lane column is released when the lane closes and taken by the next", () => {
@@ -211,6 +228,7 @@ test("the calls of one step are read before the children they opened", () => {
   const child = (id: string, start: number, end: number): CausalityEpisode => ({
     id,
     name: "worker",
+    task: `the unit for ${id}`,
     depth: 1,
     parentId: "ep_lead",
     outcome: { kind: "completed", value: null },
@@ -223,6 +241,7 @@ test("the calls of one step are read before the children they opened", () => {
   const lead: CausalityEpisode = {
     id: "ep_lead",
     name: "lead",
+    task: "the task the person gave",
     depth: 0,
     parentId: null,
     outcome: null,

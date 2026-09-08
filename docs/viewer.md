@@ -29,11 +29,18 @@ has already tuned them for its background. The rest of a heading stays cyan.
 [docs/design-language.md](design-language.md) states the same channel for the
 browser viewer.
 
-The conversation shows the root task, parent and peer messages, nonempty assistant
-messages, returned child outcomes, and the final outcome. Tool requests,
-tool responses, reasoning, system instructions, and internal notifications
-are hidden. Child task inputs are hidden because workflow inputs can include
-full tool results. An image appears as a text placeholder.
+The conversation shows every episode's task, parent and peer messages,
+nonempty assistant messages, returned child outcomes, and the final outcome.
+Tool requests, tool responses, reasoning, system instructions, and internal
+notifications are hidden. An image appears as a text placeholder.
+
+A spawned episode's task is written under the branch that opened it, headed
+`NAME – Task` where the run's own task is headed `NAME – You`. It is the one
+thing that tells two children of one contract apart. It is bounded at six
+lines that carry text, and a count stands for the rest: a team lead writes a
+unit of a few sentences, which the bound shows whole, and a workflow node's
+input can be a whole tool result. The bound counts lines carrying text
+because a structured task is mostly headings and blank lines.
 
 A forked episode's log opens with a copy of the events its origin wrote,
 ending at `seed/end`. Those events record what the origin did, so the
@@ -353,7 +360,11 @@ the child a model node ran; those two are the whole of what opens a lane.
 A lane is earned. Two things earn one: an **episode**, which has its own
 agent, budget and typed outcome and can outlive the call that made it, and
 a **workflow**, which branches and loops. Everything else is a mark on the
-lane it belongs to. A **step** — one model request and the tool calls it
+lane it belongs to. An episode's row carries the **task** it was given,
+read at conversation depth as the prose it is: the person's words for a
+run, and the words of the episode that opened it for a spawned one. Two
+children of one contract are told apart by it and by nothing else, so it
+hangs under every episode row rather than in the details pane alone. A **step** — one model request and the tool calls it
 produced, `step` on the log's own events — is a row on its episode's lane,
 and every step the log names is a row whether or not a message answered
 it. A **tool call** is a short tick off its step's row with its mark at the
