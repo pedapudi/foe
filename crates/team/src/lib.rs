@@ -332,7 +332,7 @@ impl Team {
                     task: task.description.clone(),
                     context: task.context,
                     reserve: BudgetAmount::default(),
-                    write: (!task.write.is_empty()).then(|| task.write.iter().map(PathBuf::from).collect()),
+                    write: Some(task.write.iter().map(PathBuf::from).collect()),
                     call_id: task.call_id.clone(),
                 };
                 match spawner.launch(child_id.clone(), request) {
@@ -646,7 +646,7 @@ impl Kind {
                         "context": { "type": "string", "enum": ["fresh", "fork"], "description": "fresh starts the child with only its task; fork seeds it with this episode's conversation so far" },
                         "name": string("roster name for the child; defaults to a unique form of the contract name"),
                         "blocked_by": { "type": "array", "items": { "type": "string" }, "description": "task ids that must complete before this task starts" },
-                        "write": { "type": "array", "items": { "type": "string" }, "description": "the write roots to grant this worker, within your own and within what its contract declares; omitted grants what the contract declares" },
+                        "write": { "type": "array", "items": { "type": "string" }, "description": "the paths this worker may write, within your own and within what its contract allows, and not under or over a root another live task holds; omitted, it writes nothing" },
                     }),
                     &["contract", "task"],
                 ),
@@ -875,7 +875,11 @@ impl Tool for TeamTool {
                     task,
                     context,
                     reserve: BudgetAmount::default(),
-                    write: (!write.is_empty()).then(|| write.iter().map(PathBuf::from).collect()),
+                    // The tool always states the grant, so a worker writes
+                    // where its lead named and nowhere else. A declared grant
+                    // is the ceiling, never the default: an omitted `write`
+                    // is a worker that writes nothing.
+                    write: Some(write.iter().map(PathBuf::from).collect()),
                     call_id: ctx.call_id.clone(),
                 };
                 match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by, write) {

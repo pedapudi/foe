@@ -690,16 +690,22 @@ fn add_verifier(contract: &mut serde_json::Value, def: &serde_json::Value) {
 }
 
 /// Model calls a worker of the team document may spend, and how many of them
-/// run at once. A worker reads and reports, which is a handful of calls; the
-/// lead surveys first, delegates, and writes, so it holds the larger share.
-const BUILTIN_WORKER_CALLS: u64 = 20;
-const BUILTIN_TEAM_WORKERS: u32 = 8;
+/// run at once. A worker does one unit of the work and reports it, which
+/// costs less than the whole task and more than a survey; the lead surveys
+/// first, writes the shared surfaces, delegates, and integrates.
+const BUILTIN_WORKER_CALLS: u64 = 40;
+const BUILTIN_TEAM_WORKERS: u32 = 6;
 
-/// The team document: a lead that divides the task into independent units,
-/// delegates each to a worker, and integrates what they return. The lead
-/// holds the only write grant, so every change to the workspace is made in
-/// one episode however many workers read for it. `verify` gates the lead,
-/// which is the episode that changed anything.
+/// The team document: a lead that divides the task into units, gives each
+/// worker the paths that unit writes, and integrates what they return. A
+/// worker may write, and only where its lead named: the declared grant is
+/// the ceiling and every spawn states the actual roots, which the kernel
+/// then holds. Two workers cannot touch one file, so there is no merge and
+/// no lock, and what remains is the lead's job — write the shared surfaces
+/// first, then partition what is left.
+///
+/// `verify` gates the lead and every worker, so a unit that broke its own
+/// ground does not reach the integration.
 ///
 /// A worker is not a coding workflow. Breadth and verification are separate
 /// questions: this document answers "cover this", and `builtin:coding`
@@ -723,9 +729,11 @@ pub(crate) fn team_contract_document(
     document["grants"] = serde_json::json!({
         "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS, "spawn": ["worker"]
     });
-    // A worker reads everything the lead reads and writes nothing.
+    // A worker reads everything the lead reads. Its write grant is the
+    // ceiling a spawn narrows, never what a worker gets: the tool states the
+    // roots on every call, and a worker named none writes nothing.
     document["child_contracts"]["worker"]["grants"] =
-        serde_json::json!({ "read": [root], "write": [], "execute": BUILTIN_EXECUTE_ROOTS });
+        serde_json::json!({ "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS });
     document["child_contracts"]["worker"]["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
     // The lifetime count is the lead plus the workers it may open in all,
     // which is twice what may run at once, so a second round is affordable.
@@ -739,9 +747,14 @@ pub(crate) fn team_contract_document(
         document["sandbox"] = sandbox_block(mode)?;
     }
     if let Some(check) = verify {
-        add_verifier(&mut document, &verifier_def(check, root)?);
+        let def = verifier_def(check, root)?;
+        add_verifier(&mut document, &def);
+        add_verifier(&mut document["child_contracts"]["worker"], &def);
         document["done_when"]["verify"] = serde_json::json!("check");
         document["done_when"]["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
+        let worker = &mut document["child_contracts"]["worker"]["done_when"];
+        worker["verify"] = serde_json::json!("check");
+        worker["retries"] = serde_json::json!(BUILTIN_VERIFIER_RETRIES);
     }
     serde_json::from_value(document).map_err(|e| format!("built-in team document: {e}"))
 }

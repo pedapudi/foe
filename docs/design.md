@@ -915,14 +915,18 @@ sandbox mode, with no assessment episode and no repair episode. It suits a
 task whose result a person reads directly.
 
 `builtin:team` answers a task that divides rather than one that deepens. The
-lead surveys with its own tools, adds one board task per independent unit,
-waits, and integrates what the workers return. A worker reads, searches, and
-runs read-only commands, and returns a finding with the log sequence that
-carries it; it has no write grant and no spawn grant, so it changes nothing
-and leads no team of its own. The lead holds the only write grant, which is
-why however many workers read, every change to the workspace is made in one
-episode. Eight workers run at once and sixteen may open over the run, which
-is a second round after the first. A worker is not a coding workflow:
+lead surveys with its own tools, writes the shared surfaces itself, adds one
+board task per unit with the paths that unit writes, waits, and integrates
+what the workers return. A worker does its one unit inside the paths it was
+granted, reports a change it needs outside them rather than making it, and
+returns its findings with the log sequences that carry them. Its declared
+write grant is the ceiling a spawn narrows and never what a worker gets: the
+tool states the roots on every call, so a worker whose lead named none writes
+nothing. Two workers therefore cannot touch one file, and there is no merge
+and no lock. A worker has no spawn grant and leads no team of its own. Six run
+at once and twelve may open over the run, which is a second round after the
+first. `--verify` gates the lead and every worker, so a unit that broke its
+own ground does not reach the integration. A worker is not a coding workflow:
 breadth and verification are separate questions, and a document that answered
 both would multiply the episode count of the one it is the default instead
 of. Every other name is refused with

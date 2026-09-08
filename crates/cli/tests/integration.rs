@@ -1773,8 +1773,8 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("recovery-exhausted", "sha256:088f305e369e3c717d8d00da524bf7c7b82b8fd5c5f9f9e132ed95c9d23e3057"),
     ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
     ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
-    ("subagents", "sha256:788f60b19ea8793c1d160ad11f1df1e93687dde4779b4582ca22561acbc7cd8a"),
-    ("team", "sha256:372b09de1d16a14484d18c12667eb40b4b4bc5830bda99c29b17c11f665653a6"),
+    ("subagents", "sha256:a2486639d2bb328c6020e60e1c93caaaa207c5bb58b287e14333f2d8f20287d9"),
+    ("team", "sha256:54ff42718a5a151f68917a2de4f75a2d2cf9541683a8dc6f1e68a8d6787edefb"),
     ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
     ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
     ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),
@@ -1943,12 +1943,16 @@ fn plan_resolves_a_built_in_document_and_refuses_an_unknown_name() {
     assert_eq!(team["contract"]["grants"]["spawn"], json!(["worker"]));
     assert_eq!(team["contract"]["grants"]["write"], json!([dir.to_string_lossy()]));
     let worker = &team["contract"]["child_contracts"]["worker"];
-    assert_eq!(worker["grants"]["write"], json!([]), "a worker changes nothing");
+    // The worker's write grant is the ceiling a spawn narrows, not what any
+    // worker gets: the tool states the roots on every call, so a worker whose
+    // lead named none writes nothing.
+    assert_eq!(worker["grants"]["write"], team["contract"]["grants"]["write"]);
     assert_eq!(worker["grants"]["read"], team["contract"]["grants"]["read"]);
     assert_eq!(worker["grants"]["spawn"], json!([]), "a worker leads no team of its own");
     assert!(team["contract"]["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
-    assert!(!worker["tools"].as_array().unwrap().iter().any(|t| t == "edit"));
-    assert_eq!(team["contract"]["budget"]["max_concurrent"], json!(8));
+    assert!(worker["tools"].as_array().unwrap().iter().any(|t| t == "edit"), "a worker does the work");
+    assert!(!worker["tools"].as_array().unwrap().iter().any(|t| t == "spawn"));
+    assert_eq!(team["contract"]["budget"]["max_concurrent"], json!(6));
     assert_ne!(team["contract_fingerprint"], oneshot["contract_fingerprint"], "the forms hash apart");
 
     let unknown = Command::new(FOE).args(["plan", "--config", "builtin:parser"]).current_dir(&*dir).output().unwrap();

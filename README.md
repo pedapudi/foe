@@ -80,10 +80,10 @@ the current directory. What it runs is the document `--config` names, else
 `.foe/contract.json` in the working directory, else the built-in coding
 workflow, which `--config builtin:coding` names explicitly.
 `--config builtin:oneshot` runs that workflow's implementation episode alone.
-`--config builtin:team` divides the task into independent units, delegates
-each to a worker that reads and reports, and integrates what they return; the
-lead holds the only write grant, so however many workers read, every change is
-made in one episode.
+`--config builtin:team` divides the task into units, gives each worker the
+paths that unit writes, and integrates what they return. The lead writes the
+shared surfaces itself and grants each worker a disjoint part of the tree,
+which the kernel then holds, so two workers cannot touch one file.
 The runtime supports API-key endpoints, OAuth-backed coding endpoints,
 compatible HTTP endpoints, and managed-cloud endpoints.
 [docs/models.md](docs/models.md) describes each provider.
