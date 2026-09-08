@@ -663,6 +663,16 @@ flight continues uninterrupted. A parent calls `wait` after delegation. The
 call consumes no model request while tasks are queued or running, and returns
 after every task has settled.
 
+A message between members carries an identity, and an answer carries the
+identity of the question it answers. `ask` sends a question and returns that
+identity; `send` with `reply_to` answers the question that identity names.
+The question reaches the other member as a `request` item and the answer as a
+`response` item, so `wait` on `{reply: the identity}` returns for that answer
+and not for any other arrival. A member that must have one decision from one
+teammate therefore blocks on that decision without spending a request on each
+unrelated message. Without correlation the asker would wake on every arrival
+and would have to decide, at model cost, whether the arrival was the answer.
+
 The lead's log also holds the roster and the queue of messages between
 members.
 
@@ -671,14 +681,14 @@ members.
    ────────                                   ──────────
    team/task      {task, revision, status, owner}
    team/roster    {member, name, phase}
-   team/message   {id, from, to, content}  ──►  inbox/item {source: peer, message_id}
+   team/message   {id, from, to, content}  ──►  inbox/item {source, message_id}
    team/delivered {id, to}                 ◄──  (written after the member's append)
 ```
 
-Six built-in tools serve teams. `spawn`, `wait`, and `steer` act on the team
-an episode leads. `notify` and `send` act on the team the episode belongs to.
-The `team` tool lists the parent-led team by default and accepts `scope: led`
-to list the team that the current episode leads. A root's parent-led and led
+Eight built-in tools serve teams. `spawn`, `wait`, `steer`, and `cancel` act
+on the team an episode leads. `notify`, `send`, and `ask` act on the team the
+episode belongs to. The `team` tool lists the parent-led team by default and
+accepts `scope: led` to list the team that the current episode leads. A root's parent-led and led
 team are the same team. The [protocol](protocol.md#children) carries member
 calls to the lead process.
 

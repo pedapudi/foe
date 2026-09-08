@@ -711,9 +711,10 @@ pub enum InboxSource {
     /// A process session of this episode ended; one item per session
     /// lifetime, written when the runtime observes the exit.
     Session,
-    /// Reserved for correlated exchanges.
+    /// A question from another member, sent with `ask`. Its `message_id`
+    /// is what the asker's `wait` names to hold for the answer.
     Request,
-    /// Reserved for correlated exchanges.
+    /// An answer to a question, carrying the question's `message_id`.
     Response,
 }
 

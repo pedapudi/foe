@@ -284,10 +284,12 @@ protocol, and the parent foe process implements them. A child resolves
 `team` with `scope: led` inside its own process.
 A child's call to `notify` arrives at the parent as a `host/tool-call`; the
 parent appends an `inbox/item` with source `child` to its own log and
-answers with a `tool/result`. A call to `send` arrives the same way at the
-lead, which appends `team/message` to its log, delivers the message to the
-target member as an `inbox/item` with source `peer`, and appends
-`team/delivered` when the member's log has recorded it. A parent-scoped
+answers with a `tool/result`. A call to `send` or `ask` arrives the same way at
+the lead, which appends `team/message` to its log, delivers the message to
+the target member as an `inbox/item`, and appends `team/delivered` when the
+member's log has recorded it. The item's source is `peer` for a `send`
+without `reply_to`, `request` for an `ask`, and `response` for a `send` that
+names the question it answers. A parent-scoped
 `team` call folds the lead's root task, added tasks, and roster from its log.
 These calls are
 never forwarded above the parent. A message from a member therefore reaches

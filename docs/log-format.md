@@ -503,6 +503,8 @@ itself is the first inbox item.
 | `parent` | the spawning episode, steering this one |
 | `child` | a child episode, notifying this one |
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
+| `request` | a question from a team member, sent with `ask`; `from` and `message_id` are set |
+| `response` | the answer to a question, carrying that question's `message_id` |
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
 | `session` | the runtime, when it observes that a process session's process has ended |
@@ -522,7 +524,12 @@ frozen format: the `inbox/item` payload is unchanged, and a reader compiled
 before the value existed rejects a log that carries it, as for an added
 event type.
 
-The values `request` and `response` are reserved for correlated exchanges.
+A `request` item is a question one member asked another through the lead.
+Its `message_id` is the identifier `ask` returned to the asker. The answer
+is a `response` item carrying that same `message_id`, which is what lets
+the asker wait for this answer rather than for any arrival. A member
+redelivers nothing itself; the lead retries an unconfirmed delivery, so a
+member drops an item whose `message_id` it already holds.
 
 ### Budget and spawn
 
@@ -596,10 +603,13 @@ log.
 
 Messages with a `team/message` and no matching `team/delivered` are
 redelivered when the target restarts. The target deduplicates by
-`message_id`.
+`message_id`. An answer reuses the `message_id` of the question it answers,
+so a question and its answer are two queued messages under one identifier;
+the pair `message_id` and `to` distinguishes their two deliveries.
 
 Message identifiers include the lead episode identity and an ordinal derived
-from its recorded queue. Allocation and queue insertion share the lead's
+from its recorded queue. An answer is the exception: it carries the
+question's identifier instead of a fresh one. Allocation and queue insertion share the lead's
 operation lock. Resume continues that queue, while a fork has a distinct
 lead identity. Readers treat message identifiers as opaque strings.
 Duplicate detection and inbox insertion hold the same log lock, so concurrent
@@ -788,7 +798,7 @@ obligation and a later event closes it, the two matched by a key.
 | `compaction/start` | `compaction/end` | the step |
 | `spawn/start` | `spawn/end` | the child id |
 | `budget/reserve` | `budget/release` | the child id |
-| `team/message` | `team/delivered` | the message id |
+| `team/message` | `team/delivered` | the message id and the target |
 
 Three rules hold for every pair.
 

@@ -59,8 +59,10 @@ pub struct TeamState {
     pub tasks: Vec<TeamTask>,
     /// Every message ever queued, in order.
     pub queue: Vec<Queued>,
-    /// Ids of messages whose target recorded them.
-    pub delivered: BTreeSet<String>,
+    /// Messages whose target recorded them, as message id and target. An
+    /// answer reuses the question's identity, so the target separates the
+    /// two deliveries the pair produces.
+    pub delivered: BTreeSet<(String, String)>,
 }
 
 impl TeamState {
@@ -79,7 +81,7 @@ impl TeamState {
     /// Messages queued and never delivered; redelivered when the target
     /// restarts.
     pub fn undelivered(&self) -> impl Iterator<Item = &Queued> {
-        self.queue.iter().filter(|m| !self.delivered.contains(&m.message_id))
+        self.queue.iter().filter(|m| !self.delivered.contains(&(m.message_id.clone(), m.to.clone())))
     }
 
     fn value(&self) -> serde_json::Value {
@@ -165,8 +167,8 @@ pub fn fold(events: &[Event]) -> TeamState {
                 to: to.clone(),
                 content: content.clone(),
             }),
-            EventData::TeamDelivered { message_id, .. } => {
-                state.delivered.insert(message_id.clone());
+            EventData::TeamDelivered { message_id, to } => {
+                state.delivered.insert((message_id.clone(), to.clone()));
             }
             EventData::TeamTask(task) => match state.tasks.iter_mut().find(|known| known.task_id == task.task_id) {
                 Some(known) if task.revision > known.revision => *known = task.clone(),
@@ -416,11 +418,16 @@ impl Team {
     /// Queues a message from one member to another and attempts delivery. A
     /// failed delivery leaves the message queued without a delivery record;
     /// the fold reports it as undelivered.
-    fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>) -> Result<String, CapError> {
+    fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>, kind: Correlate) -> Result<String, CapError> {
         let _guard = self.operations.lock().unwrap();
         let state = self.state();
         let target = state.member(to_name).ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
-        let message_id = format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1);
+        // An answer carries the identifier of the question it answers, which
+        // is what lets the asker wait for this reply rather than any arrival.
+        let message_id = match &kind {
+            Correlate::Reply(asked) => asked.clone(),
+            _ => format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1),
+        };
         self.log.append(EventData::TeamMessage {
             message_id: message_id.clone(),
             from: from.to_string(),
@@ -428,7 +435,7 @@ impl Team {
             content: content.clone(),
         })?;
         let item = InboxItem {
-            source: InboxSource::Peer,
+            source: kind.source(),
             content,
             from: Some(from.to_string()),
             message_id: Some(message_id.clone()),
@@ -446,7 +453,12 @@ impl ChildObserver for Team {
     fn observe(&self, child_id: &str, event: &Event) {
         match &event.data {
             EventData::EpisodeStart(_) => self.set_phase(child_id, MemberPhase::Active),
-            EventData::InboxItem(item) if item.source == InboxSource::Peer => {
+            EventData::InboxItem(item)
+                if matches!(
+                    item.source,
+                    InboxSource::Peer | InboxSource::Request | InboxSource::Response
+                ) =>
+            {
                 if let Some(id) = &item.message_id {
                     let _ =
                         self.log.append(EventData::TeamDelivered { message_id: id.clone(), to: child_id.to_string() });
@@ -508,7 +520,9 @@ impl ChildObserver for Team {
                 self.inbox.append(child_item(child_id, content));
                 ToolValue::ok(serde_json::json!({ "sent": true }), "sent")
             }
-            Kind::Send => arg(args, "to").map_or_else(|e| e, |to| self.send_value(child_id, to, content)),
+            Kind::Send | Kind::Ask => {
+                arg(args, "to").map_or_else(|e| e, |to| self.send_value(child_id, to, content, correlate(kind, args)))
+            }
             _ => self.roster(),
         })
     }
@@ -516,8 +530,8 @@ impl ChildObserver for Team {
 
 impl Team {
     /// The result of a `send` call: the message id, or the failure.
-    fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>) -> ToolValue {
-        match self.send(from, to, content) {
+    fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>, kind: Correlate) -> ToolValue {
+        match self.send(from, to, content, kind) {
             Ok(id) => ToolValue::ok(serde_json::json!({ "to": to, "message_id": id }), format!("sent to {to}")),
             Err(e) => ToolValue::error(format!("send: {e}")),
         }
@@ -527,6 +541,34 @@ impl Team {
     fn roster(&self) -> ToolValue {
         let state = self.state();
         ToolValue::ok(state.value(), state.roster_text())
+    }
+}
+
+/// What a `send` or an `ask` call makes of its message.
+fn correlate(kind: Kind, args: &serde_json::Value) -> Correlate {
+    match (kind, args.get("reply_to").and_then(serde_json::Value::as_str)) {
+        (Kind::Ask, _) => Correlate::Question,
+        (_, Some(asked)) => Correlate::Reply(asked.to_string()),
+        _ => Correlate::Statement,
+    }
+}
+
+/// What one message is. A statement expects nothing back. A question expects
+/// an answer and is worth waiting for; the answer names the question it
+/// answers, so an asker waits for that reply and not for any arrival.
+pub enum Correlate {
+    Statement,
+    Question,
+    Reply(String),
+}
+
+impl Correlate {
+    fn source(&self) -> InboxSource {
+        match self {
+            Correlate::Statement => InboxSource::Peer,
+            Correlate::Question => InboxSource::Request,
+            Correlate::Reply(_) => InboxSource::Response,
+        }
     }
 }
 
@@ -629,6 +671,7 @@ enum Kind {
     Cancel,
     Notify,
     Send,
+    Ask,
     Team,
 }
 
@@ -662,11 +705,12 @@ request that follows.",
                     serde_json::json!({
                         "until": {
                             "type": "array",
-                            "description": "conditions, of which the first met ends the wait: {child, outcome?} for a child episode (id, or \"any\") reaching any outcome or the named kind; {session} for a process session (id, or \"any\") exiting; {inbox} for an inbox arrival by source",
+                            "description": "conditions, of which the first met ends the wait: {child, outcome?} for a child episode (id, or \"any\") reaching any outcome or the named kind; {session} for a process session (id, or \"any\") exiting; {inbox} for an inbox arrival by source; {reply} for the answer to the question whose message_id `ask` returned",
                             "items": { "anyOf": [
                                 { "type": "object", "properties": { "child": string("child episode id, or \"any\""), "outcome": { "type": "string", "enum": ["completed", "blocked", "exhausted", "failed"] } }, "required": ["child"], "additionalProperties": false },
                                 { "type": "object", "properties": { "session": { "type": ["integer", "string"], "description": "session id, or \"any\"" } }, "required": ["session"], "additionalProperties": false },
-                                { "type": "object", "properties": { "inbox": { "type": "string", "enum": ["task", "parent", "child", "peer", "verify", "system", "session"] } }, "required": ["inbox"], "additionalProperties": false }
+                                { "type": "object", "properties": { "inbox": { "type": "string", "enum": ["task", "parent", "child", "peer", "request", "response", "verify", "system", "session"] } }, "required": ["inbox"], "additionalProperties": false },
+                                { "type": "object", "properties": { "reply": string("the message_id `ask` returned") }, "required": ["reply"], "additionalProperties": false }
                             ] }
                         },
                         "timeout_seconds": { "type": "integer", "minimum": 1, "description": "return after this long even if nothing matched" }
@@ -695,10 +739,25 @@ longer need, or that the answers already in hand have made wrong. What it wrote 
                 object(serde_json::json!({ "content": string("the message") }), &["content"]),
                 Effect::Pure,
             ),
-            Kind::Send => (
-                "Send a message to a teammate, addressed by roster name, through the lead.",
+            Kind::Ask => (
+                "Ask a teammate a question, addressed by roster name, through the lead. It returns the question's \
+`message_id`, and `wait` with `{reply: that id}` blocks until that question is answered and not until any message \
+arrives. Use it when one answer from one teammate decides what you do next; `send` is for telling.",
                 object(
-                    serde_json::json!({ "to": string("roster name of the teammate"), "content": string("the message") }),
+                    serde_json::json!({ "to": string("roster name of the teammate"), "content": string("the question") }),
+                    &["to", "content"],
+                ),
+                Effect::Pure,
+            ),
+            Kind::Send => (
+                "Send a message to a teammate, addressed by roster name, through the lead. With `reply_to`, it \
+answers the question that identifier names, and the teammate waiting on that answer wakes.",
+                object(
+                    serde_json::json!({
+                        "to": string("roster name of the teammate"),
+                        "content": string("the message"),
+                        "reply_to": string("the message_id of a question this answers")
+                    }),
                     &["to", "content"],
                 ),
                 Effect::Pure,
@@ -716,22 +775,23 @@ longer need, or that the answers already in hand have made wrong. What it wrote 
     }
 }
 
-const KINDS: [Kind; 7] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Cancel, Kind::Notify, Kind::Send, Kind::Team];
+const KINDS: [Kind; 8] =
+    [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Cancel, Kind::Notify, Kind::Send, Kind::Ask, Kind::Team];
 
-/// The specifications of the six team tools, in the order [`tools`] lists
+/// The specifications of the eight team tools, in the order [`tools`] lists
 /// them. Fingerprint and `foe plan` use this without a running team.
 pub fn builtin_specs() -> Vec<ToolSpec> {
     KINDS.into_iter().map(Kind::spec).collect()
 }
 
-/// The six team tools. `parent` is the link to the process hosting this
-/// episode, when it has one. `notify` and `send` go to that parent. `team`
-/// selects the parent-led or locally led team from one schema.
+/// The eight team tools. `parent` is the link to the process hosting this
+/// episode, when it has one. `notify`, `send`, and `ask` go to that parent.
+/// `team` selects the parent-led or locally led team from one schema.
 pub fn tools(team: Arc<Team>, parent: Option<&Host>) -> Vec<Box<dyn Tool>> {
     KINDS
         .into_iter()
         .map(|kind| match (parent, kind) {
-            (Some(host), Kind::Notify | Kind::Send) => host.tool(kind.spec()),
+            (Some(host), Kind::Notify | Kind::Send | Kind::Ask) => host.tool(kind.spec()),
             (Some(host), Kind::Team) => {
                 Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone(), parent: Some(host.tool(kind.spec())) })
                     as Box<dyn Tool>
@@ -767,6 +827,10 @@ enum Condition {
     },
     Inbox {
         inbox: InboxSource,
+    },
+    /// The answer to one question, named by the `message_id` `ask` returned.
+    Reply {
+        reply: String,
     },
 }
 
@@ -811,6 +875,9 @@ fn matched(events: &[Event], until: &[Condition]) -> Option<usize> {
         let from = item.from.as_deref().unwrap_or_default();
         let met = |condition: &Condition| match condition {
             Condition::Inbox { inbox } => item.source == *inbox,
+            Condition::Reply { reply } => {
+                item.source == InboxSource::Response && item.message_id.as_deref() == Some(reply.as_str())
+            }
             Condition::Session { session } => {
                 item.source == InboxSource::Session && session.as_u64().is_none_or(|id| from == id.to_string())
             }
@@ -893,13 +960,13 @@ impl Tool for TeamTool {
                     Err(e) => ToolValue::from_cap_error("spawn", e),
                 }
             }
-            Kind::Steer | Kind::Send => {
+            Kind::Steer | Kind::Send | Kind::Ask => {
                 let (to, content) = match (arg(&args, "to"), arg(&args, "content")) {
                     (Ok(t), Ok(c)) => (t, text_content(c)),
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
-                if self.kind == Kind::Send {
-                    return self.team.send_value(&self.team.lead_id, to, content);
+                if matches!(self.kind, Kind::Send | Kind::Ask) {
+                    return self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args));
                 }
                 match self.team.steer(to, content) {
                     Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),

@@ -26,16 +26,6 @@ prefix-materialization cost that the per-launch copy makes significant,
 or a consumer that needs foe to witness the selection among outcomes. No
 event type or configuration key is reserved.
 
-## Correlated request and response over the inbox
-
-A correlated exchange lets one episode ask another a question and match the
-answer to the question by identifier, so that a member can wait for a
-specific reply rather than for any inbox item. The inbox would carry the
-question with one source value and the answer with another, both holding the
-same correlation identifier in `message_id`. Correlated exchanges are not
-implemented. Reserved field values: `"request"` and `"response"` for `source`
-in `inbox/item`.
-
 ## Workflow continuation after process interruption
 
 Workflow continuation would restore completed firings, input versions,

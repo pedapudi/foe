@@ -192,11 +192,12 @@ of those schemas keeps the one-agent request header unchanged.
 | tool | effect | behavior |
 |---|---|---|
 | `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `write` lists the write roots to grant the child, which must lie within the caller's own and within what the child contract declares, and may not overlap a root a live task holds; omitted, the child writes where its contract says. |
-| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, or inbox source. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
+| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, inbox source, or the answer to one question named by `reply`. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
 | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
 | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
-| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. |
+| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`. The question arrives as a `request` item. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
 
 Each returned member includes its roster `phase`. A member assigned through

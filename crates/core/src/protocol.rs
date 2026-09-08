@@ -207,7 +207,14 @@ impl Host {
             }
             "inbox/item" => {
                 let item: InboxItem = serde_json::from_value(value.clone()).map_err(|e| format!("inbox/item: {e}"))?;
-                if !matches!(item.source, InboxSource::Parent | InboxSource::Child | InboxSource::Peer) {
+                if !matches!(
+                    item.source,
+                    InboxSource::Parent
+                        | InboxSource::Child
+                        | InboxSource::Peer
+                        | InboxSource::Request
+                        | InboxSource::Response
+                ) {
                     return Err(format!("inbox/item source {:?} is not one a host may send", item.source));
                 }
                 InboxSink::append(self, item);

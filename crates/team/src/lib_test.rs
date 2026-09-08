@@ -71,7 +71,7 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
         Arc::new(Router::new()),
         Arc::new(Mutex::new(Pool::new(budget()))),
     ));
-    assert!(team.send("ep_lead", "lead", text_content("message")).is_err());
+    assert!(team.send("ep_lead", "lead", text_content("message"), Correlate::Statement).is_err());
     assert!(inbox.0.lock().unwrap().is_empty());
     assert!(team.schedule(Arc::new(NoLaunch)).is_err());
 }
@@ -223,7 +223,7 @@ fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
 fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
     let (first, log, inbox, router) = team();
     log.append(start());
-    let first_id = first.send("ep_lead", "lead", text_content("first")).unwrap();
+    let first_id = first.send("ep_lead", "lead", text_content("first"), Correlate::Statement).unwrap();
     let resumed = Team::new(
         "ep_lead".into(),
         log.clone(),
@@ -231,7 +231,7 @@ fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
         router.clone(),
         Arc::new(Mutex::new(Pool::new(budget()))),
     );
-    let second_id = resumed.send("ep_lead", "lead", text_content("second")).unwrap();
+    let second_id = resumed.send("ep_lead", "lead", text_content("second"), Correlate::Statement).unwrap();
     assert_ne!(first_id, second_id);
     let mut copied = log.events();
     let EventData::EpisodeStart(start) = &mut copied[0].data else { panic!() };
@@ -240,7 +240,7 @@ fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
     fork_log.append(EventData::SeedEnd {});
     let forked =
         Team::new("ep_fork".into(), fork_log, inbox.clone(), router, Arc::new(Mutex::new(Pool::new(budget()))));
-    let fork_id = forked.send("ep_fork", "lead", text_content("fork")).unwrap();
+    let fork_id = forked.send("ep_fork", "lead", text_content("fork"), Correlate::Statement).unwrap();
     assert_ne!(fork_id, first_id);
     assert_ne!(fork_id, second_id);
     assert_eq!(inbox.0.lock().unwrap().len(), 3);
@@ -256,7 +256,7 @@ fn concurrent_senders_record_distinct_messages() {
         for index in 0..16 {
             let team = team.clone();
             scope.spawn(move || {
-                team.send("ep_lead", "lead", text_content(&index.to_string())).unwrap();
+                team.send("ep_lead", "lead", text_content(&index.to_string()), Correlate::Statement).unwrap();
             });
         }
     });
@@ -311,13 +311,71 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(listed.rendered.as_deref(), Some("members:\ntester\tep_b\tactive\ntasks:\n"));
 }
 
-/// docs/config.md `tools`: the six team tools are built in. A root answers
+/// docs/tools.md "ask": a question carries its own identity, the answer
+/// carries the question's, and `wait` with `{reply: id}` holds for that
+/// answer alone.
+#[tokio::test]
+async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
+    let (team, log, inbox, _) = team();
+    log.append(start());
+    log.append(EventData::TeamRoster {
+        member_id: "ep_b".into(),
+        name: "tester".into(),
+        description: String::new(),
+        phase: MemberPhase::Active,
+    });
+    let ask = tools(team.clone(), None).into_iter().find(|t| t.spec().name == "ask").unwrap();
+    let asked = ask.call(serde_json::json!({ "to": "tester", "content": "which crate?" }), &ctx(None)).await;
+    assert!(!asked.is_error, "{:?}", asked.rendered);
+    let question = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
+    let wait = |c: serde_json::Value, deadline: Option<std::time::Instant>| {
+        let team = team.clone();
+        async move {
+            let ctx = deadline.map_or_else(|| ctx(None), ctx_deadline);
+            wait_tool(team).call(serde_json::json!({ "until": [c] }), &ctx).await
+        }
+    };
+    // A statement from the same teammate is not the answer.
+    log.append(EventData::InboxItem(InboxItem {
+        source: InboxSource::Peer,
+        content: text_content("still reading"),
+        from: Some("ep_b".into()),
+        message_id: Some("other".into()),
+    }));
+    let early = wait(serde_json::json!({ "reply": question.clone() }), Some(soon())).await;
+    assert_eq!(early.value["matched"], serde_json::json!("timeout"), "only the answer ends the wait");
+    // The teammate answers, naming the question it answers.
+    let answer = serde_json::json!({ "to": "lead", "content": "foe-team", "reply_to": question.clone() });
+    let sent = team.host_call("ep_b", "send", &answer).unwrap();
+    assert!(!sent.is_error, "{:?}", sent.rendered);
+    let items = inbox.0.lock().unwrap().clone();
+    let reply = items.last().expect("the answer reaches the lead");
+    assert_eq!(reply.source, InboxSource::Response);
+    assert_eq!(reply.message_id.as_deref(), Some(question.as_str()), "the answer carries the question's identity");
+    log.append(EventData::InboxItem(reply.clone()));
+    let met = wait(serde_json::json!({ "reply": question.clone() }), None).await;
+    assert_eq!(met.value["matched"], serde_json::json!({ "reply": question.clone() }));
+    // Question and answer share an identity and are two queue entries with
+    // two targets, so confirming the question leaves the answer outstanding.
+    let receipt = InboxItem {
+        source: InboxSource::Request,
+        content: vec![],
+        from: Some("ep_lead".into()),
+        message_id: Some(question),
+    };
+    team.observe("ep_b", &event(9, EventData::InboxItem(receipt)));
+    let state = team.state();
+    assert_eq!(state.queue.len(), 2);
+    assert_eq!(state.undelivered().map(|m| m.to.as_str()).collect::<Vec<_>>(), ["ep_lead"]);
+}
+
+/// docs/config.md `tools`: the eight team tools are built in. A root answers
 /// `send` and `team` from its own roster and has no parent to notify.
 #[tokio::test]
 async fn a_root_serves_send_and_team_from_its_own_roster() {
     let (team, log, _, _) = team();
     let names: Vec<String> = tools(team.clone(), None).iter().map(|t| t.spec().name.clone()).collect();
-    assert_eq!(names, ["spawn", "wait", "steer", "cancel", "notify", "send", "team"]);
+    assert_eq!(names, ["spawn", "wait", "steer", "cancel", "notify", "send", "ask", "team"]);
     assert_eq!(builtin_specs().iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
     let send = builtin_specs().into_iter().find(|s| s.name == "send").expect("`send` is built in");
     assert_eq!(send.effect, Effect::Pure, "`send` needs no grant");

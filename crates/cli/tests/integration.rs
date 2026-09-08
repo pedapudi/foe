@@ -915,12 +915,16 @@ fn parent_settlement_closes_a_running_board_task_before_episode_end() {
         .filter(|event| event["type"] == "team/task")
         .map(|event| event["data"]["status"].as_str().unwrap())
         .collect::<Vec<_>>();
-    assert!(matches!(states.as_slice(), ["queued", "running", "completed" | "failed"]), "{states:?}");
+    // A parent that settles first stops the child, which ends blocked with
+    // `cancelled`; a child that finishes first ends completed or failed.
+    let terminal_status = |status: Option<&str>| matches!(status, Some("completed" | "failed" | "blocked"));
+    assert!(
+        matches!(states.as_slice(), ["queued", "running", last] if terminal_status(Some(last))),
+        "{states:?}"
+    );
     let terminal = events
         .iter()
-        .position(|event| {
-            event["type"] == "team/task" && matches!(event["data"]["status"].as_str(), Some("completed" | "failed"))
-        })
+        .position(|event| event["type"] == "team/task" && terminal_status(event["data"]["status"].as_str()))
         .unwrap();
     let spawn_end = events.iter().position(|event| event["type"] == "spawn/end").unwrap();
     let release = events.iter().position(|event| event["type"] == "budget/release").unwrap();
@@ -1773,8 +1777,8 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("recovery-exhausted", "sha256:088f305e369e3c717d8d00da524bf7c7b82b8fd5c5f9f9e132ed95c9d23e3057"),
     ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
     ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
-    ("subagents", "sha256:a2486639d2bb328c6020e60e1c93caaaa207c5bb58b287e14333f2d8f20287d9"),
-    ("team", "sha256:54ff42718a5a151f68917a2de4f75a2d2cf9541683a8dc6f1e68a8d6787edefb"),
+    ("subagents", "sha256:898deb3a02024007c5565b81b8043474805cbc1420b1c6e14f5225947420f4ad"),
+    ("team", "sha256:36156d4f33cc16b6508bc5ca33805eafaff8a37d2dd69c6d2e24039b0f55fcfc"),
     ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
     ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
     ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),

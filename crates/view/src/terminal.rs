@@ -229,7 +229,10 @@ impl<W: Write> Terminal<W> {
                 self.active = self.lanes[i].1.clone();
             }
             EventData::InboxItem(item)
-                if matches!(item.source, InboxSource::Parent | InboxSource::Peer)
+                if matches!(
+                    item.source,
+                    InboxSource::Parent | InboxSource::Peer | InboxSource::Request | InboxSource::Response
+                )
                     || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, ..)| key == id)) =>
             {
                 let i = self.lane(id);
