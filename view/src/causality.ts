@@ -232,6 +232,12 @@ export interface PlacedRow extends CausalityRow {
   top: number;
   height: number;
   calls: PlacedCall[];
+  /**
+   * The row draws the pulsing brand mark in place of its vertex: it is the
+   * last row of an episode that has not settled, so it is where the run is
+   * now.
+   */
+  pulse: boolean;
 }
 
 export type LaneKind = "episode" | "workflow";
@@ -367,7 +373,13 @@ export const TONES = IDENTITY_COLORS;
  * fold.ts has already read the log; this reads its rows and summary, so no
  * event is parsed twice and no obligation pair is re-derived.
  */
-export function readCausality(summary: Summary, rows: Row[], depth: number): CausalityEpisode {
+export function readCausality(summary: Summary, allRows: Row[], depth: number): CausalityEpisode {
+  // Rows at or below `seed/end` were copied from the fork origin's log.
+  // They record what that episode did, so reading them here would draw
+  // this episode opening the children its origin opened and taking their
+  // results. The conversation still shows them, under the seed-end note.
+  const seeded = summary.seedEnd;
+  const rows = seeded === null ? allRows : allRows.filter((row) => row.seq > seeded);
   const spawns = spawnsByCall(rows);
   const results = new Map<string, { text: string; body: string; seq: number; failed: boolean }>();
   for (const row of rows) {
@@ -545,6 +557,8 @@ interface LaneBuild {
   /** First and last row this lane and everything under it occupy. */
   first: number;
   last: number;
+  /** The last row the lane holds itself, before children widened `last`. */
+  ownLast: number;
   children: LaneBuild[];
 }
 
@@ -844,6 +858,11 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
  * on the change that moved a row.
  */
 export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], heights: number[]): CausalityLayout {
+  // Nothing is in flight once the run's own episode has settled. An
+  // episode under it that recorded no outcome did not finish; it stopped,
+  // and drawing it as still running would report a run that has ended as
+  // one still going.
+  const running = !outline.episodes.some((episode) => episode.depth === 0 && episode.outcome !== null);
   const at = new Map(visible.map((row, index) => [row.id, index]));
   const builds = new Map<string, LaneBuild>();
   for (const spec of outline.lanes) {
@@ -851,6 +870,7 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
       lane: { ...spec, column: 0, x: 0, y1: 0, y2: 0 },
       first: Infinity,
       last: -Infinity,
+      ownLast: -Infinity,
       children: [],
     });
   }
@@ -864,6 +884,7 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
     if (!build) return;
     build.first = Math.min(build.first, index);
     build.last = Math.max(build.last, index);
+    build.ownLast = index;
   });
   for (const build of builds.values()) {
     if (build.lane.parentId === null || !builds.has(build.lane.parentId)) extend(build);
@@ -894,7 +915,8 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
     (tops[index] ?? TOP) + Math.min(heights[index] ?? ROW_PITCH, ROW_PITCH) / 2;
 
   const rows: PlacedRow[] = visible.map((row, index) => {
-    const lane = builds.get(row.laneId)?.lane;
+    const build = builds.get(row.laneId);
+    const lane = build?.lane;
     const x = lane ? lane.x : LANE_LEFT;
     const y = yOf(index);
     return {
@@ -905,6 +927,11 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
       top: tops[index] ?? TOP,
       height: heights[index] ?? ROW_PITCH,
       calls: row.calls.map((call, i) => ({ ...call, x: x + CALL_TICK + i * CALL_PITCH, y })),
+      pulse: running
+        && build !== undefined
+        && build.ownLast === index
+        && build.lane.kind === "episode"
+        && build.lane.outcome === null,
     };
   });
 
@@ -918,10 +945,11 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
       lane.y1 -= STUB / 2;
       lane.y2 += STUB / 2;
     }
-    // The foot carries the mark, which is the last thing on the lane and so
-    // sits below the last row rather than on it. An episode lane that has no
-    // outcome yet gets the same room: its mark is the brand mark, pulsing.
-    if (lane.outcome !== null || lane.kind === "episode") lane.y2 += OUTCOME_TAIL;
+    // The foot carries the outcome mark, which is the last thing on the
+    // lane and so sits below the last row rather than on it. A lane still
+    // running has no foot: its last row draws the pulsing brand mark in
+    // place of its own vertex, which is where the run is.
+    if (lane.outcome !== null) lane.y2 += OUTCOME_TAIL;
   }
 
   // A lane reaches past its children, because a child branches from it above

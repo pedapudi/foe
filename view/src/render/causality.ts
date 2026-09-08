@@ -176,15 +176,9 @@ export function laneStrokes(
 function laneElement(lane: CausalityLane, card: Hovercard, handlers: CausalityHandlers): SVGGElement {
   const group = svg("g", { class: `caus-lane tone-${lane.tone} ${lane.kind}` });
   group.appendChild(svg("line", { class: "line", x1: lane.x, y1: lane.y1, x2: lane.x, y2: lane.y2 }));
-  // An episode still running ends in the brand mark, pulsing, where a
-  // finished one ends in the mark of its outcome. A graph lane is not an
-  // episode and ends in neither.
-  if (lane.outcome === null && lane.kind === "episode") {
-    const mark = svg("text", { class: "caus-pulse", x: lane.x, y: lane.y2 + 4, "text-anchor": "middle" });
-    pulseMark(mark);
-    card.attach(mark, () => "running", () => lane.label, () => "");
-    group.appendChild(mark);
-  }
+  // A finished episode ends in the mark of its outcome, below its last row.
+  // A running one ends on its last row, whose vertex is the pulsing brand
+  // mark. A graph lane is not an episode and ends in neither.
   if (lane.outcome !== null) {
     const role = outcomeRole(lane.outcome);
     const kind = str(lane.outcome.kind) === "failed" ? "error" : "settled";
@@ -219,7 +213,14 @@ function rowStrokes(row: PlacedRow, selected: string | null, card: Hovercard, ha
     class: `caus-node ${row.kind} tone-${row.tone}${row.id === selected ? " selected" : ""}`,
     "data-row": row.id,
   });
-  group.appendChild(svg("circle", { class: "vertex", cx: row.x, cy: row.y, r: 2.4 }));
+  if (row.pulse) {
+    const mark = svg("text", { class: "caus-pulse", x: row.x, y: row.y + 4, "text-anchor": "middle" });
+    pulseMark(mark);
+    card.attach(mark, () => "running", () => row.label, () => "");
+    group.appendChild(mark);
+  } else {
+    group.appendChild(svg("circle", { class: "vertex", cx: row.x, cy: row.y, r: 2.4 }));
+  }
   for (const call of row.calls) group.appendChild(callElement(row, call, card, handlers));
   if (row.kind === "node" && row.firings.length > 1) {
     // A node the run entered more than once is one row and a loop edge.

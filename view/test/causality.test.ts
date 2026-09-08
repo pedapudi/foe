@@ -52,6 +52,47 @@ function layout(...files: string[]): CausalityLayout {
   return layoutCausality(run(...files));
 }
 
+/** The same episodes with every `episode/end` dropped, so the run is live. */
+function running(...files: string[]): CausalityEpisode[] {
+  const folded = files.map((file) => {
+    const events = fixture(file).filter((ev) => obj(ev).type !== "episode/end");
+    const id = str(obj(obj(events[0]).data).id, file);
+    const f = new EpisodeFold(id, { stream: false });
+    for (const ev of events) f.push(ev);
+    return { summary: f.summary, rows: f.rows };
+  });
+  const roots = buildTree(folded.map((f) => f.summary));
+  const rows = new Map(folded.map((f) => [f.summary.id, f.rows]));
+  return flatten(roots).map(({ node, depth }) => readCausality(node.summary, rows.get(node.id) ?? [], depth));
+}
+
+// docs/log-format.md "Seeding": events copied from the fork origin record
+// what that episode did. A fork that reads them as its own draws itself
+// repeating its origin's steps and opening its origin's children.
+test("a forked episode owns only the rows written after seed/end", () => {
+  const forked = run("root.jsonl", "fork.jsonl").find((episode) => episode.id === "ep_fork");
+  assert.ok(forked, "the run holds the forked episode");
+  assert.deepEqual(forked.steps.map((step) => step.step), [2]);
+  assert.ok(forked.steps.every((step) => step.seq > 12), "every row is past the seed-end at seq 12");
+});
+
+// The mark that says a run is in flight belongs on the row the run reached,
+// and belongs nowhere once the run has settled.
+test("the row a live episode reached carries the pulse, and a settled run carries none", () => {
+  const live = layoutLanes(
+    causalityOutline(running("root.jsonl", "child.jsonl")),
+    visibleRows(causalityOutline(running("root.jsonl", "child.jsonl")), "steps"),
+    visibleRows(causalityOutline(running("root.jsonl", "child.jsonl")), "steps").map(() => ROW_PITCH),
+  );
+  const pulsing = live.rows.filter((row) => row.pulse);
+  assert.ok(pulsing.length > 0, "a run with nothing settled pulses");
+  for (const row of pulsing) {
+    const own = live.rows.filter((r) => r.laneId === row.laneId);
+    assert.equal(row, own[own.length - 1], "the pulse is on the last row the lane holds");
+  }
+  assert.equal(layout("root.jsonl", "child.jsonl").rows.filter((row) => row.pulse).length, 0);
+});
+
 function lane(figure: CausalityLayout, id: string) {
   const found = figure.lanes.find((l) => l.id === id);
   assert.ok(found, `the figure has a lane for ${id}`);
