@@ -918,10 +918,7 @@ fn parent_settlement_closes_a_running_board_task_before_episode_end() {
     // A parent that settles first stops the child, which ends blocked with
     // `cancelled`; a child that finishes first ends completed or failed.
     let terminal_status = |status: Option<&str>| matches!(status, Some("completed" | "failed" | "blocked"));
-    assert!(
-        matches!(states.as_slice(), ["queued", "running", last] if terminal_status(Some(last))),
-        "{states:?}"
-    );
+    assert!(matches!(states.as_slice(), ["queued", "running", last] if terminal_status(Some(last))), "{states:?}");
     let terminal = events
         .iter()
         .position(|event| event["type"] == "team/task" && terminal_status(event["data"]["status"].as_str()))
@@ -2497,4 +2494,3 @@ fn a_fork_boundary_outside_the_source_log_is_refused() {
     assert_eq!((events.len(), code), (0, Some(1)));
     assert!(err.contains("seed boundary lies within the source log"), "{err}");
 }
-

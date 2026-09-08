@@ -454,10 +454,7 @@ impl ChildObserver for Team {
         match &event.data {
             EventData::EpisodeStart(_) => self.set_phase(child_id, MemberPhase::Active),
             EventData::InboxItem(item)
-                if matches!(
-                    item.source,
-                    InboxSource::Peer | InboxSource::Request | InboxSource::Response
-                ) =>
+                if matches!(item.source, InboxSource::Peer | InboxSource::Request | InboxSource::Response) =>
             {
                 if let Some(id) = &item.message_id {
                     let _ =

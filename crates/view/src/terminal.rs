@@ -278,8 +278,7 @@ impl<W: Write> Terminal<W> {
                 if matches!(
                     item.source,
                     InboxSource::Parent | InboxSource::Peer | InboxSource::Request | InboxSource::Response
-                )
-                    || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, ..)| key == id)) =>
+                ) || (item.source == InboxSource::Task && self.lanes.first().is_some_and(|(key, ..)| key == id)) =>
             {
                 let i = self.lane(id);
                 fn text(block: &ContentBlock) -> &str {

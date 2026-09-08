@@ -736,8 +736,7 @@ pub(crate) fn team_contract_document(
     for (child, write) in [("worker", vec![root]), ("surveyor", vec![])] {
         let entry = &mut document["child_contracts"][child];
         entry["instructions"]["environment"] = serde_json::json!(environment);
-        entry["grants"] =
-            serde_json::json!({ "read": [root], "write": write, "execute": BUILTIN_EXECUTE_ROOTS });
+        entry["grants"] = serde_json::json!({ "read": [root], "write": write, "execute": BUILTIN_EXECUTE_ROOTS });
         entry["budget"] = serde_json::json!({ "model_calls": BUILTIN_WORKER_CALLS });
     }
     // The lifetime count is the lead plus the workers it may open in all,
