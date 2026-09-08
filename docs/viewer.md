@@ -400,7 +400,10 @@ for one still running; a graph lane is not an episode and carries neither.
 A parent therefore reaches past every child's foot: a child branches from
 its parent above the child's own first row and folds back below the child's
 own foot, so the two never coincide and the order they happened in reads
-down the figure. A lane takes the lowest free column when it opens and releases it
+down the figure. A fold is the parent taking what the child returned, so a
+lane whose episode has not settled has none: it branches, runs to the row
+the episode reached, and ends there under the pulsing mark, and its parent
+keeps no ground under it for a fold that has not come. A lane takes the lowest free column when it opens and releases it
 when the episode it draws has settled, so column is occupancy and not tree
 depth — tree depth is carried by the label's indent instead. Occupancy is
 measured on the clock rather than down the figure: a child's rows hang under

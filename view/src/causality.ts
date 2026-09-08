@@ -1004,6 +1004,8 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
     for (const child of build.children) {
       if (!Number.isFinite(child.first)) continue;
       build.lane.y1 = Math.min(build.lane.y1, child.lane.y1 - ELBOW);
+      // Only a child that folds back needs ground under it to fold into.
+      if (child.lane.end === null) continue;
       build.lane.y2 = Math.max(build.lane.y2, child.lane.y2 + ELBOW);
     }
   }
@@ -1025,6 +1027,10 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
       tone: build.lane.tone,
       laneId: build.lane.id,
     });
+    // A merge is the parent taking what the child returned. A lane whose
+    // episode has not settled has returned nothing, so it has no merge: its
+    // line ends at the row the episode reached, under the pulsing mark.
+    if (build.lane.end === null) continue;
     edges.push({
       kind: "merge",
       from: { x: build.lane.x, y: bottom },

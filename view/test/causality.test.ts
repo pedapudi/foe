@@ -163,6 +163,32 @@ test("a node entered twice is one row and a loop edge, not two rows", () => {
   assert.notEqual(loops[0]!.bow, 0, "a loop returning to its own column bows out of it");
 });
 
+// A merge is the parent taking what the child returned. Drawing one for a
+// child still running reports a return that has not happened, which is the
+// same claim as an outcome mark on a lane with no outcome.
+test("a lane that has not settled folds back into nothing", () => {
+  const files = ["root.jsonl", "child.jsonl"];
+  const settled = layout(...files);
+  const child = "ep_child";
+  assert.ok(
+    settled.edges.some((edge) => edge.kind === "merge" && edge.laneId === child),
+    "a child that returned folds back into its caller",
+  );
+  const live = layoutCausality(running(...files));
+  assert.equal(lane(live, child).end, null, "the fixture without its ends holds an unsettled child");
+  assert.equal(live.edges.filter((edge) => edge.kind === "merge").length, 0);
+  assert.ok(
+    live.edges.some((edge) => edge.kind === "branch" && edge.laneId === child),
+    "it still branches from the call that opened it",
+  );
+  // Its caller keeps no ground under it for a fold that will not come.
+  assert.notEqual(lane(live, "ep_root").y2, lane(live, child).y2 + ELBOW);
+  for (const edge of live.edges) {
+    assert.ok(onALine(live, edge.from), `the ${edge.kind} of ${edge.laneId} leaves a line`);
+    assert.ok(onALine(live, edge.to), `the ${edge.kind} of ${edge.laneId} lands on a line`);
+  }
+});
+
 // docs/viewer.md: every episode row carries the task the episode was given,
 // which is what tells two children of one contract apart.
 test("an episode's task hangs under its own row", () => {
