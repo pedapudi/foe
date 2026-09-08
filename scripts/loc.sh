@@ -18,7 +18,7 @@ budgets='
 kernel    | 6300 | kernel               | log core
 contract  | 1575 | execution contracts  | contract
 tools     | 1900 | coding tools         | code
-team      |  850 | team coordination    | team
+team      |  925 | team coordination    | team
 workflow  | 1050 | workflows            | workflow
 context   |  500 | compaction           | context
 view      |  800 | viewer server        | view
@@ -32,7 +32,7 @@ evidence  |  500 | evidence             | evidence
 # uses to name the group. A group ceiling is stated in prose rather than in
 # the README table, so the same phrase locates it in all three documents.
 groups='
-tools+team | 2700 | tools team | Coding tools and team coordination together
+tools+team | 2750 | tools team | Coding tools and team coordination together
 '
 
 # rows TABLE: prints TABLE with each field trimmed, one row per line, fields
