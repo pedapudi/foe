@@ -23,7 +23,7 @@ const episode: TeamEpisode = {
         status: "queued",
         owner: null,
         blocked_by: [],
-        scope: ["src"],
+        write: ["src"],
       },
     },
     {
@@ -38,7 +38,7 @@ const episode: TeamEpisode = {
         status: "running",
         owner: "ep_review",
         blocked_by: [],
-        scope: ["src"],
+        write: ["src"],
       },
     },
   ],

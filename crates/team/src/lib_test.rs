@@ -148,7 +148,7 @@ fn task(id: &str, revision: u64, status: TaskStatus) -> TeamTask {
         status,
         owner: None,
         blocked_by: vec![],
-        scope: vec!["src".into()],
+        write: vec!["src".into()],
         outcome: None,
         call_id: "tc".into(),
     }
@@ -487,4 +487,49 @@ fn cancel_names_a_member_and_is_quiet_about_one_no_longer_running() {
     assert!(team.cancel("worker", "the answer is already in hand").is_ok());
     let missing = team.cancel("absent", "no such member").unwrap_err();
     assert!(missing.to_string().contains("no member named absent"), "{missing}");
+}
+
+/// docs/design.md "Agent teams": a lead partitions by granting each worker a
+/// write root of its own, and the board refuses a root that overlaps one a
+/// live task still holds. Containment either way is an overlap.
+#[test]
+fn a_write_root_may_not_overlap_one_a_live_task_holds() {
+    /// Every launch is refused for capacity, which leaves each task queued
+    /// and therefore live: the overlap this test is about is between tasks
+    /// that have not settled, running or not.
+    struct AtCapacity;
+    impl Spawner for AtCapacity {
+        fn allocate_id(&self) -> String {
+            "ep_child".into()
+        }
+        fn launch(&self, _: String, _: SpawnRequest) -> Result<foe_core::SpawnHandle, CapError> {
+            Err(CapError::Budget { limit: foe_log::ExhaustedLimit::Concurrency, name: "max_concurrent".into() })
+        }
+    }
+    let (team, log, _inbox, _router) = team();
+    log.append(start());
+    let spawner: Arc<dyn Spawner> = Arc::new(AtCapacity);
+    let roots = |paths: &[&str]| paths.iter().map(|p| (*p).to_string()).collect::<Vec<_>>();
+    let add = |name: &str, write: Vec<String>| {
+        let req = SpawnRequest {
+            contract: "worker".into(),
+            task: "audit".into(),
+            context: SpawnContext::Fresh,
+            reserve: BudgetAmount::default(),
+            write: None,
+            call_id: "tc".into(),
+        };
+        team.delegate(spawner.clone(), req, Some(name), Vec::new(), write)
+    };
+
+    add("a", roots(&["/p/crates/log"])).unwrap();
+    for wanted in [vec!["/p/crates/log"], vec!["/p/crates"], vec!["/p/crates/log/src"]] {
+        let refused = add("b", roots(&wanted)).unwrap_err();
+        assert!(refused.to_string().contains("still writing"), "{wanted:?}: {refused}");
+    }
+
+    // A neighbour is not an overlap, and neither is a name that only shares
+    // a prefix of characters.
+    add("c", roots(&["/p/crates/core"])).unwrap();
+    add("d", roots(&["/p/crates/log-other"])).unwrap();
 }

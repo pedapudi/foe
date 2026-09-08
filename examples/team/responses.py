@@ -75,7 +75,6 @@ def lead(request: dict) -> list[dict]:
                 "contract": "reviewer",
                 "task": "Review the change to src/cli.py, which adds a --dry-run flag.",
                 "name": "reviewer",
-                "scope": ["src/cli.py"],
             },
         )
         call(
@@ -86,7 +85,6 @@ def lead(request: dict) -> list[dict]:
                 "contract": "tester",
                 "task": "Run `python3 -B tests/check.py` and report the result.",
                 "name": "tester",
-                "scope": ["tests/check.py"],
             },
         )
         call(
@@ -98,7 +96,6 @@ def lead(request: dict) -> list[dict]:
                 "task": "Inspect both reports, delegate a usage audit, and run the complete check.",
                 "name": "integration",
                 "blocked_by": ["task_01", "task_02"],
-                "scope": ["src/cli.py", "tests/check.py"],
             },
         )
         done(chunks, "tool")
@@ -179,7 +176,6 @@ def integration(request: dict) -> list[dict]:
                 "contract": "usage-auditor",
                 "task": "Confirm the usage text and dry-run check agree.",
                 "name": "usage-auditor",
-                "scope": ["src/cli.py", "tests/check.py"],
             },
         )
         done(chunks, "tool")

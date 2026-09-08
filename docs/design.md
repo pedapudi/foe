@@ -631,7 +631,7 @@ returns. A parent observes a completed wait only after `spawn/end` and
 
 The board contains the root task followed by added tasks in creation order.
 An added task records its identifier, revision, child contract, description,
-status, owner, dependencies, and advisory write scope. Each revision is a
+status, owner, dependencies, and granted write roots. Each revision is a
 complete snapshot. Only the lead process appends revisions. This single
 writer assigns each ready task to one new child, which removes agent-side
 claim races and makes assignment deterministic.
@@ -639,8 +639,22 @@ claim races and makes assignment deterministic.
 A dependency names an earlier task on the same board. This ordering makes a
 cycle unrepresentable. A dependent task starts after every dependency
 completes. A dependency with another terminal status settles the dependent
-task as blocked. Advisory write scopes expose likely overlap to agents and
-the viewer. Filesystem grants remain the enforced authority.
+task as blocked.
+
+A spawn may grant the child narrower write roots than its contract declares,
+which is how a lead partitions a tree between workers. The grant travels in
+the child's launch metadata beside its effective budget, and the child applies
+it before it confines itself, so the kernel holds the partition rather than a
+convention. A granted root must lie within what the child contract declares,
+which `resolve` has already held within what the granting episode holds, so
+the rule is the one rule: nothing exceeds what started it. Paths are excluded
+from a contract fingerprint, so two children of one contract writing in
+different places are still that contract, exactly as two children with
+different reservations are.
+
+The board refuses a root that lies under or over one a task that has not
+settled still holds. Containment either way is an overlap: a worker given a
+directory and one given a file inside it write the same bytes.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent

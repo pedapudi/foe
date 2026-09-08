@@ -229,6 +229,10 @@ pub struct ChildLaunch {
     pub team_id: Option<String>,
     pub expected_contract_fingerprint: Option<String>,
     pub effective_budget: Option<Budget>,
+    /// The write roots the parent granted, narrower than the ones the child
+    /// contract declares. The child applies them before it confines itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_write: Option<Vec<PathBuf>>,
     #[serde(default)]
     pub process_boundary: Option<crate::process_boundary::BoundaryPaths>,
     pub fork_source: Option<PathBuf>,
@@ -354,6 +358,25 @@ impl Spawner for ProcessSpawner {
             foe_contract::fingerprint::compute(contract, &self.builtin_specs, &crate::fingerprint::runtime_info())
                 .map_err(|e| CapError::Invalid(e.to_string()))?;
         let limits = effective_budget(&self.limits, &contract.budget, req.reserve);
+        // A granted root must lie inside what the child contract declares,
+        // which `resolve` has already held inside what this episode holds.
+        // A relative root is resolved against the first the contract declares,
+        // which is the directory a built-in document works in and the one a
+        // model names its paths from.
+        let granted = req.write.as_ref().map(|roots| {
+            let base = contract.grants.write.first().cloned().unwrap_or_default();
+            roots.iter().map(|root| if root.is_absolute() { root.clone() } else { base.join(root) }).collect::<Vec<_>>()
+        });
+        if let Some(roots) = &granted {
+            if let Some(outside) = roots.iter().find(|root| !foe_contract::contains(&contract.grants.write, root)) {
+                let declared = &contract.grants.write;
+                return Err(CapError::Invalid(format!(
+                    "write {} lies outside what the {} contract declares, {declared:?}",
+                    outside.display(),
+                    req.contract
+                )));
+            }
+        }
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let boundary = self
@@ -372,6 +395,7 @@ impl Spawner for ProcessSpawner {
             team_id: Some(self.episode_id.clone()),
             expected_contract_fingerprint: Some(expected.hash),
             effective_budget: Some(limits),
+            effective_write: granted,
             process_boundary: boundary.as_ref().map(|boundary| boundary.paths()),
             ..ChildLaunch::default()
         };

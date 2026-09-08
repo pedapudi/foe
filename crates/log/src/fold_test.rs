@@ -770,7 +770,7 @@ fn every_event_variant_round_trips() {
             status: TaskStatus::Queued,
             owner: None,
             blocked_by: vec![],
-            scope: vec![],
+            write: vec![],
             outcome: None,
             call_id: "tc_1".into(),
         }),

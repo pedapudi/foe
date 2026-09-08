@@ -1,5 +1,5 @@
 // Task boards for the selected lead and each descendant that leads a team.
-// Plain rows keep task state, dependencies, ownership, and scopes readable
+// Plain rows keep task state, dependencies, ownership, and write roots readable
 // at the same time in both live and static views.
 
 import { clear, h } from "../dom.js";
@@ -35,7 +35,7 @@ function taskRow(task: TeamTask, names: Map<string, string>, handlers: TeamHandl
       )
     : "unassigned";
   const dependencies = task.blockedBy.length ? `after ${task.blockedBy.join(", ")}` : "ready";
-  const scope = task.scope.length ? task.scope.join(", ") : "unspecified";
+  const write = task.write.length ? task.write.join(", ") : "nothing";
   const history = task.transitions.map((transition) => transition.status).join(" → ");
   return h(
     "div",
@@ -53,8 +53,8 @@ function taskRow(task: TeamTask, names: Map<string, string>, handlers: TeamHandl
         h("dd", null, owner),
         h("dt", null, "dependencies"),
         h("dd", null, dependencies),
-        h("dt", null, "scope"),
-        h("dd", null, scope),
+        h("dt", null, "writes"),
+        h("dd", null, write),
         h("dt", null, "history"),
         h("dd", null, history),
       ),

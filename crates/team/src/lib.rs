@@ -27,6 +27,7 @@ use foe_core::protocol::{Host, InboxSink};
 use foe_core::spawn::{ChildObserver, Router};
 use foe_core::{CallCtx, CapError, LeadLog, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -139,7 +140,7 @@ pub fn fold(events: &[Event]) -> TeamState {
             status,
             owner: Some(start.id.clone()),
             blocked_by: Vec::new(),
-            scope: Vec::new(),
+            write: Vec::new(),
             outcome,
             call_id: String::new(),
         });
@@ -218,7 +219,7 @@ impl Team {
         req: SpawnRequest,
         name: Option<&str>,
         blocked_by: Vec<String>,
-        scope: Vec<String>,
+        write: Vec<String>,
     ) -> Result<TeamTask, CapError> {
         let task_id;
         {
@@ -232,6 +233,24 @@ impl Team {
             if let Some(missing) = blocked_by.iter().find(|id| state.task(id).is_none()) {
                 return Err(CapError::Invalid(format!("blocked_by names unknown task {missing}")));
             }
+            // Two workers writing under one root is the failure a partition
+            // exists to prevent, and the board is where the partition is
+            // visible. A task that has settled has stopped writing, and one
+            // this task waits for cannot still be writing when it starts, so
+            // a unit that integrates what two others wrote is not an overlap.
+            let waits_for = awaited(&state, &blocked_by);
+            if let Some((task, root)) = state
+                .tasks
+                .iter()
+                .filter(|task| !settled(task.status) && !waits_for.contains(&task.task_id))
+                .find_map(|task| overlap(&task.write, &write).map(|root| (task, root)))
+            {
+                return Err(CapError::Invalid(format!(
+                    "write {root} is under or over {}, which {} is still writing",
+                    task.write.join(", "),
+                    task.name
+                )));
+            }
             task_id = format!("task_{:02}", state.tasks.len());
             let task = TeamTask {
                 task_id: task_id.clone(),
@@ -243,7 +262,7 @@ impl Team {
                 status: TaskStatus::Queued,
                 owner: None,
                 blocked_by,
-                scope,
+                write,
                 outcome: None,
                 call_id: req.call_id,
             };
@@ -313,6 +332,7 @@ impl Team {
                     task: task.description.clone(),
                     context: task.context,
                     reserve: BudgetAmount::default(),
+                    write: (!task.write.is_empty()).then(|| task.write.iter().map(PathBuf::from).collect()),
                     call_id: task.call_id.clone(),
                 };
                 match spawner.launch(child_id.clone(), request) {
@@ -541,6 +561,30 @@ fn settled(status: TaskStatus) -> bool {
     !matches!(status, TaskStatus::Queued | TaskStatus::Running)
 }
 
+/// Every task the given dependencies wait on, dependencies included. The
+/// board is acyclic by construction, so the walk terminates.
+fn awaited(state: &TeamState, blocked_by: &[String]) -> BTreeSet<String> {
+    let mut seen = BTreeSet::new();
+    let mut pending: Vec<String> = blocked_by.to_vec();
+    while let Some(id) = pending.pop() {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        if let Some(task) = state.task(&id) {
+            pending.extend(task.blocked_by.iter().cloned());
+        }
+    }
+    seen
+}
+
+/// The first root of `wanted` that is under or over one of `held`, if any.
+/// Containment either way is an overlap: a worker given a directory and one
+/// given a file inside it write the same bytes.
+fn overlap(held: &[String], wanted: &[String]) -> Option<String> {
+    let under = |a: &String, b: &String| Path::new(a).starts_with(Path::new(b));
+    wanted.iter().find(|root| held.iter().any(|h| under(root, h) || under(h, root))).cloned()
+}
+
 fn unique_name(state: &TeamState, requested: &str, task_id: &str) -> String {
     if state.roster.iter().all(|member| member.name != requested)
         && state.tasks.iter().all(|task| task.name != requested)
@@ -602,7 +646,7 @@ impl Kind {
                         "context": { "type": "string", "enum": ["fresh", "fork"], "description": "fresh starts the child with only its task; fork seeds it with this episode's conversation so far" },
                         "name": string("roster name for the child; defaults to a unique form of the contract name"),
                         "blocked_by": { "type": "array", "items": { "type": "string" }, "description": "task ids that must complete before this task starts" },
-                        "scope": { "type": "array", "items": { "type": "string" }, "description": "advisory paths this task intends to write" },
+                        "write": { "type": "array", "items": { "type": "string" }, "description": "the write roots to grant this worker, within your own and within what its contract declares; omitted grants what the contract declares" },
                     }),
                     &["contract", "task"],
                 ),
@@ -672,8 +716,7 @@ longer need, or that the answers already in hand have made wrong. What it wrote 
     }
 }
 
-const KINDS: [Kind; 7] =
-    [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Cancel, Kind::Notify, Kind::Send, Kind::Team];
+const KINDS: [Kind; 7] = [Kind::Spawn, Kind::Wait, Kind::Steer, Kind::Cancel, Kind::Notify, Kind::Send, Kind::Team];
 
 /// The specifications of the six team tools, in the order [`tools`] lists
 /// them. Fingerprint and `foe plan` use this without a running team.
@@ -822,7 +865,7 @@ impl Tool for TeamTool {
                     Ok(values) => values,
                     Err(error) => return error,
                 };
-                let scope = match string_list(&args, "scope") {
+                let write = match string_list(&args, "write") {
                     Ok(values) => values,
                     Err(error) => return error,
                 };
@@ -832,9 +875,10 @@ impl Tool for TeamTool {
                     task,
                     context,
                     reserve: BudgetAmount::default(),
+                    write: (!write.is_empty()).then(|| write.iter().map(PathBuf::from).collect()),
                     call_id: ctx.call_id.clone(),
                 };
-                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by, scope) {
+                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by, write) {
                     Ok(task) => {
                         let owner = task.owner.as_deref().unwrap_or("unassigned");
                         ToolValue::ok(

@@ -3,7 +3,7 @@
   "name": "review-and-test",
   "instructions": {
     "10-role": "You lead a team working in a Python repository. You make the code change yourself.",
-    "20-team": "After editing, add review and test tasks, then add an integration task blocked by both. Give each task its file scope. Call `wait`, which returns after the board settles. Finish from the reports."
+    "20-team": "After editing, add review and test tasks, then add an integration task blocked by both. These teammates read and report, so none of them is granted a write root. Call `wait`, which returns after the board settles. Finish from the reports."
   },
   "tools": ["read", "grep", "edit", "spawn", "wait", "team"],
   "grants": {

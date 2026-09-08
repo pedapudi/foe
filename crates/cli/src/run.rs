@@ -836,7 +836,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         .map(|launch| InheritedExecutables::read(&launch.episode_id))
         .transpose()?
         .flatten();
-    let contract = match &inherited {
+    let mut contract = match &inherited {
         Some(executables) => resolve_with_executables(&config, &executables.captured_bytes()),
         None => resolve(&config),
     }
@@ -851,6 +851,14 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
                 fingerprint.hash
             ));
         }
+    }
+    // The parent may grant narrower write roots than the contract declares,
+    // which is how two children of one contract take disjoint parts of a
+    // tree. It happens after the fingerprint check and before confinement:
+    // paths are excluded from a fingerprint, and the policy below is built
+    // from what stands here.
+    if let Some(roots) = launch.effective_write.clone() {
+        contract.grants.write = roots;
     }
     let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;

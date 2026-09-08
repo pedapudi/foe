@@ -28,7 +28,8 @@ export interface TeamTask {
   status: string;
   owner: string | null;
   blockedBy: string[];
-  scope: string[];
+  /** The write roots the lead granted this task's child. */
+  write: string[];
   transitions: TaskTransition[];
 }
 
@@ -56,7 +57,7 @@ export function readTaskBoard(episode: TeamEpisode): TaskBoard {
     status: outcomeStatus(episode.outcome),
     owner: episode.id,
     blockedBy: [],
-    scope: [],
+    write: [],
     transitions: [
       ...(start ? [{ seq: start.seq, time: start.time, status: "running" }] : []),
       ...(end ? [{ seq: end.seq, time: end.time, status: outcomeStatus(episode.outcome) }] : []),
@@ -80,7 +81,7 @@ export function readTaskBoard(episode: TeamEpisode): TaskBoard {
       status,
       owner: typeof data.owner === "string" ? data.owner : null,
       blockedBy: arr(data.blocked_by).map((item) => str(item)).filter(Boolean),
-      scope: arr(data.scope).map((item) => str(item)).filter(Boolean),
+      write: arr(data.write).map((item) => str(item)).filter(Boolean),
       transitions: [...(prior?.transitions ?? []), { seq: event.seq, time: event.time, status }],
     });
   }

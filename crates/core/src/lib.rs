@@ -361,6 +361,12 @@ pub struct SpawnRequest {
     /// remainder when the contract declares none. The spawner records what
     /// it granted.
     pub reserve: foe_log::BudgetAmount,
+    /// The write roots to grant, which narrow what the child contract
+    /// declares the way `reserve` narrows what it budgets. `None` grants
+    /// what the contract declares. Paths are excluded from a contract
+    /// fingerprint, so two children of one contract writing in different
+    /// places are still that contract.
+    pub write: Option<Vec<std::path::PathBuf>>,
     /// The tool call that starts the child, recorded in `spawn/start`.
     pub call_id: String,
 }

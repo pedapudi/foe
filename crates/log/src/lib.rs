@@ -793,7 +793,9 @@ pub struct TeamTask {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub blocked_by: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub scope: Vec<String>,
+    /// The write roots the lead granted this task's child, which are
+    /// within its own. Empty when the child writes nothing.
+    pub write: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outcome: Option<Outcome>,
     /// The model-issued call that posted the task. A later capacity release

@@ -583,7 +583,14 @@ impl Executor {
                 episodes: None,
             };
             let task = sections.join("\n\n");
-            let req = SpawnRequest { contract: full.clone(), task, context: SpawnContext::Fresh, reserve, call_id };
+            let req = SpawnRequest {
+                contract: full.clone(),
+                task,
+                context: SpawnContext::Fresh,
+                reserve,
+                write: None,
+                call_id,
+            };
             match sh.spawner.launch(child_id.expect("a model node has an allocated child id"), req) {
                 Ok(handle) => Box::pin(async move { output_of(handle.run.wait().await.0, false) }),
                 Err(CapError::Log(e)) => return Err(e.into()),

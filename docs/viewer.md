@@ -793,7 +793,7 @@ requires no `team/task` event.
 Each `team/task` event is a complete revision of an added task. The view
 keeps the greatest revision for current state and retains the revision order
 as the task's history. A row shows status, owner, dependencies, advisory
-write scope, and the transitions recorded so far. Clicking an owner selects
+granted write roots, and the transitions recorded so far. Clicking an owner selects
 that member's episode.
 
 The selected episode's board is always present. A descendant board appears

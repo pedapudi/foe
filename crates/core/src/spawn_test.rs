@@ -206,6 +206,7 @@ fn a_child_asks_for_the_episodes_its_subtree_can_hold() {
             task: "t".into(),
             context: SpawnContext::Fresh,
             reserve: BudgetAmount::default(),
+            write: None,
             call_id: "tc".into(),
         };
         spawner.reserve_for(&req).episodes
@@ -325,6 +326,7 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
         task: "t".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
+        write: None,
         call_id: "tc".into(),
     };
     let handle = spawner.spawn(request).unwrap();
@@ -381,6 +383,7 @@ async fn forked_child_launch_records_the_source_and_boundary() {
         task: "work".into(),
         context: SpawnContext::Fork,
         reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
+        write: None,
         call_id: "tc".into(),
     };
     let handle = spawner.spawn(request).unwrap();
@@ -428,6 +431,7 @@ fn a_workflow_bearing_child_asks_for_its_subtree_episodes() {
         task: "t".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
+        write: None,
         call_id: "tc".into(),
     };
     assert_eq!(spawner.reserve_for(&req).episodes, Some(5));
@@ -447,6 +451,7 @@ async fn child_headers_and_requests_are_forwarded_and_answers_are_routed() {
         task: "do it".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount { model_calls: Some(5), ..Default::default() },
+        write: None,
         call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();
@@ -531,6 +536,7 @@ fn spawn_refuses_contracts_outside_the_grant() {
         task: "x".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
+        write: None,
         call_id: "tc_spawn".into(),
     };
     let err = spawner.spawn(req).err().unwrap().to_string();
@@ -585,6 +591,7 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
         task: "ask".into(),
         context: SpawnContext::Fresh,
         reserve: BudgetAmount::default(),
+        write: None,
         call_id: "tc_spawn".into(),
     };
     let handle = spawner.spawn(req).unwrap();

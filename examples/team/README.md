@@ -29,7 +29,7 @@ The runner accepts the binary path as its only argument. It defaults to
 configuration, the small project, and the complete episode tree.
 
 The runner prints a viewer command after validation. Open the tasks tab to
-see both boards, their task histories, dependencies, owners, and scopes.
+see both boards, their task histories, dependencies, owners, and grants.
 The same projection is available while the run is live and from a static
 viewer export.
 
@@ -72,9 +72,13 @@ Each revision is a complete snapshot. A successful task has this history:
 queued → running → completed
 ```
 
-The task carries an advisory write scope. Review names `src/cli.py`, testing
-names `tests/check.py`, and integration names both. Scope communicates likely
-overlap. Filesystem grants remain the enforced authority.
+A task carries the write roots the lead granted its child, which are within
+the lead's own and enforced by the kernel. These three teammates read and
+report and are granted none, so their tasks name none: reviewing a change and
+running a check need no write access, and the lead makes every change itself.
+A lead that does partition a tree between writers gives each task a root of
+its own, and the board refuses a root that lies under or over one a task that
+has not settled still holds.
 
 ## Peer and parent messages
 

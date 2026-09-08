@@ -191,7 +191,7 @@ of those schemas keeps the one-agent request header unchanged.
 
 | tool | effect | behavior |
 |---|---|---|
-| `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `scope` lists advisory write paths. |
+| `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `write` lists the write roots to grant the child, which must lie within the caller's own and within what the child contract declares, and may not overlap a root a live task holds; omitted, the child writes where its contract says. |
 | `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, or inbox source. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
 | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |

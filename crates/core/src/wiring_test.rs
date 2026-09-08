@@ -43,6 +43,7 @@ fn request(contract: &str, reserve: BudgetAmount) -> SpawnRequest {
         task: "do it".into(),
         context: SpawnContext::Fresh,
         reserve,
+        write: None,
         call_id: "tc_1".into(),
     }
 }
