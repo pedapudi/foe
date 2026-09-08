@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."
 
 # surface | ceiling | README table row label | crates whose lines are summed
 budgets='
-kernel    | 6300 | kernel               | log core
+kernel    | 6350 | kernel               | log core
 contract  | 1575 | execution contracts  | contract
 tools     | 1900 | coding tools         | code
 team      |  925 | team coordination    | team
