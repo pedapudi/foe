@@ -686,9 +686,12 @@ members.
 ```
 
 Eight built-in tools serve teams. `spawn`, `wait`, `steer`, and `cancel` act
-on the team an episode leads. `notify`, `send`, and `ask` act on the team the
-episode belongs to. The `team` tool lists the parent-led team by default and
-accepts `scope: led` to list the team that the current episode leads. A root's parent-led and led
+on the team an episode leads. `notify` acts on the episode that started this
+one. `send`, `ask`, and `team` take a `scope`: `member`, the default, is the
+team the episode belongs to, and `led` is the team it leads. An episode in
+the middle of a tree is a member of one team and the lead of another, so it
+asks its own lead a question at member scope and answers its own child's
+question at led scope. A root's parent-led and led
 team are the same team. The [protocol](protocol.md#children) carries member
 calls to the lead process.
 

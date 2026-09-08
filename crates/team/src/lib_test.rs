@@ -311,6 +311,38 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(listed.rendered.as_deref(), Some("members:\ntester\tep_b\tactive\ntasks:\n"));
 }
 
+/// docs/tools.md `send`: an episode in the middle of a tree belongs to one
+/// team and leads another, so `send` and `ask` take the same `scope` `team`
+/// takes. A root's two teams are one, so both scopes reach its own roster
+/// here; the forwarding a member does at `member` scope is the arm `team`
+/// already had.
+#[tokio::test]
+async fn send_and_ask_take_the_scope_that_selects_which_team_they_address() {
+    let (team, log, _, _) = team();
+    log.append(start());
+    log.append(EventData::TeamRoster {
+        member_id: "ep_b".into(),
+        name: "tester".into(),
+        description: String::new(),
+        phase: MemberPhase::Active,
+    });
+    let by_name = |name: &str| tools(team.clone(), None).into_iter().find(|t| t.spec().name == name).unwrap();
+    for name in ["send", "ask"] {
+        let params = by_name(name).spec().params.clone();
+        let scope = &params["properties"]["scope"];
+        assert_eq!(scope["enum"], serde_json::json!(["member", "led"]), "{name} takes a scope");
+        let led = serde_json::json!({ "to": "tester", "content": "x", "scope": "led" });
+        assert!(!by_name(name).call(led, &ctx(None)).await.is_error, "led reaches the team this episode leads");
+        let bare = serde_json::json!({ "to": "tester", "content": "x" });
+        assert!(!by_name(name).call(bare, &ctx(None)).await.is_error, "a root's two teams are one");
+        let wrong = serde_json::json!({ "to": "tester", "content": "x", "scope": "sideways" });
+        let refused = by_name(name).call(wrong, &ctx(None)).await;
+        assert!(refused.is_error, "{:?}", refused.rendered);
+        assert!(refused.rendered.unwrap_or_default().contains("neither member nor led"));
+    }
+    assert_eq!(team.state().queue.len(), 4, "each accepted call queued one message");
+}
+
 /// docs/tools.md "ask": a question carries its own identity, the answer
 /// carries the question's, and `wait` with `{reply: id}` holds for that
 /// answer alone.

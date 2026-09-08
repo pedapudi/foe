@@ -739,21 +739,29 @@ longer need, or that the answers already in hand have made wrong. What it wrote 
             Kind::Ask => (
                 "Ask a teammate a question, addressed by roster name, through the lead. It returns the question's \
 `message_id`, and `wait` with `{reply: that id}` blocks until that question is answered and not until any message \
-arrives. Use it when one answer from one teammate decides what you do next; `send` is for telling.",
+arrives. `scope` selects the team: the one this episode belongs to, or the one it leads. Use it when one \
+answer from one teammate decides what you do next; `send` is for telling.",
                 object(
-                    serde_json::json!({ "to": string("roster name of the teammate"), "content": string("the question") }),
+                    serde_json::json!({
+                        "to": string("roster name of the teammate"),
+                        "content": string("the question"),
+                        "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the team this episode belongs to, the default; led selects the team it leads" }
+                    }),
                     &["to", "content"],
                 ),
                 Effect::Pure,
             ),
             Kind::Send => (
                 "Send a message to a teammate, addressed by roster name, through the lead. With `reply_to`, it \
-answers the question that identifier names, and the teammate waiting on that answer wakes.",
+answers the question that identifier names, and the teammate waiting on that answer wakes. `scope` selects \
+the team: the one this episode belongs to, or the one it leads, which is how a member answers a question its \
+own child asked.",
                 object(
                     serde_json::json!({
                         "to": string("roster name of the teammate"),
                         "content": string("the message"),
-                        "reply_to": string("the message_id of a question this answers")
+                        "reply_to": string("the message_id of a question this answers"),
+                        "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the team this episode belongs to, the default; led selects the team it leads" }
                     }),
                     &["to", "content"],
                 ),
@@ -762,13 +770,23 @@ answers the question that identifier names, and the teammate waiting on that ans
             Kind::Team => (
                 "List a team's lead, members, and task board. The default is the team this episode belongs to. `led` selects the team of children this episode leads.",
                 object(
-                    serde_json::json!({ "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the parent-led team; led selects this episode's child team" } }),
+                    serde_json::json!({ "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the team this episode belongs to, the default; led selects the team it leads" } }),
                     &[],
                 ),
                 Effect::Pure,
             ),
         };
         ToolSpec { name: kebab(&self), description: description.to_string(), instruction: None, params, effect }
+    }
+}
+
+/// Which team a call addresses: the one this episode belongs to, or the one
+/// it leads. A root's two are the same team.
+fn leads_scope(args: &serde_json::Value) -> Result<bool, ToolValue> {
+    match args.get("scope").and_then(|value| value.as_str()) {
+        None | Some("member") => Ok(false),
+        Some("led") => Ok(true),
+        Some(scope) => Err(ToolValue::invalid(format!("scope: {scope} is neither member nor led"))),
     }
 }
 
@@ -782,14 +800,16 @@ pub fn builtin_specs() -> Vec<ToolSpec> {
 }
 
 /// The eight team tools. `parent` is the link to the process hosting this
-/// episode, when it has one. `notify`, `send`, and `ask` go to that parent.
-/// `team` selects the parent-led or locally led team from one schema.
+/// episode, when it has one. `notify` goes to that parent. `send`, `ask`,
+/// and `team` select the parent-led or locally led team from one schema, so
+/// an episode in the middle of a tree can answer the team it leads as well
+/// as the one it belongs to.
 pub fn tools(team: Arc<Team>, parent: Option<&Host>) -> Vec<Box<dyn Tool>> {
     KINDS
         .into_iter()
         .map(|kind| match (parent, kind) {
-            (Some(host), Kind::Notify | Kind::Send | Kind::Ask) => host.tool(kind.spec()),
-            (Some(host), Kind::Team) => {
+            (Some(host), Kind::Notify) => host.tool(kind.spec()),
+            (Some(host), Kind::Send | Kind::Ask | Kind::Team) => {
                 Box::new(TeamTool { spec: kind.spec(), kind, team: team.clone(), parent: Some(host.tool(kind.spec())) })
                     as Box<dyn Tool>
             }
@@ -963,7 +983,11 @@ impl Tool for TeamTool {
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
                 if matches!(self.kind, Kind::Send | Kind::Ask) {
-                    return self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args));
+                    return match (leads_scope(&args), &self.parent) {
+                        (Err(invalid), _) => invalid,
+                        (Ok(false), Some(parent)) => parent.call(args, ctx).await,
+                        _ => self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args)),
+                    };
                 }
                 match self.team.steer(to, content) {
                     Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),
@@ -1029,12 +1053,10 @@ impl Tool for TeamTool {
                 }
             }
             Kind::Notify => ToolValue::error("notify: this episode has no parent to notify"),
-            Kind::Team => match args.get("scope").and_then(|value| value.as_str()) {
-                None | Some("member") if self.parent.is_some() => {
-                    self.parent.as_ref().expect("checked").call(serde_json::json!({}), ctx).await
-                }
-                None | Some("member") | Some("led") => self.team.roster(),
-                Some(scope) => ToolValue::invalid(format!("scope: {scope} is neither member nor led")),
+            Kind::Team => match (leads_scope(&args), &self.parent) {
+                (Err(invalid), _) => invalid,
+                (Ok(false), Some(parent)) => parent.call(serde_json::json!({}), ctx).await,
+                _ => self.team.roster(),
             },
         }
     }
