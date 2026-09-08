@@ -4,7 +4,7 @@ use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
 
 pub fn budget() -> Budget {
     Budget {
-        model_calls: 10,
+        model_calls: Some(10),
         input_tokens: Some(1000),
         output_tokens: Some(400),
         seconds: None,
@@ -17,11 +17,26 @@ pub fn budget() -> Budget {
 
 #[test]
 fn model_calls_count_every_request_including_retries() {
-    let mut pool = Pool::new(Budget { model_calls: 2, ..budget() });
+    let mut pool = Pool::new(Budget { model_calls: Some(2), ..budget() });
     assert_eq!(pool.exhausted(), None);
     pool.note_request();
     pool.note_request();
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::ModelCalls));
+}
+
+/// docs/config.md `budget`: a declared ceiling of `"unlimited"` leaves the
+/// dimension with no remainder to run out of, the way an absent
+/// `input_tokens` already does. The other dimensions still bound the run.
+#[test]
+fn an_unlimited_model_call_ceiling_never_exhausts() {
+    let mut pool = Pool::new(Budget { model_calls: None, input_tokens: Some(10), ..budget() });
+    for _ in 0..1000 {
+        pool.note_request();
+    }
+    assert_eq!(pool.remaining().model_calls, None, "no ceiling leaves no remainder");
+    assert_eq!(pool.exhausted(), None);
+    pool.note_usage(Usage { input: 10, output: 0, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens), "the dimensions stay independent");
 }
 
 #[test]
@@ -225,7 +240,7 @@ fn compaction_end_does_not_charge_summary_usage_twice() {
 fn admission_uses_cumulative_spend_and_never_a_per_request_inference() {
     let recorded = [878u64, 1141, 1825, 3580, 7130, 7860, 8006, 8299, 4345, 4699, 5111, 5357];
     let total: u64 = recorded.iter().sum();
-    let mut pool = Pool::new(Budget { model_calls: 20, input_tokens: Some(total + 1), ..budget() });
+    let mut pool = Pool::new(Budget { model_calls: Some(20), input_tokens: Some(total + 1), ..budget() });
     for &input in &recorded {
         assert_eq!(pool.exhausted(), None, "admitted while cumulative spend is below the allowance");
         pool.note_request();
@@ -274,7 +289,7 @@ async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging
         },
     ];
     let mut pool = Pool::new(Budget {
-        model_calls: 10,
+        model_calls: Some(10),
         input_tokens: Some(100),
         output_tokens: Some(25),
         seconds: Some(20),

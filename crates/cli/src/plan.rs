@@ -111,7 +111,10 @@ pub fn summary_report(
         None => "none declared: the episode ends only on budget or block".into(),
     };
     let budget = &contract.budget;
-    let mut limits = format!("{} model calls", budget.model_calls);
+    let mut limits = match budget.model_calls {
+        Some(calls) => format!("{calls} model calls"),
+        None => "no model-call limit".to_string(),
+    };
     match budget.seconds {
         Some(seconds) => write!(limits, ", {seconds}s").ok(),
         None => write!(limits, ", no time limit").ok(),

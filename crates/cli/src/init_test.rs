@@ -30,7 +30,7 @@ fn init_writes_a_resolvable_contract_with_no_configuration_warnings() {
     for node in document.workflow.as_ref().unwrap().nodes.values() {
         assert_eq!(node.model.as_ref().unwrap().grants.execute, execute);
     }
-    assert_eq!(document.budget.model_calls, INIT_MODEL_CALLS);
+    assert_eq!(document.budget.model_calls, Some(INIT_MODEL_CALLS));
     assert_eq!(document.budget.seconds, Some(INIT_SECONDS));
     assert_eq!(document.budget.input_tokens, None, "token backstops stay unlimited");
     assert_eq!(document.budget.output_tokens, None, "token backstops stay unlimited");

@@ -66,7 +66,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     resolve(&config).expect("the built-in workflow resolves before an episode starts");
     assert_eq!(
         config.budget.model_calls,
-        BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS
+        Some(BUILTIN_IMPLEMENTATION_CALLS + BUILTIN_ASSESSMENT_CALLS + BUILTIN_REPAIR_CALLS)
     );
     assert_eq!(config.budget.max_episodes, 4);
     assert_eq!(config.budget.max_concurrent, 1);
@@ -75,7 +75,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(implementation.follows, ["task"]);
     assert!(!implementation.terminal);
     let implementation_contract = implementation.model.as_ref().unwrap();
-    assert_eq!(implementation_contract.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
+    assert_eq!(implementation_contract.budget.model_calls, Some(BUILTIN_IMPLEMENTATION_CALLS));
     let completion = implementation_contract.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(
         completion["required"],
@@ -95,7 +95,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
         std::collections::BTreeMap::from([("accept".into(), vec![]), ("repair".into(), vec!["repair-task".into()])])
     );
     let assessment_contract = assessment.model.as_ref().unwrap();
-    assert_eq!(assessment_contract.budget.model_calls, BUILTIN_ASSESSMENT_CALLS);
+    assert_eq!(assessment_contract.budget.model_calls, Some(BUILTIN_ASSESSMENT_CALLS));
     assert!(!assessment_contract.tools.iter().any(|tool| tool == "edit"));
     let assessment_completion = assessment_contract.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(
@@ -110,7 +110,7 @@ fn builtin_coding_runs_implementation_then_conditional_repair() {
     assert_eq!(repair.follows, ["task", "implement-task", "assess-task"]);
     assert!(repair.terminal);
     let repair_contract = repair.model.as_ref().unwrap();
-    assert_eq!(repair_contract.budget.model_calls, BUILTIN_REPAIR_CALLS);
+    assert_eq!(repair_contract.budget.model_calls, Some(BUILTIN_REPAIR_CALLS));
     let repair_completion = repair_contract.done_when.as_ref().unwrap().returns.as_ref().unwrap();
     assert_eq!(repair_completion["properties"]["unresolved_risks"]["maxItems"], 0);
     assert_eq!(repair_completion["required"], completion["required"]);
@@ -187,7 +187,7 @@ fn builtin_oneshot_runs_the_implementation_episode_alone() {
     resolve(&document).expect("the one-shot document resolves before an episode starts");
     assert_eq!(document.name, "oneshot");
     assert!(document.workflow.is_none(), "one episode needs no graph");
-    assert_eq!(document.budget.model_calls, BUILTIN_IMPLEMENTATION_CALLS);
+    assert_eq!(document.budget.model_calls, Some(BUILTIN_IMPLEMENTATION_CALLS));
     assert_eq!(document.budget.max_episodes, 1);
     assert_eq!(document.budget.max_concurrent, 1);
     assert!(document.tool_defs.is_empty(), "without --verify the document defines no tool");
@@ -747,7 +747,7 @@ fn child_resume_uses_recorded_allowance_and_fingerprint() {
         let (_, launch, _) = resume(&dir, "sha256:recorded").unwrap();
         assert_eq!(launch.episode_id, "ep_child");
         assert_eq!(launch.expected_contract_fingerprint.as_deref(), Some("sha256:recorded"));
-        assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
+        assert_eq!(launch.effective_budget.unwrap().model_calls, Some(2));
         let error = resume(&dir, "sha256:different").unwrap_err();
         assert!(error.contains("log records fingerprint sha256:recorded"), "{error}");
     }
@@ -786,7 +786,7 @@ fn ordinary_prepared_fork_retains_source_fingerprint_exemption() {
 
     let (_, launch, _) = resume(&dir, "sha256:fork-contract").unwrap();
     assert!(launch.expected_contract_fingerprint.is_none());
-    assert_eq!(launch.effective_budget.unwrap().model_calls, 2);
+    assert_eq!(launch.effective_budget.unwrap().model_calls, Some(2));
 }
 
 /// docs/log-format.md "Seeding": a destination without seed/end cannot resume.

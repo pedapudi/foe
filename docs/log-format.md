@@ -163,7 +163,10 @@ is enforced by cgroup v2 or observed through a process group. Its optional
 `reason` explains why cgroup ownership was unavailable.
 
 `effective_budget` is the allowance the episode enforces. Its fields have the meanings and defaults in
-[config.md](config.md#budget). A spawned episode can have an effective
+[config.md](config.md#budget). `model_calls` is a number or the string
+`"unlimited"`, which records that the episode enforces no ceiling on model
+requests; the other three spend dimensions record the same thing by absence.
+A spawned episode can have an effective
 allowance below `contract.budget`; this leaves `contract_fingerprint`
 unchanged. On resume, the recorded allowance takes precedence over the
 mutable launch metadata beside the log.

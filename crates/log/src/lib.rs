@@ -728,7 +728,11 @@ fn u32_default<const N: u32>() -> u32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Budget {
-    pub model_calls: u64,
+    /// The model-request ceiling, or `None` for no ceiling. The field is
+    /// required, so a document states what it allows and cannot become
+    /// unbounded by leaving one out; `"unlimited"` is how it says so.
+    #[serde(with = "declared_limit")]
+    pub model_calls: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -743,6 +747,37 @@ pub struct Budget {
     pub max_concurrent: u32,
     #[serde(default = "u32_default::<8>")]
     pub loop_threshold: u32,
+}
+
+/// A declared ceiling on the wire: a number, or the string `unlimited`.
+mod declared_limit {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    const UNLIMITED: &str = "unlimited";
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Declared {
+        Count(u64),
+        Word(String),
+    }
+
+    pub fn serialize<S: Serializer>(value: &Option<u64>, out: S) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(count) => count.serialize(out),
+            None => UNLIMITED.serialize(out),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(input: D) -> Result<Option<u64>, D::Error> {
+        match Declared::deserialize(input)? {
+            Declared::Count(count) => Ok(Some(count)),
+            Declared::Word(word) if word == UNLIMITED => Ok(None),
+            Declared::Word(word) => {
+                Err(serde::de::Error::custom(format!("expected a number or \"{UNLIMITED}\", found \"{word}\"")))
+            }
+        }
+    }
 }
 
 /// An amount of budget. Absent fields mean unlimited for that dimension.

@@ -950,3 +950,24 @@ fn an_unsupported_stated_version_is_refused_naming_both_versions() {
     assert!(matches!(error, LogError::UnsupportedVersion { found: 4, supported: LOG_VERSION }), "{error}");
     assert_eq!(error.to_string(), "log states format version 4; this reader reads version 3");
 }
+
+/// docs/log-format.md `episode/start`: a declared ceiling travels as a
+/// number or as the string `unlimited`, and reads back as what it says.
+/// Leaving the field out is an error rather than a way to become unbounded.
+#[test]
+fn a_budget_limit_is_a_number_or_the_word_unlimited() {
+    let parse =
+        |value: &str| serde_json::from_str::<crate::Budget>(&format!("{{\"model_calls\": {value}, \"max_depth\": 1}}"));
+    assert_eq!(parse("40").unwrap().model_calls, Some(40));
+    assert_eq!(parse("\"unlimited\"").unwrap().model_calls, None);
+    let refused = parse("\"none\"").unwrap_err().to_string();
+    assert!(refused.contains("expected a number or \"unlimited\""), "{refused}");
+    let missing = serde_json::from_str::<crate::Budget>("{}").unwrap_err().to_string();
+    assert!(missing.contains("model_calls"), "{missing}");
+    for (limit, wire) in [(Some(40), "40"), (None, "\"unlimited\"")] {
+        let budget = crate::Budget { model_calls: limit, ..parse("1").unwrap() };
+        let value = serde_json::to_value(&budget).unwrap();
+        assert_eq!(value["model_calls"].to_string(), wire);
+        assert_eq!(serde_json::from_value::<crate::Budget>(value).unwrap().model_calls, limit);
+    }
+}

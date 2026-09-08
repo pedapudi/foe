@@ -97,7 +97,7 @@ impl Pool {
         let output_used = used(self.output_tokens, self.children_spent.output_tokens, reserved(|a| a.output_tokens));
         let episodes_used = used(1, self.children_spent.episodes, reserved(|a| a.episodes));
         BudgetAmount {
-            model_calls: Some(self.limits.model_calls.saturating_sub(calls_used)),
+            model_calls: self.limits.model_calls.map(|n| n.saturating_sub(calls_used)),
             input_tokens: self.limits.input_tokens.map(|t| t.saturating_sub(input_used)),
             output_tokens: self.limits.output_tokens.map(|t| t.saturating_sub(output_used)),
             seconds: self.limits.seconds.map(|s| s.saturating_sub(self.started.elapsed().as_secs())),

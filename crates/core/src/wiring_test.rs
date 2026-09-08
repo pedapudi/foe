@@ -320,7 +320,7 @@ async fn a_grandchild_counts_against_the_root_episode_allowance() {
     leaf.grants.spawn.clear();
     config.child_contracts.get_mut("worker").unwrap().child_contracts.insert("worker".into(), leaf);
     config.child_contracts.get_mut("worker").unwrap().budget.max_episodes = 3;
-    config.child_contracts.get_mut("worker").unwrap().budget.model_calls = 5;
+    config.child_contracts.get_mut("worker").unwrap().budget.model_calls = Some(5);
     let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
     let router = Arc::new(Router::new());
     let inner = process_spawner(

@@ -232,7 +232,7 @@ fn validate_section(prefix: &str, s: &ChildContractDocument) -> Result<(), Contr
         require(s.child_contracts.contains_key(name), key(&format!("grants.spawn[{i}]")), rule)?;
     }
     let b = &s.budget;
-    require(b.model_calls > 0, key("budget.model_calls"), "is greater than 0")?;
+    require(b.model_calls != Some(0), key("budget.model_calls"), "is greater than 0, or \"unlimited\"")?;
     require(b.input_tokens != Some(0), key("budget.input_tokens"), "is greater than 0")?;
     require(b.output_tokens != Some(0), key("budget.output_tokens"), "is greater than 0")?;
     require(b.seconds != Some(0), key("budget.seconds"), "is greater than 0")?;
@@ -486,7 +486,7 @@ fn within_ceiling(prefix: &str, node: &ResolvedContract, ceiling: &ResolvedContr
     let (own, cap) = (&node.budget, &ceiling.budget);
     let within = |value: Option<u64>, limit: Option<u64>| value.is_none_or(|v| limit.is_none_or(|l| v <= l));
     for (field, holds) in [
-        ("model_calls", own.model_calls <= cap.model_calls),
+        ("model_calls", within(own.model_calls, cap.model_calls)),
         ("input_tokens", within(own.input_tokens, cap.input_tokens)),
         ("output_tokens", within(own.output_tokens, cap.output_tokens)),
         ("seconds", within(own.seconds, cap.seconds)),

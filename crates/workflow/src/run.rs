@@ -576,7 +576,7 @@ impl Executor {
         } else if node.model.is_some() {
             let contract = &sh.contract.workflow_contracts[&full];
             let reserve = BudgetAmount {
-                model_calls: Some(contract.budget.model_calls),
+                model_calls: contract.budget.model_calls,
                 input_tokens: contract.budget.input_tokens,
                 output_tokens: contract.budget.output_tokens,
                 seconds: contract.budget.seconds,

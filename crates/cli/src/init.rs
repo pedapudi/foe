@@ -70,7 +70,7 @@ fn document(
         contract_path.display()
     );
     let mut document = run::coding_contract_document(root, task, run::default_model()?, Some(verify_path), None)?;
-    document.budget.model_calls = INIT_MODEL_CALLS;
+    document.budget.model_calls = Some(INIT_MODEL_CALLS);
     document.budget.seconds = Some(INIT_SECONDS);
     document.grants.execute.push(root.to_path_buf());
     for node in document.workflow.as_mut().into_iter().flat_map(|wf| wf.nodes.values_mut()) {
@@ -144,7 +144,7 @@ fn report(
     writeln!(
         out,
         "budget    {} model calls, {}s, {} episodes: safety backstops, not targets",
-        document.budget.model_calls,
+        document.budget.model_calls.expect("init writes a model-call backstop"),
         document.budget.seconds.expect("init writes a wall-clock backstop"),
         document.budget.max_episodes
     )

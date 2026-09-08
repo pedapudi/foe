@@ -531,7 +531,7 @@ async fn child_headers_and_requests_are_forwarded_and_answers_are_routed() {
         serde_json::from_slice(&std::fs::read(child_dir.join("config.json")).unwrap()).unwrap();
     assert_eq!(written.name, "worker");
     assert_eq!(written.task, "do it");
-    assert_eq!(written.budget.model_calls, 50, "the declared child budget is stable");
+    assert_eq!(written.budget.model_calls, Some(50), "the declared child budget is stable");
     assert_eq!(written.budget.max_depth, 3, "runtime reservations do not rewrite the declaration");
     assert_eq!(written.sandbox.mode, foe_log::SandboxMode::Off, "sandbox is inherited");
     let launch: serde_json::Value =

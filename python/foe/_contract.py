@@ -81,10 +81,12 @@ class Budget:
     """Limits for the episode and every child below it.
 
     A field left None takes the runtime's default, which docs/config.md
-    states; the document then omits the key.
+    states; the document then omits the key. `model_calls` is required and
+    may be the string "unlimited", which declares no ceiling on that
+    dimension.
     """
 
-    model_calls: int
+    model_calls: int | str
     input_tokens: int | None = None
     output_tokens: int | None = None
     seconds: int | None = None

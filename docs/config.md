@@ -373,7 +373,7 @@ Object. Required.
 
 | field | type | required | default | meaning |
 |---|---|---|---|---|
-| `model_calls` | integer | yes | | maximum model requests, including retries; the last available ordinary request receives a system warning |
+| `model_calls` | integer or `"unlimited"` | yes | | maximum model requests, including retries; the last available ordinary request receives a system warning. `"unlimited"` declares no ceiling on this dimension. The field is required either way, so a document states what it allows and does not become unbounded by leaving one out |
 | `input_tokens` | integer | no | unlimited | provider-reported input allowance across all requests, including cache-read input |
 | `output_tokens` | integer | no | unlimited | provider-reported output allowance across all requests, including reasoning when the provider includes it |
 | `seconds` | integer | no | unlimited | wall-clock limit for the episode |

@@ -277,7 +277,7 @@ impl ProcessSpawner {
     /// for every dimension would exhaust the parent while one child runs.
     pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
         let all = |b: &Budget| BudgetAmount {
-            model_calls: Some(b.model_calls),
+            model_calls: b.model_calls,
             input_tokens: b.input_tokens,
             output_tokens: b.output_tokens,
             seconds: b.seconds,
@@ -327,7 +327,7 @@ pub fn child_document(contract: &ResolvedContract, task: String) -> ContractDocu
 fn effective_budget(parent: &Budget, contract: &Budget, reserve: BudgetAmount) -> Budget {
     let mut budget = contract.clone();
     let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
-    budget.model_calls = tighter(Some(budget.model_calls), reserve.model_calls).unwrap_or(budget.model_calls);
+    budget.model_calls = tighter(budget.model_calls, reserve.model_calls);
     budget.input_tokens = tighter(budget.input_tokens, reserve.input_tokens);
     budget.output_tokens = tighter(budget.output_tokens, reserve.output_tokens);
     budget.seconds = tighter(budget.seconds, reserve.seconds);

@@ -239,8 +239,11 @@ def _budget(block: Mapping[str, Any], where: str) -> Budget:
     for key in sorted(block):
         if key not in _BUDGET_KEYS:
             raise ConfigError(f"{where}budget.{key}: the package models no budget limit of that name")
-    if block.get("model_calls") is None:
+    calls = block.get("model_calls")
+    if calls is None:
         raise ConfigError(f"{where}budget.model_calls: required")
+    if calls != "unlimited" and not isinstance(calls, int):
+        raise ConfigError(f'{where}budget.model_calls: a number or "unlimited"')
     stated = {key: block[key] for key in _BUDGET_KEYS if block.get(key) is not None}
     return Budget(**stated)
 

@@ -3,7 +3,7 @@ use foe_contract::Budget;
 
 fn budget() -> Budget {
     Budget {
-        model_calls: 10,
+        model_calls: Some(10),
         input_tokens: Some(1000),
         output_tokens: Some(400),
         seconds: None,
