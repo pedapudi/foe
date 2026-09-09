@@ -210,7 +210,9 @@ impl Team {
     }
 
     pub fn state(&self) -> TeamState {
-        fold(&self.log.events())
+        let mut state = TeamState::default();
+        self.log.with_events(&mut |events| state = fold(events));
+        state
     }
 
     /// Adds a task and starts every queued task whose dependencies and
@@ -1042,7 +1044,9 @@ impl Tool for TeamTool {
                     }
                 }
                 loop {
-                    if let Some(index) = matched(&self.team.log.events(), &parsed.until) {
+                    let mut hit = None;
+                    self.team.log.with_events(&mut |events| hit = matched(events, &parsed.until));
+                    if let Some(index) = hit {
                         let met = serde_json::to_value(&parsed.until[index]).unwrap_or_default();
                         return ToolValue::ok(serde_json::json!({ "matched": met }), format!("matched: {met}"));
                     }

@@ -338,6 +338,12 @@ pub trait LeadLog: Send + Sync {
     fn append(&self, event: foe_log::EventData) -> Result<(), CapError>;
     fn check(&self) -> Result<(), CapError>;
     fn events(&self) -> Vec<foe_log::Event>;
+    /// Reads the events in place. A caller that folds them and keeps only
+    /// the fold has no use for a copy, and `wait` folds them fifty times a
+    /// second for as long as it waits. `read` writes what it needs into
+    /// what it captures, because a trait object cannot carry a return type
+    /// of the caller's choosing.
+    fn with_events(&self, read: &mut dyn FnMut(&[foe_log::Event]));
 }
 
 /// Starts child episodes limited to the declared child contracts.

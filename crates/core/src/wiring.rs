@@ -69,6 +69,10 @@ impl LeadLog for Log {
     fn events(&self) -> Vec<Event> {
         Log::events(self)
     }
+
+    fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+        Log::with_events(self, read);
+    }
 }
 
 /// Reserves a child's budget from the pool before the child starts and

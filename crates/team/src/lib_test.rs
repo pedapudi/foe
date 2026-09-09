@@ -1,5 +1,6 @@
 use super::*;
 use foe_contract::Budget;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn budget() -> Budget {
     Budget {
@@ -30,6 +31,9 @@ impl LeadLog for MemLog {
     fn events(&self) -> Vec<Event> {
         self.0.lock().unwrap().clone()
     }
+    fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+        read(&self.0.lock().unwrap());
+    }
 }
 
 impl MemLog {
@@ -52,6 +56,9 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
         }
         fn events(&self) -> Vec<Event> {
             vec![event(0, start())]
+        }
+        fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+            read(&[event(0, start())]);
         }
     }
     struct NoLaunch;
@@ -622,4 +629,56 @@ fn a_write_root_may_not_overlap_one_a_live_task_holds() {
     // a prefix of characters.
     add("c", roots(&["/p/crates/core"])).unwrap();
     add("d", roots(&["/p/crates/log-other"])).unwrap();
+}
+
+/// The reading a wait does must not copy the log. `wait` folds the events
+/// fifty times a second for as long as it waits, and the fold keeps nothing
+/// of the copy; a run's log grows, so a copy per tick grows with it.
+#[tokio::test]
+async fn waiting_reads_the_log_in_place_and_never_copies_it() {
+    #[derive(Default)]
+    struct Counted {
+        events: Mutex<Vec<Event>>,
+        copies: AtomicUsize,
+        reads: AtomicUsize,
+    }
+    impl LeadLog for Counted {
+        fn append(&self, data: EventData) -> Result<(), CapError> {
+            let mut events = self.events.lock().unwrap();
+            let seq = events.len() as u64;
+            events.push(Event { seq, time: 0, version: None, data });
+            Ok(())
+        }
+        fn check(&self) -> Result<(), CapError> {
+            Ok(())
+        }
+        fn events(&self) -> Vec<Event> {
+            self.copies.fetch_add(1, Ordering::SeqCst);
+            self.events.lock().unwrap().clone()
+        }
+        fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            read(&self.events.lock().unwrap());
+        }
+    }
+
+    let log = Arc::new(Counted::default());
+    LeadLog::append(&*log, start()).unwrap();
+    let team = Arc::new(Team::new(
+        "ep_lead".into(),
+        log.clone(),
+        Arc::new(MemInbox::default()),
+        Arc::new(Router::new()),
+        Arc::new(Mutex::new(Pool::new(budget()))),
+    ));
+    let _ = team.state();
+    // Both wait forms: the bare one folds the board, the `until` one reads
+    // the arrivals. Each spins until its deadline, so each ticks many times.
+    let bare = wait_tool(team.clone()).call(serde_json::json!({}), &ctx_deadline(soon())).await;
+    assert!(!bare.is_error || bare.rendered.is_some());
+    let until = serde_json::json!({ "until": [{ "inbox": "child" }] });
+    wait_tool(team.clone()).call(until, &ctx_deadline(soon())).await;
+
+    assert_eq!(log.copies.load(Ordering::SeqCst), 0, "nothing copied the log");
+    assert!(log.reads.load(Ordering::SeqCst) > 1, "and the reads happened");
 }
