@@ -96,6 +96,17 @@ configured model endpoint and each tool definition's `network` field, as stated 
 [What is not enforced](#what-is-not-enforced), and widening it is a
 separate design.
 
+The permission is read from the contract tree rather than from the running
+contract alone. A contract may connect when it declares a model endpoint, and
+also when any contract it can start declares one, whether through a spawn
+grant or a workflow node. A Landlock domain only narrows: a process inherits
+the domain of the process that started it, and no ruleset it applies
+afterwards can return an access its parent handled. A parent that refused
+outbound TCP would therefore leave every child unable to reach an endpoint of
+its own, whatever the child's contract declared. Each child applies its own
+policy in turn, so a child that declares no endpoint, and no tool asking for
+the network, refuses outbound TCP for itself.
+
 A write root grants no read access. A configuration that writes to a
 directory it also reads lists that directory under both grants, or lists a
 parent under `read`.
