@@ -13,11 +13,14 @@ from response_chunks import call, done, error, step, text, tool_names
 DATE = "2026-09-08"
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
-# How long each recorder's question stays open. The lead answers the eastern
-# one well inside its deadline. It never answers the western one, whose
-# deadline is short enough that the example does not wait on a person's
-# patience.
-DEADLINE_MS = {"east": 30000, "west": 1000}
+# How long each recorder's question stays open. The eastern deadline outlasts
+# the episode that asks it: the recorder's own `seconds` budget is 60, so the
+# runtime can never deliver that default, and the only answer the eastern
+# recorder can receive is the lead's. A deadline merely longer than the run
+# is not enough, because a loaded machine stretches the run and not the
+# deadline. The western deadline is short enough that the example does not
+# wait on a person's patience, and the lead never answers it.
+DEADLINE_MS = {"east": 600000, "west": 1000}
 
 FIRST_LINE = {"east": "sunrise 05:58", "west": "sunrise 06:31"}
 

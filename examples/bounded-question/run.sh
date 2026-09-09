@@ -153,12 +153,18 @@ for region, member_id in members.items():
         event for event in member
         if event["type"] == "inbox/item" and event["data"]["source"] == "response"
     ]
-    require(len(answers) == 1, f"{region}: {len(answers)} answers arrived rather than one")
-    arrived = answers[0]
+    # Exactly one answer reaches a recorder: the lead's reply, or the default
+    # its deadline delivers. Two answers under one identifier would mean the
+    # inbox took both; two identifiers would mean the recorder asked twice.
+    question = asked["data"]["value"]["message_id"]
+    named = [answer for answer in answers if answer["data"]["message_id"] == question]
     require(
-        arrived["data"]["message_id"] == asked["data"]["value"]["message_id"],
-        f"{region}: the answer names another question",
+        len(answers) == len(named),
+        f"{region}: an answer names a question this recorder did not ask: "
+        f"{[answer['data']['message_id'] for answer in answers]} against {question}",
     )
+    require(len(named) == 1, f"{region}: {len(named)} answers arrived under {question} rather than one")
+    arrived = named[0]
     if region == "east":
         require(not arrived["data"].get("synthetic"), "east: the lead's reply was recorded as the runtime's")
         require(arrived["data"]["from"] is not None, "east: the reply names no sender")
