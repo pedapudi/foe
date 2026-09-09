@@ -3857,13 +3857,17 @@ kbd {
   font-family: var(--v2-mono);
 }
 
-/* The tool a call named, set in full ink against the subject's soft ink, so
- * a reader sees which tool ran before reading what it ran on. It takes no
- * hue of its own: hue already carries agent identity and outcome, and a
- * fourth meaning would weaken both. Selection and failure recolour the whole
- * name, so the tool follows them rather than holding its own ink. */
+/* The tool a call named, so a reader sees which tool ran before reading what
+ * it ran on. It carries weight rather than hue: `--v2-ink` and
+ * `--v2-ink-soft` differ by too little to read at this size, and every role
+ * token that would read already means something here — accent is selection,
+ * good, bad and caution are outcomes, and the identity palette is agents.
+ * A hue of its own would need a seventeenth role token in all sixteen
+ * themes. Selection and failure recolour the whole name, and the tool
+ * follows them. */
 .outline-name .label .tool {
   color: var(--v2-ink);
+  font-weight: 600;
 }
 
 .outline-row.selected .outline-name .label .tool,
