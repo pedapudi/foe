@@ -306,7 +306,10 @@ the lead, which appends `team/message` to its log, delivers the message to
 the target member as an `inbox/item`, and appends `team/delivered` when the
 member's log has recorded it. The item's source is `peer` for a `send`
 without `reply_to`, `request` for an `ask`, and `response` for a `send` that
-names the question it answers. A parent-scoped
+names the question it answers. The deadline an `ask` carries stays in the
+asking process, which appends the question's default answer to its own log as
+a `response` item when the deadline passes unanswered. A host that answers a
+child's `ask` itself therefore needs no timer of its own. A parent-scoped
 `team` call folds the lead's root task, added tasks, and roster from its log.
 These calls are
 never forwarded above the parent. A message from a member therefore reaches

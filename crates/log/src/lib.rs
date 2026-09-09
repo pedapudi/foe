@@ -698,6 +698,20 @@ pub struct InboxItem {
     pub content: Vec<ContentBlock>,
     pub from: Option<String>,
     pub message_id: Option<String>,
+    /// True when the runtime wrote the item in another member's place. The
+    /// default answer a question carries, delivered when its deadline passes
+    /// unanswered, is the one item that sets it. A log written before the
+    /// field existed omits it, and absence means a member wrote the item.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub synthetic: bool,
+}
+
+impl InboxItem {
+    /// An item its named sender wrote. An item the runtime writes in a
+    /// member's place sets `synthetic` on top of this.
+    pub fn new(source: InboxSource, content: Vec<ContentBlock>, from: Option<String>, id: Option<String>) -> Self {
+        InboxItem { source, content, from, message_id: id, synthetic: false }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

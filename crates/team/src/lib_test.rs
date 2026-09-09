@@ -215,6 +215,98 @@ fn fold_skips_team_events_copied_by_seeding() {
     assert!(state.queue.is_empty());
 }
 
+/// An inbox that records into the episode's own log, as the runtime's does,
+/// so a `wait` in the same episode sees what arrives.
+struct LoggedInbox(Arc<MemLog>);
+
+impl InboxSink for LoggedInbox {
+    fn append(&self, item: InboxItem) {
+        self.0.append(EventData::InboxItem(item));
+    }
+}
+
+/// A team with one member named `peer` that no router can reach, so a
+/// question to it is never answered by a member.
+fn asking_team() -> (Arc<Team>, Arc<MemLog>) {
+    let log = Arc::new(MemLog::default());
+    let inbox = Arc::new(LoggedInbox(log.clone()));
+    let pool = Arc::new(Mutex::new(Pool::new(budget())));
+    let team = Arc::new(Team::new("ep_lead".into(), log.clone(), inbox, Arc::new(Router::new()), pool));
+    log.append(start());
+    log.append(EventData::TeamRoster {
+        member_id: "ep_peer".into(),
+        name: "peer".into(),
+        description: String::new(),
+        phase: MemberPhase::Active,
+    });
+    (team, log)
+}
+
+/// Asks the unreachable peer and waits for the answer to that question alone.
+async fn ask_then_wait(team: Arc<Team>) -> ToolValue {
+    let by_name = |name: &str| tools(team.clone(), None).into_iter().find(|t| t.spec().name == name).unwrap();
+    let question = serde_json::json!({
+        "to": "peer", "content": "which crate?", "deadline_ms": 5_000, "default": "choose for yourself"
+    });
+    let asked = by_name("ask").call(question, &ctx(None)).await;
+    assert!(!asked.is_error, "{:?}", asked.rendered);
+    let id = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
+    let held = serde_json::json!({ "until": [{ "reply": id }], "timeout_seconds": 60 });
+    by_name("wait").call(held, &ctx(None)).await
+}
+
+/// docs/tools.md "ask": a question states how long it stays open and the
+/// answer that stands when that time passes, and is refused without either.
+#[tokio::test]
+async fn a_question_without_a_deadline_and_a_default_is_refused() {
+    let (team, _) = asking_team();
+    let ask = || tools(team.clone(), None).into_iter().find(|t| t.spec().name == "ask").unwrap();
+    assert_eq!(ask().spec().params["required"], serde_json::json!(["to", "content", "deadline_ms", "default"]));
+    let refusals = [
+        (serde_json::json!({ "to": "peer", "content": "q" }), "deadline_ms"),
+        (serde_json::json!({ "to": "peer", "content": "q", "default": "d" }), "deadline_ms"),
+        (serde_json::json!({ "to": "peer", "content": "q", "deadline_ms": 0, "default": "d" }), "deadline_ms"),
+        (serde_json::json!({ "to": "peer", "content": "q", "deadline_ms": 5 }), "default"),
+    ];
+    for (args, named) in refusals {
+        let refused = ask().call(args.clone(), &ctx(None)).await;
+        assert!(refused.is_error, "{args} is refused");
+        assert!(refused.rendered.unwrap_or_default().contains(named), "the refusal names {named} for {args}");
+    }
+    assert_eq!(team.state().queue.len(), 0, "a refused question queues no message");
+}
+
+/// docs/design.md "Agent teams": a question unanswered at its deadline is
+/// answered by the asking runtime with the default the asker named, so two
+/// episodes waiting on each other both proceed instead of holding each other
+/// for as long as the run lasts.
+#[tokio::test(start_paused = true)]
+async fn two_episodes_waiting_on_each_other_both_return_at_their_deadlines() {
+    let started = tokio::time::Instant::now();
+    let (first, first_log) = asking_team();
+    let (second, _) = asking_team();
+    // The bound turns a regression into a failure: without a default answer
+    // the two waits hold each other for as long as the process runs.
+    let both = async { tokio::join!(ask_then_wait(first), ask_then_wait(second)) };
+    let (one, other) = tokio::time::timeout(Duration::from_secs(60), both).await.expect("both waits returned");
+    for met in [&one, &other] {
+        assert!(!met.is_error, "{:?}", met.rendered);
+        assert!(met.value["matched"]["reply"].is_string(), "the wait ended on its own question: {}", met.value);
+    }
+    assert!(started.elapsed() >= Duration::from_secs(5), "no default answer arrived before its deadline");
+    let answer = first_log
+        .events()
+        .into_iter()
+        .find_map(|e| match e.data {
+            EventData::InboxItem(item) if item.source == InboxSource::Response => Some(item),
+            _ => None,
+        })
+        .expect("the runtime answers the question it holds the deadline for");
+    assert!(answer.synthetic, "the default answer is marked as one the runtime wrote");
+    let ContentBlock::Text { text } = &answer.content[0] else { panic!("the default answer is text") };
+    assert!(text.contains("choose for yourself"), "the answer carries the default: {text}");
+}
+
 fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     let log = Arc::new(MemLog::default());
     let inbox = Arc::new(MemInbox::default());
@@ -311,6 +403,7 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
         content: vec![],
         from: Some("ep_a".into()),
         message_id: Some(state.queue[0].message_id.clone()),
+        synthetic: false,
     };
     team.observe("ep_b", &event(5, EventData::InboxItem(receipt)));
     assert_eq!(team.state().undelivered().count(), 0);
@@ -338,11 +431,16 @@ async fn send_and_ask_take_the_scope_that_selects_which_team_they_address() {
         let params = by_name(name).spec().params.clone();
         let scope = &params["properties"]["scope"];
         assert_eq!(scope["enum"], serde_json::json!(["member", "led"]), "{name} takes a scope");
-        let led = serde_json::json!({ "to": "tester", "content": "x", "scope": "led" });
+        let bound = |extra: serde_json::Value| {
+            let mut args = serde_json::json!({ "to": "tester", "content": "x", "deadline_ms": 60_000, "default": "d" });
+            args.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            args
+        };
+        let led = bound(serde_json::json!({ "scope": "led" }));
         assert!(!by_name(name).call(led, &ctx(None)).await.is_error, "led reaches the team this episode leads");
-        let bare = serde_json::json!({ "to": "tester", "content": "x" });
+        let bare = bound(serde_json::json!({}));
         assert!(!by_name(name).call(bare, &ctx(None)).await.is_error, "a root's two teams are one");
-        let wrong = serde_json::json!({ "to": "tester", "content": "x", "scope": "sideways" });
+        let wrong = bound(serde_json::json!({ "scope": "sideways" }));
         let refused = by_name(name).call(wrong, &ctx(None)).await;
         assert!(refused.is_error, "{:?}", refused.rendered);
         assert!(refused.rendered.unwrap_or_default().contains("neither member nor led"));
@@ -364,7 +462,9 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
         phase: MemberPhase::Active,
     });
     let ask = tools(team.clone(), None).into_iter().find(|t| t.spec().name == "ask").unwrap();
-    let asked = ask.call(serde_json::json!({ "to": "tester", "content": "which crate?" }), &ctx(None)).await;
+    let question =
+        serde_json::json!({ "to": "tester", "content": "which crate?", "deadline_ms": 60_000, "default": "any" });
+    let asked = ask.call(question, &ctx(None)).await;
     assert!(!asked.is_error, "{:?}", asked.rendered);
     let question = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
     // docs/tools.md `ask`: a model receives a tool result's rendered text and
@@ -387,6 +487,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
         content: text_content("still reading"),
         from: Some("ep_b".into()),
         message_id: Some("other".into()),
+        synthetic: false,
     }));
     let early = wait(serde_json::json!({ "reply": question.clone() }), Some(soon())).await;
     assert_eq!(early.value["matched"], serde_json::json!("timeout"), "only the answer ends the wait");
@@ -399,7 +500,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
     assert_eq!(reply.source, InboxSource::Response);
     assert_eq!(reply.message_id.as_deref(), Some(question.as_str()), "the answer carries the question's identity");
     log.append(EventData::InboxItem(reply.clone()));
-    let met = wait(serde_json::json!({ "reply": question.clone() }), None).await;
+    let met = wait(serde_json::json!({ "reply": question.clone() }), Some(far())).await;
     assert_eq!(met.value["matched"], serde_json::json!({ "reply": question.clone() }));
     // Question and answer share an identity and are two queue entries with
     // two targets, so confirming the question leaves the answer outstanding.
@@ -408,6 +509,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
         content: vec![],
         from: Some("ep_lead".into()),
         message_id: Some(question),
+        synthetic: false,
     };
     team.observe("ep_b", &event(9, EventData::InboxItem(receipt)));
     let state = team.state();
@@ -471,8 +573,14 @@ fn soon() -> std::time::Instant {
     std::time::Instant::now() + Duration::from_millis(60)
 }
 
+/// A seconds budget no test in this file spends, for a wait that must state a
+/// bound and is meant to return on its condition.
+fn far() -> std::time::Instant {
+    std::time::Instant::now() + Duration::from_secs(30)
+}
+
 fn inbox_event(source: InboxSource, from: Option<&str>) -> EventData {
-    EventData::InboxItem(InboxItem { source, content: vec![], from: from.map(str::to_string), message_id: None })
+    EventData::InboxItem(InboxItem::new(source, vec![], from.map(str::to_string), None))
 }
 
 /// docs/tools.md "wait": the bare form blocks until every team task and
@@ -504,7 +612,11 @@ async fn wait_until_matches_unconsumed_arrivals_by_source_child_and_session() {
             wait_tool(team).call(args, &ctx).await
         }
     };
-    let until = |c: serde_json::Value| serde_json::json!({ "until": [c] });
+    let until = |c: serde_json::Value| serde_json::json!({ "until": [c], "timeout_seconds": 30 });
+    // An `until` wait that nothing bounds is refused before it blocks.
+    let unbounded = wait(serde_json::json!({ "until": [{ "inbox": "peer" }] }), None).await;
+    assert!(unbounded.is_error, "{:?}", unbounded.rendered);
+    assert!(unbounded.rendered.unwrap_or_default().contains("needs a bound"));
     // An arrival by source, landing while the wait blocks.
     let appender = log.clone();
     let landed = tokio::spawn(async move {

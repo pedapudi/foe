@@ -508,7 +508,7 @@ itself is the first inbox item.
 | `child` | a child episode, notifying this one |
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
 | `request` | a question from a team member, sent with `ask`; `from` and `message_id` are set |
-| `response` | the answer to a question, carrying that question's `message_id` |
+| `response` | the answer to a question, carrying that question's `message_id`; the runtime writes one carrying the question's default answer when the deadline passes unanswered |
 | `verify` | the runtime, carrying findings from a `done_when` verifier |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
 | `session` | the runtime, when it observes that a process session's process has ended |
@@ -536,6 +536,17 @@ is a `response` item carrying that same `message_id`, which is what lets
 the asker wait for this answer rather than for any arrival. A member
 redelivers nothing itself; the lead retries an unconfirmed delivery, so a
 member drops an item whose `message_id` it already holds.
+
+Every question carries a deadline and a default answer, which `ask` requires
+of its caller. When the deadline passes and no answer has arrived, the asking
+episode's own runtime appends the default to that episode's inbox as a
+`response` item under the question's `message_id`, with `synthetic` true.
+`synthetic` is the optional boolean field that marks an item the runtime
+wrote in a member's place, and a default answer is the only item that sets
+it. Absence means a member wrote the item, and serialization omits the field
+when it is false, so no frozen version 3 payload changed. The rule that a member drops an item whose
+`message_id` it already holds settles which answer stands: the teammate's
+answer when it arrives before the deadline, and the default otherwise.
 
 ### Budget and spawn
 

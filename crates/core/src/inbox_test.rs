@@ -7,6 +7,7 @@ fn item(source: InboxSource, id: Option<&str>) -> InboxItem {
         content: vec![ContentBlock::Text { text: "m".into() }],
         from: None,
         message_id: id.map(str::to_string),
+        synthetic: false,
     }
 }
 
@@ -37,4 +38,19 @@ fn a_peer_message_with_a_recorded_id_is_a_duplicate() {
     assert!(is_duplicate(&events, &item(InboxSource::Peer, Some("tm_1"))));
     assert!(!is_duplicate(&events, &item(InboxSource::Peer, Some("tm_2"))));
     assert!(!is_duplicate(&events, &item(InboxSource::Parent, Some("tm_1"))), "only peer messages carry delivery ids");
+}
+
+/// docs/log-format.md "Inbox": a question has one answer. The rule that
+/// drops an item whose identity the log already holds settles which one:
+/// the teammate's answer when it arrives before the question's deadline,
+/// and the default the runtime delivers otherwise.
+#[test]
+fn a_second_answer_to_one_question_is_a_duplicate() {
+    let default = InboxItem { synthetic: true, ..item(InboxSource::Response, Some("tm_1")) };
+    let events = vec![event(1, EventData::InboxItem(item(InboxSource::Request, Some("tm_2"))))];
+    assert!(!is_duplicate(&events, &default), "no answer to this question has arrived");
+    let answered = vec![event(1, EventData::InboxItem(item(InboxSource::Response, Some("tm_1"))))];
+    assert!(is_duplicate(&answered, &default), "the teammate answered before the deadline");
+    let defaulted = vec![event(1, EventData::InboxItem(default))];
+    assert!(is_duplicate(&defaulted, &item(InboxSource::Response, Some("tm_1"))), "the default already stands");
 }

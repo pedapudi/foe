@@ -113,7 +113,7 @@ pub fn text(s: &str) -> Vec<ContentBlock> {
 }
 
 pub fn inbox(source: InboxSource, s: &str) -> EventData {
-    EventData::InboxItem(InboxItem { source, content: text(s), from: None, message_id: None })
+    EventData::InboxItem(InboxItem::new(source, text(s), None, None))
 }
 
 pub fn header() -> EventData {

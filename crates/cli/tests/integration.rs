@@ -1070,7 +1070,11 @@ fn a_team_surveys_delegates_answers_a_question_and_integrates() {
                     "spawn",
                     &spawn("surveyor", "count the units", "survey", json!([])),
                 ));
-                chunks.extend(call("tc_hold", "wait", &json!({ "until": [{ "inbox": "request" }] }).to_string()));
+                chunks.extend(call(
+                    "tc_hold",
+                    "wait",
+                    &json!({ "until": [{ "inbox": "request" }], "timeout_seconds": 30 }).to_string(),
+                ));
             }
             ("cover the two units", 2) => {
                 let answered = json!({ "to": "alpha", "content": "name it alpha done",
@@ -1094,11 +1098,12 @@ fn a_team_surveys_delegates_answers_a_question_and_integrates() {
                 chunks.extend(call("tc_write", "edit", &edit(&alpha.join("unit.txt"), "alpha done")))
             }
             ("edit the alpha unit", 1) => {
-                let question = json!({ "to": "team", "content": "what name should the alpha unit carry?" });
+                let question = json!({ "to": "team", "content": "what name should the alpha unit carry?",
+                                       "deadline_ms": 30000, "default": "name it alpha done" });
                 chunks.extend(call("tc_ask", "ask", &question.to_string()));
             }
             ("edit the alpha unit", 2) => {
-                let until = json!({ "until": [{ "reply": message_identifier(&conversation) }] });
+                let until = json!({ "until": [{ "reply": message_identifier(&conversation) }], "timeout_seconds": 30 });
                 chunks.extend(call("tc_reply", "wait", &until.to_string()));
             }
             ("edit the alpha unit", 3) => {
@@ -2109,8 +2114,8 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
     ("recovery-exhausted", "sha256:088f305e369e3c717d8d00da524bf7c7b82b8fd5c5f9f9e132ed95c9d23e3057"),
     ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
     ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
-    ("subagents", "sha256:898deb3a02024007c5565b81b8043474805cbc1420b1c6e14f5225947420f4ad"),
-    ("team", "sha256:5eab6c09ef1950da4d1f5bd4346b0beb2f9c11babb0a70878e3d57d59011889e"),
+    ("subagents", "sha256:ead365e0deecb4bcd658de0201838a7445efcaf7b9aa355e42a76c5b4800c877"),
+    ("team", "sha256:ddb896fbf233857c43337cc151c06b7dc81ab3e9aceba14c4443d68ce74acd98"),
     ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
     ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
     ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),

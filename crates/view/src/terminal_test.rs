@@ -69,6 +69,7 @@ fn conversation_includes_only_visible_messages() {
         content: vec![ContentBlock::Text { text: "Visible task".into() }],
         from: None,
         message_id: None,
+        synthetic: false,
     };
     terminal.event("lead", &EventData::InboxItem(inbox.clone())).unwrap();
     terminal.event("lead", &spawn("worker")).unwrap();
@@ -115,6 +116,7 @@ fn a_spawned_task_is_shown_and_a_long_one_is_bounded() {
             content: vec![ContentBlock::Text { text: text.into() }],
             from: None,
             message_id: None,
+            synthetic: false,
         })
     };
     let render = |text: &str| {

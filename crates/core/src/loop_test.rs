@@ -61,6 +61,7 @@ fn simultaneous_peer_deliveries_append_one_inbox_item() {
                             content: vec![],
                             from: Some("ep_sender".into()),
                             message_id: Some("ep_lead:tm_01".into()),
+                            synthetic: false,
                         },
                     )
                     .unwrap()

@@ -85,6 +85,7 @@ fn log_with_result(name: &str, complete: &str, archived: bool) -> (Arc<Log>, Str
         content: vec![foe_log::ContentBlock::Text { text: "test retrieval".into() }],
         from: None,
         message_id: None,
+        synthetic: false,
     }))
     .unwrap();
     log.append(EventData::AssistantMessage(assistant(1, vec![call("tc_source", "probe")]))).unwrap();

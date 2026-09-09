@@ -915,7 +915,7 @@ impl Executor {
             current.as_ref().map(|(seq, _)| *seq).expect("a header was written")
         };
         let content = vec![ContentBlock::Text { text: message }];
-        let item = InboxItem { source: InboxSource::System, content: content.clone(), from: None, message_id: None };
+        let item = InboxItem::new(InboxSource::System, content.clone(), None, None);
         let item = sh.log.append(EventData::InboxItem(item))?;
         let step = self.next_step();
         let request_id = format!("rq_{step:04}");

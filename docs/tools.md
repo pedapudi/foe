@@ -192,12 +192,12 @@ of those schemas keeps the one-agent request header unchanged.
 | tool | effect | behavior |
 |---|---|---|
 | `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `write` lists the write roots to grant the child, which must lie within the caller's own and within what the child contract declares, and may not overlap a root a live task holds; omitted, the child writes where its contract says. An empty list is refused when the child contract declares a tool that writes, because that tool would have nothing it may write. |
-| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, inbox source, or the answer to one question named by `reply`. Optional `timeout_seconds` bounds either form. Waiting consumes wall-clock budget and no model request. |
+| `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, inbox source, or the answer to one question named by `reply`. `timeout_seconds` bounds either form. An `until` wait requires a bound, because nothing the caller does makes the arrival it waits for happen: when the episode carries no `seconds` budget, omitting `timeout_seconds` is a validation error. A `reply` condition states its own bound like every other, and the deadline the question carries is a separate decision: it says how long the question stays open, whether or not the asker is blocked on it. The bare form needs no bound, because it waits on tasks this episode created and each of those is bounded in its turn. Waiting consumes wall-clock budget and no model request. |
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
 | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
 | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
-| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
-| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. Optional `scope` selects the team, as for `send`. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. An answer sent after the question's deadline has passed is dropped, because the question's default answer already stands under that identifier. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
+| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
 
 Each returned member includes its roster `phase`. A member assigned through
@@ -209,6 +209,17 @@ returns with `status: running` and an owner episode. A concurrency-bound task
 returns with `status: queued`; the runtime starts it when another member
 settles. Other exhausted structural or spend limits settle the task with
 `status: exhausted`. Invalid dependencies fail the tool call.
+
+A question holds its asker for no longer than the deadline the asker set.
+`ask` keeps that deadline in the asking episode's own process. When
+`deadline_ms` milliseconds pass and no answer has arrived, that process
+appends the question's `default` to its own inbox as a `response` item under
+the question's `message_id`, marked `synthetic`, and a `wait` on that answer
+returns. Because the deadline stays in the asking process, the rule applies
+whatever answers the question, including a host application that runs no
+episode of its own. An inbox drops an item whose `message_id` it already
+holds, so exactly one answer reaches the asker: the teammate's answer when it
+arrives in time, and the default otherwise.
 
 The root task uses `task_root`. Added tasks use `task_01`, `task_02`, and
 later identifiers in creation order. A dependency on `task_root` is refused

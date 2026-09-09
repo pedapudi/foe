@@ -7,14 +7,20 @@
 //! peer message. [`fold`] derives the complete team from those events and the
 //! episode lifecycle. See docs/design.md "Agent teams".
 //!
-//! Six built-in tools belong here. `spawn`, `wait`, and `steer` act on the
-//! team this episode leads. `notify` and `send` act on the team this episode
-//! belongs to. `team` can inspect either team when they differ. When the lead
-//! answers a member, a `notify` becomes an inbox item in the lead's log with
-//! source `child`. A `send` becomes a `team/message` in the lead's log followed
-//! by an inbox item with source `peer` written to the target. `team` returns
-//! the selected board and its members. When the target records the peer item,
-//! the lead sees it and writes `team/delivered`. See docs/protocol.md "Children".
+//! Eight built-in tools belong here. `spawn`, `wait`, `steer`, and `cancel`
+//! act on the team this episode leads. `notify`, `send`, and `ask` act on the
+//! team this episode belongs to. `team` can inspect either team when they
+//! differ. When the lead answers a member, a `notify` becomes an inbox item in
+//! the lead's log with source `child`. A `send` becomes a `team/message` in the
+//! lead's log followed by an inbox item with source `peer` written to the
+//! target. `team` returns the selected board and its members. When the target
+//! records the peer item, the lead sees it and writes `team/delivered`. See
+//! docs/protocol.md "Children".
+//!
+//! `ask` sends a question and requires a deadline and a default answer with
+//! it. The asking process holds the deadline and delivers the default to its
+//! own inbox when the deadline passes unanswered, so no episode waits on
+//! another without end. See docs/design.md "Agent teams".
 
 use foe_contract::{Effect, ToolSpec};
 use foe_core::budget::Pool;
@@ -381,8 +387,7 @@ impl Team {
         self.log.check()?;
         let state = self.state();
         let member = state.member(name).ok_or_else(|| CapError::Invalid(format!("no member named {name}")))?;
-        let item =
-            InboxItem { source: InboxSource::Parent, content, from: Some(self.lead_id.clone()), message_id: None };
+        let item = InboxItem::new(InboxSource::Parent, content, Some(self.lead_id.clone()), None);
         self.router.send_inbox(&member.member_id, &item)
     }
 
@@ -442,7 +447,7 @@ impl Team {
             to: target.member_id.clone(),
             content: content.clone(),
         })?;
-        let item = InboxItem { source, content, from: Some(from.to_string()), message_id: Some(message_id.clone()) };
+        let item = InboxItem::new(source, content, Some(from.to_string()), Some(message_id.clone()));
         if target.member_id == self.lead_id {
             self.inbox.append(item);
         } else {
@@ -529,6 +534,23 @@ impl ChildObserver for Team {
 }
 
 impl Team {
+    /// Delivers `default` to this episode under the question's identity once
+    /// `after` has passed. The asking process holds the deadline, so the rule
+    /// applies whatever answers the question, including a host application
+    /// that runs no episode. The inbox drops an item whose `message_id` it
+    /// already holds, so exactly one answer reaches the asker: the teammate's
+    /// answer when it arrives before the deadline, and this default when it
+    /// does not.
+    fn default_answer(&self, message_id: String, after: Duration, default: String) {
+        let inbox = self.inbox.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(after).await;
+            let text = format!("no answer within {} ms; this default answer stands: {default}", after.as_millis());
+            let item = InboxItem::new(InboxSource::Response, text_content(&text), None, Some(message_id));
+            inbox.append(InboxItem { synthetic: true, ..item });
+        });
+    }
+
     /// The result of a `send` call: the message id, or the failure.
     fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>, kind: Correlate) -> ToolValue {
         match self.send(from, to, content, kind) {
@@ -554,6 +576,15 @@ impl Team {
 /// arrival.
 pub type Correlate = (InboxSource, Option<String>);
 
+/// How long a question stays open and the answer that stands when that time
+/// passes. `ask` requires both, and refuses the call without them, so no
+/// episode can wait on another without end.
+fn asked_bound(args: &serde_json::Value) -> Result<(Duration, String), ToolValue> {
+    let held = args.get("deadline_ms").and_then(serde_json::Value::as_u64).filter(|ms| *ms > 0);
+    let ms = held.ok_or_else(|| ToolValue::invalid("deadline_ms: whole milliseconds above zero are required"))?;
+    Ok((Duration::from_millis(ms), arg(args, "default")?.to_string()))
+}
+
 /// What a `send` or an `ask` call makes of its message.
 fn correlate(kind: Kind, args: &serde_json::Value) -> Correlate {
     match (kind, args.get("reply_to").and_then(serde_json::Value::as_str)) {
@@ -569,7 +600,7 @@ fn text_content(text: &str) -> Vec<ContentBlock> {
 
 /// An inbox item a child sends its parent.
 fn child_item(child_id: &str, content: Vec<ContentBlock>) -> InboxItem {
-    InboxItem { source: InboxSource::Child, content, from: Some(child_id.to_string()), message_id: None }
+    InboxItem::new(InboxSource::Child, content, Some(child_id.to_string()), None)
 }
 
 fn render_outcome(outcome: &Outcome) -> String {
@@ -687,11 +718,9 @@ impl Kind {
                 Effect::Spawns,
             ),
             Kind::Wait => (
-                "Wait until every task added to this episode's board has settled and no child reservation remains. \
-Their reports are in the request that follows. Returns at once when the board has no added task. Use it before \
-acting on delegated work. An episode that ends while a child runs ends that child. With `until`, wait instead until \
-an arrival matches one condition. The result names the condition met, or `timeout`. The arrival itself is in the \
-request that follows.",
+                "Wait until every task added to this episode's board has settled and no child reservation remains. Their reports are in the request that follows. Returns at once when the board has no added task. \
+Use it before acting on delegated work. An episode that ends while a child runs ends that child. With `until`, wait instead until an arrival matches one condition. That form states how long it will block: name `timeout_seconds` unless this episode has a seconds budget. \
+The result names the condition met, or `timeout`. The arrival itself is in the request that follows.",
                 object(
                     serde_json::json!({
                         "until": {
@@ -731,17 +760,18 @@ longer need, or that the answers already in hand have made wrong. What it wrote 
                 Effect::Pure,
             ),
             Kind::Ask => (
-                "Ask a teammate a question, addressed by roster name, through the lead. It returns the question's \
-`message_id`, and `wait` with `{reply: that id}` blocks until that question is answered and not until any message \
-arrives. `scope` selects the team: the one this episode belongs to, or the one it leads. Use it when one \
-answer from one teammate decides what you do next; `send` is for telling.",
+                "Ask a teammate a question, addressed by roster name, through the lead. It returns the question's `message_id`, and `wait` with `{reply: that id}` blocks until that question is answered and not until any message arrives. \
+A question is bounded: `deadline_ms` says how long it stays open, `default` says what answer stands when that time passes with no answer, and the runtime delivers that answer itself, so no episode waits on another without end. \
+`scope` selects the team: the one this episode belongs to, or the one it leads. Use it when one answer from one teammate decides what you do next; `send` is for telling.",
                 object(
                     serde_json::json!({
                         "to": string("roster name of the teammate"),
                         "content": string("the question"),
+                        "deadline_ms": { "type": "integer", "minimum": 1, "description": "how long the question stays open, in milliseconds; when it passes with no answer the runtime delivers `default` as the answer" },
+                        "default": string("the answer that stands when the deadline passes with no answer"),
                         "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the team this episode belongs to, the default; led selects the team it leads" }
                     }),
-                    &["to", "content"],
+                    &["to", "content", "deadline_ms", "default"],
                 ),
                 Effect::Pure,
             ),
@@ -977,11 +1007,20 @@ impl Tool for TeamTool {
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
                 if matches!(self.kind, Kind::Send | Kind::Ask) {
-                    return match (leads_scope(&args), &self.parent) {
-                        (Err(invalid), _) => invalid,
+                    let bound = match (self.kind, asked_bound(&args)) {
+                        (Kind::Ask, Err(invalid)) => return invalid,
+                        (Kind::Ask, Ok(bound)) => Some(bound),
+                        _ => None,
+                    };
+                    let sent = match (leads_scope(&args), &self.parent) {
+                        (Err(invalid), _) => return invalid,
                         (Ok(false), Some(parent)) => parent.call(args, ctx).await,
                         _ => self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args)),
                     };
+                    if let (Some((after, default)), Some(id)) = (bound, sent.value["message_id"].as_str()) {
+                        self.team.default_answer(id.to_string(), after, default);
+                    }
+                    return sent;
                 }
                 match self.team.steer(to, content) {
                     Ok(()) => ToolValue::ok(serde_json::json!({ "to": to }), format!("sent to {to}")),
@@ -1014,6 +1053,14 @@ impl Tool for TeamTool {
                     (Some(budget), Some(asked)) => Some(budget.min(asked)),
                     (budget, asked) => budget.or(asked),
                 };
+                // An `until` wait holds for something another episode does,
+                // and nothing here makes that happen, so it states how long it
+                // will block or it is refused. The bare form needs no such
+                // statement: it holds for tasks this episode created, each
+                // bounded by its own budget and by this rule in its turn.
+                if deadline.is_none() && !parsed.until.is_empty() {
+                    return ToolValue::invalid("timeout_seconds: an `until` wait needs a bound; this episode has none");
+                }
                 let timed_out = || ToolValue::ok(serde_json::json!({ "matched": "timeout" }), "timeout");
                 if parsed.until.is_empty() {
                     loop {

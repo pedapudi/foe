@@ -676,6 +676,25 @@ teammate therefore blocks on that decision without spending a request on each
 unrelated message. Without correlation the asker would wake on every arrival
 and would have to decide, at model cost, whether the arrival was the answer.
 
+Waiting on another episode is what makes deadlock possible, and two rules
+rule it out. The first is that every question carries a deadline and a default
+answer. `ask` requires both and refuses a call that omits either. The asking
+process keeps the deadline, and when it passes with no answer that process
+delivers the default to its own inbox as a `response` item under the
+question's identity, marked `synthetic`. The wait on that answer then returns
+and the asker takes its next step. Because the deadline stays in the asking
+process, the rule applies whatever answers the question, including a host
+application that runs no episode.
+
+The second rule is that an `until` wait states how long it will block, because
+it returns for an arrival that only another episode produces. Such a call is
+refused unless `timeout_seconds` or the episode's `seconds` budget bounds it.
+The deadline and `timeout_seconds` answer separate questions: the deadline
+says how long the question stays open, and `timeout_seconds` says how long
+this call blocks. The bare `wait` needs no bound of its own, because it waits
+on tasks this episode created, and each of those is bounded by its own budget
+and by these two rules in its turn.
+
 The lead's log also holds the roster and the queue of messages between
 members.
 

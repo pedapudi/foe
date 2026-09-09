@@ -102,6 +102,7 @@ fn request(log: &Log, id: &str) -> ModelRequestBody {
         content: vec![],
         from: None,
         message_id: None,
+        synthetic: false,
     }))
     .unwrap();
     log.append(EventData::RequestHeader(foe_log::RequestHeader {

@@ -14,7 +14,7 @@ fn text(s: &str) -> Vec<ContentBlock> {
 }
 
 fn inbox(source: InboxSource, s: &str) -> EventData {
-    EventData::InboxItem(InboxItem { source, content: text(s), from: None, message_id: None })
+    EventData::InboxItem(InboxItem::new(source, text(s), None, None))
 }
 
 fn request(step: u32, id: &str, consumed: Vec<u64>) -> EventData {

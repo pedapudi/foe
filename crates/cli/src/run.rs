@@ -379,7 +379,7 @@ fn fork(source: &Path, at: u64, dest: Option<&Path>, directive: Option<&str>) ->
     let mut writer = foe_log::append::Writer::open(&dest, None).map_err(in_dest)?;
     if let Some(task) = directive {
         let content = vec![ContentBlock::Text { text: task.to_string() }];
-        let item = InboxItem { source: InboxSource::System, content, from: None, message_id: None };
+        let item = InboxItem::new(InboxSource::System, content, None, None);
         writer.append(EventData::InboxItem(item)).map_err(in_dest)?;
     }
     writer.sync().map_err(in_dest)?;

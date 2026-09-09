@@ -193,8 +193,7 @@ pub fn append_inbox_item(log: &Log, item: InboxItem) -> Result<Option<Event>, Lo
 fn post_session_exits(log: &Log, sessions: Option<&Arc<dyn crate::Sessions>>) -> Result<(), LogError> {
     for status in sessions.iter().flat_map(|s| s.take_exited()) {
         let content = vec![ContentBlock::Text { text: crate::session::subject(&status) }];
-        let item =
-            InboxItem { source: InboxSource::Session, content, from: Some(status.id.to_string()), message_id: None };
+        let item = InboxItem::new(InboxSource::Session, content, Some(status.id.to_string()), None);
         log.append(EventData::InboxItem(item))?;
     }
     Ok(())
@@ -828,7 +827,7 @@ impl SummaryCall for Episode {
 }
 
 fn item(source: InboxSource, text: &str) -> InboxItem {
-    InboxItem { source, content: vec![ContentBlock::Text { text: text.into() }], from: None, message_id: None }
+    InboxItem::new(source, vec![ContentBlock::Text { text: text.into() }], None, None)
 }
 
 /// Resolves with the reason once the stop signal carries one. Never
