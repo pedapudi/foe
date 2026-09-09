@@ -227,10 +227,10 @@ test("a lane column is released when the lane closes and taken by the next", () 
 });
 
 // Two children a run held open at the same time are two lanes at the same
-// time, whatever order their rows are read in. The rows of a child hang
-// under the call that opened it, so concurrent children occupy sequential
-// row ranges; a column released by row alone would draw them as one lane
-// reused, which is the drawing that says each waited for the one before.
+// time. Rows alone do not say so: read as the episode rail each child is
+// one row, so two that overlapped are two consecutive rows, and a column
+// released by row alone would draw them as one lane reused, which is the
+// drawing that says each waited for the one before.
 test("two episodes that overlap in time never share a column", () => {
   const figure = layout("overlap-parent.jsonl", "overlap-child.jsonl", "rich.jsonl");
   const first = lane(figure, "ep_over_child");
@@ -289,24 +289,60 @@ function fanOut(children: { id: string; start: number; end: number | null }[]): 
   ];
 }
 
-// One turn that opens several children opens them together. Its own calls
-// are read before any child's transcript, so the fan-out is one row after
-// another rather than a child wedged between two of its siblings' calls,
-// and the columns those children take are as many as ran at once.
-test("the calls of one step are read before the children they opened", () => {
+// Two episodes a turn opened at once are read interleaved, which is what
+// shows that they ran at once, and the columns they take are as many as
+// ran at once. What each row is part of survives the reordering: a child
+// is still built under the call that opened it.
+test("rows are read in the order they happened, so concurrent episodes interleave", () => {
   const episodes = fanOut([{ id: "ep_a", start: 10, end: 90 }, { id: "ep_b", start: 20, end: 80 }]);
   const outline = causalityOutline(episodes);
   const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
-  assert.ok(at("ep_lead/step/1/call/tc_1") < at("ep_lead/step/1/call/tc_2"), "the two calls keep their order");
-  assert.ok(at("ep_lead/step/1/call/tc_2") < at("ep_a"), "both calls are read before the first child's rows");
-  assert.ok(at("ep_a") < at("ep_b"), "the children follow in the order their calls opened them");
+  assert.ok(at("ep_a") < at("ep_b"), "the child that began first is read first");
+  assert.ok(at("ep_b") < at("ep_a/outcome"), "the second began before the first returned");
+  assert.ok(at("ep_b/outcome") < at("ep_a/outcome"), "and it returned first");
+  const child = outline.rows[at("ep_a")]!;
+  assert.equal(child.parent, "ep_lead/step/1/call/tc_1", "it is still part of the call that opened it");
   const figure = layoutCausality(episodes);
   assert.notEqual(lane(figure, "ep_a").column, lane(figure, "ep_b").column, "both were open at once");
 });
 
-// Episodes read one whole subtree after another. When they in fact ran at
-// the same time, that order is the one thing the text cannot show, so a
-// caption says it where the group was opened.
+// The complaint the order answers: a reader going down the gutter must
+// never see the clock run backwards.
+test("elapsed time never runs backwards down the page, at any reading", () => {
+  const episodes = fanOut([
+    { id: "ep_a", start: 1_000, end: 26_000 },
+    { id: "ep_b", start: 1_002, end: 38_000 },
+    { id: "ep_c", start: 1_017, end: 31_000 },
+    { id: "ep_d", start: 1_030, end: 17_000 },
+  ]);
+  const outline = causalityOutline(episodes);
+  for (const depth of DEPTHS) {
+    let reached = -Infinity;
+    for (const row of visibleRows(outline, depth)) {
+      if (row.showTime === false) continue;
+      assert.ok(row.time >= reached, `${depth}: ${row.id} at ${row.time} follows ${reached}`);
+      reached = row.time;
+    }
+  }
+});
+
+// A row of an episode whose start the log never recorded has no instant of
+// its own. It stands where the row it is part of stands, so that a missing
+// event places it rather than the epoch, and it prints no time.
+test("a row the log did not place stands with the row it is part of", () => {
+  const episodes = fanOut([{ id: "ep_a", start: 10, end: 90 }]);
+  const unplaced = episodes.find((episode) => episode.id === "ep_a")!;
+  unplaced.startTime = 0;
+  unplaced.steps = [{ step: 1, seq: 1, time: 0, endSeq: 4, answered: true, text: "", attempts: 1, calls: [] }];
+  const outline = causalityOutline(episodes);
+  const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
+  assert.ok(at("ep_lead/step/1") < at("ep_a"), "it stands under the call that opened it");
+  assert.ok(at("ep_a") < at("ep_a/outcome"), "and above the outcome the log did place");
+  const head = visibleRows(outline, "outputs").find((row) => row.id === "ep_a")!;
+  assert.equal(head.showTime, false, "there is no time to print");
+});
+
+// A group of episodes that ran at once carries one caption stating its span.
 
 test("children of one turn that overlap are captioned once, above the first of them", () => {
   const episodes = fanOut([
@@ -325,7 +361,6 @@ test("children of one turn that overlap are captioned once, above the first of t
   assert.equal(caption.aside, "0:00.9 – 0:37.9");
   assert.deepEqual(caption.opens, ["ep_a", "ep_b", "ep_c", "ep_d"]);
   const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
-  assert.ok(at("ep_lead/step/1/call/tc_4") < at(caption.id), "the calls are read first");
   assert.ok(at(caption.id) < at("ep_a"), "the caption stands above the first child of the group");
   // The caption states a span, so it prints no time of its own at any
   // reading; two numbers for one row would have to be told apart.
@@ -698,16 +733,16 @@ test("a caret opens one branch one level past the reading", () => {
   assert.ok(deeper.some((r) => r.id === "ep_root/step/1/call/tc_01/result"));
 });
 
-test("every row carries its log position, because the outline reorders time", () => {
+test("every row carries its log position, because a position is per episode", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
   for (const r of visibleRows(outline, "outputs")) {
     assert.equal(typeof r.seq, "number", `${r.id} knows where it sits in the log`);
   }
-  // A child's rows sit under the call that spawned it rather than in log
-  // order, so reading order jumps. The elapsed time in the gutter is the
-  // sign, since it is measured from one origin for the run.
+  // A position orders rows within one episode and nothing across them, so
+  // the page is ordered by the elapsed time in the gutter instead: the
+  // child began before its caller reached the next step, and is read there.
   const ids = visibleRows(outline, "outputs").map((r) => r.id);
-  assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read before later steps");
+  assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read where it began");
 });
 
 test("the gutter is printed once per event, not once per row", () => {

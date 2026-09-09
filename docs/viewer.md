@@ -542,27 +542,36 @@ heights they actually took, never from an assumed pitch. A row's mark sits
 on its first line rather than at its vertical middle, so a row holding a
 diff still has its mark beside the name it belongs to.
 
-Two costs come with it and are not hidden. A child episode's rows sit
-under the call that spawned it rather than interleaved by time, so reading
-order is causal rather than chronological. The gutter carries how long
-after the run began each row's event happened, measured from the earliest
-start any of the run's episodes recorded, so a reader can see that one
-child episode began before another one ended. A log position says nothing
-across episodes, because every episode numbers its own log from zero; the
-position stays on each row's title, where a reader who wants to find the
-event in the log reads it. The time is printed once per event: a row that
-continues the row it is part of and stands for the same event — a step's
-prose, a call's result — leaves the column blank, because a repeat would
-say that a second thing happened at that instant. One view reads at one
-place in the hierarchy, so a reader cannot study one step's output while
-the whole shape stays in view. That is why the other arrangement remains.
+Rows are read in the order their events happened. Two episodes that ran at
+once therefore interleave, which is what shows on the page that they ran at
+once, and the elapsed time in the gutter runs one way from the first row to
+the last. What a row is part of is carried by the lane it is a mark on,
+which stands in its own column and takes the identity colour of the episode
+that owns it, rather than by the rows above and below it. A reader who wants
+one episode's work as an unbroken narrative selects its row, which scopes
+the conversation to that episode.
+
+The gutter measures from the earliest start any of the run's episodes
+recorded, so times compare across episodes. A log position does not: every
+episode numbers its own log from zero, so the position stays on each row's
+title, where a reader who wants to find the event in the log reads it. The
+time is printed once per event: a row that continues the row it is part of
+and stands for the same event — a step's prose, a call's result — leaves the
+column blank, because a repeat would say that a second thing happened at
+that instant. A row whose event the log did not place prints nothing, and
+stands where the row it is part of stands rather than at the epoch.
+
+A caret hides a subtree by membership rather than a stretch of the page,
+since the rows under one row are no longer next to each other. Shutting one
+takes rows out of the middle of the reading.
+
+One cost comes with the arrangement and is not hidden: one view reads at one
+place in the hierarchy, so a reader cannot study one step's output while the
+shape of the run stays in view. That is why the other arrangement remains.
 
 Episodes that one turn opened and that were open at the same time carry one
-caption above the first of them: how many there were, and the span from the
-first start to the last end. The lanes already draw the overlap, because a
-lane holds its column until it closes, and the caption states in words what
-the reading order cannot, since each of those episodes is given in full
-before the next one begins. Episodes a declared graph's firings opened
+caption where the group begins: how many there were, and the span from the
+first start to the last end. Episodes a declared graph's firings opened
 carry no such caption: each firing opens one child at its own point in the
 graph, so there is no single row where a group of them is opened.
 

@@ -217,10 +217,10 @@ export interface CausalityRow {
    */
   seq: number;
   /**
-   * When the row's event happened, on the wall clock. Reading order is
-   * causal rather than chronological, so this is what tells a reader that
-   * one child episode began before another ended, and it is what the
-   * gutter prints, as the distance from `CausalityOutline.start`.
+   * When the row's event happened, on the wall clock. Rows are read in the
+   * order of this field, so it runs down the page, and the gutter prints
+   * it as the distance from `CausalityOutline.start`. A row whose event
+   * the log did not place carries zero and prints nothing.
    */
   time: number;
   /**
@@ -321,10 +321,11 @@ export interface CausalityEdge {
 }
 
 /**
- * The rows and lanes a run has, in reading order, with nothing yet decided
- * about which of them a reader can see or how tall they are. Every view of
- * a run reads this same model; a view then chooses a visible subset and
- * hands it to `layoutLanes`, which is the only place the geometry lives.
+ * The rows and lanes a run has, in the order their events happened, with
+ * nothing yet decided about which of them a reader can see or how tall
+ * they are. Every view of a run reads this same model; a view then chooses
+ * a visible subset and hands it to `layoutLanes`, which is the only place
+ * the geometry lives.
  */
 export interface CausalityOutline {
   rows: CausalityRow[];
@@ -707,10 +708,16 @@ export function spanLabel(group: ConcurrentGroup, start: number): string {
 }
 
 /**
- * Every row and lane a run has, in reading order. This reads the log's
- * obligation pairs and decides nothing about geometry, so a view that
- * shows all of it and a view that shows a collapsed part of it are two
- * readers of one model rather than two copies of it.
+ * Every row and lane a run has, in the order their events happened. This
+ * reads the log's obligation pairs and decides nothing about geometry, so
+ * a view that shows every row and a view that shows a collapsed part of a
+ * run are two readers of one model rather than two copies of it.
+ *
+ * The rows are built structurally, each under the row it is part of, and
+ * then ordered by time. Two episodes that ran at once therefore interleave,
+ * which is what shows that they ran at once. What a row is part of is
+ * carried by `parent`, by the lane it is a mark on, and by `depth`, rather
+ * than by the rows next to it.
  */
 export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline {
   const byId = new Map(episodes.map((e) => [e.id, e]));
@@ -842,10 +849,8 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
             time: step.time,
           });
         }
-        // A turn that opened several children opened them together. Its
-        // own calls are emitted first and the children after, so the
-        // reader sees one turn fanning out rather than one child's whole
-        // transcript wedged between two of its siblings' calls.
+        // The children a turn opened, in the order its calls opened them,
+        // which breaks ties between rows that share an instant.
         const opened: { child: CausalityEpisode; callRow: CausalityRow }[] = [];
         for (const call of step.calls) {
           const callRow = push({
@@ -887,15 +892,15 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
           row.opens.push(child.id);
           opened.push({ child, callRow });
         }
-        // A child hangs under the call that opened it, which is what makes
-        // the outline a hierarchy; it costs global chronology, which is why
-        // every row carries the time its event happened.
+        // A child is built under the call that opened it, which is where
+        // `parent` and the lane's branch come from. The final order is by
+        // time, so a child's rows run beside its caller's rather than after
+        // them.
         //
-        // Children of one turn that were open at the same time are read one
-        // whole episode after another, which is the one thing this order
-        // cannot show. The lanes draw the overlap; a caption over the first
-        // child of each such group says it in words, once, with the span the
-        // group covered. Children a declared graph's firings opened carry no
+        // Children of one turn that were open at the same time interleave
+        // there, which is what shows that they overlapped. A caption over
+        // the first child of each such group states the group's span in
+        // words. Children a declared graph's firings opened carry no
         // caption: each firing opens one child at its own point in the graph,
         // so there is no one row where a group of them is opened.
         const captions = new Map<string, ConcurrentGroup>();
@@ -991,15 +996,47 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
     if (episode.parentId !== null && byId.has(episode.parentId)) continue;
     emit(episode, null, null);
   }
-  return { rows, lanes, loops, episodes, start: runStart(episodes) };
+  return { rows: chronological(rows, start), lanes, loops, episodes, start };
 }
 
 /**
- * The rows a reading shows, in order, each with how many visible rows it
- * sits inside. A row appears when the reading is at least as deep as its
- * kind, or when the row it is part of is itself visible and opened, which
- * is what a caret does: it opens one branch one level past the reading
- * without expanding the run.
+ * The rows in the order their events happened. Two rows at one instant keep
+ * the order the structure gave them, so a step still stands above its own
+ * prose and an episode above the task it was given.
+ *
+ * A row the log did not place stands where the row it is part of stands,
+ * and a row with neither stands at the start of the run. An episode whose
+ * `episode/start` was never read is the case: its rows would otherwise sort
+ * to the epoch, decades above the run that opened them, and the position
+ * would be an accident of the missing event rather than a statement about
+ * when the work happened. Such a row prints no time either, since there is
+ * none to print.
+ *
+ * The rows arrive with every row after the row it is part of, so one
+ * forward pass settles every inherited time before it is needed.
+ */
+function chronological(rows: CausalityRow[], start: number): CausalityRow[] {
+  const when = new Map<string, number>();
+  for (const row of rows) {
+    const placed = Number.isFinite(row.time) && row.time > 0;
+    const inherited = row.parent === null ? undefined : when.get(row.parent);
+    when.set(row.id, placed ? row.time : inherited ?? start);
+  }
+  // Sorting is stable, so rows sharing an instant keep the structural order.
+  return [...rows].sort((a, b) => (when.get(a.id) ?? start) - (when.get(b.id) ?? start));
+}
+
+/**
+ * The rows a reading shows, in the order they happened, each with how many
+ * visible rows it sits inside. A row appears when the reading is at least
+ * as deep as its kind, or when the row it is part of is itself visible and
+ * opened, which is what a caret does: it opens one branch one level past
+ * the reading without expanding the run.
+ *
+ * A caret therefore hides a subtree by membership rather than a stretch of
+ * the page. Rows are read in the order their events happened, so the rows
+ * of one episode are spread through the rows of every episode that ran
+ * beside it, and a shut caret takes rows out of the middle of the page.
  *
  * Depth is counted against the visible set and never against the raw
  * hierarchy. Read at its coarsest a child episode is still an episode one
@@ -1012,35 +1049,45 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
 export function visibleRows(outline: CausalityOutline, depth: Depth, opened: ReadonlySet<string> = new Set()): CausalityRow[] {
   const wanted = DEPTHS.indexOf(depth);
   const byId = new Map(outline.rows.map((row) => [row.id, row]));
-  const level = new Map<string, number>();
-  const shown = new Set<string>();
-  const out: CausalityRow[] = [];
+  const above = (row: CausalityRow): CausalityRow | undefined => (row.parent === null ? undefined : byId.get(row.parent));
 
-  /** The nearest row above this one that the reading shows, if any. */
-  const nearestShown = (row: CausalityRow): CausalityRow | undefined => {
-    let at = row.parent === null ? undefined : byId.get(row.parent);
-    while (at !== undefined && !shown.has(at.id)) at = at.parent === null ? undefined : byId.get(at.parent);
-    return at;
-  };
-
-  for (const row of outline.rows) {
-    const parent = row.parent === null ? undefined : byId.get(row.parent);
-    const withinDepth = DEPTHS.indexOf(row.appearsAt) <= wanted;
+  /**
+   * Whether the reading shows this row, answered from the row it is part
+   * of rather than from anything already decided further up the page: a
+   * row can stand above the row that opened it once the order is time.
+   */
+  const shown = new Map<string, boolean>();
+  const isShown = (row: CausalityRow): boolean => {
+    const settled = shown.get(row.id);
+    if (settled !== undefined) return settled;
     // A caret opens the row it sits on, so what it reveals is that row's
     // own children and not a descendant further down.
-    if (!withinDepth && !(parent !== undefined && shown.has(parent.id) && opened.has(parent.id))) continue;
-    shown.add(row.id);
-    // Nesting is counted from the nearest ancestor the reading shows, not
-    // from the immediate one: read at its coarsest a child episode is one
-    // level inside its caller even though the call that opened it is not
-    // on the page, and counting the hidden rows would leave gaps.
-    const above = nearestShown(row);
-    level.set(row.id, above === undefined ? 0 : (level.get(above.id) ?? 0) + 1);
-    out.push(row);
-  }
+    const parent = above(row);
+    const answer = DEPTHS.indexOf(row.appearsAt) <= wanted
+      || (parent !== undefined && opened.has(parent.id) && isShown(parent));
+    shown.set(row.id, answer);
+    return answer;
+  };
+
+  // Nesting is counted from the nearest ancestor the reading shows, not
+  // from the immediate one: read at its coarsest a child episode is one
+  // level inside its caller even though the call that opened it is not
+  // on the page, and counting the hidden rows would leave gaps.
+  const level = new Map<string, number>();
+  const levelOf = (row: CausalityRow): number => {
+    const settled = level.get(row.id);
+    if (settled !== undefined) return settled;
+    let at = above(row);
+    while (at !== undefined && !isShown(at)) at = above(at);
+    const nested = at === undefined ? 0 : levelOf(at) + 1;
+    level.set(row.id, nested);
+    return nested;
+  };
+
+  const out = outline.rows.filter((row) => isShown(row));
 
   return out.map((row, index) => {
-    const nested = level.get(row.id) ?? 0;
+    const nested = levelOf(row);
     // A row continues the one above it when that row is the one it is part
     // of and the two stand for the same event: one event, one line in the
     // gutter. Two rows of different episodes never continue one another,
@@ -1050,9 +1097,10 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     const continues = before !== undefined && before.id === row.parent && before.seq === row.seq;
     // A row the fold has already settled keeps what it was given: a caption
     // over a group of episodes states its own span and stands at no instant.
-    const showTime = row.showTime !== false && !continues;
+    // A row the log did not place has no time to print either.
+    const showTime = row.showTime !== false && !continues && row.time > 0;
     if (row.kind !== "step") return { ...row, level: nested, showTime };
-    const callsShown = row.calls.some((call) => shown.has(`${row.id}/call/${call.id}`));
+    const callsShown = row.calls.some((call) => shown.get(`${row.id}/call/${call.id}`) === true);
     const composed = composeLabel({
       kind: "step",
       step: row.stepNumber,
@@ -1069,12 +1117,13 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
 /**
  * Where the visible rows and the lanes they are marks on go.
  *
- * `visible` is the rows a reader can currently see, in reading order, and
- * `heights` is what each of them measured. Heights are given rather than
- * assumed because rows are not one size: a line of prose or a tool
- * result's body is taller than a node, and a lane whose ends were computed
- * from a fixed pitch would then miss the rows it must reach. A view that
- * shows every row at one height passes that height for each of them.
+ * `visible` is the rows a reader can currently see, in the order they
+ * happened, and `heights` is what each of them measured. Heights are given
+ * rather than assumed because rows are not one size: a line of prose or a
+ * tool result's body is taller than a node, and a lane whose ends were
+ * computed from a fixed pitch would then miss the rows it must reach. A
+ * view that shows every row at one height passes that height for each of
+ * them.
  *
  * Lanes are computed over the visible rows alone, so a view that collapses
  * part of a run gets the lanes that part earns, and every view recomputes
@@ -1283,11 +1332,10 @@ export function allocateColumns(builds: LaneBuild[]): void {
   /** For each column, the row and the moment at which it becomes free. */
   const free: { row: number; time: number | null }[] = [];
   // A column may be reused only by a lane that opened after the lane
-  // holding it had closed. Rows alone do not decide that: a child's rows
-  // hang under the call that opened it, so three children a turn opened
-  // together occupy three sequential row ranges, and a column freed by row
-  // would draw them as one lane reused three times — the drawing that says
-  // each waited for the one before.
+  // holding it had closed. Rows alone do not decide that: read as the
+  // episode rail, three episodes that ran at once are three consecutive
+  // rows, and a column freed by row would draw them as one lane reused
+  // three times — the drawing that says each waited for the one before.
   for (const build of order) {
     const closed = (until: { row: number; time: number | null }): boolean =>
       until.row < build.first && until.time !== null && until.time <= build.lane.start;
