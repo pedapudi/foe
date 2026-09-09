@@ -367,6 +367,13 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
     let asked = ask.call(serde_json::json!({ "to": "tester", "content": "which crate?" }), &ctx(None)).await;
     assert!(!asked.is_error, "{:?}", asked.rendered);
     let question = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
+    // docs/tools.md `ask`: a model receives a tool result's rendered text and
+    // an inbox item's content, and no other field of either, so the asker
+    // reads the identifier from the result text and the member answering
+    // reads it from the question.
+    assert!(asked.rendered.as_deref().unwrap_or_default().contains(&question), "{:?}", asked.rendered);
+    let delivered = format!("{:?}", team.state().queue[0].content);
+    assert!(delivered.contains(&question), "the question names the identifier its answer carries: {delivered}");
     let wait = |c: serde_json::Value, deadline: Option<std::time::Instant>| {
         let team = team.clone();
         async move {

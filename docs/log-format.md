@@ -529,7 +529,9 @@ before the value existed rejects a log that carries it, as for an added
 event type.
 
 A `request` item is a question one member asked another through the lead.
-Its `message_id` is the identifier `ask` returned to the asker. The answer
+Its `message_id` is the identifier `ask` returned to the asker, and its
+content ends with a text block naming that identifier, because a model
+receives the content of an item and none of its other fields. The answer
 is a `response` item carrying that same `message_id`, which is what lets
 the asker wait for this answer rather than for any arrival. A member
 redelivers nothing itself; the lead retries an unconfirmed delivery, so a

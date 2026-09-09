@@ -430,6 +430,14 @@ impl Team {
             Correlate::Reply(asked) => asked.clone(),
             _ => format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1),
         };
+        // A model receives the rendered content of an inbox item and no
+        // other field, so a question whose identifier stays in `message_id`
+        // alone cannot be answered: the answerer has nothing to put in
+        // `reply_to`. The question carries its identifier in its text.
+        let mut content = content;
+        if matches!(kind, Correlate::Question) {
+            content.push(ContentBlock::Text { text: format!("Answer this with send, reply_to {message_id}.") });
+        }
         self.log.append(EventData::TeamMessage {
             message_id: message_id.clone(),
             from: from.to_string(),
@@ -531,7 +539,9 @@ impl Team {
     /// The result of a `send` call: the message id, or the failure.
     fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>, kind: Correlate) -> ToolValue {
         match self.send(from, to, content, kind) {
-            Ok(id) => ToolValue::ok(serde_json::json!({ "to": to, "message_id": id }), format!("sent to {to}")),
+            Ok(id) => {
+                ToolValue::ok(serde_json::json!({ "to": to, "message_id": &id }), format!("sent to {to} as {id}"))
+            }
             Err(e) => ToolValue::error(format!("send: {e}")),
         }
     }

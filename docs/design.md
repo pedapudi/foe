@@ -668,7 +668,10 @@ identity of the question it answers. `ask` sends a question and returns that
 identity; `send` with `reply_to` answers the question that identity names.
 The question reaches the other member as a `request` item and the answer as a
 `response` item, so `wait` on `{reply: the identity}` returns for that answer
-and not for any other arrival. A member that must have one decision from one
+and not for any other arrival. A model receives the rendered result of its own
+call and the content of an item that reaches it, and no other field of either,
+so the result of `ask` names the identity in its text and the question carries
+that identity in its own content. A member that must have one decision from one
 teammate therefore blocks on that decision without spending a request on each
 unrelated message. Without correlation the asker would wake on every arrival
 and would have to decide, at model cost, whether the arrival was the answer.
