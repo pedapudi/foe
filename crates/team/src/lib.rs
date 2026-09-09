@@ -424,18 +424,16 @@ impl Team {
         let _guard = self.operations.lock().unwrap();
         let state = self.state();
         let target = state.member(to_name).ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
+        let (source, answers) = kind;
         // An answer carries the identifier of the question it answers, which
         // is what lets the asker wait for this reply rather than any arrival.
-        let message_id = match &kind {
-            Correlate::Reply(asked) => asked.clone(),
-            _ => format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1),
-        };
+        let message_id = answers.unwrap_or_else(|| format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1));
         // A model receives the rendered content of an inbox item and no
         // other field, so a question whose identifier stays in `message_id`
         // alone cannot be answered: the answerer has nothing to put in
         // `reply_to`. The question carries its identifier in its text.
         let mut content = content;
-        if matches!(kind, Correlate::Question) {
+        if source == InboxSource::Request {
             content.push(ContentBlock::Text { text: format!("Answer this with send, reply_to {message_id}.") });
         }
         self.log.append(EventData::TeamMessage {
@@ -444,12 +442,7 @@ impl Team {
             to: target.member_id.clone(),
             content: content.clone(),
         })?;
-        let item = InboxItem {
-            source: kind.source(),
-            content,
-            from: Some(from.to_string()),
-            message_id: Some(message_id.clone()),
-        };
+        let item = InboxItem { source, content, from: Some(from.to_string()), message_id: Some(message_id.clone()) };
         if target.member_id == self.lead_id {
             self.inbox.append(item);
         } else {
@@ -553,31 +546,20 @@ impl Team {
     }
 }
 
+/// What one message is: the inbox source it arrives under and, when it
+/// answers a question, the identity of that question. A statement expects
+/// nothing back and arrives as `peer`. A question arrives as `request` under
+/// an identity of its own. An answer arrives as `response` and carries its
+/// question's identity, so the asker waits for that answer and not for any
+/// arrival.
+pub type Correlate = (InboxSource, Option<String>);
+
 /// What a `send` or an `ask` call makes of its message.
 fn correlate(kind: Kind, args: &serde_json::Value) -> Correlate {
     match (kind, args.get("reply_to").and_then(serde_json::Value::as_str)) {
-        (Kind::Ask, _) => Correlate::Question,
-        (_, Some(asked)) => Correlate::Reply(asked.to_string()),
-        _ => Correlate::Statement,
-    }
-}
-
-/// What one message is. A statement expects nothing back. A question expects
-/// an answer and is worth waiting for; the answer names the question it
-/// answers, so an asker waits for that reply and not for any arrival.
-pub enum Correlate {
-    Statement,
-    Question,
-    Reply(String),
-}
-
-impl Correlate {
-    fn source(&self) -> InboxSource {
-        match self {
-            Correlate::Statement => InboxSource::Peer,
-            Correlate::Question => InboxSource::Request,
-            Correlate::Reply(_) => InboxSource::Response,
-        }
+        (Kind::Ask, _) => (InboxSource::Request, None),
+        (_, Some(asked)) => (InboxSource::Response, Some(asked.to_string())),
+        _ => (InboxSource::Peer, None),
     }
 }
 

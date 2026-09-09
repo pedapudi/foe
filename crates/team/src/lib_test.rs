@@ -78,7 +78,7 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
         Arc::new(Router::new()),
         Arc::new(Mutex::new(Pool::new(budget()))),
     ));
-    assert!(team.send("ep_lead", "lead", text_content("message"), Correlate::Statement).is_err());
+    assert!(team.send("ep_lead", "lead", text_content("message"), (InboxSource::Peer, None)).is_err());
     assert!(inbox.0.lock().unwrap().is_empty());
     assert!(team.schedule(Arc::new(NoLaunch)).is_err());
 }
@@ -230,7 +230,7 @@ fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
 fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
     let (first, log, inbox, router) = team();
     log.append(start());
-    let first_id = first.send("ep_lead", "lead", text_content("first"), Correlate::Statement).unwrap();
+    let first_id = first.send("ep_lead", "lead", text_content("first"), (InboxSource::Peer, None)).unwrap();
     let resumed = Team::new(
         "ep_lead".into(),
         log.clone(),
@@ -238,7 +238,7 @@ fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
         router.clone(),
         Arc::new(Mutex::new(Pool::new(budget()))),
     );
-    let second_id = resumed.send("ep_lead", "lead", text_content("second"), Correlate::Statement).unwrap();
+    let second_id = resumed.send("ep_lead", "lead", text_content("second"), (InboxSource::Peer, None)).unwrap();
     assert_ne!(first_id, second_id);
     let mut copied = log.events();
     let EventData::EpisodeStart(start) = &mut copied[0].data else { panic!() };
@@ -247,7 +247,7 @@ fn message_identity_comes_from_the_recorded_queue_and_lead_episode() {
     fork_log.append(EventData::SeedEnd {});
     let forked =
         Team::new("ep_fork".into(), fork_log, inbox.clone(), router, Arc::new(Mutex::new(Pool::new(budget()))));
-    let fork_id = forked.send("ep_fork", "lead", text_content("fork"), Correlate::Statement).unwrap();
+    let fork_id = forked.send("ep_fork", "lead", text_content("fork"), (InboxSource::Peer, None)).unwrap();
     assert_ne!(fork_id, first_id);
     assert_ne!(fork_id, second_id);
     assert_eq!(inbox.0.lock().unwrap().len(), 3);
@@ -263,7 +263,7 @@ fn concurrent_senders_record_distinct_messages() {
         for index in 0..16 {
             let team = team.clone();
             scope.spawn(move || {
-                team.send("ep_lead", "lead", text_content(&index.to_string()), Correlate::Statement).unwrap();
+                team.send("ep_lead", "lead", text_content(&index.to_string()), (InboxSource::Peer, None)).unwrap();
             });
         }
     });
