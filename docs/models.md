@@ -295,6 +295,17 @@ credential source, and provider row.
 | OpenAI Responses | `format/responses.rs` | `openai`, `openai-codex` |
 | Gemini on Vertex AI | `format/gemini.rs` | `vertex` for other models |
 
+What a format does about prompt caching differs, because the request field
+that names a cache differs. The Messages format marks three breakpoints: the
+system prompt, the last tool definition, and the last block of the last turn.
+The first two cover the head that is fixed for the episode; the third covers
+the conversation, which is what grows, so each step reads the prefix the step
+before it wrote. The Responses format names the cache rather than marking it:
+every request carries `prompt_cache_key`, a digest over the system prompt and
+the tool names, which is the head every request of one episode repeats. The
+other two formats send neither, so a server that caches a repeated prefix
+there decides to on its own; `usage.cache_read` reports whether it did.
+
 | credential source | module | what it reads |
 |---|---|---|
 | API key | `auth/api_key.rs` | a key file |

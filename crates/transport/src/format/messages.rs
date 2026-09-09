@@ -113,14 +113,24 @@ impl Format for Messages {
 
 // ---- request ------------------------------------------------------------------
 
-/// The JSON body for one request. The system prompt and the last tool
-/// definition carry `cache_control` so that the prefix the API renders
-/// first, tools then system, is cached across steps.
+/// The JSON body for one request. Three `cache_control` breakpoints mark
+/// the prefix: the system prompt, the last tool definition, and the last
+/// block of the last turn. The first two cover the head the API renders
+/// first, tools then system, which is fixed for the episode. The third
+/// covers the conversation, which is what grows: a step repeats the
+/// previous step's turns and appends to them, so the breakpoint one step
+/// writes is a prefix the next step reads.
 pub fn request_body(model: Option<&str>, max_tokens: u32, req: &ModelRequestBody) -> Value {
+    let mut messages = messages_json(&req.messages);
+    let last_block =
+        messages.last_mut().and_then(|turn| turn["content"].as_array_mut()).and_then(|blocks| blocks.last_mut());
+    if let Some(block) = last_block {
+        block["cache_control"] = json!({ "type": "ephemeral" });
+    }
     let mut body = json!({
         "max_tokens": max_tokens,
         "stream": true,
-        "messages": messages_json(&req.messages),
+        "messages": messages,
     });
     if let Some(model) = model {
         body["model"] = json!(model);
@@ -572,9 +582,18 @@ data: {"type":"message_stop"}
         assert_eq!(body["tools"][0]["input_schema"]["type"], "object");
         assert!(body["tools"][0].get("cache_control").is_none());
         assert_eq!(body["tools"][1]["cache_control"]["type"], "ephemeral");
+        // The third breakpoint rides the last block of the last turn, so a
+        // step caches the conversation the next step repeats.
         assert_eq!(
             body["messages"],
-            json!([{ "role": "user", "content": [{ "type": "text", "text": "Fix the test." }] }])
+            json!([{
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": "Fix the test.",
+                    "cache_control": { "type": "ephemeral" }
+                }]
+            }])
         );
     }
 

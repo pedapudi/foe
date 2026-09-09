@@ -112,6 +112,11 @@ pub fn request_body(
         "store": false,
         "include": ["reasoning.encrypted_content"],
         "parallel_tool_calls": true,
+        // Requests reach the same cache only when they name it. The head
+        // every request in one episode repeats unchanged is its system
+        // prompt and its tool set, so their digest names the cache the
+        // episode's growing prefix belongs to.
+        "prompt_cache_key": cache_key(req),
     });
     if !req.system.trim().is_empty() {
         body["instructions"] = json!(req.system);
@@ -129,6 +134,17 @@ pub fn request_body(
         body[field] = json!(tier);
     }
     body
+}
+
+/// Names the cache a request's prefix belongs to. Two episodes that run the
+/// same contract share the head and so share the name.
+fn cache_key(req: &ModelRequestBody) -> String {
+    let mut head = req.system.clone();
+    for tool in &req.tools {
+        head.push('\n');
+        head.push_str(&tool.name);
+    }
+    foe_log::digest::sha256_hex(head.as_bytes())
 }
 
 fn tools_json(tools: &[ToolSchema]) -> Vec<Value> {
@@ -501,6 +517,32 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["tools"][0]["name"], "read");
         assert_eq!(body["tools"][0]["strict"], false);
+        assert_eq!(body["prompt_cache_key"].as_str().map(str::len), Some(64), "a digest names the cache");
+    }
+
+    /// The cache name follows the head an episode repeats, so every step of
+    /// one episode names the same cache and a different tool set names
+    /// another.
+    #[test]
+    fn the_cache_name_holds_across_steps_and_follows_the_head() {
+        let schema = |name: &str| ToolSchema {
+            name: name.into(),
+            description: "d".into(),
+            parameters: json!({ "type": "object", "properties": {} }),
+        };
+        let body = |messages: Vec<Message>, tools: Vec<ToolSchema>| ModelRequestBody {
+            request_id: "rq_0001".into(),
+            system: "You are a coding agent.".into(),
+            tools,
+            messages,
+            max_output_tokens: None,
+        };
+        let user = |text: &str| Message::User { content: vec![ContentBlock::Text { text: text.into() }] };
+        let first = cache_key(&body(vec![user("one")], vec![schema("read")]));
+        let later = cache_key(&body(vec![user("one"), user("two")], vec![schema("read")]));
+        let other = cache_key(&body(vec![user("one")], vec![schema("read"), schema("edit")]));
+        assert_eq!(first, later, "a later step of the same episode names the same cache");
+        assert_ne!(first, other, "a different tool set is a different head");
     }
 
     #[tokio::test]
