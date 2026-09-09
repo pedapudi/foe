@@ -16,9 +16,10 @@
 // needs.
 //
 // A child episode's rows sit under the call that spawned it rather than in
-// log order, so reading order is not global order. Every row keeps its
-// sequence number in the gutter; it is the only way to see where order
-// jumped.
+// log order, so reading order is causal rather than chronological. The
+// gutter carries the one number that survives that: how long after the run
+// began each row's event happened. It compares across episodes, which a
+// log position cannot, since every episode numbers its own log from zero.
 //
 // Rows are not one height, so the figure is drawn in two passes: the rows
 // are laid out and measured, then the lanes are computed from the heights
@@ -26,7 +27,7 @@
 // caret.
 
 import { clear, fmtInt, h } from "../dom.js";
-import { DEPTHS, layoutLanes, visibleRows } from "../causality.js";
+import { DEPTHS, elapsedLabel, layoutLanes, visibleRows } from "../causality.js";
 import type { CausalityOutline, CausalityRow, Depth } from "../causality.js";
 import { identityStyle } from "../identity.js";
 import { renderJson } from "./json.js";
@@ -104,9 +105,9 @@ export function drawOutline(
 }
 
 /**
- * One row: its log position in the gutter, its name in the one text
- * column, and, for prose and a result, a body under both that runs the
- * full width.
+ * One row: how long after the run began its event happened in the gutter,
+ * its name in the one text column, and, for prose and a result, a body
+ * under both that runs the full width.
  */
 function rowElement(row: CausalityRow, outline: CausalityOutline, state: OutlineState, handlers: OutlineHandlers): HTMLElement {
   // A caret stands only where opening the row would reveal something. A row
@@ -130,12 +131,17 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
       .join(" "),
     "data-row": row.id,
   });
-  // The position is printed once per event: a row that continues the one
-  // above it leaves the column blank rather than repeating the number.
+  // Time since the run began, printed once per event: a row that continues
+  // the one above it stands for the same instant and leaves the column
+  // blank rather than repeating it. The log position the column used to
+  // carry rides on the title, because a reader who wants to find the event
+  // in the log needs it and a reader following the run does not; two
+  // numbers side by side would only have to be told apart.
+  const when = elapsedLabel(row.time - outline.start);
   el.appendChild(
-    row.showSeq === false
-      ? h("div", { class: "outline-seq" })
-      : h("div", { class: "outline-seq", title: "log position" }, fmtInt(row.seq)),
+    row.showTime === false
+      ? h("div", { class: "outline-when" })
+      : h("div", { class: "outline-when", title: `${when} into the run, at log position ${fmtInt(row.seq)}` }, when),
   );
   const caret = openable
     ? h("button", {

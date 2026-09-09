@@ -3792,8 +3792,8 @@ kbd {
   padding-top: 22px;
 }
 
-/* Three columns: the log position, the gutter the lanes are drawn in, and
- * the one column every label starts in. */
+/* Three columns: the time each row's event happened, the gutter the lanes
+ * are drawn in, and the one column every label starts in. */
 .outline-row {
   display: grid;
   grid-template-columns: 52px var(--outline-text, 80px) minmax(0, 1fr);
@@ -3809,8 +3809,10 @@ kbd {
 
 /* The one thing that survives the outline's reordering: a child episode's
  * rows sit under the call that spawned it rather than in log order, so the
- * sequence number is the only sign of where order jumped. */
-.outline-seq {
+ * time since the run began is what tells a reader when each row's event
+ * happened. It is a measurement, so it sets in mono and its digits line
+ * up. */
+.outline-when {
   grid-column: 1;
   font-family: var(--v2-mono);
   font-size: calc(10px * var(--dt-font-scale, 1));
@@ -3918,7 +3920,7 @@ kbd {
   color: var(--v2-accent);
 }
 
-.outline-row.selected .outline-seq,
+.outline-row.selected .outline-when,
 .outline-row.selected .outline-name .aside {
   color: var(--v2-ink);
 }

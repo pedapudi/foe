@@ -130,9 +130,8 @@ issued them, each naming what its own tool says it acted on — the span
 interrupted call, the failure itself in the outcome hue. The `block` call
 carries no such line, because only the coding tools state one, so it shows
 its tool name alone. Each step's own label has fallen back to `step 1` now
-that its calls are on the page, and the gutter holds the log position of
-every row: where it falls from 29 to 0 is the child episode's rows sitting
-under the call that spawned them. The dark one adds the last rung,
+that its calls are on the page, and the child episode's rows sit under the
+call that spawned them rather than in log order. The dark one adds the last rung,
 `outputs`, so each tool's result body stands under the call that returned
 it, running the full width while the labels above it hold their column;
 the gutter is blank beside each body because the row above already named

@@ -544,13 +544,16 @@ diff still has its mark beside the name it belongs to.
 
 Two costs come with it and are not hidden. A child episode's rows sit
 under the call that spawned it rather than interleaved by time, so reading
-order is not global order; every row keeps its log position in the gutter,
-which is the only way to see where order jumped. That position is printed
-once per event: a row that continues the row it is part of and stands for
-the same event — a step's prose, a call's result — leaves the column
-blank, because a column of doubled numbers hides the jump it exists to
-show. Two episodes that both begin at zero each print their zero: the
-second marks the jump rather than a repeat. One view reads at one
+order is causal rather than chronological. The gutter carries how long
+after the run began each row's event happened, measured from the earliest
+start any of the run's episodes recorded, so a reader can see that one
+child episode began before another one ended. A log position says nothing
+across episodes, because every episode numbers its own log from zero; the
+position stays on each row's title, where a reader who wants to find the
+event in the log reads it. The time is printed once per event: a row that
+continues the row it is part of and stands for the same event — a step's
+prose, a call's result — leaves the column blank, because a repeat would
+say that a second thing happened at that instant. One view reads at one
 place in the hierarchy, so a reader cannot study one step's output while
 the whole shape stays in view. That is why the other arrangement remains.
 

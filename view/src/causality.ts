@@ -56,6 +56,8 @@ export interface CausalityCall {
   result: string;
   /** Log position of the result, which the deepest reading shows. */
   resultSeq: number;
+  /** When the result was written, on the wall clock, which times the call's row. */
+  resultTime: number;
 }
 
 /**
@@ -68,6 +70,8 @@ export interface CausalityStep {
   step: number;
   /** Log position the step's first event took, which orders the rows. */
   seq: number;
+  /** When that first event was written, on the wall clock. */
+  time: number;
   /** Last log position the step covers, which bounds the scoped conversation. */
   endSeq: number;
   /**
@@ -88,6 +92,8 @@ export interface CausalityFiring {
   node: string;
   fire: number;
   startSeq: number;
+  /** When the firing began, on the wall clock. */
+  startTime: number;
   /** Absent while the firing runs. */
   endSeq: number | null;
   /** The child episode a model node's firing ran. */
@@ -201,18 +207,28 @@ export interface CausalityRow {
   body: string;
   /** True for a result the tool reported as a failure, which earns the cross. */
   failed: boolean;
-  /** Where the row sits in the log, which is the only sign that order jumped. */
+  /**
+   * Where the row sits in the log, which is how a reader finds the event
+   * itself. It orders rows within one episode and nothing across
+   * episodes: every episode numbers its own log from zero.
+   */
   seq: number;
   /**
-   * Whether this row is the one to print that position on. A row that
-   * continues the row above it — the prose of a step, the body of a
-   * result — stands for the same event, and printing the number twice
-   * turns the column into a ladder of repeats. The column exists so that a
-   * jump in reading order is visible, and a doubled number hides one.
-   * Set by `visibleRows`, because which row continues which depends on
-   * what the reading shows.
+   * When the row's event happened, on the wall clock. Reading order is
+   * causal rather than chronological, so this is what tells a reader that
+   * one child episode began before another ended, and it is what the
+   * gutter prints, as the distance from `CausalityOutline.start`.
    */
-  showSeq?: boolean;
+  time: number;
+  /**
+   * Whether this row is the one to print the gutter on. A row that
+   * continues the row above it — the prose of a step, the body of a
+   * result — stands for the same event at the same instant, and printing
+   * the time twice turns the column into a ladder of repeats. Set by
+   * `visibleRows`, because which row continues which depends on what the
+   * reading shows.
+   */
+  showTime?: boolean;
   /** How many visible rows this one sits inside; set by `visibleRows`. */
   level?: number;
   /** A step row's own number and attempt count, for the label it earns. */
@@ -313,6 +329,12 @@ export interface CausalityOutline {
   /** A node re-entered from further down, by the two rows it joins. */
   loops: { laneId: string; from: string; to: string }[];
   episodes: CausalityEpisode[];
+  /**
+   * When the run began, on the wall clock: the earliest start any of its
+   * episodes recorded. Every row's time is read against it, so one origin
+   * serves the run and a child's times are comparable with its caller's.
+   */
+  start: number;
 }
 
 export interface CausalityLayout {
@@ -395,11 +417,14 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
   const seeded = summary.seedEnd;
   const rows = seeded === null ? allRows : allRows.filter((row) => row.seq > seeded);
   const spawns = spawnsByCall(rows);
-  const results = new Map<string, { text: string; body: string; seq: number; failed: boolean }>();
+  const results = new Map<string, { text: string; body: string; seq: number; time: number; failed: boolean }>();
   for (const row of rows) {
     if (row.kind !== "tool") continue;
-    results.set(row.callId, { text: row.subject, body: row.rendered, seq: row.seq, failed: row.isError });
+    results.set(row.callId, { text: row.subject, body: row.rendered, seq: row.seq, time: row.time, failed: row.isError });
   }
+  // When each log position was written. A row is placed by its position
+  // and read by its time, and the two come from the same event.
+  const timeOf = new Map(rows.map((row) => [row.seq, row.time]));
   const retries = new Map<number, number>();
   for (const row of rows) {
     if (row.kind !== "note" || row.type !== "request/retry") continue;
@@ -420,6 +445,7 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
     .map(([step, range]) => ({
       step,
       seq: range.from,
+      time: timeOf.get(range.from) ?? summary.startTime,
       endSeq: range.to,
       answered: answers.has(step),
       text: answers.get(step)?.text ?? "",
@@ -436,6 +462,10 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
           childName: spawn ? spawn.contract : "",
           result: result?.body ?? "",
           resultSeq: result?.seq ?? range.to,
+          // A call whose result never arrived is timed by the step that
+          // issued it, which is when the episode was last known to be
+          // working on it.
+          resultTime: result?.time ?? timeOf.get(range.from) ?? summary.startTime,
         };
       }),
     }));
@@ -454,6 +484,7 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
       node: f.node,
       fire: f.fire,
       startSeq: f.startSeq,
+      startTime: f.startTime,
       endSeq: f.endSeq,
       childId: f.childId,
       error: f.error,
@@ -580,6 +611,40 @@ interface LaneBuild {
 }
 
 /**
+ * When a run began: the earliest start its episodes recorded. An episode
+ * whose `episode/start` was never read carries a start of zero and is
+ * passed over, because a run that began at the epoch would put every other
+ * row decades after it.
+ */
+export function runStart(episodes: CausalityEpisode[]): number {
+  const starts = episodes.map((episode) => episode.startTime).filter((start) => start > 0);
+  return starts.length === 0 ? 0 : Math.min(...starts);
+}
+
+/**
+ * How long after the run began a row's event happened, written the way the
+ * gutter prints it. Minutes and seconds, to a tenth: a tenth is fine
+ * enough that the ends of two episodes opened by one turn read apart, and
+ * coarse enough to stay in the narrow column.
+ *
+ * An hour or more takes hours, minutes and whole seconds instead: at that
+ * length a tenth of a second says nothing and the column has no room for
+ * it. Empty for a time the log does not place, which a row of an episode
+ * whose start was never read has.
+ */
+export function elapsedLabel(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const whole = Math.floor(ms / 1000);
+  const seconds = whole % 60;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  if (ms < 3_600_000) {
+    const tenth = Math.floor((ms % 1000) / 100);
+    return `${Math.floor(whole / 60)}:${pad(seconds)}.${tenth}`;
+  }
+  return `${Math.floor(whole / 3600)}:${pad(Math.floor(whole / 60) % 60)}:${pad(seconds)}`;
+}
+
+/**
  * Every row and lane a run has, in reading order. This reads the log's
  * obligation pairs and decides nothing about geometry, so a view that
  * shows all of it and a view that shows a collapsed part of it are two
@@ -634,6 +699,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
       fromSeq: 0,
       toSeq: Math.max(0, episode.lastSeq),
       seq: 0,
+      time: episode.startTime,
     });
 
     // The task hangs under the episode it was given to. It is the one thing
@@ -656,6 +722,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         fromSeq: 0,
         toSeq: 0,
         seq: 0,
+        time: episode.startTime,
       });
     }
 
@@ -687,6 +754,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
           fromSeq: step.seq,
           toSeq: step.endSeq,
           seq: step.seq,
+          time: step.time,
         });
         // What a step is called depends on whether its calls are shown, so
         // the label is set when the visible set is known, not here.
@@ -708,6 +776,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
             fromSeq: step.seq,
             toSeq: step.endSeq,
             seq: step.seq,
+            time: step.time,
           });
         }
         // A turn that opened several children opened them together. Its
@@ -730,6 +799,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
             fromSeq: step.seq,
             toSeq: call.resultSeq,
             seq: call.resultSeq,
+            time: call.resultTime,
           });
           if (call.result !== "") {
             push({
@@ -746,6 +816,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
               fromSeq: call.resultSeq,
               toSeq: call.resultSeq,
               seq: call.resultSeq,
+              time: call.resultTime,
             });
           }
           const child = call.childId === null ? undefined : byId.get(call.childId);
@@ -774,6 +845,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
           fromSeq: firing.startSeq,
           toSeq: firing.endSeq ?? firing.startSeq,
           seq: firing.startSeq,
+          time: firing.startTime,
         });
         nodeRow.set(firing.node, row);
       }
@@ -811,6 +883,9 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         fromSeq: episode.lastSeq,
         toSeq: episode.lastSeq,
         seq: episode.lastSeq,
+        // What an episode returned is the last thing it did, so the row
+        // takes the moment it settled; an episode still running has none.
+        time: episode.endTime ?? episode.startTime,
       });
     }
   };
@@ -819,7 +894,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
     if (episode.parentId !== null && byId.has(episode.parentId)) continue;
     emit(episode, null, null);
   }
-  return { rows, lanes, loops, episodes };
+  return { rows, lanes, loops, episodes, start: runStart(episodes) };
 }
 
 /**
@@ -870,12 +945,14 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
   return out.map((row, index) => {
     const nested = level.get(row.id) ?? 0;
     // A row continues the one above it when that row is the one it is part
-    // of and the two stand for the same event. Two episodes that both
-    // begin at zero are not a continuation: each carries its own log, and
-    // the second zero is the jump the column is there to show.
+    // of and the two stand for the same event: one event, one line in the
+    // gutter. Two rows of different episodes never continue one another,
+    // even at the same log position, because each episode numbers its own
+    // log and the two positions name different events.
     const before = out[index - 1];
-    const showSeq = !(before !== undefined && before.id === row.parent && before.seq === row.seq);
-    if (row.kind !== "step") return { ...row, level: nested, showSeq };
+    const continues = before !== undefined && before.id === row.parent && before.seq === row.seq;
+    const showTime = !continues;
+    if (row.kind !== "step") return { ...row, level: nested, showTime };
     const callsShown = row.calls.some((call) => shown.has(`${row.id}/call/${call.id}`));
     const composed = composeLabel({
       kind: "step",
@@ -886,7 +963,7 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
       calls: row.calls,
       callsVisible: callsShown,
     });
-    return { ...row, level: nested, showSeq, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
+    return { ...row, level: nested, showTime, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
   });
 }
 

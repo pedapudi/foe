@@ -15,6 +15,7 @@ import {
   ROW_PITCH,
   STUB,
   composeLabel,
+  elapsedLabel,
   layoutCausality,
   readCausality,
   scopeFor,
@@ -236,34 +237,25 @@ test("two episodes that overlap in time never share a column", () => {
   assert.notEqual(first.column, second.column);
 });
 
-// One turn that opens several children opens them together. Its own calls
-// are read before any child's transcript, so the fan-out is one row after
-// another rather than a child wedged between two of its siblings' calls,
-// and the columns those children take are as many as ran at once.
-test("the calls of one step are read before the children they opened", () => {
-  const spawnCall = (id: string, child: string): CausalityCall => ({
-    id,
+/**
+ * A run written out rather than folded from a log: a lead whose one turn
+ * spawns a child per call, and children whose start and end the caller
+ * states. Times are milliseconds on the wall clock, and the lead starts at
+ * 1 so that it is the run's own start. The call that opened each child
+ * takes the child's end, which is when its result came back.
+ */
+function fanOut(children: { id: string; start: number; end: number | null }[]): CausalityEpisode[] {
+  const calls: CausalityCall[] = children.map((child, index) => ({
+    id: `tc_${index + 1}`,
     name: "spawn",
     subject: "",
     failed: false,
-    childId: child,
+    childId: child.id,
     childName: "worker",
     result: "",
     resultSeq: 2,
-  });
-  const child = (id: string, start: number, end: number): CausalityEpisode => ({
-    id,
-    name: "worker",
-    task: `the unit for ${id}`,
-    depth: 1,
-    parentId: "ep_lead",
-    outcome: { kind: "completed", value: null },
-    startTime: start,
-    endTime: end,
-    lastSeq: 4,
-    steps: [{ step: 1, seq: 1, endSeq: 4, answered: true, text: "", attempts: 1, calls: [] }],
-    firings: [],
-  });
+    resultTime: child.end ?? 0,
+  }));
   const lead: CausalityEpisode = {
     id: "ep_lead",
     name: "lead",
@@ -271,23 +263,36 @@ test("the calls of one step are read before the children they opened", () => {
     depth: 0,
     parentId: null,
     outcome: null,
-    startTime: 0,
+    startTime: 1,
     endTime: null,
     lastSeq: 9,
-    steps: [
-      {
-        step: 1,
-        seq: 1,
-        endSeq: 3,
-        answered: true,
-        text: "",
-        attempts: 1,
-        calls: [spawnCall("tc_1", "ep_a"), spawnCall("tc_2", "ep_b")],
-      },
-    ],
+    steps: [{ step: 1, seq: 1, time: 2, endSeq: 3, answered: true, text: "", attempts: 1, calls }],
     firings: [],
   };
-  const episodes = [lead, child("ep_a", 10, 90), child("ep_b", 20, 80)];
+  return [
+    lead,
+    ...children.map((child) => ({
+      id: child.id,
+      name: "worker",
+      task: `the unit for ${child.id}`,
+      depth: 1,
+      parentId: "ep_lead",
+      outcome: child.end === null ? null : { kind: "completed", value: null },
+      startTime: child.start,
+      endTime: child.end,
+      lastSeq: 4,
+      steps: [{ step: 1, seq: 1, time: child.start, endSeq: 4, answered: true, text: "", attempts: 1, calls: [] }],
+      firings: [],
+    })),
+  ];
+}
+
+// One turn that opens several children opens them together. Its own calls
+// are read before any child's transcript, so the fan-out is one row after
+// another rather than a child wedged between two of its siblings' calls,
+// and the columns those children take are as many as ran at once.
+test("the calls of one step are read before the children they opened", () => {
+  const episodes = fanOut([{ id: "ep_a", start: 10, end: 90 }, { id: "ep_b", start: 20, end: 80 }]);
   const outline = causalityOutline(episodes);
   const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
   assert.ok(at("ep_lead/step/1/call/tc_1") < at("ep_lead/step/1/call/tc_2"), "the two calls keep their order");
@@ -452,7 +457,7 @@ test("a step is named by what it did, with its step number alongside", () => {
   // draws a mark: a word is faster to scan than a glyph, and the target is
   // what the reader came for.
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 }] }),
+    composeLabel({ kind: "step", step: 1, calls: [{ id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0, resultTime: 0 }] }),
     { label: "read src/parser.rs", aside: "step 1" },
   );
   assert.deepEqual(
@@ -460,15 +465,15 @@ test("a step is named by what it did, with its step number alongside", () => {
       kind: "step",
       step: 2,
       calls: [
-        { id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
-        { id: "b", name: "read", subject: "src/lexer.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
-        { id: "c", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 },
+        { id: "a", name: "read", subject: "src/parser.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0, resultTime: 0 },
+        { id: "b", name: "read", subject: "src/lexer.rs", failed: false, childId: null, childName: "", result: "", resultSeq: 0, resultTime: 0 },
+        { id: "c", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0, resultTime: 0 },
       ],
     }),
     { label: "read src/parser.rs +2", aside: "step 2" },
   );
   assert.deepEqual(
-    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", subject: "surveyor", failed: false, childId: "ep_child", childName: "surveyor", result: "", resultSeq: 0 }] }),
+    composeLabel({ kind: "step", step: 3, calls: [{ id: "a", name: "spawn", subject: "surveyor", failed: false, childId: "ep_child", childName: "surveyor", result: "", resultSeq: 0, resultTime: 0 }] }),
     { label: "spawn surveyor", aside: "step 3" },
   );
   assert.deepEqual(composeLabel({ kind: "node", node: "propose" }), { label: "propose", aside: "" });
@@ -485,7 +490,7 @@ test("a call with no subject names its tool alone rather than guessing", () => {
   // A log written before tools stated what they acted on, or a tool that
   // states nothing, leaves the field empty. A missing target is honest
   // where a target guessed from the arguments is not.
-  const bare = { id: "a", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0 };
+  const bare = { id: "a", name: "grep", subject: "", failed: false, childId: null, childName: "", result: "", resultSeq: 0, resultTime: 0 };
   assert.deepEqual(composeLabel({ kind: "call", calls: [bare] }), { label: "grep", aside: "" });
   assert.deepEqual(composeLabel({ kind: "step", step: 1, calls: [bare] }), { label: "grep", aside: "step 1" });
 });
@@ -500,6 +505,7 @@ test("a failed call reads as the line its tool wrote, without stuttering", () =>
     childName: "",
     result: "",
     resultSeq: 0,
+    resultTime: 0,
   };
   assert.deepEqual(composeLabel({ kind: "call", calls: [failed] }), {
     label: "read: src/parser.rs: No such file or directory (os error 2)",
@@ -619,49 +625,57 @@ test("every row carries its log position, because the outline reorders time", ()
     assert.equal(typeof r.seq, "number", `${r.id} knows where it sits in the log`);
   }
   // A child's rows sit under the call that spawned it rather than in log
-  // order, so reading order jumps. The sequence number is the only sign.
+  // order, so reading order jumps. The elapsed time in the gutter is the
+  // sign, since it is measured from one origin for the run.
   const ids = visibleRows(outline, "outputs").map((r) => r.id);
   assert.ok(ids.indexOf("ep_child") < ids.indexOf("ep_root/step/3"), "the child is read before later steps");
 });
 
-test("a log position is printed once per event, not once per row", () => {
+test("the gutter is printed once per event, not once per row", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
   const deep = visibleRows(outline, "outputs");
   // A step's prose and a call's result body stand for the event their own
-  // row already named, so they leave the column blank; the column is there
-  // to show where reading order jumps, and a repeat hides that.
+  // row already named, so they leave the column blank; a repeat would say
+  // that a second thing happened at that instant.
   const prose = deep.find((r) => r.kind === "prose")!;
   const result = deep.find((r) => r.kind === "result")!;
-  assert.equal(prose.showSeq, false);
-  assert.equal(result.showSeq, false);
+  assert.equal(prose.showTime, false);
+  assert.equal(result.showTime, false);
   for (const row of deep) {
-    if (row.showSeq !== false) continue;
+    if (row.showTime !== false) continue;
     const above = deep[deep.indexOf(row) - 1]!;
     assert.equal(above.id, row.parent, `${row.id} continues the row above it`);
     assert.equal(above.seq, row.seq, `${row.id} stands for the event above it`);
-  }
-  // No two rows in a row print the same number.
-  const printed = deep.filter((r) => r.showSeq !== false);
-  for (let i = 1; i < printed.length; i += 1) {
-    const a = printed[i - 1]!;
-    const b = printed[i]!;
-    assert.ok(a.seq !== b.seq || a.episodeId !== b.episodeId, `${a.id} and ${b.id} both print ${a.seq}`);
+    assert.equal(above.time, row.time, `${row.id} stands for the same instant`);
   }
 });
 
-test("two episodes that both begin at zero each print their own zero", () => {
-  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
-  // Collapsed to the rail the child follows the root directly and both
-  // logs start at zero. That second zero is the jump the column exists to
-  // show, so it is printed rather than swallowed as a repeat.
+test("every row is timed from one origin, so two episodes are comparable", () => {
+  const episodes = run("root.jsonl", "child.jsonl");
+  const outline = causalityOutline(episodes);
+  const root = episodes.find((e) => e.id === "ep_root")!;
+  const child = episodes.find((e) => e.id === "ep_child")!;
+  assert.equal(outline.start, root.startTime, "the run began when its root episode began");
+  // Collapsed to the rail the child follows the root directly, and both
+  // logs number their own events from zero. The gutter says what the two
+  // zeroes cannot: the child began after the root did.
   const rail = visibleRows(outline, "episodes");
-  assert.deepEqual(
-    rail.map((r) => [r.seq, r.showSeq]),
-    [
-      [0, true],
-      [0, true],
-    ],
-  );
+  assert.deepEqual(rail.map((r) => r.seq), [0, 0]);
+  assert.deepEqual(rail.map((r) => r.time), [root.startTime, child.startTime]);
+  assert.ok(child.startTime > root.startTime, "the fixture opens the child after the run begins");
+});
+
+test("elapsed time is written to a tenth of a second, and past an hour to a second", () => {
+  assert.equal(elapsedLabel(0), "0:00.0");
+  assert.equal(elapsedLabel(56_237), "0:56.2");
+  assert.equal(elapsedLabel(93_255), "1:33.2");
+  assert.equal(elapsedLabel(3_599_900), "59:59.9");
+  assert.equal(elapsedLabel(3_600_000), "1:00:00");
+  assert.equal(elapsedLabel(45_296_000), "12:34:56");
+  // A row of an episode whose start the log never recorded would otherwise
+  // read as a time before the run began.
+  assert.equal(elapsedLabel(-1), "");
+  assert.equal(elapsedLabel(Number.NaN), "");
 });
 
 test("lanes hold at every reading, and every curve still lands on a line", () => {
