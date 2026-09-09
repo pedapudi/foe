@@ -163,20 +163,15 @@ SUN = MARK % ('<circle cx="8" cy="8" r="3.1"/>'
               '<path d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5"/>'
               '<path d="M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1"/>')
 MOON = MARK % '<path d="M13.4 9.6A5.9 5.9 0 0 1 6.4 2.6a5.9 5.9 0 1 0 7 7z"/>'
-# The install command builds and runs a Linux binary, and a drawn mark says
-# so where a word would repeat the sentence beside it. Same stroke language
-# as the marks above, with a title so the mark is named to a reader who
-# hovers it and to one who cannot see it.
-TUX = ('<svg viewBox="0 0 16 16" class="tux" role="img" aria-label="Linux" fill="none" '
-       'stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">'
-       '<title>Linux</title>'
-       '<path d="M8 1.5a2.6 2.6 0 0 0-2.6 2.6c0 .55.17 1.06.46 1.48C4.4 6.4 3.5 7.9 3.5 9.7c0 1.5.5 2.7 '
-       '1.3 3.5h6.4c.8-.8 1.3-2 1.3-3.5 0-1.8-.9-3.3-2.36-4.12.29-.42.46-.93.46-1.48A2.6 2.6 0 0 0 8 1.5Z"/>'
-       '<path d="M6.9 3.5v.7M9.1 3.5v.7"/>'
-       '<path d="M7.2 4.9h1.6L8 6.1Z"/>'
-       '<path d="M3.6 8.6c-.55.85-.62 2-.24 2.9M12.4 8.6c.55.85.62 2 .24 2.9"/>'
-       '<path d="M5.4 13.2c-.45.6-1.25.85-1.95.6M10.6 13.2c.45.6 1.25.85 1.95.6"/>'
-       '</svg>')
+# The install command downloads a Linux binary, and a drawn mark says so
+# where a word would repeat the sentence beside it. Tux is Larry Ewing's
+# penguin; this is an original drawing of him, built from ellipses rather
+# than traced from any existing file, because the monochrome renderings in
+# circulation carry licences of their own. The architecture is set beside
+# the mark rather than drawn into it: the penguin says Linux and the words
+# say which Linux.
+TUX = ('<svg viewBox="0 0 14 16" class="tux" role="img" aria-label="Linux" '
+       'fill="currentColor"><title>Linux</title><path d="M0.58 14.75a2.75 1.25 -18 1 1 5.23 -1.70a2.75 1.25 -18 1 1 -5.23 1.70ZM8.18 13.05a2.75 1.25 18 1 1 5.23 1.70a2.75 1.25 18 1 1 -5.23 -1.70ZM2.60 10.40a4.40 4.40 0 1 1 8.80 0.00a4.40 4.40 0 1 1 -8.80 -0.00ZM4.00 3.60a3.00 3.30 0 1 1 6.00 0.00a3.00 3.30 0 1 1 -6.00 -0.00ZM5.32 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM7.12 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM5.30 5.00a1.70 0.78 0 1 0 3.40 0.00a1.70 0.78 0 1 0 -3.40 -0.00Z"/></svg>')
 
 page = page.replace("__LIGHT__", palette(LIGHT_THEME, "light", "  "))
 page = page.replace("__DARKI__", palette(DARK_THEME, "dark", "    "))

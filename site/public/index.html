@@ -248,6 +248,7 @@ input[type=range]::-moz-range-thumb{width:3px; height:15px; background:var(--v2-
 .cmd.install code{font-size:clamp(17px,2.3vw,26px); flex:1 1 auto}
 .cmd .tux{width:clamp(19px,2.5vw,28px); height:clamp(19px,2.5vw,28px);
   flex:0 0 auto; color:var(--v2-ink-faint)}
+.platform{margin:7px 0 0 3px; font-size:13px; color:var(--v2-ink-faint); letter-spacing:.04em}
 .cmd{border:1px solid var(--v2-rule); border-radius:2px; padding:9px 12px;
   display:flex; align-items:center; gap:12px; background:var(--v2-paper)}
 .cmd code{font-size:clamp(14.5px,1.45vw,17px); color:var(--v2-ink); white-space:pre; overflow-x:auto}
@@ -434,9 +435,10 @@ footer .lead{color:var(--v2-ink)}
     </div>
 
     <div class="cmd install" style="margin-top:clamp(20px,3vw,34px)">
-      <svg viewBox="0 0 16 16" class="tux" role="img" aria-label="Linux" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><title>Linux</title><path d="M8 1.5a2.6 2.6 0 0 0-2.6 2.6c0 .55.17 1.06.46 1.48C4.4 6.4 3.5 7.9 3.5 9.7c0 1.5.5 2.7 1.3 3.5h6.4c.8-.8 1.3-2 1.3-3.5 0-1.8-.9-3.3-2.36-4.12.29-.42.46-.93.46-1.48A2.6 2.6 0 0 0 8 1.5Z"/><path d="M6.9 3.5v.7M9.1 3.5v.7"/><path d="M7.2 4.9h1.6L8 6.1Z"/><path d="M3.6 8.6c-.55.85-.62 2-.24 2.9M12.4 8.6c.55.85.62 2 .24 2.9"/><path d="M5.4 13.2c-.45.6-1.25.85-1.95.6M10.6 13.2c.45.6 1.25.85 1.95.6"/></svg><code id="cmd-install">curl -fsSL foe.sh/install.sh | sh</code>
+      <svg viewBox="0 0 14 16" class="tux" role="img" aria-label="Linux" fill="currentColor"><title>Linux</title><path d="M0.58 14.75a2.75 1.25 -18 1 1 5.23 -1.70a2.75 1.25 -18 1 1 -5.23 1.70ZM8.18 13.05a2.75 1.25 18 1 1 5.23 1.70a2.75 1.25 18 1 1 -5.23 -1.70ZM2.60 10.40a4.40 4.40 0 1 1 8.80 0.00a4.40 4.40 0 1 1 -8.80 -0.00ZM4.00 3.60a3.00 3.30 0 1 1 6.00 0.00a3.00 3.30 0 1 1 -6.00 -0.00ZM5.32 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM7.12 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM5.30 5.00a1.70 0.78 0 1 0 3.40 0.00a1.70 0.78 0 1 0 -3.40 -0.00Z"/></svg><code id="cmd-install">curl -fsSL foe.sh/install.sh | sh</code>
       <button class="ctl icon" type="button" aria-label="copy" title="copy" data-copy="cmd-install"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="5.6" y="5.6" width="8" height="8" rx="1.4"/><path d="M10.4 3.4a1.7 1.7 0 0 0-1.6-1.1H4.1A1.8 1.8 0 0 0 2.3 4v4.7c0 .8.5 1.4 1.2 1.6"/></svg></button>
     </div>
+    <p class="platform">x86-64</p>
 
     <div style="margin-top:clamp(18px,2.4vw,30px)">
       <div>
