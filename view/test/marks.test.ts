@@ -128,9 +128,9 @@ test("the interrupted stream runs and stops, and the live stream is its mirror",
   assert.equal(running[0]!.shape, "circle");
   assert.equal(running[1]!.shape, "path");
   // Reflection about the box's vertical centre, part for part. Direction is
-  // the whole of the difference between the two, so nothing else may
-  // differ: a ring one mark drew larger than the other would read as a
-  // second distinction that means nothing.
+  // the only difference between the two, so nothing else may differ: a ring
+  // one mark drew larger than the other would read as a second distinction
+  // that means nothing.
   assert.deepEqual(reflected(MARKS.live), figures(MARKS.interrupted));
 });
 

@@ -1,7 +1,7 @@
 // A JSON value as a structure a reader walks rather than a block of text to
 // scan. An object or an array opens and closes and states how much it holds
 // while closed; a scalar reads as its own kind; a string too long for its
-// line sets behind an expander that holds the whole of it.
+// line sets behind an expander that holds it entire.
 //
 // Nothing is dropped. Every key is present, in the order the log wrote it,
 // and every collapsed node opens to what it holds, down to the literal

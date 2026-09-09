@@ -42,8 +42,8 @@ fn nothing_about_the_subject_reaches_the_model() {
         let spec = tool.spec();
         let whole = serde_json::to_string(&spec).unwrap();
         assert!(!whole.contains("subject"), "{} mentions the subject in its specification", spec.name);
-        // The schema is the whole of what the model is told about a tool,
-        // and it carries exactly a name, a description and parameters.
+        // The schema is all the model is told about a tool, and it carries
+        // exactly a name, a description and parameters.
         let schema = serde_json::to_value(spec.schema()).unwrap();
         let mut keys: Vec<&String> = schema.as_object().unwrap().keys().collect();
         keys.sort();

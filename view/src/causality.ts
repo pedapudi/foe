@@ -138,7 +138,7 @@ export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" 
  * recorded run of 1,255 events the model's own words came to 5,719
  * characters and the tool results to 139,281. A reader who wants the
  * conversation would otherwise have to take the tool output with it, and
- * the tool output is the whole of the weight.
+ * the tool output carries all the weight.
  */
 export type Depth = "episodes" | "steps" | "calls" | "conversation" | "outputs";
 
