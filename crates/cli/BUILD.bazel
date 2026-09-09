@@ -4,7 +4,10 @@ load("@rules_rust//rust:defs.bzl", "rust_binary")
 rust_binary(
     name = "foe",
     srcs = glob(["src/**/*.rs"]),
-    compile_data = ["src/builtin-coding.json"],
+    compile_data = [
+        "src/builtin-coding.json",
+        "src/builtin-team.json",
+    ],
     crate_name = "foe",
     crate_root = "src/main.rs",
     edition = crate_edition(),
