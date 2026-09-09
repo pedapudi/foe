@@ -3,7 +3,7 @@ use crate::harness_text;
 use crate::test_util::{contract, contract_with, spec, tmp};
 use crate::Effect;
 use foe_log::RuntimeInfo;
-use serde_json::json;
+use serde_json::{json, Value};
 
 fn runtime() -> RuntimeInfo {
     RuntimeInfo { version: "0.2.0".into(), build: "sha256:test".into() }
@@ -13,6 +13,25 @@ fn runtime() -> RuntimeInfo {
 fn canonical_form_sorts_keys_and_drops_whitespace() {
     let value = json!({ "b": [1, { "z": 1, "a": 2 }], "a": "x y" });
     assert_eq!(canonical(&value), r#"{"a":"x y","b":[1,{"a":2,"z":1}]}"#);
+}
+
+/// The canonical form must not depend on how the map was built.
+///
+/// `json!` produces a `serde_json::Map`, which iterates in sorted order only
+/// while `preserve_order` is off. That feature is not this crate's to
+/// decide, so the objects below are assembled key by key in reverse order:
+/// with the feature on, iteration would follow insertion and this fails
+/// unless `canonical` sorts for itself.
+#[test]
+fn canonical_form_does_not_depend_on_insertion_order() {
+    let mut inner = serde_json::Map::new();
+    inner.insert("z".into(), json!(1));
+    inner.insert("a".into(), json!(2));
+    let mut outer = serde_json::Map::new();
+    outer.insert("b".into(), json!([1, Value::Object(inner)]));
+    outer.insert("a".into(), json!("x y"));
+
+    assert_eq!(canonical(&Value::Object(outer)), r#"{"a":"x y","b":[1,{"a":2,"z":1}]}"#);
 }
 
 #[test]

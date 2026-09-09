@@ -23,11 +23,30 @@ pub struct Fingerprint {
     pub document: Value,
 }
 
-/// Compact JSON with object keys in sorted order. `serde_json` sorts keys
-/// because the `preserve_order` feature is off; this function is the one
-/// place that relies on it.
+/// Compact JSON with object keys in sorted order.
+///
+/// The order is imposed here rather than inherited from `serde_json`. A
+/// `serde_json::Map` iterates in sorted order only while the crate's
+/// `preserve_order` feature is off, and that feature is not this crate's to
+/// decide: Cargo unifies features across the whole dependency graph, so any
+/// crate an embedder happens to depend on can turn it on. The canonical form
+/// would then follow insertion order, every fingerprint in the tree would
+/// change, and nothing would fail to compile.
 pub fn canonical(value: &Value) -> String {
-    serde_json::to_string(value).expect("a JSON value serializes")
+    serde_json::to_string(&sorted(value)).expect("a JSON value serializes")
+}
+
+/// `value` with every object's keys in sorted order, recursively.
+fn sorted(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            Value::Object(keys.into_iter().map(|k| (k.clone(), sorted(&map[k]))).collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
+        other => other.clone(),
+    }
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
