@@ -372,7 +372,7 @@ down and structure runs across.
 The figure is built from the log's obligation pairs and never from an
 inferred parent, so it draws no edge the log does not carry. `spawn/start`
 names the tool call that opened a child, and `workflow/node-start` names
-the child a model node ran; those two are the whole of what opens a lane.
+the child a model node ran; nothing else opens a lane.
 
 A lane is earned. Two things earn one: an **episode**, which has its own
 agent, budget and typed outcome and can outlive the call that made it, and
@@ -455,7 +455,7 @@ finished episode whose request no message ever answered by `no answer`.
 The tool name stands beside the target even though the tick beside it
 already draws a mark. The redundancy is deliberate: a word is faster to
 scan than a glyph, and the target is the thing a reader is looking for.
-The target is the whole of the one short argument the call carries — a
+The target is the one short argument the call carries, shown entire — a
 path, a contract name — because which directory a file sits in is part of
 what identifies it; an argument with whitespace in it is free text and is
 never shown, and a path too long to set has its middle elided and its
