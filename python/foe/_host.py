@@ -422,6 +422,7 @@ async def start_config(
     on_event: EventCallback | None = None,
     max_output_tokens: int | None = None,
     start_new_session: bool = False,
+    viewer: str = "off",
     on_spawn: Callable[[Handle], None] | None = None,
 ) -> Handle:
     """Launch the binary on a complete configuration document.
@@ -440,6 +441,11 @@ async def start_config(
     `tools` supplies the implementation of every name in `host_tools`.
     On POSIX, `start_new_session=True` makes the binary lead its own session
     and process group. The default inherits the host's session and group.
+    `viewer` is `off`, which serves nothing, or `serve`, which binds a
+    loopback port and writes its address to standard error. It defaults to
+    `off` because an embedded episode should not open a port unless the
+    application asked it to; `open`, which launches a browser, is refused
+    here because nothing about a library call should reach a display.
     `on_spawn` receives the handle synchronously before the startup handshake.
     Its `pid` is available; `runtime` and `episode_id` are still unknown.
 
@@ -448,6 +454,8 @@ async def start_config(
     Raises `CompatibilityError` when the binary does not pair with this
     package.
     """
+    if viewer not in ("off", "serve"):
+        raise ValueError(f"viewer is 'off' or 'serve', not {viewer!r}: a library call opens no browser")
     doc = _load_config(config)
     if "task" not in doc:
         raise ValueError("config: `task` is required")
@@ -492,7 +500,7 @@ async def start_config(
             "--protocol-fds",
             f"{answers_read},{events_write}",
             "--viewer",
-            "off",
+            viewer,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.DEVNULL,
             pass_fds=(answers_read, events_write),

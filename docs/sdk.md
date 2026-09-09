@@ -364,6 +364,13 @@ session and process group whose leader is the binary. Both identifiers equal
 and process group. This launch setting belongs to the host and does not change
 the configuration document or its fingerprint.
 
+`viewer: str = "off"` selects what the episode serves: `off` serves nothing,
+and `serve` binds a loopback port and writes its address to standard error.
+The default is `off` because an episode a library started should not open a
+port unless the application asked it to. `open`, which launches a browser, is
+refused: nothing about a library call should reach a display. A host that
+wants to read a finished run uses `foe.serve` over its log directory.
+
 `on_spawn: Callable[[Handle], None] | None = None` receives the handle
 synchronously after process creation, before the startup handshake. The
 callback can record `handle.pid` and arrange cancellation even when the binary
