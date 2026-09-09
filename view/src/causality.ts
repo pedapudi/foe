@@ -131,7 +131,7 @@ export interface PlacedCall extends CausalityCall {
   y: number;
 }
 
-export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome" | "task";
+export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome" | "concurrent" | "task";
 
 /**
  * How deep a reading goes. The rail, the tree, the causal figure and the
@@ -154,6 +154,9 @@ export const DEPTHS: readonly Depth[] = ["episodes", "steps", "calls", "conversa
 /** The coarsest reading each kind of row appears in. */
 const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
   episode: "episodes",
+  // The caption over a group of episodes that ran at once stands wherever
+  // those episodes stand, which is every reading, including the rail.
+  concurrent: "episodes",
   node: "steps",
   step: "steps",
   call: "calls",
@@ -644,6 +647,65 @@ export function elapsedLabel(ms: number): string {
   return `${Math.floor(whole / 3600)}:${pad(Math.floor(whole / 60) % 60)}:${pad(seconds)}`;
 }
 
+/** A set of episodes that were open at the same time, and the span they cover. */
+export interface ConcurrentGroup {
+  /** The episodes of the group, in the order the caller gave them. */
+  ids: string[];
+  /** The earliest start of the group and the latest end, on the wall clock. */
+  start: number;
+  /** Null while one episode of the group has not settled. */
+  end: number | null;
+}
+
+/**
+ * Which of the episodes opened by one turn were open at the same time.
+ * Two episodes belong to one group when their runs overlap, and overlap is
+ * carried along a chain: an episode that overlaps only the second of three
+ * still joins the one group, because the three were never one at a time.
+ * A group of one episode is dropped, since nothing about it needs saying.
+ *
+ * An episode that has not settled is open until the run ends, so it
+ * overlaps everything opened after it.
+ */
+export function concurrentGroups(episodes: { id: string; startTime: number; endTime: number | null }[]): ConcurrentGroup[] {
+  const order = new Map(episodes.map((episode, index) => [episode.id, index]));
+  const byStart = [...episodes].sort((a, b) => a.startTime - b.startTime);
+  const groups: ConcurrentGroup[] = [];
+  let open: typeof byStart = [];
+  const close = (): void => {
+    if (open.length > 1) {
+      const ends = open.map((episode) => episode.endTime);
+      groups.push({
+        ids: open.map((episode) => episode.id).sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0)),
+        start: Math.min(...open.map((episode) => episode.startTime)),
+        end: ends.includes(null) ? null : Math.max(...(ends as number[])),
+      });
+    }
+    open = [];
+  };
+  // The furthest any episode of the open group has reached. An episode
+  // that starts after it belongs to a new group, because by then every
+  // episode of the last one had finished.
+  let reached = -Infinity;
+  for (const episode of byStart) {
+    if (episode.startTime >= reached) close();
+    open.push(episode);
+    reached = Math.max(reached, episode.endTime ?? Infinity);
+  }
+  close();
+  return groups;
+}
+
+/**
+ * The span a caption states, written the way the gutter writes a time:
+ * from when the first episode of the group began to when the last one
+ * ended. A group holding an episode that has not settled has no end yet.
+ */
+export function spanLabel(group: ConcurrentGroup, start: number): string {
+  const from = elapsedLabel(group.start - start);
+  return group.end === null ? `from ${from}` : `${from} – ${elapsedLabel(group.end - start)}`;
+}
+
 /**
  * Every row and lane a run has, in reading order. This reads the log's
  * obligation pairs and decides nothing about geometry, so a view that
@@ -652,6 +714,7 @@ export function elapsedLabel(ms: number): string {
  */
 export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline {
   const byId = new Map(episodes.map((e) => [e.id, e]));
+  const start = runStart(episodes);
   const rows: CausalityRow[] = [];
   const lanes: LaneSpec[] = [];
   const loops: { laneId: string; from: string; to: string }[] = [];
@@ -826,8 +889,42 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         }
         // A child hangs under the call that opened it, which is what makes
         // the outline a hierarchy; it costs global chronology, which is why
-        // every row keeps its sequence number.
-        for (const { child, callRow } of opened) emit(child, laneId, callRow.id);
+        // every row carries the time its event happened.
+        //
+        // Children of one turn that were open at the same time are read one
+        // whole episode after another, which is the one thing this order
+        // cannot show. The lanes draw the overlap; a caption over the first
+        // child of each such group says it in words, once, with the span the
+        // group covered. Children a declared graph's firings opened carry no
+        // caption: each firing opens one child at its own point in the graph,
+        // so there is no one row where a group of them is opened.
+        const captions = new Map<string, ConcurrentGroup>();
+        for (const group of concurrentGroups(opened.map(({ child }) => child))) captions.set(group.ids[0]!, group);
+        for (const { child, callRow } of opened) {
+          const group = captions.get(child.id);
+          if (group !== undefined) {
+            push({
+              id: `${row.id}/concurrent/${child.id}`,
+              kind: "concurrent",
+              episodeId: episode.id,
+              laneId,
+              parent: row.id,
+              depth: episode.depth + 1,
+              label: `${group.ids.length} episodes ran at the same time`,
+              aside: spanLabel(group, start),
+              opens: [...group.ids],
+              fromSeq: step.seq,
+              toSeq: step.endSeq,
+              seq: step.seq,
+              // A caption covers a span rather than standing at an instant,
+              // and its own text carries that span, so it prints no time of
+              // its own.
+              time: group.start,
+              showTime: false,
+            });
+          }
+          emit(child, laneId, callRow.id);
+        }
         continue;
       }
       const firing = item.firing!;
@@ -951,7 +1048,9 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     // log and the two positions name different events.
     const before = out[index - 1];
     const continues = before !== undefined && before.id === row.parent && before.seq === row.seq;
-    const showTime = !continues;
+    // A row the fold has already settled keeps what it was given: a caption
+    // over a group of episodes states its own span and stands at no instant.
+    const showTime = row.showTime !== false && !continues;
     if (row.kind !== "step") return { ...row, level: nested, showTime };
     const callsShown = row.calls.some((call) => shown.has(`${row.id}/call/${call.id}`));
     const composed = composeLabel({

@@ -557,6 +557,15 @@ say that a second thing happened at that instant. One view reads at one
 place in the hierarchy, so a reader cannot study one step's output while
 the whole shape stays in view. That is why the other arrangement remains.
 
+Episodes that one turn opened and that were open at the same time carry one
+caption above the first of them: how many there were, and the span from the
+first start to the last end. The lanes already draw the overlap, because a
+lane holds its column until it closes, and the caption states in words what
+the reading order cannot, since each of those episodes is given in full
+before the next one begins. Episodes a declared graph's firings opened
+carry no such caption: each firing opens one child at its own point in the
+graph, so there is no single row where a group of them is opened.
+
 ### Figure and conversation
 
 The causal figure beside a conversation scoped to whatever is selected in

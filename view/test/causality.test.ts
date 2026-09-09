@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DEPTHS,
   ELBOW,
   LANE_PITCH,
   OUTCOME_TAIL,
@@ -15,6 +16,7 @@ import {
   ROW_PITCH,
   STUB,
   composeLabel,
+  concurrentGroups,
   elapsedLabel,
   layoutCausality,
   readCausality,
@@ -300,6 +302,83 @@ test("the calls of one step are read before the children they opened", () => {
   assert.ok(at("ep_a") < at("ep_b"), "the children follow in the order their calls opened them");
   const figure = layoutCausality(episodes);
   assert.notEqual(lane(figure, "ep_a").column, lane(figure, "ep_b").column, "both were open at once");
+});
+
+// Episodes read one whole subtree after another. When they in fact ran at
+// the same time, that order is the one thing the text cannot show, so a
+// caption says it where the group was opened.
+
+test("children of one turn that overlap are captioned once, above the first of them", () => {
+  const episodes = fanOut([
+    { id: "ep_a", start: 1_000, end: 26_000 },
+    { id: "ep_b", start: 1_002, end: 38_000 },
+    { id: "ep_c", start: 1_017, end: 31_000 },
+    { id: "ep_d", start: 1_030, end: 17_000 },
+  ]);
+  const outline = causalityOutline(episodes);
+  const captions = outline.rows.filter((row) => row.kind === "concurrent");
+  assert.equal(captions.length, 1, "one group of four, so one caption");
+  const caption = captions[0]!;
+  assert.equal(caption.label, "4 episodes ran at the same time");
+  // The run begins with the lead at 1, so the group opens at 0:00.9 and the
+  // last of the four ends at 0:37.9.
+  assert.equal(caption.aside, "0:00.9 – 0:37.9");
+  assert.deepEqual(caption.opens, ["ep_a", "ep_b", "ep_c", "ep_d"]);
+  const at = (id: string) => outline.rows.findIndex((row) => row.id === id);
+  assert.ok(at("ep_lead/step/1/call/tc_4") < at(caption.id), "the calls are read first");
+  assert.ok(at(caption.id) < at("ep_a"), "the caption stands above the first child of the group");
+  // The caption states a span, so it prints no time of its own at any
+  // reading; two numbers for one row would have to be told apart.
+  for (const depth of DEPTHS) {
+    const shown = visibleRows(outline, depth).filter((row) => row.kind === "concurrent");
+    assert.equal(shown.length, 1, `the caption stands at ${depth}`);
+    assert.equal(shown[0]!.showTime, false, `the caption prints no time at ${depth}`);
+  }
+});
+
+test("children that ran one after another are captioned nowhere", () => {
+  const episodes = fanOut([
+    { id: "ep_a", start: 1_000, end: 2_000 },
+    { id: "ep_b", start: 2_000, end: 3_000 },
+  ]);
+  const outline = causalityOutline(episodes);
+  assert.deepEqual(outline.rows.filter((row) => row.kind === "concurrent"), []);
+});
+
+test("a group still open is captioned from its start, with no end", () => {
+  const episodes = fanOut([
+    { id: "ep_a", start: 1_000, end: 4_000 },
+    { id: "ep_b", start: 2_000, end: null },
+  ]);
+  const outline = causalityOutline(episodes);
+  const caption = outline.rows.find((row) => row.kind === "concurrent")!;
+  assert.equal(caption.label, "2 episodes ran at the same time");
+  assert.equal(caption.aside, "from 0:00.9");
+});
+
+test("a turn that opened two groups in turn is captioned once per group", () => {
+  const groups = concurrentGroups([
+    { id: "ep_a", startTime: 10, endTime: 50 },
+    { id: "ep_b", startTime: 20, endTime: 40 },
+    { id: "ep_c", startTime: 60, endTime: 90 },
+    { id: "ep_d", startTime: 70, endTime: 80 },
+  ]);
+  assert.deepEqual(groups, [
+    { ids: ["ep_a", "ep_b"], start: 10, end: 50 },
+    { ids: ["ep_c", "ep_d"], start: 60, end: 90 },
+  ]);
+  // Overlap carries along a chain: the first and the last never met, and
+  // the three were still never one at a time.
+  assert.deepEqual(
+    concurrentGroups([
+      { id: "ep_a", startTime: 10, endTime: 30 },
+      { id: "ep_b", startTime: 20, endTime: 50 },
+      { id: "ep_c", startTime: 40, endTime: 60 },
+    ]),
+    [{ ids: ["ep_a", "ep_b", "ep_c"], start: 10, end: 60 }],
+  );
+  // An episode alone in its own stretch of the run says nothing worth a row.
+  assert.deepEqual(concurrentGroups([{ id: "ep_a", startTime: 10, endTime: 50 }]), []);
 });
 
 test("a lane's column follows occupancy, not tree depth", () => {
