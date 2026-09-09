@@ -3,8 +3,9 @@
 //! Every episode writes one log. The log is the source of truth for the
 //! model's request history, the viewer, replay, forking, budget accounting,
 //! and team state. `docs/log-format.md` specifies the format; this crate
-//! implements it and nothing else. It depends only on serde, serde_json, and
-//! thiserror, so a log reader does not take on the runtime.
+//! implements it and nothing else. It depends only on serde, serde_json,
+//! thiserror, and `sha2` for the digests a log's evidence is addressed by,
+//! so a log reader does not take on the runtime.
 //!
 //! The types in this file are the contract between crates. Their shapes
 //! follow the specification field for field. Behavior lives in the sibling

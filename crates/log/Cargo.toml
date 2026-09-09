@@ -8,5 +8,6 @@ description = "Append-only episode log: event types, folding, seeding, JSONL cod
 
 [dependencies]
 serde.workspace = true
+sha2.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
