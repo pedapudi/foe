@@ -231,6 +231,13 @@ export interface CausalityRow {
   showTime?: boolean;
   /** How many visible rows this one sits inside; set by `visibleRows`. */
   level?: number;
+  /**
+   * Whether a caret on this row would reveal anything: the reading hides at
+   * least one row that is part of this one. Set by `visibleRows`, which
+   * answers it for every row of the page at once, because answering it per
+   * row costs a pass over the model per row.
+   */
+  openable?: boolean;
   /** A step row's own number and attempt count, for the label it earns. */
   stepNumber?: number;
   attempts?: number;
@@ -990,10 +997,22 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     return nested;
   };
 
+  // The deepest reading any row that is part of this one appears in. A
+  // caret stands where that is deeper than the current reading, and stands
+  // nowhere else: a row whose children the reading already shows has
+  // nothing folded under it, and a caret there opens onto the page itself.
+  const under = new Map<string, number>();
+  for (const row of outline.rows) {
+    if (row.parent === null) continue;
+    const at = DEPTHS.indexOf(row.appearsAt);
+    if (at > (under.get(row.parent) ?? -1)) under.set(row.parent, at);
+  }
+
   const out = outline.rows.filter((row) => isShown(row));
 
   return out.map((row, index) => {
     const nested = levelOf(row);
+    const openable = (under.get(row.id) ?? -1) > wanted;
     // A row continues the one above it when that row is the one it is part
     // of and the two stand for the same event: one event, one line in the
     // gutter. Two rows of different episodes never continue one another,
@@ -1003,7 +1022,7 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     const continues = before !== undefined && before.id === row.parent && before.seq === row.seq;
     // A row the log did not place has no time to print either.
     const showTime = !continues && row.time > 0;
-    if (row.kind !== "step") return { ...row, level: nested, showTime };
+    if (row.kind !== "step") return { ...row, level: nested, openable, showTime };
     const callsShown = row.calls.some((call) => shown.get(`${row.id}/call/${call.id}`) === true);
     const composed = composeLabel({
       kind: "step",
@@ -1014,8 +1033,42 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
       calls: row.calls,
       callsVisible: callsShown,
     });
-    return { ...row, level: nested, showTime, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
+    return { ...row, level: nested, openable, showTime, label: composed.label, aside: composed.aside, calls: callsShown ? [] : row.calls };
   });
+}
+
+/**
+ * Everything a view draws for one row, as one string. Two rows with equal
+ * signatures draw the same thing, so a view that keeps its elements between
+ * redraws rebuilds a row's element only when this changes.
+ *
+ * A run writes events while a reader is reading, and every event redraws
+ * the page. Rebuilding a row that did not change empties the ground under
+ * the reader's pointer: the element a press landed on is gone by the time
+ * the release arrives, so no click is delivered and no caret opens.
+ *
+ * `start` is the run's origin, which the gutter's elapsed time is measured
+ * from, and `open` is whether the reader has opened this row's caret.
+ * Neither belongs to the row, and both change what it draws.
+ */
+export function rowSignature(row: CausalityRow, start: number, open: boolean): string {
+  return [
+    row.kind,
+    row.label,
+    row.aside,
+    // A call's label is split at its tool's name, so the name is drawn even
+    // though it is part of the label.
+    row.calls[0]?.name ?? "",
+    row.firings.length,
+    row.failed ? "failed" : "",
+    row.showTime === false || row.time <= 0 ? "" : row.time - start,
+    row.seq,
+    row.openable === true ? (open ? "open" : "shut") : "",
+    row.outcome === undefined ? "" : JSON.stringify(row.outcome),
+    row.body,
+    // A separator no field of a row can hold, so that two rows differing
+    // only in where one field ends and the next begins differ here too.
+  ].join("\u0000");
 }
 
 /**

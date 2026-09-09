@@ -542,6 +542,24 @@ heights they actually took, never from an assumed pitch. A row's mark sits
 on its first line rather than at its vertical middle, so a row holding a
 diff still has its mark beside the name it belongs to.
 
+A live run writes events while the outline is being read, and every event
+redraws it. Each row keeps its element across a redraw unless what that row
+draws changed, and the drawing is one element, replaced only when a lane, a
+curve or a mark moved. A pane that rebuilt its rows instead would be
+unreadable while a run works: emptied and refilled many times a second it
+flashes, and a caret rebuilt between the press and the release of a click
+never receives that click, because the button the press landed on has left
+the page before the release arrives. Over a recorded run of 122 events
+streamed into a page of 29 rows, keeping the elements builds 53 row elements
+against the 964 a rebuild builds, and a press held across a redraw opens the
+caret it landed on. One thing still defeats such a press, and it is not the
+redraw: a lane opening widens the drawing and moves the text column
+sideways, so a release held until after it lands beside the caret rather
+than on it. Events redraw the panes at most five times a second
+while a run is live, because a run writes faster than a person reads and a
+redraw folds every episode of the run again. A caret, a selection, a change
+of depth and a resize redraw at once and wait on nothing.
+
 Rows are read in the order their events happened. Two episodes that ran at
 once therefore interleave, which is what shows on the page that they ran at
 once, and the elapsed time in the gutter runs one way from the first row to

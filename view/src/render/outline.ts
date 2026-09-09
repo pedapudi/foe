@@ -26,16 +26,20 @@
 // Rows are not one height, so the figure is drawn in two passes: the rows
 // are laid out and measured, then the lanes are computed from the heights
 // they actually took. Both passes run again on every change of depth or
-// caret.
+// caret, and on every event a live run writes. A row keeps the element it
+// has across those redraws unless what it draws changed, because the
+// element under the reader's pointer must survive a click and the pane
+// must not empty while a run works.
 
 import { clear, fmtInt, h } from "../dom.js";
-import { DEPTHS, elapsedLabel, layoutLanes, visibleRows } from "../causality.js";
-import type { CausalityOutline, CausalityRow, Depth } from "../causality.js";
+import { elapsedLabel, layoutLanes, rowSignature, visibleRows } from "../causality.js";
+import { DEPTHS } from "../causality.js";
+import type { CausalityLayout, CausalityOutline, CausalityRow, Depth } from "../causality.js";
 import { identityStyle } from "../identity.js";
 import { renderJson } from "./json.js";
 import { outcomeRole } from "./tree.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
-import { obj } from "../types.js";
+import { obj, str } from "../types.js";
 import { taskSections } from "../task.js";
 import { languageForPath } from "./shape.js";
 import { Hovercard } from "./hovercard.js";
@@ -60,64 +64,143 @@ export interface OutlineState {
 }
 
 /**
- * Draws the outline into `host`, which must already be in the document:
- * the rows are measured after they are laid out and before the lanes are
- * computed from what they measured.
+ * The outline on the page. It holds its elements between draws and gives a
+ * row a new one only when that row draws something else, because a run
+ * writes events while a reader is reading and every event redraws the
+ * page: emptying the pane sixty times a second makes it flash, drops the
+ * reader's place in it, and destroys the button under the pointer between
+ * the press and the release, so no caret can be clicked while a run works.
+ *
+ * The view must be in the document before it is drawn: the rows are laid
+ * out and measured, and the lanes are computed from the heights they took.
  */
-export function drawOutline(
-  host: HTMLElement,
-  outline: CausalityOutline,
-  state: OutlineState,
-  card: Hovercard,
-  handlers: OutlineHandlers,
-  scale: number,
-): void {
-  const visible = visibleRows(outline, state.depth, state.opened);
-  clear(host);
-  if (visible.length === 0) {
-    host.appendChild(h("div", { class: "empty sub" }, "no episodes"));
-    return;
+export class OutlineView {
+  readonly el = h("div", { class: "outline" });
+  private readonly strokes = h("div", { class: "outline-strokes" });
+  private readonly list = h("div", { class: "outline-rows" });
+  private readonly nothing = h("div", { class: "empty sub", hidden: true }, "no episodes");
+  /** The element each row holds, with what it was drawn from. */
+  private readonly built = new Map<string, { el: HTMLElement; signature: string }>();
+  /** Read when a row is clicked, so a kept element answers for the reading it is in. */
+  private selected: string | null = null;
+  /** What the drawing was last built from, so a run that moved nothing keeps it. */
+  private geometry = "";
+
+  constructor(private readonly card: Hovercard, private readonly handlers: OutlineHandlers) {
+    this.el.append(this.strokes, this.list, this.nothing);
   }
 
-  const board = h("div", { class: "outline" });
-  const strokes = h("div", { class: "outline-strokes" });
-  const list = h("div", { class: "outline-rows" });
-  board.append(strokes, list);
-  host.appendChild(board);
+  update(outline: CausalityOutline | null, state: OutlineState, scale: number): void {
+    this.selected = state.selected;
+    const visible = outline === null ? [] : visibleRows(outline, state.depth, state.opened);
+    this.nothing.hidden = visible.length > 0;
+    if (outline === null || visible.length === 0) {
+      for (const [id, entry] of this.built) {
+        entry.el.remove();
+        this.built.delete(id);
+      }
+      return;
+    }
 
-  // Pass one: the rows, at whatever height their content takes.
-  const elements = visible.map((row) => {
-    const el = rowElement(row, outline, state, handlers);
-    list.appendChild(el);
+    // Pass one: the rows the reading shows, in the order they happened,
+    // each keeping its element when it draws what it drew before. The
+    // cursor walks the elements already on the page; a row whose element
+    // is already there is stepped over, and every other one is moved or
+    // inserted in front of the cursor.
+    const elements: HTMLElement[] = [];
+    const shown = new Set(visible.map((row) => row.id));
+    let at: ChildNode | null = this.list.firstChild;
+    for (const row of visible) {
+      // The cursor steps over the element this row holds before the row is
+      // drawn, because a row that is drawn again takes a new element and
+      // its old one leaves the page: a cursor left on it would name a node
+      // that is no longer a child of the list.
+      if (at !== null && this.built.get(row.id)?.el === at) at = at.nextSibling;
+      const el = this.element(row, outline.start, state.opened.has(row.id));
+      if (el.parentNode !== this.list || el.nextSibling !== at) this.list.insertBefore(el, at);
+      el.classList.toggle("selected", row.id === state.selected);
+      elements.push(el);
+    }
+    for (const [id, entry] of this.built) {
+      if (shown.has(id)) continue;
+      entry.el.remove();
+      this.built.delete(id);
+    }
+
+    // Pass two: the lanes, from the heights the rows measured. A lane whose
+    // ends were computed from a fixed pitch would miss the rows it must
+    // reach the moment one row held a diff.
+    const heights = elements.map((el) => el.offsetHeight / scale);
+    const layout = layoutLanes(outline, visible, heights);
+    const textLeft = layout.marksWidth + LABEL_GAP;
+    this.el.style.setProperty("--outline-text", `${textLeft * scale}px`);
+    elements.forEach((el, i) => {
+      const row = layout.rows[i];
+      if (!row) return;
+      const step = `${(row.kind === "call" || row.kind === "result" ? CALL_INDENT : 0) * scale}px`;
+      if (el.style.getPropertyValue("--outline-step") !== step) el.style.setProperty("--outline-step", step);
+    });
+
+    // The drawing is one element, so it is replaced whole; a run that added
+    // no row and moved none keeps it, and with it any hovercard open over
+    // one of its marks.
+    const geometry = geometryDigest(layout, state.selected, scale);
+    if (geometry === this.geometry) return;
+    this.geometry = geometry;
+    clear(this.strokes);
+    this.strokes.appendChild(laneStrokes(layout, state.selected, this.card, this.handlers, scale));
+    // The card was open over a mark this replaced, which can no longer
+    // report that the pointer left it.
+    this.card.hide();
+  }
+
+  /** The element for one row, built only when it draws something new. */
+  private element(row: CausalityRow, start: number, open: boolean): HTMLElement {
+    const signature = rowSignature(row, start, open);
+    const held = this.built.get(row.id);
+    if (held !== undefined && held.signature === signature) return held.el;
+    if (held !== undefined) held.el.remove();
+    const el = rowElement(row, start, open, this.handlers, () => this.selected);
+    this.built.set(row.id, { el, signature });
     return el;
-  });
+  }
+}
 
-  // Pass two: the lanes, from the heights the rows measured. A lane whose
-  // ends were computed from a fixed pitch would miss the rows it must
-  // reach the moment one row held a diff.
-  const heights = elements.map((el) => el.offsetHeight / scale);
-  const layout = layoutLanes(outline, visible, heights);
-  const textLeft = layout.marksWidth + LABEL_GAP;
-  board.style.setProperty("--outline-text", `${textLeft * scale}px`);
-  strokes.appendChild(laneStrokes(layout, state.selected, card, handlers, scale));
-  elements.forEach((el, i) => {
-    const row = layout.rows[i];
-    if (row) el.style.setProperty("--outline-step", `${(row.kind === "call" || row.kind === "result" ? CALL_INDENT : 0) * scale}px`);
-  });
+/**
+ * What the drawing is built from: where every lane, curve, vertex and call
+ * mark sits, and which row is selected. A redraw that computes the same
+ * one draws the same picture.
+ */
+function geometryDigest(layout: CausalityLayout, selected: string | null, scale: number): string {
+  const parts: (string | number)[] = [layout.marksWidth, layout.height, scale, selected ?? ""];
+  for (const lane of layout.lanes) {
+    parts.push(lane.id, lane.label, lane.x, lane.y1, lane.y2, lane.tone);
+    const settled = obj(lane.outcome);
+    parts.push(lane.outcome === null ? "" : `${str(settled.kind)} ${str(settled.message)}`);
+  }
+  for (const edge of layout.edges) {
+    parts.push(edge.kind, edge.tone, edge.bow, edge.from.x, edge.from.y, edge.to.x, edge.to.y);
+  }
+  for (const row of layout.rows) {
+    parts.push(row.id, row.label, row.x, row.y, row.tone, row.pulse ? "pulse" : "", row.firings.length);
+    for (const call of row.calls) parts.push(call.x, call.y, call.name, call.subject, call.childId ?? "", call.childName, call.failed ? "failed" : "");
+  }
+  return parts.join(" ");
 }
 
 /**
  * One row: how long after the run began its event happened in the gutter,
  * its name in the one text column, and, for prose and a result, a body
  * under both that runs the full width.
+ *
+ * `selected` is read when the row is clicked rather than when it is built,
+ * because the element outlives the reading it was built in.
  */
-function rowElement(row: CausalityRow, outline: CausalityOutline, state: OutlineState, handlers: OutlineHandlers): HTMLElement {
+function rowElement(row: CausalityRow, start: number, open: boolean, handlers: OutlineHandlers, selected: () => string | null): HTMLElement {
   // A caret stands only where opening the row would reveal something. A row
   // whose children the reading already shows has nothing folded under it, and
   // a caret there opens onto what is already on the page.
-  const wanted = DEPTHS.indexOf(state.depth);
-  const openable = outline.rows.some((r) => r.parent === row.id && DEPTHS.indexOf(r.appearsAt) > wanted);
-  const open = state.opened.has(row.id);
+  const openable = row.openable === true;
   const el = h("div", {
     class: [
       "outline-row",
@@ -126,7 +209,6 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
       // would take their styling.
       `kind-${row.kind}`,
       row.kind === "outcome" ? outcomeRole(row.outcome ?? null) : "",
-      row.id === state.selected ? "selected" : "",
       row.failed ? "failed" : "",
     ]
       .filter(Boolean)
@@ -139,7 +221,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
   // carry rides on the title, because a reader who wants to find the event
   // in the log needs it and a reader following the run does not; two
   // numbers side by side would only have to be told apart.
-  const when = elapsedLabel(row.time - outline.start);
+  const when = elapsedLabel(row.time - start);
   el.appendChild(
     row.showTime === false || when === ""
       ? h("div", { class: "outline-when" })
@@ -175,7 +257,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
   );
   el.appendChild(name);
   if (row.body !== "" || row.kind === "outcome") el.appendChild(bodyElement(row));
-  el.addEventListener("click", () => handlers.scope(row.id === state.selected ? null : row.id));
+  el.addEventListener("click", () => handlers.scope(row.id === selected() ? null : row.id));
   return el;
 }
 

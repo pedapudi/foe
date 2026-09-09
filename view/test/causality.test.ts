@@ -12,6 +12,7 @@ import {
   OUTCOME_TAIL,
   causalityOutline,
   layoutLanes,
+  rowSignature,
   visibleRows,
   ROW_PITCH,
   STUB,
@@ -25,29 +26,36 @@ import {
 import type { CausalityCall, CausalityEpisode, CausalityLayout } from "../src/causality.js";
 import { EpisodeFold } from "../src/fold.js";
 import { buildTree, flatten } from "../src/episode-tree.js";
-import type { Summary } from "../src/fold.js";
 import { fixture } from "./helpers.js";
 import { obj, str } from "../src/types.js";
-
-/** Folds one fixture log, keyed by the episode id its own first event names. */
-function fold(file: string): { summary: Summary; rows: EpisodeFold["rows"] } {
-  const events = fixture(file);
-  const first = events[0];
-  const id = str(obj(first?.data).id, file);
-  const f = new EpisodeFold(id, { stream: false });
-  for (const ev of events) f.push(ev);
-  return { summary: f.summary, rows: f.rows };
-}
+import type { LogEvent } from "../src/types.js";
 
 /**
  * The episodes of a run, in the tree's own order with each one's depth,
- * which is the shape app.ts hands the figure.
+ * which is the shape app.ts hands the figure. `logs` gives the events of
+ * each episode, so a caller can fold part of a log and read a run that has
+ * not finished.
  */
-function run(...files: string[]): CausalityEpisode[] {
-  const folded = files.map(fold);
+function readRun(logs: { name: string; events: LogEvent[] }[]): CausalityEpisode[] {
+  const folded = logs.map(({ name, events }) => {
+    const id = str(obj(events[0]?.data).id, name);
+    const f = new EpisodeFold(id, { stream: false });
+    for (const ev of events) f.push(ev);
+    return { summary: f.summary, rows: f.rows };
+  });
   const roots = buildTree(folded.map((f) => f.summary));
   const rows = new Map(folded.map((f) => [f.summary.id, f.rows]));
   return flatten(roots).map(({ node, depth }) => readCausality(node.summary, rows.get(node.id) ?? [], depth));
+}
+
+function run(...files: string[]): CausalityEpisode[] {
+  return readRun(files.map((name) => ({ name, events: fixture(name) })));
+}
+
+/** What each row of the reading a viewer opens in draws, by row. */
+function signatures(episodes: CausalityEpisode[]): Map<string, string> {
+  const outline = causalityOutline(episodes);
+  return new Map(visibleRows(outline, "conversation").map((row) => [row.id, rowSignature(row, outline.start, false)]));
 }
 
 function layout(...files: string[]): CausalityLayout {
@@ -56,16 +64,7 @@ function layout(...files: string[]): CausalityLayout {
 
 /** The same episodes with every `episode/end` dropped, so the run is live. */
 function running(...files: string[]): CausalityEpisode[] {
-  const folded = files.map((file) => {
-    const events = fixture(file).filter((ev) => obj(ev).type !== "episode/end");
-    const id = str(obj(obj(events[0]).data).id, file);
-    const f = new EpisodeFold(id, { stream: false });
-    for (const ev of events) f.push(ev);
-    return { summary: f.summary, rows: f.rows };
-  });
-  const roots = buildTree(folded.map((f) => f.summary));
-  const rows = new Map(folded.map((f) => [f.summary.id, f.rows]));
-  return flatten(roots).map(({ node, depth }) => readCausality(node.summary, rows.get(node.id) ?? [], depth));
+  return readRun(files.map((name) => ({ name, events: fixture(name).filter((ev) => ev.type !== "episode/end") })));
 }
 
 // docs/log-format.md "Seeding": events copied from the fork origin record
@@ -656,6 +655,62 @@ test("a caret opens one branch one level past the reading", () => {
   );
   const deeper = visibleRows(outline, "steps", new Set(["ep_root/step/1", "ep_root/step/1/call/tc_01"]));
   assert.ok(deeper.some((r) => r.id === "ep_root/step/1/call/tc_01/result"));
+});
+
+// docs/viewer.md "The unified outline": a caret stands only where opening
+// the row would reveal something.
+test("a row is openable when the reading hides something that is part of it", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  for (const depth of DEPTHS) {
+    const wanted = DEPTHS.indexOf(depth);
+    for (const row of visibleRows(outline, depth)) {
+      const folded = outline.rows.some((r) => r.parent === row.id && DEPTHS.indexOf(r.appearsAt) > wanted);
+      assert.equal(row.openable, folded, `${row.id} at ${depth}`);
+    }
+  }
+  // The deepest reading holds every row there is, so nothing folds under one.
+  assert.ok(visibleRows(outline, "outputs").every((row) => row.openable === false));
+  assert.ok(visibleRows(outline, "steps").some((row) => row.openable === true));
+});
+
+// The defect this answers: a run writing events redrew the outline on every
+// frame, which destroyed the button under the reader's pointer between the
+// press and the release of a click, so no caret could be opened while a run
+// worked. A view keeps a row's element while its signature holds.
+test("an arriving event changes the signature of the rows it changed and of no others", () => {
+  const child = fixture("child.jsonl");
+  const partial = readRun([
+    { name: "root.jsonl", events: fixture("root.jsonl") },
+    { name: "child.jsonl", events: child.slice(0, -1) },
+  ]);
+  const whole = readRun([
+    { name: "root.jsonl", events: fixture("root.jsonl") },
+    { name: "child.jsonl", events: child },
+  ]);
+  const before = signatures(partial);
+  const after = signatures(whole);
+  const last = child[child.length - 1]!;
+  assert.equal(last.type, "episode/end", "the event held back is the child's end");
+  assert.ok(!before.has("ep_child/outcome"), "which the outline had no row for");
+  assert.ok(after.has("ep_child/outcome"), "and now has");
+  for (const [id, signature] of before) {
+    if (id.startsWith("ep_child")) continue;
+    assert.equal(after.get(id), signature, `${id} draws what it drew before`);
+  }
+});
+
+test("opening a caret changes the signature of the row it sits on and of no other", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const opened = new Set(["ep_root/step/1"]);
+  const shut = new Map(visibleRows(outline, "steps").map((row) => [row.id, rowSignature(row, outline.start, false)]));
+  for (const row of visibleRows(outline, "steps", opened)) {
+    const was = shut.get(row.id);
+    // The rows the caret revealed had no element to keep.
+    if (was === undefined) continue;
+    const now = rowSignature(row, outline.start, opened.has(row.id));
+    if (row.id === "ep_root/step/1") assert.notEqual(now, was, "the row the caret sits on is drawn again");
+    else assert.equal(now, was, `${row.id} draws what it drew before`);
+  }
 });
 
 test("every row carries its log position, because a position is per episode", () => {

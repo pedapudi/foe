@@ -17,7 +17,7 @@ import { loadPanes, onPanesChange, rowGrip, setTrajectoryHeight, sidebarGrip } f
 import { ConversationView } from "./render/conversation.js";
 import { DiffView, renderNoDiff } from "./render/diff.js";
 import { RawView } from "./render/raw.js";
-import { drawOutline, depthControl } from "./render/outline.js";
+import { OutlineView, depthControl } from "./render/outline.js";
 import { Hovercard } from "./render/hovercard.js";
 import { renderScope } from "./render/scoped.js";
 import { StatisticsView } from "./render/statistics.js";
@@ -36,6 +36,15 @@ type Tab = "conversation" | "raw" | "diff" | "workflow" | "tasks" | "statistics"
 
 /** The tab each digit selects, which is also the order of the tab bar. */
 const TAB_KEYS: Tab[] = ["conversation", "raw", "diff", "workflow", "tasks", "statistics"];
+
+/**
+ * How often the events of a live run redraw the panes. A run writes events
+ * faster than a reader reads, and a redraw folds every episode of the run
+ * again, so a redraw per frame spends every frame on work no reader asked
+ * for. What a reader does — a caret, a selection, a change of depth, a
+ * resize — redraws at once and waits on nothing.
+ */
+const EVENT_REDRAW_MS = 200;
 
 interface EpisodeState {
   id: string;
@@ -63,6 +72,9 @@ export class App implements Sink {
   /** What `applyLayoutMode` last put on the page, so it moves nothing twice. */
   private layoutApplied: boolean | null = null;
   private sidebarScheduled = false;
+  /** When the panes were last drawn, which is what bounds the rate above. */
+  private lastRender = 0;
+  private eventRedraw: ReturnType<typeof setTimeout> | null = null;
   private treeDigest = "";
   private infoDigest = "";
   /** The link to the process, which the source reports and nothing draws. */
@@ -82,6 +94,7 @@ export class App implements Sink {
   private readonly outlineHead: HTMLElement;
   private readonly outlinePane: HTMLElement;
   private readonly outlineCard: Hovercard;
+  private readonly outlineView: OutlineView;
   private readonly treeHost = h("div", { class: "tree-host" });
   private readonly infoHost = h("div", { class: "details-host" });
   private readonly tabsBar: HTMLElement;
@@ -131,7 +144,13 @@ export class App implements Sink {
     );
     this.outlinePane = h("section", { class: "pane-outline", "aria-label": "run" }, this.outlineHead, this.outlineHost);
     this.outlineCard = new Hovercard(this.outlineHost);
-    this.outlineHost.appendChild(this.outlineCard.el);
+    this.outlineView = new OutlineView(this.outlineCard, {
+      toggle: (id) => this.toggleRow(id),
+      scope: (id) => this.selectRow(id),
+      select: (id) => this.select(id),
+      reveal: (id, seq) => this.reveal(id, seq),
+    });
+    this.outlineHost.append(this.outlineCard.el, this.outlineView.el);
     this.trajectoryGrip = rowGrip("trajectory", "height of the trajectory pane");
     this.sideGrip = sidebarGrip();
     this.mainPane = h("section", { class: "pane-main" }, this.tabsBar, this.views);
@@ -254,27 +273,9 @@ export class App implements Sink {
 
   private renderOutline(): void {
     if (this.outlinePane.hidden) return;
-    const outline = this.outline;
-    if (!outline) {
-      clear(this.outlineHost);
-      this.outlineHost.append(this.outlineCard.el, h("div", { class: "empty sub" }, "no episodes"));
-      return;
-    }
-    const board = h("div", { class: "outline-board" });
-    clear(this.outlineHost);
-    this.outlineHost.append(this.outlineCard.el, board);
-    this.outlineCard.hide();
-    drawOutline(
-      board,
-      outline,
+    this.outlineView.update(
+      this.outline,
       { depth: currentDepth(), opened: this.opened, selected: this.outlineRow },
-      this.outlineCard,
-      {
-        toggle: (id) => this.toggleRow(id),
-        scope: (id) => this.selectRow(id),
-        select: (id) => this.select(id),
-        reveal: (id, seq) => this.reveal(id, seq),
-      },
       currentFontScale(),
     );
   }
@@ -309,7 +310,7 @@ export class App implements Sink {
     state.raw.add(accepted);
     state.conv.apply(patches);
     if (this.diff && (id === this.diff.a.id || id === this.diff.b.id)) this.diff.apply(id, patches);
-    this.scheduleSidebar();
+    this.redrawForEvents();
     if (this.selected === null) this.select(id);
   }
 
@@ -408,6 +409,29 @@ export class App implements Sink {
     });
   }
 
+  /**
+   * The redraw arriving events earn, which is at most one every
+   * `EVENT_REDRAW_MS` while a run is live. The last batch of a run is
+   * always drawn: a redraw that is too soon is deferred rather than
+   * dropped. A log read from a file is drawn as it arrives.
+   */
+  private redrawForEvents(): void {
+    if (!this.live) {
+      this.scheduleSidebar();
+      return;
+    }
+    if (this.eventRedraw !== null) return;
+    const wait = this.lastRender + EVENT_REDRAW_MS - Date.now();
+    if (wait <= 0) {
+      this.scheduleSidebar();
+      return;
+    }
+    this.eventRedraw = setTimeout(() => {
+      this.eventRedraw = null;
+      this.scheduleSidebar();
+    }, wait);
+  }
+
   /** Chain of episodes from the root down to the selected one. */
   private episodePath(): Crumb[] {
     const map = this.summaryMap();
@@ -424,6 +448,7 @@ export class App implements Sink {
   }
 
   private renderSidebar(): void {
+    this.lastRender = Date.now();
     const summaries = this.summaries();
     const roots = buildTree(summaries, this.orderIds);
     const width = Math.max(160, this.treeHost.clientWidth - 16);
