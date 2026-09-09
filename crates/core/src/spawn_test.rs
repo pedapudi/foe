@@ -264,6 +264,56 @@ fn a_write_grant_of_no_roots_is_refused_for_a_contract_that_writes() {
     }
 }
 
+/// A write grant naming a FILE is refused, for the same reason the empty
+/// grant above is.
+///
+/// A grant is a directory prefix and `RootWriter` opens each root as a
+/// directory, so a root that names a file cannot be opened. A lead dividing
+/// work across a team narrows each worker to the unit it was given, and a
+/// unit is very often one file, so this is the ordinary case rather than an
+/// exotic one. Unrefused, the worker dies at construction with
+/// `grants.write: Not a directory (os error 20)`, which names neither the
+/// worker nor the call that made it, and the lead quietly does the work
+/// itself.
+#[test]
+fn a_write_grant_naming_a_file_is_refused_with_the_directory_to_grant() {
+    let dir = scratch("spawn", "file-write-grant");
+    let unit = dir.join("unit.py");
+    std::fs::write(&unit, b"x = 1\n").expect("the unit exists");
+    let mut config = parent_config();
+    config.grants.write = vec![dir.to_path_buf()];
+    let worker = config.child_contracts.get_mut("worker").expect("the parent declares a worker");
+    worker.grants.write = vec![dir.to_path_buf()];
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    );
+    let request = |write: Vec<PathBuf>| SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: Some(write),
+        call_id: "tc".into(),
+    };
+
+    let Err(refused) = spawner.launch("ep_child".into(), request(vec![unit.clone()])) else {
+        panic!("a write grant naming a file is refused");
+    };
+
+    let message = refused.to_string();
+    assert!(message.contains("names a file"), "{message}");
+    assert!(message.contains(&dir.display().to_string()), "it names the directory to grant: {message}");
+    // The directory that holds the unit is the ordinary narrowing.
+    if let Err(refused) = spawner.launch("ep_other".into(), request(vec![dir.to_path_buf()])) {
+        panic!("a directory root is the ordinary narrowing: {refused}");
+    }
+}
+
 /// docs/tools.md `spawn`: a contract name the grant does not carry is
 /// refused with the names it does. The caller reads the tool result and can
 /// name one of them on its next call rather than guessing a second time.
