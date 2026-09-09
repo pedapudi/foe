@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from log_facts import Episode, load_episodes
+from log_facts import Episode, load_episodes, rendered_sizes
 
 # Substrings that place a node in the coding workflow's three roles. The
 # built-in document names them `implement-task`, `assess-task`, and
@@ -66,6 +66,15 @@ def rendered_by_tool(episode: Episode) -> dict[str, int]:
     return dict(sorted(totals.items()))
 
 
+def rendered_call_chars(episode: Episode) -> list[list[Any]]:
+    """One `[tool, characters]` pair per non-synthetic call, in order.
+
+    The per-tool totals lose the size of a single result, and that is the
+    figure a change to a tool's render bound moves.
+    """
+    return [[call["name"], call["rendered_chars"]] for call in episode.calls if not call["synthetic"]]
+
+
 def node_report(firing: dict[str, Any], child: Episode | None) -> dict[str, Any]:
     usage = child.usage if child else {"input": 0, "output": 0, "cache_read": 0}
     return {
@@ -87,6 +96,7 @@ def node_report(firing: dict[str, Any], child: Episode | None) -> dict[str, Any]
         "handoff_rendered_chars": firing["rendered_chars"],
         "error": firing["error"],
         "rendered_by_tool": rendered_by_tool(child) if child else {},
+        "rendered_call_chars": rendered_call_chars(child) if child else [],
         "read_paths": read_paths(child) if child else [],
         "grep_scopes": searched_scopes(child) if child else [],
         "bash_commands": bash_commands(child) if child else [],
@@ -163,6 +173,20 @@ def corpus_report(root: Path) -> dict[str, Any]:
                     bucket[field] += node[field]
             for tool, chars in node["rendered_by_tool"].items():
                 role_rendered[node["role"]][tool] += chars
+    # What one call renders, by role and tool. The per-role totals above say
+    # how much context a role assembled; these say what one call contributes,
+    # which is the figure a change to a tool's render bound moves.
+    by_role_tool: dict[str, dict[str, list[dict[str, Any]]]] = collections.defaultdict(
+        lambda: collections.defaultdict(list)
+    )
+    for run in runs:
+        for node in run["nodes"]:
+            for tool, chars in node["rendered_call_chars"]:
+                by_role_tool[node["role"]][tool or "unnamed"].append({"rendered_chars": chars})
+    per_call = {
+        role: {tool: rendered_sizes(group) for tool, group in sorted(tools.items())}
+        for role, tools in sorted(by_role_tool.items())
+    }
     implementation_input = role_totals["implement"]["input_tokens"]
     checking_input = role_totals["assess"]["input_tokens"] + role_totals["repair"]["input_tokens"]
     implementation_output = role_totals["implement"]["output_tokens"]
@@ -173,6 +197,7 @@ def corpus_report(root: Path) -> dict[str, Any]:
         "node_firings": sum(len(run["nodes"]) for run in runs),
         "roles": {role: dict(bucket) for role, bucket in sorted(role_totals.items())},
         "rendered_by_tool": {role: dict(sorted(tools.items())) for role, tools in sorted(role_rendered.items())},
+        "rendered_per_call": per_call,
         "checking_input_ratio": checking_input / implementation_input if implementation_input else None,
         "checking_output_ratio": checking_output / implementation_output if implementation_output else None,
         "checking_input_share": checking_input / (checking_input + implementation_input)
@@ -230,6 +255,15 @@ def render(report: dict[str, Any]) -> str:
     for role, tools in report["rendered_by_tool"].items():
         listed = ", ".join(f"{tool} {chars}" for tool, chars in tools.items())
         lines.append(f"  {role:10s}  {sum(tools.values()):8d}  ({listed})")
+    lines.append("")
+    lines.append("rendered characters one call put into the model's context")
+    lines.append("  role        tool          calls   median      p95      max      total")
+    for role, tools in report["rendered_per_call"].items():
+        for tool, sizes in tools.items():
+            lines.append(
+                f"  {role:10s}  {tool:12s}  {sizes['calls']:5d}  {sizes['median']:7.0f}"
+                f"  {sizes['p95']:7.0f}  {sizes['max']:7d}  {sizes['total']:9d}"
+            )
     lines.append("")
     lines.append("per run")
     lines.append("  root episode   outcome    branch   implement in   check in   ratio   check out   rereads")

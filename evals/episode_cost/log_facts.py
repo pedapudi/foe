@@ -254,6 +254,26 @@ def is_refinement(earlier: str, later: str) -> bool:
     return earlier in later or later in earlier
 
 
+def rendered_sizes(calls: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """The size of one tool result, over the calls given.
+
+    A total says how much a role spent; it does not say what one call costs,
+    and the two answer different questions. Two calls at 18,000 characters
+    and twelve at 3,000 sum alike, and only the first pair is answered by
+    lowering a tool's render bound. Every returned character reaches the
+    model on the step that produced it and on every later step of the same
+    episode, so this distribution is what a bound change moves.
+    """
+    sizes = [int(call["rendered_chars"]) for call in calls]
+    return {
+        "calls": len(sizes),
+        "total": sum(sizes),
+        "median": median(sizes),
+        "p95": percentile(sizes, 0.95),
+        "max": max(sizes, default=0),
+    }
+
+
 def percentile(values: Iterable[float], fraction: float) -> float:
     ordered = sorted(values)
     if not ordered:

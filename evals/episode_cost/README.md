@@ -35,6 +35,15 @@ implementation input tokens. It gives the rendered characters of tool
 output each role put into its own context. It gives the files an assessing
 or repairing node read that the implementing node had already read.
 
+Both log reports give the size of one tool result, by tool, as the number
+of calls, the median, the 95th percentile, the maximum, and the total. The
+total says how much context a role assembled; the distribution says what one
+call contributes, and only the second is what a change to a tool's render
+bound moves. Every character a tool renders reaches the model on the step
+that produced it and on every later step of the same episode, so a tool that
+returns more candidates costs the episode here whatever it saved in
+milliseconds.
+
 `grep_cost_curve.py` runs the real `grep` tool inside real episodes over
 two corpora and two page-cache conditions, and reads the durations back out
 of the `tool/result` events those episodes wrote. The corpora are the

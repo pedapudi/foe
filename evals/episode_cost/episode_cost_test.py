@@ -18,7 +18,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import search_in_logs
 import workflow_node_tokens
-from log_facts import Episode, is_refinement, median, normalized_grep, percentile, search_command_heads
+from log_facts import (
+    Episode,
+    is_refinement,
+    median,
+    normalized_grep,
+    percentile,
+    rendered_sizes,
+    search_command_heads,
+)
 
 
 def event(seq: int, kind: str, data: dict, time: int = 0) -> dict:
@@ -86,6 +94,17 @@ class LogFactsTest(unittest.TestCase):
         self.assertEqual([call["call_id"] for call in episode.calls], ["c2"])
         self.assertEqual(episode.model_calls, 1)
         self.assertEqual(episode.id, "ep_child")
+
+    def test_rendered_sizes_separate_one_call_from_the_total(self) -> None:
+        """Two shapes that sum alike differ in what one call costs."""
+        few_large = rendered_sizes([{"rendered_chars": 18000}, {"rendered_chars": 18000}])
+        many_small = rendered_sizes([{"rendered_chars": 3000} for _ in range(12)])
+        self.assertEqual(few_large["total"], 36000)
+        self.assertEqual(many_small["total"], 36000)
+        self.assertEqual(few_large["median"], 18000)
+        self.assertEqual(many_small["median"], 3000)
+        self.assertEqual(few_large["max"], 18000)
+        self.assertEqual(rendered_sizes([]), {"calls": 0, "total": 0, "median": 0.0, "p95": 0.0, "max": 0})
 
     def test_spilled_value_is_read_from_the_stored_file(self) -> None:
         events = [

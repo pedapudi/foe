@@ -36,6 +36,7 @@ from log_facts import (
     normalized_grep,
     pattern_shape,
     percentile,
+    rendered_sizes,
     run_of,
     search_command_heads,
 )
@@ -274,6 +275,15 @@ def corpus_report(root: Path) -> dict[str, Any]:
     for episode in episodes:
         read_ms.extend(call["duration_ms"] for call in episode.tool_calls("read"))
     shapes = [shape for report in reports for shape in report["grep_shapes"]]
+    # What one call renders, by tool, over every episode in the corpus. A
+    # search that returns more candidates costs the episode here, on the step
+    # that ran it and on every later step, whatever it saved in milliseconds.
+    by_tool: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
+    for episode in episodes:
+        for call in episode.calls:
+            if not call["synthetic"]:
+                by_tool[call["name"] or "unnamed"].append(call)
+    rendered_per_call = {tool: rendered_sizes(calls) for tool, calls in sorted(by_tool.items())}
     totals = {
         "episodes": len(reports),
         "episodes_with_grep": sum(1 for report in reports if report["grep"]["calls"]),
@@ -316,6 +326,7 @@ def corpus_report(root: Path) -> dict[str, Any]:
     return {
         "corpus_root": str(root),
         "totals": totals,
+        "rendered_per_call": rendered_per_call,
         "grep_pattern_shapes": shape_counts,
         "runs": run_reports(reports),
         "episodes": reports,
@@ -355,6 +366,16 @@ def render(report: dict[str, Any]) -> str:
         f"  read of a path already read, different window: {totals['read_repeat_calls']}"
         f" of {totals['read_calls']} read calls",
         f"  read of a path already read, same window:      {totals['read_identical_calls']}",
+        "",
+        "rendered characters one call put into the model's context",
+        "  tool          calls   median      p95      max      total",
+    ]
+    for tool, sizes in report["rendered_per_call"].items():
+        lines.append(
+            f"  {tool:12s}  {sizes['calls']:5d}  {sizes['median']:7.0f}  {sizes['p95']:7.0f}"
+            f"  {sizes['max']:7d}  {sizes['total']:9d}"
+        )
+    lines += [
         "",
         "grep pattern shapes",
         f"  literal {shapes['literal']}, regex {shapes['regex']},"
