@@ -62,6 +62,10 @@ continuous-integration minutes.
 scripts/release.sh 0.2.0
 ```
 
+`.cargo/config.toml` packs the binary's relative relocations into a bitmap
+for this target, which is 300 KB of the published size and leaves the
+executable position-independent.
+
 It refuses a version that disagrees with `Cargo.toml`, a working tree with
 changes, and a machine without the musl target or a musl C compiler
 (`rustup target add x86_64-unknown-linux-musl` and `apt install musl-tools`).

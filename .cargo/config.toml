@@ -1,0 +1,13 @@
+# The published binary is statically linked and position-independent, and a
+# static-PIE relocates itself at startup from a table of its own relative
+# relocations. That table was 12,982 entries of 24 bytes. `pack-relative-relocs`
+# writes them as a bitmap instead, which is 4 KB, and the musl start files
+# rustup ships for this target read that form. It is the whole of the
+# difference between a 6.06 MiB binary and a 5.77 MiB one, and it costs
+# nothing: the executable stays position-independent, so it keeps address
+# space layout randomization.
+#
+# The flags are scoped to the target rather than set for every build, so a
+# build script, which links for the host, is untouched.
+[target.x86_64-unknown-linux-musl]
+rustflags = ["-C", "link-arg=-Wl,-z,pack-relative-relocs"]
