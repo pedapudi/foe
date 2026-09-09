@@ -1,6 +1,6 @@
 //! Embeds the browser bundle. `view/dist/viewer.js.deflate`,
-//! `view/dist/viewer.css.deflate`, and the font files under `view/fonts/` are
-//! copied into `OUT_DIR` when present. The script and the stylesheet are
+//! `view/dist/viewer.css.deflate`, `view/dist/viewer.css`, and the font files
+//! under `view/fonts/` are copied into `OUT_DIR` when present. The script and the stylesheet are
 //! embedded deflated, which is a quarter of their bytes and so a quarter of
 //! their share of the binary; `view/build.mjs` writes them beside the plain
 //! files and the crate inflates each once. An absent script or stylesheet is
@@ -49,6 +49,10 @@ fn main() {
     };
     copy(&view.join("dist/viewer.js.deflate"), &deflated(JS_PLACEHOLDER));
     copy(&view.join("dist/viewer.css.deflate"), &deflated(CSS_PLACEHOLDER));
+    // The integration test reads the stylesheet as text, to check that every
+    // font the crate embeds is one the stylesheet asks for. The crate itself
+    // embeds only the deflated copy.
+    copy(&view.join("dist/viewer.css"), CSS_PLACEHOLDER.as_bytes());
     for name in FONTS {
         copy(&view.join("fonts").join(name), b"");
     }
