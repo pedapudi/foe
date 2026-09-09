@@ -352,8 +352,14 @@ fn explicit_config_owns_its_sandbox_mode() {
 /// confinement off, and only a built-in document takes it.
 #[test]
 fn permitting_everything_grants_the_whole_filesystem_with_no_confinement() {
-    let plain =
-        Options { task: Some("t".into()), config: Some(format!("builtin:{BUILTIN_ONESHOT}")), ..Options::default() };
+    // A model is named here rather than left to the default a login wrote,
+    // so the test reads nothing from the machine it runs on.
+    let plain = Options {
+        task: Some("t".into()),
+        config: Some(format!("builtin:{BUILTIN_ONESHOT}")),
+        model: Some("anthropic/claude-opus-5".into()),
+        ..Options::default()
+    };
     let (document, _) = load_contract_document(&plain).unwrap();
     assert_eq!(document.sandbox.mode, foe_log::SandboxMode::BestEffort);
     assert_ne!(document.grants.read, vec![PathBuf::from("/")]);

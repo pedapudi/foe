@@ -30,8 +30,12 @@ git -C "$work" switch -q -C publish
 # link to the repository in a .git file, so the sweep has to leave that file
 # alone. The faces carry their own licence statement in their name table,
 # which is how view/fonts distributes them; view/fonts/README.md records it.
+# CNAME is the custom domain: GitHub reads it from the served tree and drops
+# the domain when it is missing, so it is a source file here rather than
+# state the sweep would carry away.
 find "$work" -maxdepth 1 -type f ! -name README.md ! -name .git -exec rm -f {} +
 cp "$here/public/index.html" "$here/public/favicon.svg" "$here/public/install.sh" "$work/"
+cp "$here/public/CNAME" "$work/"
 cp "$here"/public/*.woff2 "$work/"
 
 git -C "$work" add -A
@@ -41,4 +45,4 @@ if git -C "$work" diff --cached --quiet; then
 fi
 git -C "$work" commit -q -m "Publish the landing page"
 git -C "$work" push -q origin publish:gh-pages
-echo "publish.sh: pushed to gh-pages; https://pedapudi.github.io/foe/ rebuilds in about a minute"
+echo "publish.sh: pushed to gh-pages; https://foe.sh/ rebuilds in about a minute"
