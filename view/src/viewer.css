@@ -3849,6 +3849,20 @@ kbd {
   font-family: var(--v2-mono);
 }
 
+/* The tool a call named, set in full ink against the subject's soft ink, so
+ * a reader sees which tool ran before reading what it ran on. It takes no
+ * hue of its own: hue already carries agent identity and outcome, and a
+ * fourth meaning would weaken both. Selection and failure recolour the whole
+ * name, so the tool follows them rather than holding its own ink. */
+.outline-name .label .tool {
+  color: var(--v2-ink);
+}
+
+.outline-row.selected .outline-name .label .tool,
+.outline-row.failed .outline-name .label .tool {
+  color: inherit;
+}
+
 /* A node row is a position in the declared graph, and the episode row under
  * it is the agent that ran that position. Both carry the node's name, on
  * consecutive lines, so the node sets as a caption: the name that reads as a

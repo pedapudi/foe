@@ -159,7 +159,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
       ? h(
           "span",
           row.kind === "episode" ? { class: "label identity", style: identityStyle(row.label) } : { class: "label" },
-          row.label,
+          ...labelParts(row),
         )
       : null,
     row.aside ? h("span", { class: "aside" }, row.aside) : null,
@@ -169,6 +169,20 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
   if (row.body !== "" || row.kind === "outcome") el.appendChild(bodyElement(row));
   el.addEventListener("click", () => handlers.scope(row.id === state.selected ? null : row.id));
   return el;
+}
+
+/**
+ * A row's name, with the tool a call named set apart from what it acted on.
+ * A call's label opens with the tool's own name, followed by a space or, for
+ * a failure the tool wrote, a colon. Splitting there lets a reader see which
+ * tool ran before reading the subject it ran on.
+ */
+function labelParts(row: CausalityRow): (string | HTMLElement)[] {
+  const tool = row.calls?.[0]?.name ?? "";
+  const rest = row.label.slice(tool.length);
+  const divides = rest === "" || rest.startsWith(" ") || rest.startsWith(":");
+  if (tool === "" || !row.label.startsWith(tool) || !divides) return [row.label];
+  return [h("span", { class: "tool" }, tool), rest];
 }
 
 /**
