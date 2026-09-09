@@ -148,13 +148,42 @@ fn host_run(
 }
 
 /// `host_run`, and additionally the episode directory the run announced,
-/// under which its children's logs live.
+/// under which its children's logs live. The scripted responses are answered
+/// in arrival order, which fixes the sequence only while one episode is live.
 fn host_run_with_log(
     dir: &Path,
     config: &Value,
-    mut responses: Vec<Vec<Value>>,
+    responses: Vec<Vec<Value>>,
     answer: impl Fn(&str, &Value) -> Value,
 ) -> (Vec<Value>, i32, PathBuf) {
+    let (events, code, log_dir, _) = host_run_dispatched(dir, config, in_order(responses), answer);
+    (events, code, log_dir)
+}
+
+/// Answers each request with the next scripted response, whichever episode
+/// asked. An exhausted script answers with a transport error rather than
+/// leaving the run waiting.
+fn in_order(responses: Vec<Vec<Value>>) -> impl Fn(&Value) -> Vec<Value> {
+    let mut remaining = responses.into_iter();
+    let exhausted = || vec![json!({ "kind": "error", "message": "script exhausted", "retryable": false })];
+    let scripted = std::sync::Mutex::new(move |_: &Value| remaining.next().unwrap_or_else(exhausted));
+    move |request| (scripted.lock().unwrap())(request)
+}
+
+/// `host_run_with_log`, choosing each response from the request that asked
+/// for it rather than from arrival order. Several children run at once in a
+/// team, so the order their requests arrive in is not fixed; a run with more
+/// than one live episode answers each request from what its own conversation
+/// holds. The argument is the `model/request` payload, whose `messages` are
+/// exactly what the model would have received. The fourth returned value is
+/// everything the run wrote on standard error, which is where it reports what
+/// the outcome alone does not say.
+fn host_run_dispatched(
+    dir: &Path,
+    config: &Value,
+    respond: impl Fn(&Value) -> Vec<Value>,
+    answer: impl Fn(&str, &Value) -> Value,
+) -> (Vec<Value>, i32, PathBuf, String) {
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(config).unwrap()).unwrap();
     let log_parent = dir.join("log");
@@ -178,12 +207,7 @@ fn host_run_with_log(
         match event["type"].as_str().unwrap() {
             "model/request" => {
                 let id = event["data"]["request_id"].clone();
-                let chunks = if responses.is_empty() {
-                    vec![json!({ "kind": "error", "message": "script exhausted", "retryable": false })]
-                } else {
-                    responses.remove(0)
-                };
-                for chunk in chunks {
+                for chunk in respond(&event["data"]) {
                     send(json!({ "type": "model/chunk", "request_id": id, "chunk": chunk }), tag.as_ref());
                 }
             }
@@ -211,7 +235,7 @@ fn host_run_with_log(
     let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
     let written: Vec<Value> = file.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
     assert_eq!(written, events, "the protocol channel is the log, line for line");
-    (events, code, log_dir)
+    (events, code, log_dir, err)
 }
 
 /// docs/log-format.md "Lifecycle": episode/start records the complete
@@ -935,6 +959,274 @@ fn parent_settlement_closes_a_running_board_task_before_episode_end() {
     let release = events.iter().position(|event| event["type"] == "budget/release").unwrap();
     let end = events.iter().position(|event| event["type"] == "episode/end").unwrap();
     assert!(terminal < spawn_end && spawn_end < release && release < end, "child settlement order is complete");
+}
+
+/// The identifier of the message the text names, in the `EPISODE:tm_NN` form
+/// `ask` gives a question. A model reads it from the rendered result of its
+/// own `ask`, or from the text of the question it was asked, so a test that
+/// answers as a model would reads it from the same place.
+fn message_identifier(conversation: &str) -> String {
+    let at = conversation.find(":tm_").unwrap_or_else(|| panic!("no message identifier in {conversation}"));
+    let from = conversation[..at].rfind("ep_").unwrap_or_else(|| panic!("no episode in {conversation}"));
+    conversation[from..at + ":tm_".len() + 2].to_string()
+}
+
+/// docs/design.md "Agent teams" and the `builtin:team` document it describes:
+/// one run through the whole lifecycle of a team. The lead surveys with its
+/// own tool, adds two working units whose write roots do not overlap and one
+/// question unit that writes nothing, answers the question a worker asks it,
+/// waits for the board to settle, and returns what its children returned.
+///
+/// Every assertion reads the log rather than the lead's prose, because the
+/// failure worth catching is a lead that reports a team it never had: a
+/// contract name no document declares, a write root no child can open, a
+/// child carrying the lead's own conversation, and a completion naming units
+/// no worker performed. The board revisions, the roster phases, the question
+/// and the answer that carries its identity, the write root recorded on each
+/// task, and the bytes on disk are what this test believes.
+#[test]
+fn a_team_surveys_delegates_answers_a_question_and_integrates() {
+    let dir = scratch("team-lifecycle");
+    let alpha = dir.join("alpha");
+    let beta = dir.join("beta");
+    for unit in [&alpha, &beta] {
+        std::fs::create_dir(unit).unwrap();
+        std::fs::write(unit.join("unit.txt"), "before\n").unwrap();
+    }
+    let manifest = dir.join("manifest.txt");
+    std::fs::write(&manifest, "alpha\nbeta\n").unwrap();
+
+    // Both kinds the team document declares: a worker changes files under the
+    // roots its lead names, and a surveyor answers a question and declares no
+    // tool that could change anything.
+    let returns = |properties: Value, required: Value| {
+        json!({ "returns": { "type": "object", "properties": properties, "required": required,
+                             "additionalProperties": false } })
+    };
+    let finding = json!({ "unit": { "type": "string" }, "finding": { "type": "string" },
+                          "changed_paths": { "type": "array", "items": { "type": "string" } } });
+    let config = config(&dir, |c| {
+        c["name"] = json!("team");
+        c["task"] = json!("cover the two units");
+        c["tools"] = json!(["read", "spawn", "wait", "send", "team"]);
+        c["grants"] = json!({ "read": [dir], "write": [dir], "spawn": ["worker", "surveyor"] });
+        c["budget"] = json!({ "model_calls": 30, "max_depth": 1, "max_episodes": 4, "max_concurrent": 3 });
+        c["done_when"] = returns(
+            json!({
+                "summary": { "type": "string" },
+                "units": { "type": "array", "items": { "type": "object",
+                    "properties": { "unit": { "type": "string" }, "worker": { "type": "string" } },
+                    "required": ["unit", "worker"], "additionalProperties": false } },
+                "changed_paths": { "type": "array", "items": { "type": "string" } }
+            }),
+            json!(["summary", "units", "changed_paths"]),
+        );
+        c["child_contracts"] = json!({
+            "worker": {
+                "name": "worker", "instructions": { "role": "Do the one unit your task names." },
+                "tools": ["read", "edit", "ask", "wait"],
+                "grants": { "read": [dir], "write": [dir] },
+                "budget": { "model_calls": 6, "max_depth": 0 },
+                "done_when": returns(finding.clone(), json!(["unit", "finding", "changed_paths"])),
+            },
+            "surveyor": {
+                "name": "surveyor", "instructions": { "role": "Answer the one question your task names." },
+                "tools": ["read", "ask", "wait"],
+                "grants": { "read": [dir], "write": [] },
+                "budget": { "model_calls": 6, "max_depth": 0 },
+                "done_when": returns(finding, json!(["unit", "finding"])),
+            }
+        });
+    });
+
+    let spawn = |contract: &str, task: &str, name: &str, write: Value| {
+        json!({ "contract": contract, "task": task, "name": name, "context": "fresh", "write": write }).to_string()
+    };
+    let edit = |path: &Path, text: &str| {
+        json!({ "path": path, "edits": [{ "old_text": "before", "new_text": text }] }).to_string()
+    };
+    let respond = |request: &Value| {
+        let messages = request["messages"].as_array().unwrap();
+        // The task is the first inbox item of every episode, so the first
+        // message names which episode is asking; the assistant messages
+        // already in the conversation count its turns.
+        let task = messages[0]["content"][0]["text"].as_str().unwrap();
+        let turn = messages.iter().filter(|message| message["role"] == "assistant").count();
+        let conversation = request["messages"].to_string();
+        let mut chunks = vec![text("working")];
+        match (task, turn) {
+            ("cover the two units", 0) => {
+                chunks.extend(call("tc_survey", "read", &json!({ "path": &manifest }).to_string()))
+            }
+            ("cover the two units", 1) => {
+                chunks.extend(call(
+                    "tc_alpha",
+                    "spawn",
+                    &spawn("worker", "edit the alpha unit", "alpha", json!([alpha])),
+                ));
+                chunks.extend(call("tc_beta", "spawn", &spawn("worker", "edit the beta unit", "beta", json!([beta]))));
+                chunks.extend(call(
+                    "tc_survey_unit",
+                    "spawn",
+                    &spawn("surveyor", "count the units", "survey", json!([])),
+                ));
+                chunks.extend(call("tc_hold", "wait", &json!({ "until": [{ "inbox": "request" }] }).to_string()));
+            }
+            ("cover the two units", 2) => {
+                let answered = json!({ "to": "alpha", "content": "name it alpha done",
+                                       "reply_to": message_identifier(&conversation) });
+                chunks.extend(call("tc_answer", "send", &answered.to_string()));
+                chunks.extend(call("tc_settle", "wait", "{}"));
+            }
+            ("cover the two units", 3) => {
+                let value = json!({ "value": {
+                    "summary": "two units edited and one question answered",
+                    "units": [
+                        { "unit": "the alpha unit", "worker": "alpha" },
+                        { "unit": "the beta unit", "worker": "beta" },
+                        { "unit": "the unit count", "worker": "survey" }
+                    ],
+                    "changed_paths": [alpha.join("unit.txt"), beta.join("unit.txt")]
+                } });
+                chunks.extend(call("tc_return", "return", &value.to_string()));
+            }
+            ("edit the alpha unit", 0) => {
+                chunks.extend(call("tc_write", "edit", &edit(&alpha.join("unit.txt"), "alpha done")))
+            }
+            ("edit the alpha unit", 1) => {
+                let question = json!({ "to": "team", "content": "what name should the alpha unit carry?" });
+                chunks.extend(call("tc_ask", "ask", &question.to_string()));
+            }
+            ("edit the alpha unit", 2) => {
+                let until = json!({ "until": [{ "reply": message_identifier(&conversation) }] });
+                chunks.extend(call("tc_reply", "wait", &until.to_string()));
+            }
+            ("edit the alpha unit", 3) => {
+                let value = json!({ "value": { "unit": "the alpha unit", "finding": "the lead named it",
+                                               "changed_paths": [alpha.join("unit.txt")] } });
+                chunks.extend(call("tc_return", "return", &value.to_string()));
+            }
+            // The unit the lead granted another worker is refused, which is
+            // what the partition on the board is for.
+            ("edit the beta unit", 0) => {
+                chunks.extend(call("tc_intrude", "edit", &edit(&alpha.join("unit.txt"), "beta reached alpha")))
+            }
+            ("edit the beta unit", 1) => {
+                chunks.extend(call("tc_write", "edit", &edit(&beta.join("unit.txt"), "beta done")))
+            }
+            ("edit the beta unit", 2) => {
+                let value = json!({ "value": { "unit": "the beta unit", "finding": "the alpha root is closed to it",
+                                               "changed_paths": [beta.join("unit.txt")] } });
+                chunks.extend(call("tc_return", "return", &value.to_string()));
+            }
+            ("count the units", 0) => chunks.extend(call("tc_list", "read", &json!({ "path": &dir }).to_string())),
+            ("count the units", 1) => {
+                let value = json!({ "value": { "unit": "the unit count", "finding": "two units" } });
+                chunks.extend(call("tc_return", "return", &value.to_string()));
+            }
+            (task, turn) => panic!("no scripted turn {turn} for {task}"),
+        }
+        chunks.push(done("tool"));
+        chunks
+    };
+    let (events, code, log_dir, reported) =
+        host_run_dispatched(&dir, &config, respond, |name, _| panic!("unexpected host tool {name}"));
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert!(!reported.contains("did not"), "every delegated task completed, so the run reports none unfinished");
+
+    // The board: three tasks, each queued, then running under an owner, then
+    // completed, each carrying the write root the lead named on the call and
+    // the fresh context that keeps the lead's conversation out of the child.
+    let tasks: Vec<&Value> = events.iter().filter(|event| event["type"] == "team/task").collect();
+    let board = |id: &str| {
+        tasks
+            .iter()
+            .filter(|event| event["data"]["task_id"] == id)
+            .map(|event| format!("{} {}", event["data"]["revision"], event["data"]["status"].as_str().unwrap()))
+            .collect::<Vec<_>>()
+    };
+    let latest = |id: &str| *tasks.iter().rev().find(|event| event["data"]["task_id"] == id).unwrap();
+    for id in ["task_01", "task_02", "task_03"] {
+        assert_eq!(board(id), ["0 queued", "1 running", "2 completed"], "{id}");
+        assert_eq!(latest(id)["data"]["context"], "fresh", "{id} carries no inherited conversation");
+    }
+    assert_eq!(latest("task_01")["data"]["write"], json!([alpha]));
+    assert_eq!(latest("task_02")["data"]["write"], json!([beta]));
+    // docs/log-format.md `team/task`: an empty grant is an absent `write`.
+    assert_eq!(latest("task_03")["data"]["write"], Value::Null, "a surveyor is granted no root");
+
+    // The roster: every child was provisioned, then started, and no member
+    // failed. A child that dies at construction stops at `provisioning`.
+    let owner = |id: &str| latest(id)["data"]["owner"].as_str().unwrap().to_string();
+    let phases = |member: &str| {
+        events
+            .iter()
+            .filter(|event| event["type"] == "team/roster" && event["data"]["member_id"] == member)
+            .map(|event| event["data"]["phase"].as_str().unwrap())
+            .collect::<Vec<_>>()
+    };
+    for id in ["task_01", "task_02", "task_03"] {
+        assert_eq!(phases(&owner(id)), ["provisioning", "active"], "{id}");
+    }
+
+    // The question and its answer: one identity, two queue entries, and the
+    // delivery the lead recorded when the answer reached the member waiting
+    // on it.
+    let of_type = |kind: &str| events.iter().filter(move |event| event["type"] == kind).collect::<Vec<_>>();
+    let (queued, delivered) = (of_type("team/message"), of_type("team/delivered"));
+    assert_eq!(queued.len(), 2, "the question and the answer");
+    let question = queued[0]["data"]["message_id"].as_str().unwrap();
+    assert_eq!(queued[0]["data"]["from"], owner("task_01"), "the worker asked");
+    assert_eq!(queued[0]["data"]["to"], events[0]["data"]["id"], "the lead was asked");
+    assert_eq!(queued[1]["data"]["message_id"], question, "the answer carries the question's identity");
+    assert_eq!(queued[1]["data"]["to"], owner("task_01"), "the answer reached the worker that asked");
+    assert_eq!(delivered.len(), 1, "the answer to a member is confirmed; the question to the lead is its own inbox");
+    assert_eq!(delivered[0]["data"], json!({ "message_id": question, "to": owner("task_01") }));
+
+    // The bytes on disk: each worker changed the file under the root it was
+    // granted, the root it was not granted refused it, and the lead's own
+    // survey changed nothing.
+    assert_eq!(std::fs::read_to_string(alpha.join("unit.txt")).unwrap(), "alpha done\n");
+    assert_eq!(std::fs::read_to_string(beta.join("unit.txt")).unwrap(), "beta done\n");
+    assert_eq!(std::fs::read_to_string(&manifest).unwrap(), "alpha\nbeta\n", "the lead surveyed and wrote nothing");
+    let edits = |id: &str| {
+        child_events(&log_dir, &owner(id))
+            .into_iter()
+            .filter(|event| event["type"] == "tool/result" && event["data"]["name"] == "edit")
+            .collect::<Vec<_>>()
+    };
+    let intrusion = &edits("task_02")[0];
+    assert_eq!(intrusion["data"]["is_error"], true, "one worker may not write another worker's root: {intrusion}");
+    assert_eq!(edits("task_02")[1]["data"]["is_error"], false, "its own root is open to it");
+
+    // Every child returned its typed value, and every unit the lead named is
+    // a task a child completed. A lead that did the work itself and named
+    // units no worker performed fails here.
+    let returned = |id: &str| child_events(&log_dir, &owner(id)).last().unwrap()["data"]["outcome"].clone();
+    for (id, root) in [("task_01", &alpha), ("task_02", &beta)] {
+        let outcome = returned(id);
+        assert_eq!(outcome["kind"], "completed", "{id}");
+        let changed = outcome["value"]["changed_paths"].as_array().unwrap().clone();
+        assert!(!changed.is_empty(), "{id} changed a file");
+        for path in changed {
+            let path = PathBuf::from(path.as_str().unwrap());
+            assert!(path.starts_with(root), "{id} changed {path:?}, which is outside the root it was granted");
+        }
+    }
+    assert_eq!(returned("task_03")["value"], json!({ "unit": "the unit count", "finding": "two units" }));
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(outcome["kind"], "completed", "{outcome}");
+    let units = outcome["value"]["units"].as_array().unwrap();
+    assert_eq!(units.len(), 3, "one entry per delegated unit");
+    for unit in units {
+        let named = unit["worker"].as_str().unwrap();
+        let task = tasks
+            .iter()
+            .rev()
+            .find(|event| event["data"]["name"] == named)
+            .unwrap_or_else(|| panic!("the lead named {named}, which is on no board task"));
+        assert_eq!(task["data"]["status"], "completed", "the lead named {named}, whose task did not complete");
+    }
 }
 
 /// docs/protocol.md "Children": a child replaces inherited executable
