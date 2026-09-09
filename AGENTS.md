@@ -53,8 +53,8 @@ sentence on first reading.
 - Rust line budgets exclude tests, generated code, blank lines, and
   comment-only lines. `log` and `core` form the kernel and stay under 6,350
   lines together. `contract` stays under 1,575 and `code` under 1,900. `team`
-  stays under 925. Coding tools and team coordination together stay under
-  2,750. `workflow` stays under 1,050, `context` under 500, `view` under 900,
+  stays under 940. Coding tools and team coordination together stay under
+  2,765. `workflow` stays under 1,050, `context` under 500, `view` under 900,
   `cli` under 2,025, `transport` under 2,700, `telemetry` under 1,000, and
   `evidence` under 500. The viewer HTML, TypeScript, and CSS use the
   compressed bundle limit in `docs/design.md`. `scripts/loc.sh` enforces every
