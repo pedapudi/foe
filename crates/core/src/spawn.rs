@@ -2,10 +2,10 @@
 //!
 //! A child is a further `foe` process. The parent is the child's host: it
 //! writes the child's configuration under `children/<child_id>/`, starts
-//! the child with standard input and output piped, reads every event the
-//! child writes, forwards the ones that need a host answer upward tagged
-//! with the child's id, routes tagged answers back down, and collects the
-//! child's `episode/end`. See docs/protocol.md "Children".
+//! the child with a pipe for the protocol in each direction, reads every
+//! event the child writes, forwards the ones that need a host answer upward
+//! tagged with the child's id, routes tagged answers back down, and collects
+//! the child's `episode/end`. See docs/protocol.md "Children".
 //!
 //! Two files are written beside the child's log before it starts.
 //! `config.json` is the configuration the child is launched with, derived
@@ -31,13 +31,20 @@ use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::io::{BufRead, BufReader, IsTerminal, PipeWriter, Write};
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
-use std::process::{ChildStdin, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
+
+/// The descriptors a child speaks the host protocol on: it reads the
+/// answers its parent writes from the first and writes every event of its
+/// own log to the second. Both are pipes the parent creates, and both lie
+/// below the numbers the captured executable tree occupies.
+const PROTOCOL_READ_FD: i32 = 3;
+const PROTOCOL_WRITE_FD: i32 = 4;
 
 /// The link from this episode to the process hosting it.
 pub trait Uplink: Send + Sync {
@@ -71,8 +78,8 @@ pub trait ChildObserver: Send + Sync {
     }
 }
 
-/// Standard input of every running child, and the direct child under which
-/// each known descendant runs. Shared by the spawner, which registers
+/// The protocol pipe into every running child, and the direct child under
+/// which each known descendant runs. Shared by the spawner, which registers
 /// children, and the host protocol reader, which routes answers.
 #[derive(Default)]
 pub struct Router {
@@ -81,7 +88,7 @@ pub struct Router {
 
 #[derive(Default)]
 struct RouterState {
-    children: HashMap<String, ChildStdin>,
+    children: HashMap<String, PipeWriter>,
     below: HashMap<String, String>,
 }
 
@@ -134,13 +141,13 @@ impl Router {
 
     fn write(&self, child_id: &str, line: &str) -> Result<(), CapError> {
         let mut inner = self.inner.lock().unwrap();
-        let stdin = inner
+        let answers = inner
             .children
             .get_mut(child_id)
             .ok_or_else(|| CapError::Invalid(format!("child {child_id}: not running")))?;
-        stdin.write_all(line.as_bytes())?;
-        stdin.write_all(b"\n")?;
-        stdin.flush()?;
+        answers.write_all(line.as_bytes())?;
+        answers.write_all(b"\n")?;
+        answers.flush()?;
         Ok(())
     }
 
@@ -444,7 +451,10 @@ or spawn a contract that declares no write tool",
         argv.extend([
             OsString::from("--config"),
             config_path.as_os_str().to_owned(),
-            OsString::from("--host"),
+            OsString::from("--protocol-fds"),
+            OsString::from(format!("{PROTOCOL_READ_FD},{PROTOCOL_WRITE_FD}")),
+            OsString::from("--viewer"),
+            OsString::from("off"),
             OsString::from("--log-dir"),
             dir.as_os_str().to_owned(),
         ]);
@@ -456,12 +466,12 @@ or spawn a contract that declares no write tool",
                 command
             }
         };
-        cmd.env_clear().current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
         let executable_tree = self
             .executables
             .child(&req.contract)
             .ok_or_else(|| CapError::Invalid(format!("contract {} has no captured executable tree", req.contract)))?;
-        let mappings = executable_tree
+        let mut mappings = executable_tree
             .child_descriptors(&child_id)
             .map_err(CapError::Invalid)?
             .into_iter()
@@ -471,13 +481,15 @@ or spawn a contract that declares no write tool",
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let (child_answers, answers) = std::io::pipe()?;
+        let (events, child_events) = std::io::pipe()?;
+        mappings.push(FdMapping { parent_fd: child_answers.into(), child_fd: PROTOCOL_READ_FD });
+        mappings.push(FdMapping { parent_fd: child_events.into(), child_fd: PROTOCOL_WRITE_FD });
         cmd.fd_mappings(mappings)
             .map_err(|e| CapError::ProcessStart(format!("child {child_id}: fd mapping: {e:?}")))?;
         let mut child = cmd.spawn().map_err(|e| CapError::ProcessStart(e.to_string()))?;
-        let stdin = child.stdin.take().ok_or_else(|| CapError::Invalid("child has no stdin".into()))?;
-        let stdout = child.stdout.take().ok_or_else(|| CapError::Invalid("child has no stdout".into()))?;
         let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
-        self.connections.router.inner.lock().unwrap().children.insert(child_id.clone(), stdin);
+        self.connections.router.inner.lock().unwrap().children.insert(child_id.clone(), answers);
         relay_stderr(child_id.clone(), stderr);
         let (tx, run) = ChildRun::pending();
         let reader = Reader {
@@ -488,7 +500,7 @@ or spawn a contract that declares no write tool",
         };
         std::thread::spawn(move || {
             let read = std::thread::spawn(move || {
-                let settled = reader.run(stdout);
+                let settled = reader.run(events);
                 reader.router.remove(&reader.child_id);
                 settled
             });
@@ -542,7 +554,7 @@ fn no_host(episode_id: &str, name: &str) -> ToolValue {
     ToolValue::unavailable(format!("`{name}`: no host above episode {episode_id} can answer a host tool call"))
 }
 
-/// Reads one child's standard output to its end.
+/// Reads one child's protocol pipe to its end.
 struct Reader {
     child_id: String,
     uplink: Arc<dyn Uplink>,
@@ -571,13 +583,13 @@ impl Reader {
         let _ = self.router.route(episode_id.unwrap_or(&self.child_id), &line.to_string());
     }
 
-    fn run(&self, stdout: impl std::io::Read) -> Settled {
+    fn run(&self, events: impl std::io::Read) -> Settled {
         let start = std::time::Instant::now();
         let mut usage = Usage::default();
         let mut calls = 0u64;
         let mut below = BudgetAmount::default();
         let mut outcome = None;
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        for line in BufReader::new(events).lines().map_while(Result::ok) {
             let parsed: Result<serde_json::Map<String, serde_json::Value>, _> = serde_json::from_str(&line);
             let Ok(value) = parsed else {
                 outcome = Some(Outcome::Failed {
@@ -630,8 +642,8 @@ impl Reader {
                 _ => {}
             }
             self.observer.observe(&self.child_id, &event);
-            // The log ends here; the caller closes the child's standard
-            // input so that a child waiting on its host can exit.
+            // The log ends here; the caller closes the answer pipe so that
+            // a child waiting on its host can exit.
             if matches!(event.data, EventData::EpisodeEnd { .. }) {
                 break;
             }

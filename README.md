@@ -122,8 +122,9 @@ the directory `--log-dir` names, prints that directory on standard error as
 viewer on the loopback interface while the episode runs, and prints the
 outcome as one JSON line on standard output when it ends. The exit code is
 0 when the outcome is completed, 2 when blocked, 3 when exhausted, and 1
-when failed. Under `--host`, standard output carries the log instead and a
-host process answers model requests; see [docs/protocol.md](docs/protocol.md).
+when failed. A host process answers model requests over the two descriptors
+`--protocol-fds READ,WRITE` names, and standard output stays the person's;
+see [docs/protocol.md](docs/protocol.md).
 
 For a terminal conversation with branch connectors and readable results, run:
 
@@ -174,10 +175,10 @@ bazel run //evals:micro -- --model openai/gpt-5.6-sol --confirm-spend
 
 ## Embedding
 
-A host application launches the binary, reads the log from standard output,
-and answers model requests and host tool calls on standard input. The Python
-package in `python/` accepts a model backend callback so the host can keep the
-model credentials. See [docs/sdk.md](docs/sdk.md).
+A host application launches the binary with a pipe in each direction, reads
+the log from one, and answers model requests and host tool calls on the
+other. The Python package in `python/` accepts a model backend callback so
+the host can keep the model credentials. See [docs/sdk.md](docs/sdk.md).
 
 ## Size
 

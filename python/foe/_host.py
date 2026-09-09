@@ -1,12 +1,13 @@
 """The host side of docs/protocol.md.
 
-`start_config` launches the binary on a configuration document, reads its
-standard output line by line, and answers `host/tool-call` with the
-embedding contract's host tools. It also answers `model/request` with the
-contract's model backend when the document leaves the model to the host, which
-docs/config.md makes the meaning of a document with no `model` block. Every
-line read is a log event; every line written is one of the four host-to-foe
-line types.
+`start_config` launches the binary on a configuration document with a pipe
+in each direction, reads the events it writes line by line, and answers
+`host/tool-call` with the embedding contract's host tools. It also answers
+`model/request` with the contract's model backend when the document leaves
+the model to the host, which docs/config.md makes the meaning of a document
+with no `model` block. Every line read is a log event; every line written is
+one of the four host-to-foe line types. The binary's standard output is the
+channel for a person, and this host discards it.
 """
 
 from __future__ import annotations
@@ -104,6 +105,41 @@ def _pairing_error(first: Event) -> str | None:
     return None
 
 
+@dataclass(slots=True)
+class Channel:
+    """The protocol channel of one running episode.
+
+    docs/protocol.md "Launch": the host leaves two pipes open across the
+    launch and names them in `--protocol-fds READ,WRITE`. The binary reads
+    the answers this host writes from the first and writes every log event to
+    the second. `close` releases both ends this process holds, which is what
+    lets a binary waiting on its host exit.
+    """
+
+    events: asyncio.StreamReader
+    answers: asyncio.StreamWriter
+    _events_transport: asyncio.ReadTransport
+
+    def close(self) -> None:
+        if not self.answers.is_closing():
+            self.answers.close()
+        self._events_transport.close()
+
+
+async def _open_channel(events_read: int, answers_write: int) -> Channel:
+    """Wraps the two descriptors this process kept in asyncio streams."""
+    loop = asyncio.get_running_loop()
+    events = asyncio.StreamReader(limit=_LINE_LIMIT)
+    events_transport, _ = await loop.connect_read_pipe(
+        lambda: asyncio.StreamReaderProtocol(events), os.fdopen(events_read, "rb", 0)
+    )
+    answers_transport, protocol = await loop.connect_write_pipe(
+        asyncio.streams.FlowControlMixin, os.fdopen(answers_write, "wb", 0)
+    )
+    answers = asyncio.StreamWriter(answers_transport, protocol, None, loop)
+    return Channel(events, answers, events_transport)
+
+
 class Handle:
     """A running episode.
 
@@ -125,6 +161,7 @@ class Handle:
         self,
         *,
         process: asyncio.subprocess.Process,
+        channel: Channel,
         config: Mapping[str, Any],
         config_dir: str,
         log_parent: Path,
@@ -134,6 +171,7 @@ class Handle:
         max_output_tokens: int | None,
     ) -> None:
         self._process = process
+        self._channel = channel
         self._config = config
         self._config_dir = config_dir
         self._log_parent = log_parent
@@ -208,24 +246,23 @@ class Handle:
     # ---- protocol ----------------------------------------------------------------
 
     async def _write(self, obj: Mapping[str, Any]) -> None:
-        stdin = self._process.stdin
-        if stdin is None or stdin.is_closing():
+        answers = self._channel.answers
+        if answers.is_closing():
             return
         line = json.dumps(obj, ensure_ascii=False, separators=(",", ":")) + "\n"
         async with self._write_lock:
             try:
-                stdin.write(line.encode("utf-8"))
-                await stdin.drain()
+                answers.write(line.encode("utf-8"))
+                await answers.drain()
             except (BrokenPipeError, ConnectionResetError):
                 return
 
     async def _read_loop(self) -> None:
-        stdout = self._process.stdout
-        assert stdout is not None
+        events = self._channel.events
         line_number = 0
         try:
             while True:
-                raw = await stdout.readline()
+                raw = await events.readline()
                 if not raw:
                     break
                 line_number += 1
@@ -364,9 +401,7 @@ class Handle:
             task.cancel()
         if self._pending:
             await asyncio.gather(*self._pending, return_exceptions=True)
-        stdin = self._process.stdin
-        if stdin is not None and not stdin.is_closing():
-            stdin.close()
+        self._channel.close()
         try:
             code = await asyncio.wait_for(self._process.wait(), timeout=10)
         except asyncio.TimeoutError:
@@ -442,24 +477,37 @@ async def start_config(
     config_dir = tempfile.mkdtemp(prefix="foe-contract-")
     config_path = Path(config_dir) / "config.json"
     config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    # One pipe in each direction. The binary inherits one end of each under
+    # the numbers `--protocol-fds` names, and this process closes those ends
+    # once the launch has taken them.
+    answers_read, answers_write = os.pipe()
+    events_read, events_write = os.pipe()
     try:
         process = await asyncio.create_subprocess_exec(
             os.fspath(binary),
             "--config",
             str(config_path),
-            "--host",
             "--log-dir",
             str(log_parent),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            limit=_LINE_LIMIT,
+            "--protocol-fds",
+            f"{answers_read},{events_write}",
+            "--viewer",
+            "off",
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            pass_fds=(answers_read, events_write),
             start_new_session=start_new_session,
         )
     except OSError as exc:
+        for fd in (answers_read, answers_write, events_read, events_write):
+            os.close(fd)
         shutil.rmtree(config_dir, ignore_errors=True)
         raise BinaryError(f"{os.fspath(binary)}: {exc}") from exc
+    os.close(answers_read)
+    os.close(events_write)
     handle = Handle(
         process=process,
+        channel=await _open_channel(events_read, answers_write),
         config=doc,
         config_dir=config_dir,
         log_parent=log_parent,

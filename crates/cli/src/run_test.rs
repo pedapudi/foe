@@ -1,5 +1,25 @@
 use super::*;
 
+/// A protocol channel for a run that must reach the point where a host
+/// answers its model requests: two pipes this process holds open, and the
+/// descriptor numbers `--protocol-fds` names. The value stays in scope for
+/// the length of the run, because the run reopens those numbers.
+struct HostChannel {
+    answers: (std::io::PipeReader, std::io::PipeWriter),
+    events: (std::io::PipeReader, std::io::PipeWriter),
+}
+
+impl HostChannel {
+    fn new() -> Self {
+        Self { answers: std::io::pipe().unwrap(), events: std::io::pipe().unwrap() }
+    }
+
+    fn fds(&self) -> (i32, i32) {
+        use std::os::fd::AsRawFd;
+        (self.answers.0.as_raw_fd(), self.events.1.as_raw_fd())
+    }
+}
+
 /// The built-in coding document under a model, which is what a run of
 /// `--config builtin:coding` and a run with no `--config` both build.
 fn coding(
@@ -582,10 +602,11 @@ fn invalid_host_verifier_schema_starts_no_episode() {
         .unwrap(),
     )
     .unwrap();
+    let host = HostChannel::new();
     let error = run(Options {
         config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.to_path_buf()),
-        host: true,
+        protocol_fds: Some(host.fds()),
         viewer: Viewer::Off,
         ..Options::default()
     })
@@ -597,18 +618,29 @@ fn invalid_host_verifier_schema_starts_no_episode() {
 }
 
 /// docs/viewer.md "Terminal conversation": the terminal display chooses what
-/// standard output shows and composes with every `--viewer` value; `off` and
-/// `--host` are the running forms without a browser viewer.
+/// standard output shows and composes with every `--viewer` value; `off` is
+/// the one running form without a browser viewer, and a host that answers
+/// model requests decides neither.
 #[test]
 fn conversation_composes_with_every_viewer_value() {
-    for viewer in [Viewer::Open, Viewer::Serve] {
-        assert!(serves_viewer(&Options { conversation: true, viewer, ..Options::default() }));
+    let host = HostChannel::new();
+    for viewer in [Viewer::Open, Viewer::Serve, Viewer::Off] {
+        let hosted = Options { conversation: true, viewer, protocol_fds: Some(host.fds()), ..Options::default() };
+        assert_eq!(hosted.viewer, Options { conversation: true, viewer, ..Options::default() }.viewer);
     }
-    assert!(!serves_viewer(&Options { conversation: true, viewer: Viewer::Off, ..Options::default() }));
-    assert!(!serves_viewer(&Options { host: true, ..Options::default() }));
-    assert!(serves_viewer(&Options::default()), "a run opens the viewer without being asked");
+    assert_eq!(Options::default().viewer, Viewer::Open, "a run serves the viewer without being asked");
     assert_eq!(Viewer::parse("serve"), Ok(Viewer::Serve));
     assert_eq!(Viewer::parse("watch"), Err("--viewer watch: expected open, serve, or off".into()));
+}
+
+/// docs/protocol.md "Launch": the descriptors are read as one pair, and a
+/// value that is not two numbers is refused by the option's own name.
+#[test]
+fn protocol_descriptors_are_read_as_a_pair() {
+    assert_eq!(protocol_fds("3,4"), Ok((3, 4)));
+    assert_eq!(protocol_fds(" 7 , 9 "), Ok((7, 9)));
+    let refused = protocol_fds("3");
+    assert_eq!(refused, Err("--protocol-fds 3: expected READ,WRITE, two open descriptor numbers".into()));
 }
 
 /// docs/design.md "The command line": a `--from DIR@SEQ` run whose task the
@@ -654,6 +686,30 @@ fn a_fork_appends_every_task_except_the_one_the_source_recorded() {
     assert!(!dir.join("misnamed").exists());
 }
 
+/// docs/design.md "The command line": an episode whose parent wrote its
+/// launch metadata takes the task of its run from the document that parent
+/// wrote, so a task on the command line is refused by that rule and no log
+/// is created for it.
+#[test]
+fn a_subordinate_episode_refuses_a_task_from_the_command_line() {
+    let dir = crate::tests::scratch("foe-cli-run", "subordinate-task");
+    std::fs::write(
+        dir.join(CHILD_LAUNCH),
+        serde_json::to_vec(&serde_json::json!({ "episode_id": "ep_child", "parent_id": "ep_parent" })).unwrap(),
+    )
+    .unwrap();
+    let hosted = Options {
+        task: Some("a task of my own".into()),
+        config: Some(format!("{BUILTIN_PREFIX}{BUILTIN_ONESHOT}")),
+        log_dir: Some(dir.to_path_buf()),
+        viewer: Viewer::Off,
+        ..Options::default()
+    };
+    let error = run(hosted).unwrap_err();
+    assert!(error.contains("takes its task from the document that parent wrote"), "{error}");
+    assert!(!dir.join(foe_log::fold::LOG_FILE).exists(), "the refusal precedes the log");
+}
+
 /// docs/design.md "Contract construction": a child resumed without its
 /// inherited executable descriptors validates the recorded fingerprint.
 #[test]
@@ -692,10 +748,11 @@ fn independently_resumed_child_rejects_a_changed_executable() {
     )
     .unwrap();
     std::fs::write(&tool, "second").unwrap();
+    let host = HostChannel::new();
     let error = run(Options {
         config: Some(config_path.to_string_lossy().into_owned()),
         log_dir: Some(dir.clone()),
-        host: true,
+        protocol_fds: Some(host.fds()),
         viewer: Viewer::Off,
         ..Options::default()
     })

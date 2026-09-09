@@ -106,7 +106,7 @@ A running foe is a tree of processes sharing one directory tree of logs.
                 (Python package, orchestrator, or CLI shell)
           holds host tools, and credentials when it calls the model
                               │
-             stdin: answers   │   stdout: the log, line by line
+              READ: answers   │   WRITE: the log, line by line
                               ▼
    ┌──────────────────────────────────────────────────────────────┐
    │  foe episode  (root)                      Landlock ruleset A │
@@ -754,10 +754,10 @@ model backend run in that process.
 
 ## The host protocol
 
-foe writes its log to a file and echoes every event to standard output as it
-is written. A host process that launched foe reads that stream and answers
-two kinds of request on foe's standard input: model requests and host tool
-calls.
+foe writes its log to a file and echoes every event to a descriptor the
+host named as it is written. A host process that launched foe reads that
+channel and answers two kinds of request on a second descriptor: model
+requests and host tool calls.
 
 ```
    host                                          foe
@@ -794,7 +794,7 @@ foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--verify PATH] [--san
 foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
 foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
 foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
-foe --config FILE --host [--log-dir DIR]                 run under a host; stdout is the log (protocol.md)
+foe --config FILE --protocol-fds READ,WRITE [--log-dir DIR]   run with a host answering on those two descriptors (protocol.md)
 foe login [PROVIDER [--model MODEL] [--key-file PATH]] [--status]   configure a provider's credential and the default model
 foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
 foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
@@ -813,10 +813,10 @@ saying what the options beneath it decide: what runs, holding `--config`,
 `--log-dir`, and `--from`; built-in documents only, holding `--verify`,
 `--sandbox`, and `--dangerously-permit-everything-no-sandbox`; the model when the document names none, holding `--model` and
 `--service-tier`; and how you watch it, holding `--viewer` and
-`--conversation`. `--host` is listed above all four, because it selects a
-different way to run rather than adjusting a run. Every other form names no
-heading on any row, so its help prints one list. `foe --help`, which
-`foe help` repeats, prints the running form's options and every other
+`--conversation`. `--protocol-fds` is listed above all four, because it
+names the channel to a host process rather than adjusting a run. Every other
+form names no heading on any row, so its help prints one list. `foe --help`,
+which `foe help` repeats, prints the running form's options and every other
 command word; `foe <command> --help`, which `foe help <command>` repeats,
 prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
@@ -830,10 +830,11 @@ episode ends. This also applies to interactive terminals. A shell reads it
 with one `read`; another process parses it with one `json.loads`.
 `--conversation` selects a readable conversation and execution tree on
 standard output, including returned branch results and the final outcome.
-The browser viewer serves as usual. `--conversation` cannot be combined
-with `--host`.
+The browser viewer serves as usual.
 [viewer.md](viewer.md#terminal-conversation) specifies the terminal display.
-`--host` selects the log protocol described in [protocol.md](protocol.md).
+`--protocol-fds READ,WRITE` runs the log protocol of
+[protocol.md](protocol.md) on those two descriptors, which leaves standard
+output to the person whether or not a host answers the model requests.
 The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
 for `failed`. Diagnostics go to standard error. The log goes to the file.
 
@@ -971,10 +972,10 @@ the names the binary carries. A command line naming no document examines the
 working directory alone and searches no ancestor directory. A run that reads
 `.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
 standard error, where NAME is the document's `name`. A task given on the
-command line replaces the document's own `task`. A host passes a document
-file: `--host` takes the task of the run from the document, and a built-in
-document carries no task, so `--config builtin:NAME` beside `--host` is
-refused.
+command line replaces the document's own `task`. An episode whose parent
+process wrote its launch metadata takes the task of its run from the
+document that parent wrote, so a task on the command line, and a built-in
+document name, which carries no task of its own, are both refused there.
 
 `--verify`, `--sandbox` and `--dangerously-permit-everything-no-sandbox`
 configure either built-in document. A document in a file states that behavior
@@ -1155,8 +1156,7 @@ this command writes is the file a later run in that repository root uses
 when its command line names no document, under the rule "The command line"
 states. The report the command prints states every one of these decisions.
 
-Under `--viewer open` or `--viewer serve`, and without `--host`, the binary
-serves the viewer on
+Under `--viewer open` or `--viewer serve`, the binary serves the viewer on
 a loopback port chosen before the process restricts itself, opens it with
 `/usr/bin/xdg-open` under `--viewer open`, and keeps serving for
 three seconds after the outcome is written so that an open page receives

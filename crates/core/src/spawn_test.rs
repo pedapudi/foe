@@ -119,6 +119,7 @@ fn inherited_executable_name_preserves_child_contract_fingerprint() {
 /// header and request, accepts routed answers, and calls the host tool
 /// `notify`. It completes with both answers as its value.
 pub(crate) const FAKE_CHILD: &str = r#"#!/bin/sh
+exec <&3 >&4
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 echo '{"seq":9,"time":1,"type":"model/request","episode_id":"ep_grand","data":{"step":1,"attempt":1,"request_id":"rq_g","header_seq":0,"consumed":[],"messages":[]}}'
 echo '{"seq":1,"time":1,"type":"request/header","data":{"reason":"initial","system":"survey the module","tools":[],"model":{"provider":"fixture","model":"m"}}}'
@@ -133,6 +134,7 @@ echo "{\"seq\":5,\"time\":1,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"ki
 /// A stand-in child that runs until the parent writes it a line. The
 /// parent's teardown writes `cancel`, which is what ends it.
 pub(crate) const WAITING_CHILD: &str = r#"#!/bin/sh
+exec <&3 >&4
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 read -r line
 echo '{"seq":1,"time":1,"type":"episode/end","data":{"outcome":{"kind":"failed","error":"cancelled"}}}'
@@ -149,6 +151,7 @@ pub(crate) fn fake_child(dir: &Path) -> Vec<OsString> {
 /// A stand-in child that settles one child of its own and then ends, so
 /// that what it reports covers a subtree rather than itself alone.
 pub(crate) const NESTING_CHILD: &str = r#"#!/bin/sh
+exec <&3 >&4
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 echo '{"seq":1,"time":1,"type":"budget/release","data":{"child_id":"ep_grand","spent":{"model_calls":3,"input_tokens":40,"output_tokens":10,"episodes":2}}}'
 echo '{"seq":2,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'
@@ -668,6 +671,7 @@ fn spawn_refuses_contracts_outside_the_grant() {
 /// descendant and one of its own, waits for both answers, and ends with
 /// them as its value.
 const ASKING_CHILD: &str = r#"#!/bin/sh
+exec <&3 >&4
 echo '{"seq":0,"time":1,"type":"episode/start","data":{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{},"contract_fingerprint":"sha256:0","task":"t","runtime":{"version":"0","build":"unknown"},"sandbox":{"mode":"off","landlock_abi":0,"resolved_permissions":{},"process_boundary":{"kind":"process-group","subtree_cleanup":"observational"}}}}'
 echo '{"seq":7,"time":1,"type":"host/tool-call","episode_id":"ep_grand","data":{"step":1,"call_id":"tc_g","name":"ask_host","args":{}}}'
 read -r grand

@@ -2,9 +2,15 @@
 
 The script accepts the three command lines the package issues:
 
-    fake_foe --config FILE --host --log-dir DIR    run one episode under DIR/<episode-id>
+    fake_foe --config FILE --log-dir DIR --protocol-fds READ,WRITE --viewer off
+                                                   run one episode under DIR/<episode-id>
     fake_foe plan --json --config FILE             print the contract fingerprint
     fake_foe view DIR --serve                      print a URL and wait
+
+The episode form reads the host's answers from the first descriptor and
+writes every log event to the second, which docs/protocol.md "Launch"
+states. Standard output is the channel for a person and carries nothing the
+host parses.
 
 Two options may precede any of them, so that a test can build a binary the
 package refuses. `--log-version VALUE` states VALUE as the log format
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -45,13 +52,14 @@ EPISODE_ID = "ep_fake"
 
 
 class Log:
-    def __init__(self, log_parent: Path, log_version: int | None) -> None:
+    def __init__(self, log_parent: Path, log_version: int | None, events: TextIO) -> None:
         # `--log-dir` names the parent, exactly as the binary reads it, and
         # the run announces the directory it created.
         log_dir = log_parent / EPISODE_ID
         log_dir.mkdir(parents=True, exist_ok=True)
         print(f"foe: log {log_dir}", file=sys.stderr, flush=True)
         self.file: TextIO = (log_dir / "episode.jsonl").open("w", encoding="utf-8")
+        self.events_channel = events
         self.seq = 0
         self.log_version = log_version
         self.events: list[dict[str, Any]] = []
@@ -67,8 +75,8 @@ class Log:
         line = json.dumps(event, ensure_ascii=False)
         self.file.write(line + "\n")
         self.file.flush()
-        sys.stdout.write(line + "\n")
-        sys.stdout.flush()
+        self.events_channel.write(line + "\n")
+        self.events_channel.flush()
         self.events.append(event)
         self.seq += 1
         return event["seq"]
@@ -91,25 +99,27 @@ class Versions:
 
 
 class Episode:
-    def __init__(self, config: dict[str, Any], log_parent: Path, versions: Versions) -> None:
+    def __init__(
+        self, config: dict[str, Any], log_parent: Path, versions: Versions, channel: tuple[TextIO, TextIO]
+    ) -> None:
         self.config = config
         self.versions = versions
-        self.log = Log(log_parent, versions.log)
+        self.log = Log(log_parent, versions.log, channel[1])
         self.host_tools: dict[str, Any] = config.get("host_tools") or {}
         # Items received over the protocol are held until the next step
         # assembles, so that their `seq` follows the previous step's results.
         self.held: list[dict[str, Any]] = []
         self.pending_inbox: list[int] = []
-        self.stdin = sys.stdin
+        self.answers = channel[0]
 
-    # ---- stdin ----------------------------------------------------------------
+    # ---- the host's answers ----------------------------------------------------
 
     def read_line(self) -> dict[str, Any]:
         """The next host line, after handling inbox items and cancel inline."""
         while True:
-            raw = self.stdin.readline()
+            raw = self.answers.readline()
             if not raw:
-                self.end({"kind": "failed", "error": "host closed standard input"})
+                self.end({"kind": "failed", "error": "host closed the protocol channel"})
                 sys.exit(1)
             try:
                 obj = json.loads(raw)
@@ -422,16 +432,18 @@ def main(argv: list[str]) -> int:
         print("http://127.0.0.1:34567/", flush=True)
         sys.stdin.read()
         return 0
-    if "--host" not in argv:
-        print("fake_foe: only the --host form runs an episode", file=sys.stderr)
+    if "--protocol-fds" not in argv:
+        print("fake_foe: only the hosted form runs an episode", file=sys.stderr)
         return 1
+    read_fd, write_fd = (int(number) for number in argv[argv.index("--protocol-fds") + 1].split(","))
+    channel = (os.fdopen(read_fd, "r", encoding="utf-8"), os.fdopen(write_fd, "w", encoding="utf-8"))
     config_path = Path(argv[argv.index("--config") + 1])
     log_parent = Path(argv[argv.index("--log-dir") + 1])
     config = json.loads(config_path.read_text(encoding="utf-8"))
     if "task" not in config:
         print("task: required", file=sys.stderr)
         return 1
-    return Episode(config, log_parent, versions).run()
+    return Episode(config, log_parent, versions, channel).run()
 
 
 if __name__ == "__main__":

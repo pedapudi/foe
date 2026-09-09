@@ -17,8 +17,20 @@
 // verbatim so that the tests read the shapes a real provider failure
 // produces rather than shapes chosen to make them pass.
 
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import {
+  chmodSync,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
@@ -525,7 +537,7 @@ const PROJECT = "/home/user/project";
 const TOOLS = "/home/user/tools";
 
 /** Answers every model request over the host protocol with a fixed script. */
-function answerModel(run, event, header, counters) {
+function answerModel(answers, event, header, counters) {
   const request = event.data;
   const requestId = request.request_id;
   const tag = event.episode_id;
@@ -539,7 +551,7 @@ function answerModel(run, event, header, counters) {
   const emit = (chunk) => {
     const line = { type: "model/chunk", request_id: requestId, chunk };
     if (tag !== undefined) line.episode_id = tag;
-    run.stdin.write(`${JSON.stringify(line)}\n`);
+    answers.write(`${JSON.stringify(line)}\n`);
   };
   const call = (id, name, args) => {
     emit({ kind: "tool_call_start", id, name });
@@ -707,6 +719,9 @@ async function workflowRun() {
   const root = mkdtempSync(join(tmpdir(), "foe-workflow-fixture-"));
   let run;
   let exited;
+  let answers;
+  let eventLines;
+  let wake;
   try {
     mkdirSync(join(root, "project", "src"), { recursive: true });
     mkdirSync(join(root, "state"), { recursive: true });
@@ -716,9 +731,25 @@ async function workflowRun() {
     const config = join(root, "config.json");
     writeFileSync(config, JSON.stringify(workflowConfig(root), null, 2));
     const logs = join(root, "logs");
-    run = spawn(BINARY, ["--config", config, "--log-dir", logs, "--host"], {
+    // The protocol runs on two named pipes given to the binary as
+    // descriptors 3 and 4, which docs/protocol.md "Launch" states. The
+    // binary reopens each descriptor through /proc/self/fd, and the pipe
+    // this process would hand it as a standard stream is a socket, which
+    // cannot be reopened that way. Each pipe is opened here for reading and
+    // writing, so neither open waits for the other end and neither stream
+    // ends before this process closes it.
+    const answersPath = join(root, "answers");
+    const eventsPath = join(root, "events");
+    execFileSync("mkfifo", [answersPath, eventsPath]);
+    const answersFd = openSync(answersPath, "r+");
+    const eventsFd = openSync(eventsPath, "r+");
+    answers = createWriteStream(null, { fd: answersFd });
+    eventLines = createReadStream(null, { fd: eventsFd });
+    wake = () => writeSync(eventsFd, "\n");
+    const options = ["--config", config, "--log-dir", logs, "--protocol-fds", "3,4", "--viewer", "off"];
+    run = spawn(BINARY, options, {
       detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "pipe", answersFd, eventsFd],
     });
     let stderr = "";
     run.stderr.setEncoding("utf8");
@@ -730,7 +761,7 @@ async function workflowRun() {
     const headers = new Map();
     const counters = new Map();
     let outcome;
-    const lines = createInterface({ input: run.stdout, crlfDelay: Infinity });
+    const lines = createInterface({ input: eventLines, crlfDelay: Infinity });
     for await (const line of lines) {
       const event = JSON.parse(line);
       const tag = event.episode_id ?? "";
@@ -738,11 +769,14 @@ async function workflowRun() {
       if (event.type === "model/request") {
         const header = headers.get(`${tag}:${event.data.header_seq}`);
         if (header === undefined) throw new Error(`request/header ${event.data.header_seq} was never received`);
-        answerModel(run, event, header, counters);
+        answerModel(answers, event, header, counters);
       }
       if (event.type === "episode/end" && event.episode_id === undefined) {
+        // The root episode's end is the last line of the exchange. This
+        // process holds a writing end of each pipe, so nothing else would
+        // end the reading of them.
         outcome = event.data.outcome;
-        run.stdin.end();
+        break;
       }
     }
     const status = await exited;
@@ -801,8 +835,12 @@ async function workflowRun() {
     }
     console.log(`workflow.jsonl and ${names.join(", ")} written by ${BINARY}`);
   } finally {
+    // A read of a named pipe that is waiting for data cannot be cancelled,
+    // so one byte wakes it before the reading stream closes.
+    if (answers !== undefined) answers.end();
+    if (wake !== undefined) wake();
+    if (eventLines !== undefined) eventLines.destroy();
     if (run !== undefined && run.exitCode === null) {
-      run.stdin.end();
       if (process.platform === "win32" || run.pid === undefined) {
         run.kill();
       } else {

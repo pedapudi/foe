@@ -46,7 +46,7 @@ fn parse(line: &str) -> Result<Command, String> {
     command(&args)
 }
 
-/// docs/design.md: readable terminal output is opt-in and excludes the host protocol.
+/// docs/design.md: readable terminal output is opt-in.
 #[test]
 fn conversation_is_an_explicit_running_option() {
     let Ok(Command::Run(default)) = parse("a-task") else { panic!() };
@@ -57,8 +57,6 @@ fn conversation_is_an_explicit_running_option() {
     }
     let Ok(Command::Run(options)) = parse("a-task --conversation --viewer serve") else { panic!() };
     assert!(options.conversation && options.viewer == run::Viewer::Serve);
-    let error = parse("--config c.json --host --conversation").err().unwrap();
-    assert_eq!(error, "--conversation cannot be combined with --host");
     assert!(parse("view logs --conversation").is_err());
 }
 
@@ -76,7 +74,8 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert_eq!((provider.as_deref(), model.as_deref()), (Some("example"), Some("m")));
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
-    assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
+    let Ok(Command::Run(options)) = parse("--config c.json --protocol-fds 3,4") else { panic!() };
+    assert_eq!(options.protocol_fds, Some((3, 4)));
     let Ok(Command::Run(options)) = parse("fix --model example/m --service-tier priority --sandbox off --viewer off")
     else {
         panic!()
@@ -94,19 +93,27 @@ fn every_form_parses_and_foreign_options_are_refused() {
     assert!(parse("plan --schema --json").is_err(), "--schema stands alone");
     assert!(parse("plan --config c.json --evidence ev").is_err(), "plan rejects removed adoption options");
     assert!(parse("view --json").is_err(), "an option of another form is refused");
-    assert!(parse("fix --host").is_err(), "--host takes its task from the configuration");
     assert!(parse("view").is_err(), "view needs a directory");
     assert!(parse("").is_err());
 }
 
-/// A host takes the task of its run from the document, and a built-in
-/// document carries no task of its own, so the parser refuses the pair and
-/// states the rule.
+/// docs/protocol.md "Launch": no option a run takes behaves differently for
+/// the presence of a host. A task on the command line, a built-in document,
+/// the viewer, and the conversation are what the command line asked for,
+/// whether or not another process answers the model requests.
 #[test]
-fn a_built_in_name_is_refused_beside_host() {
-    let Err(error) = parse("--config builtin:coding --host") else { panic!("a built-in name serves no host") };
-    assert_eq!(error, "--host takes the task from a document file; a built-in name carries no task");
-    assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(_))), "a document file still serves a host");
+fn the_protocol_channel_changes_no_other_option() {
+    for host in ["", " --protocol-fds 3,4"] {
+        let Ok(Command::Run(options)) = parse(&format!("fix --config builtin:coding --conversation{host}")) else {
+            panic!("a built-in document with a task runs{host}")
+        };
+        assert_eq!(options.task.as_deref(), Some("fix"));
+        assert_eq!(options.config.as_deref(), Some("builtin:coding"));
+        assert!(options.conversation);
+        assert_eq!(options.viewer, run::Viewer::Open, "the viewer is what the command line asked for");
+        let Ok(Command::Run(off)) = parse(&format!("fix --viewer off{host}")) else { panic!("--viewer off{host}") };
+        assert_eq!(off.viewer, run::Viewer::Off);
+    }
 }
 
 #[test]
@@ -141,8 +148,8 @@ fn the_schema_is_json_and_names_every_key_of_the_document() {
 fn golden(line: &str) -> String {
     match parse(line) {
         Ok(Command::Run(o)) => format!(
-            "run task={:?} config={:?} model={:?} log_dir={:?} from={:?} at={:?} viewer={:?} host={}",
-            o.task, o.config, o.model, o.log_dir, o.from, o.at, o.viewer, o.host
+            "run task={:?} config={:?} model={:?} log_dir={:?} from={:?} at={:?} viewer={:?} protocol_fds={:?}",
+            o.task, o.config, o.model, o.log_dir, o.from, o.at, o.viewer, o.protocol_fds
         ),
         Ok(Command::Init { repository }) => format!("init repository={repository:?}"),
         Ok(Command::Login(login::Options { provider, model, key_file, status })) => {
@@ -166,29 +173,34 @@ fn representative_invocations_parse_to_known_values() {
         (
             "fix",
             "run task=Some(\"fix\") config=None model=None log_dir=None from=None at=None viewer=Open \
-             host=false",
+             protocol_fds=None",
         ),
         (
             "fix --config c.json --model p/m --log-dir logs --viewer serve",
             "run task=Some(\"fix\") config=Some(\"c.json\") model=Some(\"p/m\") log_dir=Some(\"logs\") from=None \
-             at=None viewer=Serve host=false",
+             at=None viewer=Serve protocol_fds=None",
         ),
         (
-            "--config c.json --host --log-dir logs",
+            "--config c.json --protocol-fds 3,4 --log-dir logs",
             "run task=None config=Some(\"c.json\") model=None log_dir=Some(\"logs\") from=None \
-             at=None viewer=Off host=true",
+             at=None viewer=Open protocol_fds=Some((3, 4))",
         ),
-        ("--config builtin:coding --host", "error"),
+        (
+            "--config builtin:coding --protocol-fds 3,4",
+            "run task=None config=Some(\"builtin:coding\") model=None log_dir=None from=None \
+             at=None viewer=Open protocol_fds=Some((3, 4))",
+        ),
+        ("--config c.json --protocol-fds 3", "error"),
         ("fix --viewer watch", "error"),
         (
             "redo --from /logs/ep_1@12",
             "run task=Some(\"redo\") config=None model=None log_dir=None \
-             from=Some(\"/logs/ep_1\") at=Some(12) viewer=Open host=false",
+             from=Some(\"/logs/ep_1\") at=Some(12) viewer=Open protocol_fds=None",
         ),
         (
             "fix --config builtin:coding",
             "run task=Some(\"fix\") config=Some(\"builtin:coding\") model=None log_dir=None \
-             from=None at=None viewer=Open host=false",
+             from=None at=None viewer=Open protocol_fds=None",
         ),
         ("init --repository repo", "init repository=\"repo\""),
         ("init", "error"),
@@ -214,7 +226,7 @@ fn representative_invocations_parse_to_known_values() {
         (
             "tools",
             "run task=Some(\"tools\") config=None model=None log_dir=None from=None at=None \
-             viewer=Open host=false",
+             viewer=Open protocol_fds=None",
         ),
         ("telemetry a.jsonl b.jsonl --json", "telemetry logs=[\"a.jsonl\", \"b.jsonl\"] json=true"),
         ("", "error"),
@@ -260,8 +272,8 @@ fn every_form_documents_every_option_it_accepts() {
 }
 
 /// docs/design.md "The command line": the running form's help lists each of
-/// its options once, under the heading its row names, and `--host` above
-/// every heading because it selects a different way to run.
+/// its options once, under the heading its row names, and `--protocol-fds`
+/// above every heading because it names the channel to a host process.
 #[test]
 fn the_running_help_lists_every_option_under_one_group() {
     let text = help_of(&FORMS[0]);
@@ -269,7 +281,7 @@ fn the_running_help_lists_every_option_under_one_group() {
     for o in OPTS.iter().filter(|o| o.command.is_empty()) {
         let named = GROUPS.iter().filter(|group| **group == o.group).count();
         match o.flag {
-            "--host" => assert_eq!(o.group, "", "--host stands above the groups"),
+            "--protocol-fds" => assert_eq!(o.group, "", "--protocol-fds stands above the groups"),
             flag => assert_eq!(named, 1, "{flag} names {named} of the groups the help prints"),
         }
         assert_eq!(listed(o.flag), 1, "{} is listed {} times:\n{text}", o.flag, listed(o.flag));

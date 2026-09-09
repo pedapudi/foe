@@ -44,8 +44,8 @@ const fn opt(command: Text, group: Text, flag: Text, value: Text, absent: Text, 
 /// The headings the running form's help lists its options under, in order.
 /// Each says what the options beneath it decide, so a reader looking for one
 /// decision reads one group. Every running option names exactly one, except
-/// `--host`, which selects a different way to run rather than adjusting a
-/// run and is listed above them all.
+/// `--protocol-fds`, which names the channel to a host process rather than
+/// adjusting a run and is listed above them all.
 const WHAT_RUNS: Text = "what runs";
 const BUILT_IN_ONLY: Text = "built-in documents only";
 const THE_MODEL: Text = "the model, when the document names none";
@@ -138,7 +138,7 @@ const OPTS: &[Opt] = &[
         WATCHING,
         "--viewer",
         "MODE",
-        "open, and off under --host",
+        "open",
         "the browser viewer: open a browser on it, serve without opening one, or off",
     ),
     opt(
@@ -152,10 +152,11 @@ const OPTS: &[Opt] = &[
     opt(
         "",
         "",
-        "--host",
+        "--protocol-fds",
+        "READ,WRITE",
         "",
-        "",
-        "answer model requests over the protocol on standard input; --config carries the task",
+        "speak the host protocol on two inherited pipes: read the host's answers from READ and write every log \
+         event to WRITE",
     ),
     opt("login", "", "--model", "MODEL", "chosen from the provider's list", "the default model to record"),
     opt(
@@ -412,11 +413,7 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 },
                 None => (None, None),
             };
-            // `--host` gives standard output to the log, so it runs with no
-            // viewer whatever the command line named. A named value is still
-            // read, so a value none of the three matches is reported.
-            let host = args.switch("--host");
-            let named_viewer = args.value("--viewer").map(|value| run::Viewer::parse(&value)).transpose()?;
+            let viewer = args.value("--viewer").map(|value| run::Viewer::parse(&value)).transpose()?;
             let options = run::Options {
                 task: args.positional.pop(),
                 config: args.value("--config"),
@@ -426,26 +423,14 @@ fn command(argv: &[String]) -> Result<Command, String> {
                 sandbox: args.value("--sandbox"),
                 permit_everything: args.switch("--dangerously-permit-everything-no-sandbox"),
                 log_dir: args.value("--log-dir").map(PathBuf::from),
-                viewer: match host {
-                    true => run::Viewer::Off,
-                    false => named_viewer.unwrap_or_default(),
-                },
+                viewer: viewer.unwrap_or_default(),
                 conversation: args.switch("--conversation"),
-                host,
+                protocol_fds: args.value("--protocol-fds").map(|value| run::protocol_fds(&value)).transpose()?,
                 from,
                 at,
             };
-            if options.host && options.conversation {
-                return Err("--conversation cannot be combined with --host".into());
-            }
             if options.task.is_none() && options.config.is_none() && options.from.is_none() {
                 return Err("give a task, --config FILE, or --from DIR; run `foe --help`".into());
-            }
-            if options.host && (options.task.is_some() || options.config.is_none()) {
-                return Err("--host takes the task from --config FILE".into());
-            }
-            if options.host && options.config.as_deref().is_some_and(|c| c.starts_with(run::BUILTIN_PREFIX)) {
-                return Err("--host takes the task from a document file; a built-in name carries no task".into());
             }
             Command::Run(options)
         }

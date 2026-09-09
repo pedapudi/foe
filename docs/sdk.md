@@ -3,9 +3,9 @@
 `foe` is a Python package that embeds the runtime. The package is a host in
 the sense of [protocol.md](protocol.md): it builds the configuration
 document that [config.md](config.md) specifies, runs the `foe` binary,
-answers the protocol over the binary's standard input and standard output,
-and returns a typed outcome. The binary is the runtime; it owns the episode
-loop, the log, the grants, and the sandbox. The package executes no tool of
+answers the protocol over a pipe in each direction, and returns a typed
+outcome. The binary is the runtime; it owns the episode loop, the log, the
+grants, and the sandbox. The package executes no tool of
 its own: a tool the application declares is routed to the callable it
 supplied. The application supplies a model backend when the contract omits a
 `model` block. When the contract declares a `model` block, the binary calls
@@ -296,14 +296,19 @@ A contract without one requires a model backend. "Who calls the model"
 below states what each choice means.
 
 The package writes the document to a temporary file, creates `log_dir`
-when it does not exist, and launches
-`foe --config FILE --host --log-dir DIR`. The binary creates the episode's
-own directory under that one and names it in `handle.log_dir`. The temporary file is removed
-when the binary exits. `on_event` receives every line the binary writes,
-parsed into a `foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`,
-and `version`; the callback runs on the event loop and should return
-quickly. `max_output_tokens` is passed through to the model backend on every
-request; the package has no opinion about its value.
+when it does not exist, opens one pipe in each direction, and launches
+`foe --config FILE --log-dir DIR --protocol-fds READ,WRITE --viewer off`.
+READ and WRITE are the descriptors of the two pipe ends the binary
+inherits. The binary creates the episode's own directory under the named one
+and names it in `handle.log_dir`. The binary's standard output is the
+channel for a person, and the package sends it to a null device: the outcome
+reaches the application through `handle.wait()`. A viewer over a finished
+log directory is `foe.serve`. The temporary file is removed when the binary
+exits. `on_event` receives every line the binary writes, parsed into a
+`foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`, and `version`;
+the callback runs on the event loop and should return quickly.
+`max_output_tokens` is passed through to the model backend on every request;
+the package has no opinion about its value.
 
 `Handle` exposes:
 
@@ -698,7 +703,7 @@ exits without writing `episode/start`, and leaves a `Failed` outcome.
 ## Testing without the binary
 
 `python/tests/fake_foe.py` is a stand-in for the binary that speaks the
-protocol over standard input and standard output and writes
+protocol over the descriptors `--protocol-fds` names and writes
 `episode.jsonl`. It covers the episode shapes the package has to handle:
 a text turn, a host tool call, a built-in tool call, a `block` call, a
 `return` call with a verifier, a steer arriving mid-request, `cancel`, a

@@ -8,28 +8,12 @@
 
 use crate::budget::Pool;
 use crate::loop_::{lock, Log};
-use crate::protocol::{self, Downlink};
+use crate::protocol::Downlink;
 use crate::spawn::{ChildRun, ProcessSpawner, Router, Uplink};
 use crate::LeadLog;
 use crate::{CapError, SpawnHandle, SpawnRequest, Spawner};
 use foe_log::{BudgetAmount, Event, EventData};
 use std::sync::{Arc, Mutex};
-
-/// Forwards a descendant's tagged lines to the host on standard output, for
-/// a process running under `--host`.
-pub struct StdoutUplink;
-
-impl Uplink for StdoutUplink {
-    fn forward(&self, line: &str) {
-        if let Err(e) = protocol::forward_line(line) {
-            eprintln!("foe: forwarding to the host: {e}");
-        }
-    }
-
-    fn answers(&self) -> bool {
-        true
-    }
-}
 
 /// Drops forwarded lines, for a process with no host. A descendant's
 /// `model/request` then records a call the descendant makes itself, and no

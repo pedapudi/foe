@@ -27,8 +27,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$binary" --config "$config" --host --log-dir "$log_parent" \
-    <"$to_runtime" >"$from_runtime" 2>"$foe_stderr" &
+# The two named pipes are the protocol channel: the runtime reads this
+# script's answers from descriptor 3 and writes every log event to
+# descriptor 4. Its standard output is the channel for a person and has no
+# reader here.
+"$binary" --config "$config" --log-dir "$log_parent" --protocol-fds 3,4 --viewer off \
+    3<"$to_runtime" 4>"$from_runtime" </dev/null >/dev/null 2>"$foe_stderr" &
 runtime_pid=$!
 exec 3>"$to_runtime"
 

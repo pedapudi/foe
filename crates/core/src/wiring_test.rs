@@ -86,7 +86,7 @@ async fn settlement_recording_failure_cannot_publish_success_or_admit_another_ch
             },
         ];
         let body = format!(
-            "#!/bin/sh\nprintf '%s\\n' '{}' '{}'\n",
+            "#!/bin/sh\nexec <&3 >&4\nprintf '%s\\n' '{}' '{}'\n",
             serde_json::to_string(&lines[0]).unwrap(),
             serde_json::to_string(&lines[1]).unwrap()
         );
@@ -179,6 +179,7 @@ async fn a_subtree_boundary_is_empty_before_the_reservation_returns() {
     let pid_file = dir.join("detached.pid");
     let body = format!(
         r#"#!/bin/sh
+exec <&3 >&4
 /usr/bin/setsid -f /bin/sh -c 'echo $$ > "$1"; exec /bin/sleep 30' foe-detached '{}'
 while [ ! -s '{}' ]; do :; done
 echo '{{"seq":0,"time":1,"type":"episode/start","data":{{"id":"ep_child","parent_id":"ep_root","fork_origin":null,"team_id":"ep_root","contract":{{}},"contract_fingerprint":"sha256:0","task":"t","runtime":{{"version":"0","build":"unknown"}},"sandbox":{{"mode":"off","landlock_abi":0,"resolved_permissions":{{}},"process_boundary":{{"kind":"process-group","subtree_cleanup":"observational"}}}}}}}}'

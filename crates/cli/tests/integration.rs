@@ -1,8 +1,9 @@
-//! The built binary end to end: episodes under `--host` driven by a scripted
+//! The built binary end to end: hosted episodes driven by a scripted
 //! host, `plan --json` over the examples, and the examples against the
 //! schema the binary prints.
 
 use serde_json::{json, Value};
+use std::ffi::OsStr;
 use std::io::{BufRead, BufReader, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -118,7 +119,22 @@ fn announced_log(stderr: &str, given: &Path) -> PathBuf {
     given.to_path_buf()
 }
 
-/// Runs the binary under `--host`, answering each `model/request` with the
+/// The binary as a host launches it: the two pipes the caller supplies as
+/// standard input and standard output become the descriptors the protocol
+/// runs on, and the binary's own standard output, which is the person's
+/// channel, is discarded. The shell maps them, so that a test needs no
+/// descriptor-mapping library of its own.
+fn hosted(args: &[&OsStr]) -> Command {
+    let mut command = Command::new("/bin/sh");
+    command
+        .arg("-c")
+        .arg(r#"exec "$0" "$@" --protocol-fds 3,4 --viewer off 3<&0 4>&1 <&- >/dev/null"#)
+        .arg(FOE)
+        .args(args);
+    command
+}
+
+/// Runs the binary as a host does, answering each `model/request` with the
 /// next scripted response and each `host/tool-call` through `answer`.
 /// Returns every event the binary wrote and its exit code.
 fn host_run(
@@ -141,28 +157,20 @@ fn host_run_with_log(
 ) -> (Vec<Value>, i32, PathBuf) {
     let config_path = dir.join("config.json");
     std::fs::write(&config_path, serde_json::to_vec_pretty(config).unwrap()).unwrap();
-    let mut child = Command::new(FOE)
-        .arg("--config")
-        .arg(&config_path)
-        .arg("--host")
-        .arg("--log-dir")
-        .arg(dir.join("log"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let log_parent = dir.join("log");
+    let args = [OsStr::new("--config"), config_path.as_os_str(), OsStr::new("--log-dir"), log_parent.as_os_str()];
+    let mut child = hosted(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut answers = child.stdin.take().unwrap();
+    let written_events = BufReader::new(child.stdout.take().unwrap());
     let mut stderr = child.stderr.take().unwrap();
     let mut events = Vec::new();
     let mut send = |mut line: Value, tag: Option<&Value>| {
         if let Some(id) = tag {
             line["episode_id"] = id.clone();
         }
-        writeln!(stdin, "{line}").unwrap()
+        writeln!(answers, "{line}").unwrap()
     };
-    for line in stdout.lines() {
+    for line in written_events.lines() {
         let event: Value = serde_json::from_str(&line.unwrap()).unwrap();
         // A line tagged with an episode id is a descendant's request passed
         // through this process; the answer carries the tag back.
@@ -195,14 +203,14 @@ fn host_run_with_log(
             break;
         }
     }
-    drop(stdin);
+    drop(answers);
     let code = child.wait().unwrap().code().unwrap();
     let mut err = String::new();
     std::io::Read::read_to_string(&mut stderr, &mut err).unwrap();
     let log_dir = announced_log(&err, &dir.join("log"));
     let file = std::fs::read_to_string(log_dir.join("episode.jsonl")).unwrap();
     let written: Vec<Value> = file.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
-    assert_eq!(written, events, "standard output is the log, line for line");
+    assert_eq!(written, events, "the protocol channel is the log, line for line");
     (events, code, log_dir)
 }
 
@@ -1127,7 +1135,7 @@ fn a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted() {
 /// The wiring itself is pinned by the unit tests over `builtin_contract_document`;
 /// the bare form cannot run under a scripted transport, because the exec
 /// provider needs a `model` option no flag sets, so these runs drive the
-/// same document under `--host`.
+/// same document with a scripted host answering its model requests.
 fn coding_workflow(dir: &Path, verifier: Option<&Path>) -> Value {
     let node = |name: &str, tools: Value| {
         json!({
@@ -2065,15 +2073,15 @@ fn help_exits_zero_on_standard_output_for_every_form() {
     assert_eq!(bare.status.code(), Some(1), "a bare `foe` still refuses");
 }
 
-/// Starts the binary under `--host` with the given running-form arguments
-/// and drives the protocol: each `model/request` is answered with the next
-/// scripted response. A launch over a seeded log first mirrors the seeded
-/// prefix, whose copied requests want no answer, so answering begins after
-/// the mirrored `seed/end` when `live_after_seed` is set. With `kill_at`
-/// set, the process is killed the moment an event of that type appears,
-/// leaving the log cut short. Returns the events read from standard
-/// output, the exit code when the process ended itself, and everything it
-/// wrote to standard error.
+/// Starts the binary with a host's protocol channel and the given
+/// running-form arguments, and drives the protocol: each `model/request` is
+/// answered with the next scripted response. A launch over a seeded log
+/// first mirrors the seeded prefix, whose copied requests want no answer, so
+/// answering begins after the mirrored `seed/end` when `live_after_seed` is
+/// set. With `kill_at` set, the process is killed the moment an event of
+/// that type appears, leaving the log cut short. Returns the events read
+/// from the channel, the exit code when the process ended itself, and
+/// everything it wrote to standard error.
 fn drive(
     config_path: &Path,
     extra: &[&str],
@@ -2081,22 +2089,15 @@ fn drive(
     kill_at: Option<&str>,
     live_after_seed: bool,
 ) -> (Vec<Value>, Option<i32>, String) {
-    let mut child = Command::new(FOE)
-        .arg("--config")
-        .arg(config_path)
-        .arg("--host")
-        .args(extra)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut args: Vec<&OsStr> = vec![OsStr::new("--config"), config_path.as_os_str()];
+    args.extend(extra.iter().map(OsStr::new));
+    let mut child = hosted(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut answers = child.stdin.take().unwrap();
+    let from_channel = BufReader::new(child.stdout.take().unwrap());
     let mut stderr = child.stderr.take().unwrap();
     let (mut events, mut killed) = (Vec::new(), false);
     let mut live = !live_after_seed;
-    for line in stdout.lines() {
+    for line in from_channel.lines() {
         let Ok(line) = line else { break };
         let event: Value = serde_json::from_str(&line).unwrap();
         let kind = event["type"].as_str().unwrap().to_string();
@@ -2109,7 +2110,7 @@ fn drive(
         if live && kind == "model/request" {
             let id = event["data"]["request_id"].clone();
             for chunk in responses.remove(0) {
-                writeln!(stdin, "{}", json!({ "type": "model/chunk", "request_id": id, "chunk": chunk })).unwrap();
+                writeln!(answers, "{}", json!({ "type": "model/chunk", "request_id": id, "chunk": chunk })).unwrap();
             }
         }
         events.push(event);
@@ -2117,7 +2118,7 @@ fn drive(
             break;
         }
     }
-    drop(stdin);
+    drop(answers);
     let status = child.wait().unwrap();
     let mut err = String::new();
     std::io::Read::read_to_string(&mut stderr, &mut err).unwrap();
@@ -2180,8 +2181,8 @@ fn each_run_creates_its_own_directory_under_the_one_named() {
 }
 
 /// A configuration whose `model` block reaches a scripted loopback endpoint,
-/// so a run without `--host` completes from fixed responses and a command
-/// line may carry a task of its own.
+/// so a run with no host completes from fixed responses and a command line
+/// may carry a task of its own.
 fn scripted_model_config(dir: &Path, server: &Server) -> Value {
     let key_file = dir.join("endpoint.key");
     std::fs::write(&key_file, "fixture-key\n").unwrap();

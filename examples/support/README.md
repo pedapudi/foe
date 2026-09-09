@@ -13,7 +13,8 @@ Five helpers support the end-to-end examples.
 ## Response ownership
 
 Deterministic examples omit the root `model` block. `run_with_host.py` starts
-the binary in host mode and answers each request with a response function.
+the binary as a host does, over the protocol channel, and answers each
+request with a response function.
 The response files stay in the repository because the binary does not execute
 them inside an episode.
 

@@ -8,7 +8,9 @@ terminals. It chooses what standard output shows and changes nothing else
 about a run: `--viewer` decides whether the browser viewer serves and
 whether a browser opens on it, `--conversation` composes with each of its
 three values, and the viewer address goes to standard error when serving
-starts. `--conversation` cannot be combined with `--host`.
+starts. A host that answers the model requests changes neither: the protocol
+runs on the descriptors `--protocol-fds` names, and standard output stays
+the display's.
 
 The display appends blocks to terminal scrollback. Each active episode has
 a column of tree connectors. A branch opens a column; its return joins

@@ -64,8 +64,8 @@ pub struct Log {
 impl Log {
     /// Creates the log, or continues one that already has events, for
     /// example one that seeding wrote. The mirror first receives an
-    /// existing file as it stands, so a host reading standard output sees
-    /// the seeded prefix as well.
+    /// existing file as it stands, so a host reading the protocol channel
+    /// sees the seeded prefix as well.
     pub fn create_or_open(dir: &Path, mut mirror: Option<Box<dyn std::io::Write + Send>>) -> Result<Self, LogError> {
         let file = dir.join(fold::LOG_FILE);
         let events = if file.exists() { fold::read_all(dir)? } else { Vec::new() };

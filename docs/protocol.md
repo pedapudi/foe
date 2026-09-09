@@ -1,14 +1,16 @@
 # Host protocol
 
-A host is a process that launches foe and talks to it over standard input
-and standard output. The Python package is a host. An orchestrator that runs
-many episodes is a host. This document specifies the exchange completely.
+A host is a process that launches foe and talks to it over a pipe in each
+direction, which it leaves open across the launch. The Python package is a
+host. An orchestrator that runs many episodes is a host. A parent episode is
+the host of every child it launches. This document specifies the exchange
+completely.
 
-The protocol has one design rule: foe's output stream is its log. Every line
-foe writes to standard output is a log event, byte-identical to the line
-appended to `episode.jsonl`. A host that reads standard output has read the
-log. The host answers a small set of those events by writing lines to foe's
-standard input, and foe records each answer as a further log event. No
+The protocol has one design rule: the channel foe writes to is its log.
+Every line foe writes to it is a log event, byte-identical to the line
+appended to `episode.jsonl`. A host that has read the channel has read the
+log. The host answers a small set of those events by writing lines to the
+other channel, and foe records each answer as a further log event. No
 exchange between foe and its host exists outside the log.
 
 ## Framing
@@ -21,19 +23,26 @@ error and terminates the episode with `failed`.
 ## Launch
 
 ```
-foe --config <path> --host [--log-dir <path>]
+foe --config <path> --protocol-fds READ,WRITE [--log-dir <path>]
 ```
+
+`--protocol-fds READ,WRITE` names two open descriptors: foe reads the host's
+answers from READ and writes every log event to WRITE. The host creates one
+pipe in each direction, keeps one end of each, and leaves the other end open
+across the launch under the number it names here. Both descriptors must be
+pipes. foe reopens each one through `/proc/self/fd` before it restricts
+itself, and a socket cannot be reopened that way.
 
 `--log-dir` names the directory the episode's own directory is created
 under, as it does for every run, and the run prints the directory it created
-on standard error. A host reads the log from standard output and needs
+on standard error. A host reads the log from the protocol channel and needs
 neither.
 
-`--host` selects this protocol. Standard output then carries the log, and
-standard input carries the host's answers. Without `--host`, standard output
-carries one JSON outcome line at the end by default. `--conversation` selects
-a readable terminal display and cannot be combined with `--host`.
-The log also goes to the file. This document specifies `--host`.
+The log also goes to the file. Standard output remains what it is in every
+other run, the channel for a person: one JSON outcome line at the end by
+default, and the conversation display under `--conversation`. A host that
+has no reader for it directs it to a null device. The browser viewer serves
+as usual, and a host that wants no viewer passes `--viewer off`.
 
 The host supplies a configuration file. foe validates it, writes
 `episode/start`, and begins. When the configuration has no `model` block,
@@ -92,9 +101,9 @@ name.
 
 ### `episode/end`
 
-Emitted last. The host reads the outcome and may close standard input. foe
-exits with code 0 when the outcome is `completed`, 2 when `blocked`, 3 when
-`exhausted`, and 1 when `failed`.
+Emitted last. The host reads the outcome and may close the channel it
+writes answers to. foe exits with code 0 when the outcome is `completed`, 2
+when `blocked`, 3 when `exhausted`, and 1 when `failed`.
 
 ## Host to foe
 
@@ -202,8 +211,8 @@ is a protocol error.
 ## Timeouts
 
 After episode cleanup, the command-line process reports its outcome or
-recording error without waiting for the host to close standard input.
-An idle input read does not extend the completed invocation.
+recording error without waiting for the host to close the answer channel.
+An idle read of that channel does not extend the completed invocation.
 
 foe waits for a `model/chunk` and for a `tool/result` up to the `seconds`
 remaining in the episode's budget. When the budget's `seconds` elapse with
@@ -230,8 +239,9 @@ declares none and relies on its host to answer or to cancel.
 ## Children
 
 A child episode is a further foe process. The parent foe process is the
-child's host: it launches the child, reads the child's standard output, and
-forwards the child's `request/header`, `model/request`, and
+child's host: it launches the child with a pipe in each direction, whose
+numbers it names in the child's `--protocol-fds`, reads the events the child
+writes, and forwards the child's `request/header`, `model/request`, and
 `host/tool-call` events to its own host, tagged with the child's id. The
 root host therefore sees every request in the tree. It answers a request
 whose governing header names the host route. A request whose header names a
@@ -259,7 +269,14 @@ endpoint request or starting any tool, verifier, or descendant.
 support children rejects configurations with a non-empty `spawn` grant; foe
 treats the `spawn` grant as unavailable and fails any spawn tool call.
 
-A process started without `--host` has no host to forward to. A
+A child's standard input and standard output are a null device, and its
+standard error is relayed to the parent's, a line at a time, prefixed with
+the child's id. The parent takes the child's result from the protocol
+channel, so the person's channel of a child has no reader. The parent also
+passes `--viewer off`, because the child serves no browser viewer of its
+own.
+
+A process started without `--protocol-fds` has no host to forward to. A
 `host/tool-call` that reaches such a process, from its own child or from any
 episode below it, is answered there with an error naming the tool, and the
 answer carries the tag of the episode that made the call. Nothing above that
@@ -301,3 +318,10 @@ uses.
 The first line foe writes is the `episode/start` event, and its
 `runtime.version` identifies the protocol version. A host that does not
 recognize the version sends `cancel` and reports the mismatch.
+
+The descriptor pair replaced an option named `--host`, which ran this
+protocol on standard input and standard output. A binary that predates the
+replacement refuses `--protocol-fds` with `foe: unknown option
+--protocol-fds`, and this binary refuses `--host` the same way. Neither
+mismatch reaches `episode/start`, so a host sees the refusal on standard
+error and an exit code of 1 rather than a cancelled episode.

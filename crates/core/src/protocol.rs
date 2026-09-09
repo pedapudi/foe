@@ -1,10 +1,12 @@
-//! The host protocol: echoing the log to stdout, reading answers from stdin, forwarding child requests.
+//! The host protocol: echoing the log to the host's channel, reading the
+//! host's answers, forwarding child requests.
 //!
-//! Implements docs/protocol.md. Standard output is the log mirror. Standard
-//! input carries four line types, parsed here and routed to whoever waits:
-//! `model/chunk` to the transport, `tool/result` to a host tool call,
-//! `inbox/item` to the log, `cancel` to the stop signal. A line tagged with
-//! a descendant's `episode_id` is handed to the [`Downlink`] unchanged.
+//! Implements docs/protocol.md. The descriptor the host named for events
+//! receives the log mirror. The descriptor it named for answers carries four
+//! line types, parsed here and routed to whoever waits: `model/chunk` to the
+//! transport, `tool/result` to a host tool call, `inbox/item` to the log,
+//! `cancel` to the stop signal. A line tagged with a descendant's
+//! `episode_id` is handed to the [`Downlink`] unchanged.
 
 use crate::loop_::{append_inbox_item, lock, until, wait_stop, Log};
 
@@ -42,22 +44,46 @@ pub trait Downlink: Send + Sync {
     fn cancel_all(&self);
 }
 
-/// The log mirror for `--host` mode. `Stdout` locks per call, so a whole
-/// line written with one call never interleaves with [`forward_line`].
-pub fn stdout_mirror() -> Box<dyn Write + Send> {
-    Box::new(std::io::stdout())
+/// The writing half of the channel a host speaks on: this process writes
+/// every event of its own log to it, and every line it forwards for a
+/// descendant. Cloning shares one lock, so a whole line written in one call
+/// never interleaves with another line.
+#[derive(Clone)]
+pub struct Channel(Arc<Mutex<std::fs::File>>);
+
+impl Channel {
+    pub fn new(out: std::fs::File) -> Self {
+        Self(Arc::new(Mutex::new(out)))
+    }
 }
 
-/// Writes a descendant's tagged event line to standard output. Such a line
-/// belongs to the descendant's log; it passes through this process so the
-/// root host sees every request in the tree.
-pub fn forward_line(line: &str) -> std::io::Result<()> {
-    let mut out = std::io::stdout().lock();
-    out.write_all(line.as_bytes())?;
-    if !line.ends_with('\n') {
-        out.write_all(b"\n")?;
+/// The log mirror. `Log` hands over one whole line per call, which this
+/// writes under the lock so that it reaches the host as one line.
+impl Write for Channel {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        lock(&self.0).write_all(buf).map(|()| buf.len())
     }
-    out.flush()
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        lock(&self.0).flush()
+    }
+}
+
+/// A descendant's tagged event line belongs to the descendant's log; it
+/// passes through this process so that the root host sees every request in
+/// the tree. The line arrives without its line feed.
+impl crate::spawn::Uplink for Channel {
+    fn forward(&self, line: &str) {
+        let mut out = lock(&self.0);
+        let sent = out.write_all(line.as_bytes()).and_then(|()| out.write_all(b"\n")).and_then(|()| out.flush());
+        if let Err(e) = sent {
+            eprintln!("foe: forwarding to the host: {e}");
+        }
+    }
+
+    fn answers(&self) -> bool {
+        true
+    }
 }
 
 /// The provider and model named in `request/header` when the host supplies
@@ -78,7 +104,7 @@ struct Inner {
     requests: Mutex<HashMap<String, RequestSlot>>,
     settled: Mutex<HashSet<String>>,
     calls: Mutex<HashMap<String, oneshot::Sender<ToolValue>>>,
-    /// Set when standard input reached its end or a protocol error ended
+    /// Set when the host's answers reached their end or a protocol error ended
     /// the exchange. Every wait on the host then fails at once.
     closed: AtomicBool,
 }
@@ -113,13 +139,13 @@ impl Host {
     }
 
     /// Reads host lines until end of input or a protocol error.
-    pub fn spawn_reader<R: AsyncRead + Unpin + Send + 'static>(&self, stdin: R) -> tokio::task::JoinHandle<()> {
+    pub fn spawn_reader<R: AsyncRead + Unpin + Send + 'static>(&self, answers: R) -> tokio::task::JoinHandle<()> {
         let host = self.clone();
-        tokio::spawn(async move { host.read_lines(stdin).await })
+        tokio::spawn(async move { host.read_lines(answers).await })
     }
 
-    pub async fn read_lines<R: AsyncRead + Unpin>(&self, stdin: R) {
-        let mut lines = BufReader::new(stdin).lines();
+    pub async fn read_lines<R: AsyncRead + Unpin>(&self, answers: R) {
+        let mut lines = BufReader::new(answers).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             if line.trim().is_empty() {
                 continue;
@@ -285,7 +311,7 @@ struct HostTransport {
 }
 
 fn closed_error(what: &str) -> Chunk {
-    Chunk::Error { message: format!("the host closed standard input before answering {what}"), retryable: false }
+    Chunk::Error { message: format!("the host closed the protocol channel before answering {what}"), retryable: false }
 }
 
 #[async_trait::async_trait]
@@ -311,8 +337,8 @@ impl Transport for HostTransport {
             lock(&inner.settled).insert(req.request_id.clone());
         };
         // Chunks that arrived before the transport claimed the request come
-        // first; the rest arrive over the channel. A host that closed
-        // standard input answers nothing further, and waiting on the
+        // first; the rest arrive over the channel. A host that closed the
+        // protocol channel answers nothing further, and waiting on the
         // channel would never end, so the closed flag ends the stream in
         // place of a terminal chunk.
         let mut buffered = buffered.into_iter();
@@ -355,7 +381,7 @@ impl Tool for HostTool {
         if inner.closed.load(Ordering::SeqCst) {
             lock(&inner.calls).remove(&ctx.call_id);
             return ToolValue::unavailable(format!(
-                "the host closed standard input before `{}` was called",
+                "the host closed the protocol channel before `{}` was called",
                 self.spec.name
             ));
         }
@@ -369,10 +395,10 @@ impl Tool for HostTool {
             lock(&inner.calls).remove(&ctx.call_id);
             return ToolValue::unavailable(format!("`{}` could not be recorded: {e}", self.spec.name));
         }
-        // The wait ends three ways besides the answer: standard input
-        // closed, the stop signal, and the `seconds` budget. A wait that
-        // ends without an answer forgets the call, so a `tool/result` that
-        // arrives afterwards is the protocol error it is.
+        // The wait ends three ways besides the answer: the protocol channel
+        // closed, the stop signal, and the `seconds` budget. A wait that ends
+        // without an answer forgets the call, so a `tool/result` that arrives
+        // afterwards is the protocol error it is.
         let name = &self.spec.name;
         let unanswered = |why: String| {
             lock(&inner.calls).remove(&ctx.call_id);
@@ -382,11 +408,11 @@ impl Tool for HostTool {
         tokio::select! {
             answer = rx => match answer {
                 Ok(value) => value,
-                // The sender is dropped both when standard input ends and
-                // when the episode stops; the stop signal says which.
+                // The sender is dropped both when the protocol channel ends
+                // and when the episode stops; the stop signal says which.
                 Err(_) => match inner.stop.borrow().clone() {
                     Some(reason) => unanswered(stopped(reason)),
-                    None => unanswered("the host closed standard input".into()),
+                    None => unanswered("the host closed the protocol channel".into()),
                 },
             },
             reason = wait_stop(inner.stop.subscribe()) => {

@@ -127,7 +127,7 @@ fn report(
     let paths = |paths: &[PathBuf]| paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ");
     let model = match &document.model {
         Some(model) => format!("{}/{}, the default `foe login` recorded", model.provider, model.model),
-        None => "none: run `foe login`, add a `model` block to the document, or run under --host".to_string(),
+        None => "none: run `foe login`, add a `model` block to the document, or run under a host".to_string(),
     };
     let mut out = String::new();
     writeln!(out, "wrote {}  the starting execution contract", contract_path.display()).ok();

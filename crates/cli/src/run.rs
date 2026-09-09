@@ -13,7 +13,7 @@ use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract
 use foe_contract::fingerprint::{compute, Fingerprint};
 use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
-use foe_core::captured_executable::{CapturedExecutableTree, InheritedExecutables};
+use foe_core::captured_executable::{process_fd_path, CapturedExecutableTree, InheritedExecutables};
 use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
@@ -21,12 +21,12 @@ use foe_core::fingerprint::runtime_info;
 use foe_core::grants::{RootReader, RootWriter};
 use foe_core::loop_::{self, Log, Params};
 use foe_core::process_boundary::ProcessOwnership;
-use foe_core::protocol::{stdout_mirror, Host};
+use foe_core::protocol::{Channel, Host};
 use foe_core::registry::{Handles, Registry};
 use foe_core::sandbox::{Policy, Sandbox};
 use foe_core::session::LocalSessions;
 use foe_core::spawn::{ChildLaunch, ProcessConnections, ProcessSpawner, Router, Uplink};
-use foe_core::wiring::{BudgetedSpawner, NoHostUplink, StdoutUplink};
+use foe_core::wiring::{BudgetedSpawner, NoHostUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedContract, SeedHeader};
 use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
@@ -111,7 +111,9 @@ pub struct Options {
     pub at: Option<u64>,
     pub viewer: Viewer,
     pub conversation: bool,
-    pub host: bool,
+    /// The descriptors of `--protocol-fds READ,WRITE`: the host's answers
+    /// are read from the first and every log event is written to the second.
+    pub protocol_fds: Option<(i32, i32)>,
 }
 
 /// The built-in tools implemented outside the registry: the coding tools
@@ -163,9 +165,7 @@ pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
     tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| format!("runtime: {e}"))
 }
 
-/// What a run does about the browser viewer. `--host` gives standard output
-/// to the log, which leaves nothing for a browser to be opened from, so it
-/// runs `Off` whatever the command line asked for.
+/// What a run does about the browser viewer.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Viewer {
     /// Serve the viewer and open the browser on it.
@@ -187,6 +187,23 @@ impl Viewer {
             other => Err(format!("--viewer {other}: expected open, serve, or off")),
         }
     }
+}
+
+/// Reads a `--protocol-fds READ,WRITE` value: the two descriptor numbers
+/// the host left open, in the order foe reads from and writes to them.
+pub fn protocol_fds(value: &str) -> Result<(i32, i32), String> {
+    let pair = value.split_once(',').and_then(|(r, w)| Some((r.trim().parse().ok()?, w.trim().parse().ok()?)));
+    pair.ok_or_else(|| format!("--protocol-fds {value}: expected READ,WRITE, two open descriptor numbers"))
+}
+
+/// The two halves of the protocol channel the descriptors name. Each is
+/// reopened through `/proc/self/fd`, which requires a pipe and refuses a
+/// socket, and each is opened before the process restricts itself.
+fn protocol_channel(fds: (i32, i32)) -> Result<(std::fs::File, Channel), String> {
+    let named = |fd: i32, e: std::io::Error| format!("--protocol-fds: descriptor {fd}: {e}");
+    let read = std::fs::File::open(process_fd_path(fds.0)).map_err(|e| named(fds.0, e))?;
+    let write = std::fs::OpenOptions::new().write(true).open(process_fd_path(fds.1)).map_err(|e| named(fds.1, e))?;
+    Ok((read, Channel::new(write)))
 }
 
 /// The compaction policy a `context` block with `compact: true` resolves
@@ -869,6 +886,7 @@ fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String>
 }
 
 pub fn run(options: Options) -> Result<ExitCode, String> {
+    let channel = options.protocol_fds.map(protocol_channel).transpose()?;
     let (mut config, recorded) = load_contract_document(&options)?;
     prepare_model(&mut config)?;
     let task = Task { text: config.task.clone(), recorded };
@@ -890,6 +908,13 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let fingerprint = fingerprint(&contract)?;
     let (log_dir, launch, note) = episode_directory(&options, &fingerprint.hash, &task)?;
     let task = task.text;
+    // A subordinate episode takes the task of its run from the document its
+    // parent wrote. A task on the command line, and a built-in document that
+    // carries none of its own, both state a run the caller meant to own.
+    let own_task = options.task.is_some() || options.config.as_deref().is_some_and(|c| c.starts_with(BUILTIN_PREFIX));
+    if own_task && launch.parent_id.is_some() {
+        return Err("an episode a parent launched takes its task from the document that parent wrote".into());
+    }
     if let Some(expected) = &launch.expected_contract_fingerprint {
         if expected != &fingerprint.hash {
             return Err(format!(
@@ -963,10 +988,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         unconfined.policy_mut().add_write_root(dir, "telemetry capture directory");
     }
-    let viewer = match serves_viewer(&options) {
-        true => Some(foe_view::Bound::bind(0).map_err(|e| e.to_string())?),
-        false => None,
-    };
+    let bind_viewer = || foe_view::Bound::bind(0).map_err(|e| e.to_string());
+    let viewer = (options.viewer != Viewer::Off).then(bind_viewer).transpose()?;
     let viewer_url = viewer.as_ref().map(foe_view::Bound::url);
     if let Some(bound) = &viewer {
         unconfined.policy_mut().add_bind_port(bound.addr.port());
@@ -978,8 +1001,10 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let runtime_info = runtime_info();
     let transport = match &contract.model {
         Some(model) => Some(built_in_transport(model)?),
-        None if options.host => None,
-        None => return Err("no model: give --model, add a `model` block, or run under --host".into()),
+        None if channel.is_some() => None,
+        None => {
+            return Err("no model: give --model, add a `model` block, or run under a host with --protocol-fds".into())
+        }
     };
     let confined = unconfined.enter().map_err(|e| e.to_string())?;
     let start = EpisodeStart {
@@ -995,19 +1020,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         effective_budget: Some(limits.clone()),
     };
     let telemetry_log_dir = log_dir.clone();
-    let setup = Setup {
-        contract,
-        executables,
-        limits,
-        log_dir,
-        confined,
-        viewer,
-        transport,
-        context,
-        start,
-        host: options.host,
-        process,
-    };
+    let setup =
+        Setup { contract, executables, limits, log_dir, confined, viewer, transport, context, start, channel, process };
     let executor = runtime()?;
     let outcome = executor.block_on(async {
         let outcome = match options.conversation {
@@ -1028,7 +1042,7 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
     }
-    if !options.host && !options.conversation {
+    if !options.conversation {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);
         // The live viewer leaves with the process; the command outlives it.
         eprintln!("foe: view the episode with foe view {}", telemetry_log_dir.display());
@@ -1039,12 +1053,6 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
         Outcome::Blocked { .. } => 2,
         Outcome::Exhausted { .. } => 3,
     }))
-}
-
-/// Whether a run serves the browser viewer: every running form does except
-/// under `--host`, whose standard output is the log, and `--viewer off`.
-fn serves_viewer(options: &Options) -> bool {
-    !(options.host || options.viewer == Viewer::Off)
 }
 
 /// The fixed prefix of the line a run writes on standard error to name the
@@ -1072,24 +1080,25 @@ struct Setup {
     transport: Option<Arc<dyn Transport>>,
     context: Option<Arc<dyn ContextPolicy>>,
     start: EpisodeStart,
-    host: bool,
+    /// The two halves of the host protocol channel, `None` without a host.
+    channel: Option<(std::fs::File, Channel)>,
     process: ProcessOwnership,
 }
 
 async fn episode(setup: Setup) -> Result<Outcome, String> {
-    let Setup { contract, executables, limits, log_dir, confined, viewer, transport, host, context, start, process } =
+    let Setup { contract, executables, limits, log_dir, confined, viewer, transport, channel, context, start, process } =
         setup;
+    let (answers, channel) = channel.unzip();
     let id = start.id.clone();
-    let log = Arc::new(
-        Log::create_or_open(&log_dir, host.then(stdout_mirror)).map_err(|e| format!("{}: {e}", log_dir.display()))?,
-    );
+    let mirror = channel.clone().map(|c| Box::new(c) as Box<dyn std::io::Write + Send>);
+    let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
     let router = Arc::new(Router::new());
     let (protocol, stop) = Host::new(id.clone(), log.clone(), Some(router.clone()));
     let cancel = Arc::new(AtomicBool::new(false));
     let transport = transport.unwrap_or_else(|| protocol.transport());
     let pool = Arc::new(Mutex::new(Pool::new(limits.clone())));
     let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone(), pool.clone()));
-    let uplink: Arc<dyn Uplink> = if host { Arc::new(StdoutUplink) } else { Arc::new(NoHostUplink) };
+    let uplink = channel.clone().map_or(Arc::new(NoHostUplink) as Arc<dyn Uplink>, |c| Arc::new(c) as Arc<dyn Uplink>);
     let connections = ProcessConnections { uplink, router: router.clone(), observer: team.clone() };
     let spawner = ProcessSpawner::new(
         id,
@@ -1115,7 +1124,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         )
         .with_boundary(process.boundary()),
     );
-    let host_tools = if host { protocol.tools(&contract) } else { Vec::new() };
+    let host_tools = channel.as_ref().map_or_else(Vec::new, |_| protocol.tools(&contract));
     let parent = start.parent_id.is_some().then_some(&protocol);
     let mut builtins: Vec<Box<dyn Tool>> = foe_code::all();
     builtins.push(foe_core::retrieval::tool(log.clone()));
@@ -1162,8 +1171,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     }
     log.with_events(|events| loop_::lock(&pool).restore(events, foe_log::append::now_millis()));
     let _ = team.schedule(spawner.clone());
-    if host {
-        protocol.spawn_reader(tokio::io::stdin());
+    if let Some(answers) = answers {
+        protocol.spawn_reader(tokio::fs::File::from_std(answers));
     }
     let params = Params {
         log,
