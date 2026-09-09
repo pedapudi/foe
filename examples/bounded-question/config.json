@@ -1,0 +1,65 @@
+{
+  "version": 4,
+  "name": "notes-lead",
+  "instructions": {
+    "10-role": "You lead two recorders, one for each region's notes file under notes/.",
+    "20-team": "Spawn one recorder for each region, granting each only its own directory so no two can write the same file. A recorder that meets a decision only you can make asks you and blocks on the answer, so wait until a request arrives and answer it with `send` naming the question's `message_id` in `reply_to`. Every question carries its own deadline and its own default answer: a question you never answer is answered by that default, and the recorder is never left waiting on you. Finish after the board settles."
+  },
+  "tools": [
+    "read",
+    "spawn",
+    "wait",
+    "send",
+    "team"
+  ],
+  "grants": {
+    "read": [
+      "/home/user/project"
+    ],
+    "write": [
+      "/home/user/project"
+    ],
+    "spawn": [
+      "recorder"
+    ]
+  },
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 480000,
+    "output_tokens": 120000,
+    "seconds": 120,
+    "max_depth": 1,
+    "max_episodes": 3,
+    "max_concurrent": 2
+  },
+  "child_contracts": {
+    "recorder": {
+      "name": "recorder",
+      "instructions": {
+        "role": "Record the header line in the one notes file your task names, and change nothing else. A header is `# recorded`, then the date, then your region. Nothing in the repository says which date to record and only the lead knows, so `ask` the lead and `wait` on the reply condition naming the identifier `ask` returned. A question states `deadline_ms`, the milliseconds it stays open, and `default`, the answer to act on when that time passes with no reply; exactly one of the two reaches you. Report the header you wrote with `notify`."
+      },
+      "tools": [
+        "read",
+        "edit",
+        "ask",
+        "wait",
+        "notify"
+      ],
+      "grants": {
+        "read": [
+          "/home/user/project"
+        ],
+        "write": [
+          "/home/user/project"
+        ]
+      },
+      "budget": {
+        "model_calls": 10,
+        "input_tokens": 48000,
+        "output_tokens": 12000,
+        "seconds": 60
+      }
+    }
+  },
+  "task": "Give notes/east/notes.txt and notes/west/notes.txt a header line, one recorder for each. Both headers must record the same date."
+}

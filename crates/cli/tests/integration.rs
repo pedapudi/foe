@@ -2107,15 +2107,16 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// uses its fingerprint to identify the execution contract that produced it.
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
-const RECORDED_FINGERPRINTS: [(&str, &str); 11] = [
+const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
+    ("bounded-question", "sha256:404269cf3005185bb0a2f02ec4bd09901146b9bf9397a7ab8b75328ffb892f8c"),
     ("budget-exhausted", "sha256:9923ad8b5f1a2ceca9560378cac5a971dfd576eb78e9915e18e876a0614a664b"),
     ("host-model-backend", "sha256:6444cfa228cc9dbc482f400e3436e47226811098859b2f270d20d656ca4fb903"),
     ("minimal", "sha256:79dc22300ae875f0d2dbb4b61eb2a24ca6d5342acfcc7f0512bce9e43a49a8f9"),
     ("recovery-exhausted", "sha256:088f305e369e3c717d8d00da524bf7c7b82b8fd5c5f9f9e132ed95c9d23e3057"),
     ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
     ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
-    ("subagents", "sha256:ead365e0deecb4bcd658de0201838a7445efcaf7b9aa355e42a76c5b4800c877"),
-    ("team", "sha256:ddb896fbf233857c43337cc151c06b7dc81ab3e9aceba14c4443d68ce74acd98"),
+    ("subagents", "sha256:6d9b6aad93ed0432a0d829e570c7125ad08e05e9c0c3d52e220169e381e79f41"),
+    ("team", "sha256:8c4dee54c52bc42581d3ecfd3300e3b64d00f57e225ad3d0086ef7cc7ea51160"),
     ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
     ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
     ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),

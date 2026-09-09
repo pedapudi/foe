@@ -5,14 +5,14 @@ uses a deterministic model response, checks its own result, and leaves an
 episode log to read. None needs a deployment credential, an external
 network, or a repository of your own.
 
-Ten examples are started by `run.sh` and three by `run.py`:
+Eleven examples are started by `run.sh` and three by `run.py`:
 
 ```sh
 sh examples/minimal/run.sh
 python3 examples/embed-an-execution-contract/run.py
 ```
 
-`scripts/examples.sh` runs all thirteen against one binary and reports how
+`scripts/examples.sh` runs all fourteen against one binary and reports how
 long each took. Continuous integration runs it, and it is the slow tier of
 the test suite: about fifteen seconds, of which the recovery-exhausted
 example is eight, because that example waits the whole retry backoff rather
@@ -44,6 +44,7 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 | stop when a checker says the work is done rather than when the model says so | [wrap-a-binary](wrap-a-binary/) |
 | delegate reading to cheap children and make the change myself | [subagents](subagents/) |
 | have children report to each other rather than only to me | [team](team/) |
+| let a worker ask me a question without leaving it stuck when I do not answer | [bounded-question](bounded-question/) |
 | fix the order of the work and let the model choose only within it | [workflow](workflow/) |
 | prove the agent cannot read what I did not grant | [sandbox](sandbox/) |
 | drive foe from my own contract | [embed-an-execution-contract](embed-an-execution-contract/) |
@@ -72,6 +73,7 @@ have seen before.
 | [wrap-a-binary](wrap-a-binary/) | one executable used as an episode tool and completion verifier |
 | [subagents](subagents/) | child contracts under narrower grants, with budget reserved from the parent's pool and returned |
 | [team](team/) | children exchanging durable peer messages through their lead |
+| [bounded-question](bounded-question/) | a worker's question answered by its lead, and another answered by the default its deadline delivers |
 | [workflow](workflow/) | declared tool and model nodes, typed branching, verification, and recovery |
 | [sandbox](sandbox/) | a configured executable under a required Landlock policy |
 | [embed-an-execution-contract](embed-an-execution-contract/) | the Python SDK: a contract supplying the model, its own host tools, and acting on the outcome |
