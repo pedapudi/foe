@@ -129,6 +129,7 @@ export interface InboxItem {
   content?: ContentBlock[];
   from?: string | null;
   message_id?: string | null;
+  synthetic?: boolean;
 }
 
 export interface SpawnStart {

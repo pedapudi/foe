@@ -165,6 +165,9 @@ function renderUser(row: UserRow): HTMLElement {
   const meta: string[] = [row.source];
   if (row.from) meta.push(`from ${row.from}`);
   if (row.messageId) meta.push(row.messageId);
+  // An item with no sender was written by the runtime rather than by a
+  // member: the default answer a question carries once its deadline passes.
+  if (row.synthetic) meta.push("written by the runtime");
   return h(
     "div",
     { class: "row user", "data-key": row.key },

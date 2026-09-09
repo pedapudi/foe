@@ -43,6 +43,8 @@ export interface UserRow extends RowBase {
   source: string;
   from: string;
   messageId: string;
+  /** True when the runtime wrote the item in a member's place. */
+  synthetic: boolean;
   content: ContentBlock[];
 }
 
@@ -374,6 +376,7 @@ export class EpisodeFold {
           source: str(data.source, "?"),
           from: str(data.from),
           messageId: str(data.message_id),
+          synthetic: data.synthetic === true,
           content: arr(data.content).map((b) => obj(b) as ContentBlock),
         });
       case "budget/reserve": {
