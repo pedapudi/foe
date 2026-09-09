@@ -1229,6 +1229,41 @@ fn a_team_surveys_delegates_answers_a_question_and_integrates() {
     }
 }
 
+/// docs/design.md "Agent teams": a run that ends `completed` while a task on
+/// the board it leads reached any other status names those tasks on standard
+/// error. The lead writes the outcome, so a lead that reports work its team
+/// never performed produces an outcome that says nothing is wrong; the board
+/// is the record of what each delegated task reached.
+#[test]
+fn a_completed_run_names_the_delegated_tasks_that_did_not_complete() {
+    let dir = scratch("team-unfinished-report");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 6, "max_depth": 1, "max_episodes": 2 });
+        c["child_contracts"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Complete the assigned task." }, "tools": ["block"],
+            "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+        } });
+    });
+    let mut delegate = call("tc_spawn", "spawn", r#"{"contract":"worker","task":"the unit","name":"unit"}"#);
+    delegate.extend(call("tc_wait", "wait", "{}"));
+    delegate.push(done("tool"));
+    let mut blocked = call("tc_block", "block", r#"{"code":"goal-unreachable","message":"the unit cannot be done"}"#);
+    blocked.push(done("tool"));
+    // The lead reports completion after its one worker blocked, which is the
+    // account no assertion on the outcome alone can question.
+    let claim = vec![text("every unit is covered"), done("end")];
+    let responses = in_order(vec![delegate, blocked, claim]);
+    let (events, code, _, reported) =
+        host_run_dispatched(&dir, &config, responses, |name, _| panic!("unexpected host tool {name}"));
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(events.last().unwrap()["data"]["outcome"]["kind"], "completed", "the lead reported completion");
+    assert!(reported.contains("completed while 1 delegated task(s) did not"), "{reported}");
+    assert!(reported.contains("task_01 (unit)"), "the report names the task and its roster name: {reported}");
+    assert!(reported.contains("goal-unreachable"), "the report carries the outcome the task reached: {reported}");
+}
+
 /// docs/protocol.md "Children": a child replaces inherited executable
 /// descriptors with close-on-exec copies before it starts any tool.
 #[test]

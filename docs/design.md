@@ -708,6 +708,13 @@ task inbox item that starts its episode. Other coordination uses the board
 projection and durable peer messages, so no idle worker or broadcast poll is
 required.
 
+A run that ends `completed` while a task on the board it leads settled in any
+other status names those tasks on standard error, one line for each, with the
+outcome that task reached. The outcome a run prints is the lead's own account
+of the work. A lead may complete after a unit it delegated failed, provided
+it says so, and the board is the record of what each delegated task reached,
+so the two are stated together.
+
 ## Workspace notes
 
 A workspace's durable notes live at `.foe/notes.md` under the first read
