@@ -196,13 +196,26 @@ fn thought_part(
     }
 }
 
-/// Appends parts to the previous `user` content when there is one.
+/// Whether a group of parts carries a function response. A `user` turn
+/// holding a `functionResponse` beside a text part is read as a turn of
+/// another kind, and the request is refused with "Requests ending with a
+/// model turn are not supported", so the two kinds never share a turn.
+fn has_function_response(parts: &[Value]) -> bool {
+    parts.iter().any(|part| part.get("functionResponse").is_some())
+}
+
+/// Appends parts to the previous `user` content when there is one and it
+/// carries parts of the same kind. Tool results still coalesce into one
+/// turn, and so does consecutive user text; a user message that follows a
+/// tool result opens a turn of its own.
 fn push_user(out: &mut Vec<Value>, parts: Vec<Value>) {
     if let Some(last) = out.last_mut() {
         if last["role"] == "user" {
             if let Some(existing) = last["parts"].as_array_mut() {
-                existing.extend(parts);
-                return;
+                if parts.is_empty() || has_function_response(existing) == has_function_response(&parts) {
+                    existing.extend(parts);
+                    return;
+                }
             }
         }
     }
@@ -477,6 +490,43 @@ data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name"
         );
     }
 
+    /// docs/models.md "What each provider cannot express": a text message
+    /// that follows a tool result opens a turn of its own. Vertex reads a
+    /// `user` turn holding a `functionResponse` beside a text part as a turn
+    /// of another kind, and answers "Requests ending with a model turn are
+    /// not supported". A rejected `return` reaches this, because the
+    /// complaint about its arguments is a user message recorded straight
+    /// after the tool result.
+    #[test]
+    fn contents_keep_a_message_after_a_tool_result_in_its_own_turn() {
+        let messages = vec![
+            Message::User { content: vec![ContentBlock::Text { text: "Assess.".into() }] },
+            Message::Assistant {
+                text: String::new(),
+                thinking: vec![],
+                tool_calls: vec![ToolCall { id: "call_1".into(), name: "return".into(), args: json!({}) }],
+            },
+            Message::Tool {
+                call_id: "call_1".into(),
+                name: "return".into(),
+                rendered: "Returned.".into(),
+                is_error: false,
+            },
+            Message::User { content: vec![ContentBlock::Text { text: "The arguments are invalid.".into() }] },
+        ];
+        let contents = contents_json(&messages);
+        assert_eq!(
+            contents.last().expect("a last turn"),
+            &json!({ "role": "user", "parts": [{ "text": "The arguments are invalid." }] })
+        );
+        assert_eq!(
+            contents[contents.len() - 2],
+            json!({ "role": "user", "parts": [
+                { "functionResponse": { "name": "return", "response": { "output": "Returned." } } },
+            ]})
+        );
+    }
+
     #[test]
     fn contents_map_every_role_and_reattach_signatures() {
         let messages = vec![
@@ -530,8 +580,8 @@ data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name"
                 { "role": "user", "parts": [
                     { "functionResponse": { "name": "read", "response": { "output": "contents of a" } } },
                     { "functionResponse": { "name": "read", "response": { "error": "no such file" } } },
-                    { "text": "Hurry." },
                 ]},
+                { "role": "user", "parts": [{ "text": "Hurry." }] },
             ])
             .as_array()
             .unwrap()
