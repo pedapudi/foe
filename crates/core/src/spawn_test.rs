@@ -261,25 +261,26 @@ fn a_write_grant_of_no_roots_is_refused_for_a_contract_that_writes() {
     let message = refused.to_string();
     assert!(message.contains("`put`"), "{message}");
     assert!(message.contains("nothing it may write"), "{message}");
-    // One root is the ordinary narrowing and is not refused here.
-    if let Err(refused) = spawner.launch("ep_other".into(), request(Some(vec![dir.join("unit")]))) {
+    // One existing directory is the ordinary narrowing and is not refused.
+    if let Err(refused) = spawner.launch("ep_other".into(), request(Some(vec![dir.to_path_buf()]))) {
         panic!("one root is the ordinary narrowing: {refused}");
     }
 }
 
-/// A write grant naming a FILE is refused, for the same reason the empty
-/// grant above is.
+/// A write grant naming anything but an existing directory is refused, for
+/// the same reason the empty grant above is.
 ///
 /// A grant is a directory prefix and `RootWriter` opens each root as a
-/// directory, so a root that names a file cannot be opened. A lead dividing
-/// work across a team narrows each worker to the unit it was given, and a
-/// unit is very often one file, so this is the ordinary case rather than an
-/// exotic one. Unrefused, the worker dies at construction with
-/// `grants.write: Not a directory (os error 20)`, which names neither the
-/// worker nor the call that made it, and the lead quietly does the work
-/// itself.
+/// directory, so a root naming a file cannot be opened and neither can one
+/// naming a path that is not there yet. A lead dividing work across a team
+/// narrows each worker to the unit it was given, and a unit is very often
+/// one file, existing or about to be written, so this is the ordinary case
+/// rather than an exotic one. Unrefused, the worker dies at construction
+/// with `grants.write: Not a directory (os error 20)` or `grants.write: No
+/// such file or directory (os error 2)`, which names neither the worker nor
+/// the call that made it, and the lead quietly does the work itself.
 #[test]
-fn a_write_grant_naming_a_file_is_refused_with_the_directory_to_grant() {
+fn a_write_grant_that_is_not_an_existing_directory_is_refused_with_the_one_to_grant() {
     let dir = scratch("spawn", "file-write-grant");
     let unit = dir.join("unit.py");
     std::fs::write(&unit, b"x = 1\n").expect("the unit exists");
@@ -311,6 +312,18 @@ fn a_write_grant_naming_a_file_is_refused_with_the_directory_to_grant() {
     let message = refused.to_string();
     assert!(message.contains("names a file"), "{message}");
     assert!(message.contains(&dir.display().to_string()), "it names the directory to grant: {message}");
+
+    // The unit a worker has yet to create is refused the same way, and the
+    // nearest directory that does exist is the one to grant. This is what a
+    // lead reaches for first: the file it wants written is not there yet.
+    let absent = dir.join("unwritten.py");
+    let Err(refused) = spawner.launch("ep_absent".into(), request(vec![absent.clone()])) else {
+        panic!("a write grant naming a path that is not there is refused");
+    };
+    let message = refused.to_string();
+    assert!(message.contains("names nothing on disk"), "{message}");
+    assert!(message.contains(&dir.display().to_string()), "it names the directory to grant: {message}");
+
     // The directory that holds the unit is the ordinary narrowing.
     if let Err(refused) = spawner.launch("ep_other".into(), request(vec![dir.to_path_buf()])) {
         panic!("a directory root is the ordinary narrowing: {refused}");

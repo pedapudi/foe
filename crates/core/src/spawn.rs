@@ -394,17 +394,20 @@ grant at least one root, or spawn a contract that declares no write tool",
             // A grant is a directory prefix, as this module's own
             // documentation states, and `RootWriter` opens each root as a
             // directory. A lead dividing work often narrows a worker to the
-            // one file its unit names, and that root cannot be opened: the
-            // child dies at construction with `grants.write: Not a directory`,
-            // which names neither the worker nor the call. Refuse the call
-            // instead, and say what to grant, for the same reason the empty
-            // grant above is refused.
-            if let Some(file) = roots.iter().find(|root| root.is_file()) {
-                let holder = file.parent().unwrap_or(Path::new("/"));
+            // one file its unit names, or to a file the unit has yet to
+            // create; neither root can be opened, and the child dies at
+            // construction with `grants.write: Not a directory` or
+            // `grants.write: No such file or directory`, which names neither
+            // the worker nor the call. Refuse the call instead, and name the
+            // nearest directory that does exist, for the same reason the
+            // empty grant above is refused.
+            if let Some(root) = roots.iter().find(|root| !root.is_dir()) {
+                let holder = root.ancestors().skip(1).find(|p| p.is_dir()).unwrap_or(Path::new("/"));
+                let what = if root.exists() { "names a file" } else { "names nothing on disk" };
                 return Err(CapError::Invalid(format!(
-                    "write {} names a file, and a grant is a directory prefix: grant {} instead, \
+                    "write {} {what}, and a grant is a directory prefix: grant {} instead, \
 or spawn a contract that declares no write tool",
-                    file.display(),
+                    root.display(),
                     holder.display()
                 )));
             }

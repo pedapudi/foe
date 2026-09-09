@@ -711,7 +711,7 @@ impl Kind {
                         "context": { "type": "string", "enum": ["fresh", "fork"], "description": "fresh starts the child with only its task; fork seeds it with this episode's conversation so far" },
                         "name": string("roster name for the child; defaults to a unique form of the contract name"),
                         "blocked_by": { "type": "array", "items": { "type": "string" }, "description": "task ids that must complete before this task starts" },
-                        "write": { "type": "array", "items": { "type": "string" }, "description": "the paths this worker may write, within your own and within what its contract allows, and not under or over a root another live task holds; omitted, it writes nothing" },
+                        "write": { "type": "array", "items": { "type": "string" }, "description": "the directories this worker may write in, each one that exists already, within your own and within what its contract allows, and not under or over a root another live task holds; naming a file, or a file the worker has yet to write, is refused; omitted, it writes nothing" },
                     }),
                     &["contract", "task"],
                 ),
