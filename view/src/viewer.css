@@ -1453,6 +1453,27 @@ table.events td.type.error {
   overflow-wrap: anywhere;
 }
 
+/* The members of one object or array share a key column, so the keys line up
+ * and the column is as wide as the longest key among them. A fixed guess at
+ * that width breaks a key in two when a name overruns it: `unresolved_risks`
+ * set as `unresolved_ri` over `sks`. The fields become the grid's own items
+ * so that one measurement serves them all. */
+.j-node > .details-body {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 0 var(--dt-gap-edge);
+  align-items: baseline;
+}
+
+.j-node > .details-body > .field {
+  display: contents;
+}
+
+.j-node > .details-body > .field > .field-key,
+.j-node > .details-body > .field > .field-value {
+  padding: 1px 0;
+}
+
 .field-value {
   min-width: 0;
 }
@@ -1466,6 +1487,14 @@ table.events td.type.error {
 
   .field > .field-value {
     margin-left: var(--dt-gap-edge);
+  }
+
+  .j-node > .details-body {
+    display: block;
+  }
+
+  .j-node > .details-body > .field {
+    display: block;
   }
 }
 
@@ -3816,9 +3845,26 @@ kbd {
   font-weight: 600;
 }
 
-.outline-row.kind-call .outline-name .label,
+.outline-row.kind-call .outline-name .label {
+  font-family: var(--v2-mono);
+}
+
+/* A node row is a position in the declared graph, and the episode row under
+ * it is the agent that ran that position. Both carry the node's name, on
+ * consecutive lines, so the node sets as a caption: the name that reads as a
+ * name is the one belonging to something that ran. */
 .outline-row.kind-node .outline-name .label {
   font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+/* An episode opens a block, and the block below it is everything that
+ * episode did. The space above the name is where one block ends and the
+ * next begins. It is padding rather than margin because the lanes are drawn
+ * from measured row heights, which exclude a margin. */
+.outline-row.kind-episode {
+  padding-top: var(--dt-gap-item);
 }
 
 /* The row that carries what the episode returned. Its word takes the hue of
@@ -3910,15 +3956,38 @@ kbd {
 
 /* A body runs the full width: it starts under the gutter rather than under
  * the text column, because code and diffs need the room. A deliberate
- * inconsistency with the one-column rule above it. */
+ * inconsistency with the one-column rule above it.
+ *
+ * It starts under its own row's name rather than under the caret beside it,
+ * so a task and the word `task` above it read as one thing. The offset is
+ * the caret's width and the gap after it, which is what the name is inset
+ * by, plus the indent a call takes. */
 .outline-body {
   grid-column: 3;
+  margin-left: calc(var(--outline-step, 0px) + 17px);
   padding: 0 0 var(--dt-gap-item);
   min-width: 0;
 }
 
 .outline-row.kind-result .outline-body {
   font-size: calc(11px * var(--dt-font-scale, 1));
+}
+
+/* A task given to a workflow node is sections, and a section holds what an
+ * earlier node returned. Its heading is that node's name, which an episode
+ * row a few lines up also carries as its own name, so the heading sets as a
+ * caption: faint, small, and above a rule, none of which a name takes. */
+.section-of {
+  margin-top: var(--dt-gap-item);
+  padding-top: 2px;
+  border-top: 1px solid var(--v2-rule-soft);
+  font-family: var(--v2-mono);
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+}
+
+.section-of::before {
+  content: "returned by ";
 }
 
 .layout-toggle {

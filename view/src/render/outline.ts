@@ -33,6 +33,7 @@ import { renderJson } from "./json.js";
 import { outcomeRole } from "./tree.js";
 import { renderMarkdown, renderToolText } from "./markup.js";
 import { obj } from "../types.js";
+import { taskSections } from "../task.js";
 import { languageForPath } from "./shape.js";
 import { Hovercard } from "./hovercard.js";
 import { laneStrokes } from "./causality.js";
@@ -187,53 +188,34 @@ function bodyElement(row: CausalityRow): HTMLElement {
     if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
     body.appendChild(renderJson(value));
   }
-  else if (row.kind === "task") taskSections(body, row.body);
+  else if (row.kind === "task") taskBody(body, row.body);
   else if (row.kind === "prose") body.appendChild(renderMarkdown(row.body));
   else body.appendChild(renderToolText(row.body, languageForPath(row.label)));
   return body;
 }
 
 /**
- * A task a person wrote is prose. A task a workflow node was given is
- * sections named by a `## heading`, and a section carries what an earlier
- * node returned as the JSON that value travels as. Setting that JSON as
- * prose wraps a single line of braces and quotation marks across the pane;
- * it is set as the value it is, the way an outcome's value is.
+ * A task, as the sections `src/task.ts` reads it. A section holding what an
+ * earlier node returned sets that value's summary as prose and the whole
+ * value beneath it, behind the caret an outcome already uses. Setting the
+ * JSON as prose instead wraps a single line of braces and quotation marks
+ * across the pane.
  */
-function taskSections(body: HTMLElement, text: string): void {
-  const close = (name: string | null, lines: string[]): void => {
-    const section = lines.join("\n").trim();
-    if (section === "") return;
-    // The row's own label already names the section holding the task itself.
-    if (name !== null && name !== "task") body.appendChild(h("div", { class: "label" }, name));
-    let value: unknown;
-    try {
-      value = JSON.parse(section);
-    } catch {
-      body.appendChild(renderMarkdown(section));
-      return;
-    }
-    if (value === null || typeof value !== "object") {
-      body.appendChild(renderMarkdown(section));
-      return;
-    }
-    const summary = obj(value).summary;
-    if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
-    body.appendChild(renderJson(value));
-  };
-  let name: string | null = null;
-  let lines: string[] = [];
-  for (const line of text.split("\n")) {
-    const heading = line.startsWith("## ") ? line.slice(3).trim() : null;
-    if (heading === null) {
-      lines.push(line);
+function taskBody(body: HTMLElement, text: string): void {
+  for (const section of taskSections(text)) {
+    // The heading names the workflow node whose returned value the section
+    // carries, which a reader matches against the graph, so the name is kept
+    // as it is. It sets as a caption rather than as a name, because an
+    // episode row a few lines up carries the same word as its own name.
+    if (section.title !== null) body.appendChild(h("div", { class: "section-of" }, section.title));
+    if (section.value === null) {
+      body.appendChild(renderMarkdown(section.text));
       continue;
     }
-    close(name, lines);
-    name = heading;
-    lines = [];
+    const summary = obj(section.value).summary;
+    if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
+    body.appendChild(renderJson(section.value));
   }
-  close(name, lines);
 }
 
 /** The part of an outcome a reader came for: what it returned, or why not. */

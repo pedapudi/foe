@@ -30,8 +30,13 @@ export const PREVIEW_KEYS = 4;
 /** Lines a node may take open before it opens only when a reader asks. */
 export const OPEN_LINES = 12;
 
-/** Depth past which a node stays collapsed however little it holds. */
-export const OPEN_DEPTH = 2;
+/**
+ * Depth past which a node stays collapsed however little it holds. At zero
+ * the outermost value opens and nothing under it does, so a reader sees the
+ * keys and their scalars and opens the nesting a key at a time. Opening the
+ * nesting for them fills the pane with rows nobody asked for.
+ */
+export const OPEN_DEPTH = 0;
 
 /** One member of an object or an array, under the label the parent gives it. */
 export interface JsonChild {

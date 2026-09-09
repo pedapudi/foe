@@ -101,12 +101,13 @@ test("counting lines stops at the cap, so a large payload costs no more than a s
   assert.equal(openLines(deep), OPEN_LINES + 1);
 });
 
-test("a short node near the surface opens without being asked", () => {
+test("the outermost node opens and nothing under it does", () => {
   assert.equal(opensByDefault({ step: 1, attempt: 1 }, 0), true);
-  assert.equal(opensByDefault([1, 2, 3], 1), true);
+  assert.equal(opensByDefault([1, 2, 3], 1), false);
 });
 
 test("a node deeper than the opening depth stays closed however little it holds", () => {
+  assert.equal(opensByDefault({ a: 1 }, 1), false);
   assert.equal(opensByDefault({ a: 1 }, 3), false);
 });
 
