@@ -7,39 +7,58 @@ font files the viewer serves itself are checked into `view/fonts`; the
 build script of `crates/view` embeds both. TypeScript development commands
 are documented in [`view/README.md`](../view/README.md).
 
-## Install from source
+## Install
 
-The installer requires Bazel or Bazelisk. A downloaded installation also
-requires `tar` and one source client. An authenticated GitHub CLI can read a
-private source archive. `curl` and `wget` can read a publicly accessible
-archive. The script builds `//:foe` with the pinned Rust toolchain, verifies
-the resulting binary, and installs it under `~/.local/bin` by default.
+The installer downloads the published x86-64 Linux binary. It needs `curl` or
+`wget` and nothing else: the binary is statically linked, so it runs on any
+x86-64 Linux rather than only where its builder's C library is new enough.
 
 ```sh
-gh api -H "Accept: application/vnd.github.raw+json" \
-  repos/pedapudi/foe/contents/install.sh | sh
+curl -fsSL foe.sh/install.sh | sh
 ```
 
-Running the checked-out script builds the current checkout, including local
-changes:
+The binary is checked against the SHA-256 published beside it, and refused
+when the two differ. When `sha256sum` is absent the installer says the
+download went unverified rather than pretending otherwise.
+
+### Install from source
+
+`--from-source` builds instead of downloading, and `--ref` implies it. The
+source path requires Bazel or Bazelisk, and a downloaded archive also
+requires `tar` and one client: an authenticated GitHub CLI reads a private
+archive, and `curl` or `wget` reads a public one. It builds `//:foe` with the
+pinned Rust toolchain.
 
 ```sh
-./install.sh
-```
-
-The destination option applies to every invocation. The source-reference
-option applies when the script downloads a source archive:
-
-```sh
-./install.sh --install-dir /absolute/directory
-gh api -H "Accept: application/vnd.github.raw+json" \
-  repos/pedapudi/foe/contents/install.sh | sh -s -- --ref GIT-REFERENCE
+./install.sh                      # the checked-out script builds its checkout
+./install.sh --from-source        # any invocation, from the current source
+curl -fsSL foe.sh/install.sh | sh -s -- --ref GIT-REFERENCE
 ```
 
 `--ref` accepts a branch, tag, or commit understood by the GitHub source
-archive endpoint. `--install-dir` must be absolute. The installer copies the
-new binary through a temporary file and renames it into place. An existing
-installation remains intact until the build and verification succeed.
+archive endpoint. `--install-dir` must be absolute and applies to every
+invocation. Either path runs `foe plan` against the new binary before
+installing it, which resolves a document and builds the tool registry
+without a credential, a network, or an episode. The installer copies the
+binary through a temporary file and renames it into place, so an existing
+installation stands until the new one has answered for itself.
+
+### Cut a release
+
+There is no release workflow. `scripts/release.sh` runs on a maintainer's
+machine and uploads what it built, so a release costs no
+continuous-integration minutes.
+
+```sh
+scripts/release.sh 0.2.0
+```
+
+It refuses a version that disagrees with `Cargo.toml`, a working tree with
+changes, and a machine without the musl target or a musl C compiler
+(`rustup target add x86_64-unknown-linux-musl` and `apt install musl-tools`).
+It builds, runs `foe plan` against the result, and creates the release tagged
+`v0.2.0` carrying `foe-x86_64-linux` and its SHA-256. `--draft` withholds it
+until you publish.
 
 ## Pin the binary and Python package to one commit
 

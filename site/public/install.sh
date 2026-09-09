@@ -135,7 +135,10 @@ if [ -z "$from_source" ]; then
   latest="$repository/releases/latest/download"
   binary="$temporary_dir/$asset"
   echo "Downloading the published foe binary"
-  if download "$latest/$asset" "$binary" && download "$latest/$asset.sha256" "$binary.sha256"; then
+  # A repository with no release yet answers nothing, and that is not an
+  # error to report: the source build below is the answer to it.
+  if download "$latest/$asset" "$binary" 2>/dev/null &&
+    download "$latest/$asset.sha256" "$binary.sha256" 2>/dev/null; then
     if command -v sha256sum >/dev/null 2>&1; then
       published=$(awk '{ print $1 }' "$binary.sha256")
       obtained=$(sha256sum "$binary" | awk '{ print $1 }')
