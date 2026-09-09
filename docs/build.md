@@ -21,6 +21,15 @@ The binary is checked against the SHA-256 published beside it, and refused
 when the two differ. When `sha256sum` is absent the installer says the
 download went unverified rather than pretending otherwise.
 
+The installer reads what the machine is before it downloads anything. It
+refuses a system that is not Linux, because foe's grants are Landlock rules
+and its process boundary is a cgroup, and neither exists elsewhere. It
+refuses an architecture the published binary is not built for, and names
+`--from-source` as what builds one that is. It proceeds on a kernel older
+than 5.13 and says what that costs: Landlock arrived there, so an older
+kernel runs foe and confines nothing, `best-effort` records that it enforced
+nothing, and `--sandbox required` refuses to start.
+
 ### Install from source
 
 `--from-source` builds instead of downloading, and `--ref` implies it. The

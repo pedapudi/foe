@@ -163,25 +163,15 @@ SUN = MARK % ('<circle cx="8" cy="8" r="3.1"/>'
               '<path d="M8 1.4v1.5M8 13.1v1.5M1.4 8h1.5M13.1 8h1.5"/>'
               '<path d="M3.3 3.3l1.1 1.1M11.6 11.6l1.1 1.1M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1"/>')
 MOON = MARK % '<path d="M13.4 9.6A5.9 5.9 0 0 1 6.4 2.6a5.9 5.9 0 1 0 7 7z"/>'
-# The install command downloads a Linux binary, and a drawn mark says so
-# where a word would repeat the sentence beside it. Tux is Larry Ewing's
-# penguin; this is an original drawing of him, built from ellipses rather
-# than traced from any existing file, because the monochrome renderings in
-# circulation carry licences of their own. The architecture is set beside
-# the mark rather than drawn into it: the penguin says Linux and the words
-# say which Linux.
-TUX = ('<svg viewBox="0 0 14 16" class="tux" role="img" aria-label="Linux" '
-       'fill="currentColor"><title>Linux</title><path d="M0.58 14.75a2.75 1.25 -18 1 1 5.23 -1.70a2.75 1.25 -18 1 1 -5.23 1.70ZM8.18 13.05a2.75 1.25 18 1 1 5.23 1.70a2.75 1.25 18 1 1 -5.23 -1.70ZM2.60 10.40a4.40 4.40 0 1 1 8.80 0.00a4.40 4.40 0 1 1 -8.80 -0.00ZM4.00 3.60a3.00 3.30 0 1 1 6.00 0.00a3.00 3.30 0 1 1 -6.00 -0.00ZM5.32 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM7.12 2.90a0.78 1.00 0 1 0 1.56 0.00a0.78 1.00 0 1 0 -1.56 -0.00ZM5.30 5.00a1.70 0.78 0 1 0 3.40 0.00a1.70 0.78 0 1 0 -3.40 -0.00Z"/></svg>')
-
 page = page.replace("__LIGHT__", palette(LIGHT_THEME, "light", "  "))
 page = page.replace("__DARKI__", palette(DARK_THEME, "dark", "    "))
 page = page.replace("__DARK__", palette(DARK_THEME, "dark", "  "))
 page = page.replace("__LOCKUP__", lockup)
 assert page.count("__FRAMES__") == 1
 page = page.replace("__FRAMES__", FRAMES)
-assert "__REPLAY__" in page and "__COPY__" in page and "__SUN__" in page and "__TUX__" in page
+assert "__REPLAY__" in page and "__COPY__" in page and "__SUN__" in page
 page = (page.replace("__REPLAY__", REPLAY).replace("__COPY__", COPY)
-            .replace("__SUN__", SUN).replace("__MOON__", MOON).replace("__TUX__", TUX))
+            .replace("__SUN__", SUN).replace("__MOON__", MOON))
 for name, text in data.items():
     token = "__%s__" % name.upper().replace("-", "")
     assert page.count(token) == 1, token

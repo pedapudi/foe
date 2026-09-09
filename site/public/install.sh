@@ -112,6 +112,51 @@ case "$reference" in
     ;;
 esac
 
+# What this machine is, against what foe needs. foe is a Linux program: it
+# compiles its grants into Landlock rules and owns its process subtree with
+# cgroup v2, and neither exists elsewhere. The published binary is x86-64;
+# another architecture can still build for itself.
+system=$(uname -s 2>/dev/null || echo unknown)
+machine=$(uname -m 2>/dev/null || echo unknown)
+
+case "$system" in
+  Linux) ;;
+  *)
+    echo "install.sh: foe runs on Linux, and this machine reports $system." >&2
+    echo "install.sh: its sandbox is Landlock and its process boundary is cgroup v2, neither of which exists here." >&2
+    exit 1
+    ;;
+esac
+
+case "$machine" in
+  x86_64|amd64) ;;
+  *)
+    if [ -z "$from_source" ]; then
+      echo "install.sh: the published binary is x86-64, and this machine reports $machine." >&2
+      echo "install.sh: --from-source builds foe for this machine instead, which needs Bazel or Bazelisk." >&2
+      exit 1
+    fi
+    ;;
+esac
+
+# Landlock arrives in Linux 5.13, and foe's grants are Landlock rules. An
+# older kernel runs foe and confines nothing: `best-effort` records that it
+# enforced nothing, and `--sandbox required` refuses to start. That is worth
+# saying once, here, rather than leaving it to be discovered in a log.
+release=$(uname -r 2>/dev/null || echo 0)
+major=${release%%.*}
+rest=${release#*.}
+minor=${rest%%.*}
+case "$major$minor" in
+  *[!0-9]*|"") ;;
+  *)
+    if [ "$major" -lt 5 ] || { [ "$major" -eq 5 ] && [ "$minor" -lt 13 ]; }; then
+      echo "install.sh: Linux $release predates Landlock, which arrived in 5.13." >&2
+      echo "install.sh: foe runs, and enforces no filesystem confinement; --sandbox required refuses to start." >&2
+    fi
+    ;;
+esac
+
 if [ -z "$install_dir" ]; then
   if command -v getent >/dev/null 2>&1; then
     home_dir=$(getent passwd "$(id -u)" | awk -F: '{ print $6 }')
