@@ -65,35 +65,20 @@ sentence on first reading.
   `docs/design.md`, all four, and precedes the commit that needs the room,
   so every commit in a series passes `scripts/loc.sh`. A feature commit
   never changes a ceiling. A ceiling may be lowered as well as raised.
-- A ceiling rises only when another ceiling falls. The commit that raises one
-  lowers one or more others by at least as many lines, so the budget on the
-  total row `scripts/loc.sh` prints stays where it is or drops. A lowered
-  ceiling stays at or above the count its own surface measures, so every
-  commit in the series still passes. The room comes from another surface
-  because the surface being raised has none left to give, and because the
-  ceilings together state how much production code the repository carries. A
-  raise moves room between surfaces rather than adding room.
+- A raise is a decision about how much of a surface a reader can hold at
+  once, so a commit that makes one says why this behavior is worth the room
+  and where the room was looked for first. It names what the surface already
+  holds that the change could have replaced, deleted, or reused, and why none
+  of it served. "The ceiling was in the way" is the finding that prompts the
+  question, not an answer to it. A raise nobody can argue with is one nobody
+  examined.
 - A group ceiling bounds surfaces the total already counts, so it never
-  exceeds the sum of the ceilings it bounds and raising it toward that sum
-  adds no room to the repository. It removes a tightening the group was
-  written to hold, which is a decision of its own: the six statements below
-  say why the two surfaces no longer need to be held together that closely,
-  and no other ceiling falls, because nothing was gained. A raise that would
-  carry a group over its own ceiling moves the group in the same commit,
-  under this rule and the one above; the group is the tighter of the two and
-  it is what refuses the change.
-- When no surface holds a ceiling above its count, the room a change needs
-  does not exist yet. The change waits for a commit that deletes production
-  code, and then for a ceiling commit that lowers the ceiling of the surface
-  that shrank. A deletion on its own pays for nothing, because the room it
-  frees stays open to whatever grows next until a ceiling takes it.
-- The total the ceilings allow moves only as its own decision, in a commit
-  that changes nothing else and says why the repository should carry more
-  production code than it does. It is never the by-product of a feature that
-  found nothing to pay with. A rule with no way to change it is one that gets
-  changed silently, and a silent change to this one returns the budget to
-  what it was before this rule: a number that rises whenever something needs
-  it to.
+  exceeds the sum of the ceilings it bounds; past that sum it states nothing,
+  and `scripts/loc.sh` refuses it. Raising it toward that sum loosens how
+  closely the group holds its surfaces together, and the reason it gives is
+  why they no longer need holding that closely. A raise that would carry a
+  group over its own ceiling moves the group in the same commit; the group is
+  the tighter of the two and it is what refuses the change until it does.
 - A change that raises a ceiling, or that adds a name the repository then
   keeps, states six things. A name is kept when removing it later breaks
   something already written down: a log the viewer replays, a contract
@@ -115,10 +100,8 @@ sentence on first reading.
   pull request states them once for the series, with the production lines it
   adds, the production lines it removes, and the kept names it adds and
   removes.
-- A reviewer adds up the lines the ceilings moved, then checks the six
-  statements. The ceiling commit touches four files and shows every ceiling
-  that moved, so the sum is read from its diff. Each statement names what the
-  reviewer runs, reads, or contradicts. The example fails without the change.
+- A reviewer checks the six statements. Each names what the reviewer runs,
+  reads, or contradicts. The example fails without the change.
   The removed code appears in the diff. The named tests pass. A configuration
   that expresses the behavior contradicts the claim that no existing contract
   can. A statement that names nothing the reviewer can reach is unanswered,

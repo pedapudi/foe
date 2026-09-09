@@ -1344,10 +1344,10 @@ The budget is a design constraint rather than an aspiration. A runtime that
 other systems embed and audit earns trust in proportion to how little of it
 there is to read. A ceiling moves in either direction only in a commit of
 its own that states the reason, under the rule in `AGENTS.md`; a commit
-that adds behavior fits inside the ceilings as they stand. A ceiling rises
-only when another falls by at least as much, so a surface gains room where
-another surface gives room up, and the room the ceilings allow together
-never grows.
+that adds behavior fits inside the ceilings as they stand. A raise says why the
+behavior is worth the room and where the room was looked for first, because
+the reason a surface stays small is that a reader holds it at once, and that
+is what a raise spends.
 
 ## Status
 
