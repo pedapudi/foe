@@ -69,6 +69,7 @@ report() {
 
 status=0
 declare -A measured
+declare -A budget
 counted=0
 allowed=0
 
@@ -80,6 +81,7 @@ while IFS=$'\t' read -r surface ceiling _label crates; do
     case $crates in *' '*) printf '%-10s %6d\n' "$crate" "$n" ;; esac
   done
   measured[$surface]=$total
+  budget[$surface]=$ceiling
   counted=$((counted + total))
   allowed=$((allowed + ceiling))
   report "$surface" "$total" "$ceiling"
@@ -97,6 +99,18 @@ while IFS=$'\t' read -r group ceiling surfaces _phrase; do
   report "$group" "$total" "$ceiling"
   if [ "$total" -gt "$ceiling" ]; then
     echo "scripts/loc.sh: $group has $total lines; the ceiling is $ceiling" >&2
+    status=1
+  fi
+  # A group holds its surfaces closer together than their own ceilings do.
+  # Raised past their sum it states nothing, and the room it appears to add
+  # is room the surfaces already had, which is why AGENTS.md has it removing
+  # a tightening rather than buying anything.
+  sum=0
+  for surface in $surfaces; do
+    sum=$((sum + budget[$surface]))
+  done
+  if [ "$ceiling" -gt "$sum" ]; then
+    echo "scripts/loc.sh: the $group ceiling $ceiling exceeds its surfaces' own, $sum" >&2
     status=1
   fi
 done < <(rows "$groups")

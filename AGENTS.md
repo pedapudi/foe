@@ -73,11 +73,27 @@ sentence on first reading.
   because the surface being raised has none left to give, and because the
   ceilings together state how much production code the repository carries. A
   raise moves room between surfaces rather than adding room.
+- A group ceiling bounds surfaces the total already counts, so it never
+  exceeds the sum of the ceilings it bounds and raising it toward that sum
+  adds no room to the repository. It removes a tightening the group was
+  written to hold, which is a decision of its own: the six statements below
+  say why the two surfaces no longer need to be held together that closely,
+  and no other ceiling falls, because nothing was gained. A raise that would
+  carry a group over its own ceiling moves the group in the same commit,
+  under this rule and the one above; the group is the tighter of the two and
+  it is what refuses the change.
 - When no surface holds a ceiling above its count, the room a change needs
   does not exist yet. The change waits for a commit that deletes production
   code, and then for a ceiling commit that lowers the ceiling of the surface
   that shrank. A deletion on its own pays for nothing, because the room it
   frees stays open to whatever grows next until a ceiling takes it.
+- The total the ceilings allow moves only as its own decision, in a commit
+  that changes nothing else and says why the repository should carry more
+  production code than it does. It is never the by-product of a feature that
+  found nothing to pay with. A rule with no way to change it is one that gets
+  changed silently, and a silent change to this one returns the budget to
+  what it was before this rule: a number that rises whenever something needs
+  it to.
 - A change that raises a ceiling, or that adds a name the repository then
   keeps, states six things. A name is kept when removing it later breaks
   something already written down: a log the viewer replays, a contract
