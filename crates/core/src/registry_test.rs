@@ -68,6 +68,56 @@ fn names_resolve_in_source_order_and_schemas_follow_tools_order() {
     assert_eq!(specs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), names);
 }
 
+/// A configured executable runs other programs, and which of them it may run
+/// is decided by the contract's execute roots. A refusal reaches the caller as
+/// `Permission denied` on standard error and an exit code the wrapped program
+/// chose, which together say nothing about the grant that would have covered
+/// it. The result now names the roots in force and the rule that a grant
+/// covers the file a path resolves to, which is what a command reached
+/// through a symlink out of a granted directory fails.
+#[tokio::test]
+async fn a_refused_permission_names_the_execute_roots_in_force() {
+    let root = tmp("registry-denied");
+    let exec = root.join("gate.sh");
+    std::fs::write(&exec, "").unwrap();
+    executable(&exec);
+    let contract = contract_with(&root, |v| {
+        v["tools"] = json!(["gate"]);
+        v["tool_defs"] = json!({ "gate": { "exec": exec, "description": "a gate" } });
+        v["grants"]["execute"] = json!(["/usr/bin"]);
+    })
+    .unwrap();
+    let registry = registry_for(&contract, vec![], vec![]).unwrap();
+    let dispatch = |exit_code: i32, args: Value| {
+        let (registry, root) = (&registry, &root);
+        let contract = &contract;
+        async move {
+            let handles = Handles {
+                reader: Some(Arc::new(RootReader::new(contract.grants.read.clone()).unwrap())),
+                writer: None,
+                executor: Some(Arc::new(FakeExecutor { exit_code, ..FakeExecutor::default() })),
+                spawner: None,
+                sessions: None,
+            };
+            let call = call("gate", args);
+            registry.dispatch(&handles, &call, 1, root.to_path_buf(), None, None).await.rendered.unwrap_or_default()
+        }
+    };
+    // The executor echoes the arguments to standard error, which is how the
+    // refusal a shell prints is put in front of the rendering.
+    let denied = dispatch(1, json!({ "args": ["dirname:", "Permission", "denied"] })).await;
+    assert!(denied.contains("[permission guidance]"), "{denied}");
+    assert!(denied.contains("/usr/bin"), "it names the roots in force: {denied}");
+    assert!(denied.contains("symlink"), "it names the resolution rule: {denied}");
+
+    // A refusal is what the guidance answers, so a clean run carries none of
+    // it, and neither does a failure that says something else.
+    let clean = dispatch(0, json!({ "args": ["dirname:", "Permission", "denied"] })).await;
+    assert!(!clean.contains("[permission guidance]"), "{clean}");
+    let other = dispatch(1, json!({ "args": ["no", "such", "file"] })).await;
+    assert!(!other.contains("[permission guidance]"), "{other}");
+}
+
 #[test]
 fn duplicate_and_unresolved_names_are_errors_naming_the_tool() {
     let root = tmp("registry-dupes");

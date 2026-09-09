@@ -80,6 +80,16 @@ pub const EXEC_STDERR: &str = "\n[stderr]\n{stderr}";
 pub const EXEC_EXIT: &str = "\n[exit code {code}]";
 pub const EXEC_TIMED_OUT: &str = "\n[killed after {seconds} seconds]";
 
+/// Appended when a configured executable's standard error says a permission
+/// was refused. The exit code is the wrapped program's own and says nothing,
+/// so the text is what this reads. A grant covers the file a path resolves
+/// to, so a command reached through a symlink out of a granted directory is
+/// not covered by it; that is what makes the refusal hard to place.
+pub const EXEC_DENIED: &str = "\n[permission guidance] `Permission denied` from a sandboxed process means a \
+grant does not cover the path. Execute is granted over: {roots}. A grant covers the file a path resolves to, so \
+a command reached through a symlink needs the link's target granted as well. `foe plan` reports every grant, and \
+`foe init` writes a contract document that a run naming no `--config` then uses.";
+
 pub const UNKNOWN_TOOL: &str = "No tool named `{name}` is available to this contract.";
 pub const INVALID_ARGS: &str = "The arguments for `{name}` are invalid: {reason}";
 
@@ -172,6 +182,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("exec_stderr", EXEC_STDERR),
         ("exec_exit", EXEC_EXIT),
         ("exec_timed_out", EXEC_TIMED_OUT),
+        ("exec_denied", EXEC_DENIED),
         ("unknown_tool", UNKNOWN_TOOL),
         ("invalid_args", INVALID_ARGS),
         ("section_separator", SECTION_SEPARATOR),

@@ -2108,18 +2108,18 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
 const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
-    ("bounded-question", "sha256:404269cf3005185bb0a2f02ec4bd09901146b9bf9397a7ab8b75328ffb892f8c"),
-    ("budget-exhausted", "sha256:9923ad8b5f1a2ceca9560378cac5a971dfd576eb78e9915e18e876a0614a664b"),
-    ("host-model-backend", "sha256:6444cfa228cc9dbc482f400e3436e47226811098859b2f270d20d656ca4fb903"),
-    ("minimal", "sha256:79dc22300ae875f0d2dbb4b61eb2a24ca6d5342acfcc7f0512bce9e43a49a8f9"),
-    ("recovery-exhausted", "sha256:088f305e369e3c717d8d00da524bf7c7b82b8fd5c5f9f9e132ed95c9d23e3057"),
-    ("sandbox", "sha256:698f364094b5ed7a48c33a556def58e4270d81595d9057888252fd33f1508cce"),
-    ("self-extension", "sha256:25c669801ad495be73a60ed907b50d5263ac7fa5921be057db621c5412ad55f6"),
-    ("subagents", "sha256:6d9b6aad93ed0432a0d829e570c7125ad08e05e9c0c3d52e220169e381e79f41"),
-    ("team", "sha256:8c4dee54c52bc42581d3ecfd3300e3b64d00f57e225ad3d0086ef7cc7ea51160"),
-    ("verification-unsatisfiable", "sha256:13c603da1de37d8572fde003ebb4ee650a61ee4c00efe669a88397036dc81c18"),
-    ("workflow", "sha256:fa6c8751c767ae76b21f602439573c710fc74ff93f9485271943eac31d7349b2"),
-    ("wrap-a-binary", "sha256:22d58a009389db5bff2d54f9524422bb43232ab5f549b637188bd97730b2181e"),
+    ("bounded-question", "sha256:571a49a63bf6bae22e3d6dc0e1c87850178beff0cf0e64dfb000b648ca2a7fff"),
+    ("budget-exhausted", "sha256:48fd66d20e58e25b6ded5a1a79b0f84b16087f5c8fd5a64321caa811faba4e37"),
+    ("host-model-backend", "sha256:db2f90930f69e5a1b26b9383689f505b1ae8c656641bb205bd9a774b9a28532a"),
+    ("minimal", "sha256:ce95c4817b92ee8592d2768da9a4b553acf52cbc8be6ec4633fdee296e7d5063"),
+    ("recovery-exhausted", "sha256:a7f6eeaeb7ca442787bc4127a9e167f41486d01f99ddf3c1908a81986d588e29"),
+    ("sandbox", "sha256:3c6db65289a9a514e4a8c6cdab981a96168abd6c11890c9852a05f66d1103e85"),
+    ("self-extension", "sha256:b3b58c01f843bc3d8ba0deb649c3f4e088d09552a553acbfba5d2d87875db331"),
+    ("subagents", "sha256:c2e56a0a6fb96632680076f3b435e36cfa1f78cb26011c5f5f09fab43e71eba9"),
+    ("team", "sha256:6e5440135b1f39b959a59446c812e3487acdbf62d11a505a223efbc3474009ff"),
+    ("verification-unsatisfiable", "sha256:9915cd52c06137bdf8d1ec3723bc27c970e9c33cc06dcca259b4b05001555a81"),
+    ("workflow", "sha256:9b6b079dab41a1941c3a9406107b52722bd3b573c5b8b3d62176f4cac54cc501"),
+    ("wrap-a-binary", "sha256:5df87d2b61c1031c605aa29ea1a5fbcb6a843930933dafe32cd4423386f1cf67"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one

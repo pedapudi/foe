@@ -265,7 +265,12 @@ modification, or deletion cannot change the run.
 
 Declaring an entry in `tool_defs` permits the episode to execute that file.
 The file does not need a `grants.execute` entry. An explicit execute grant
-permits subprocesses of a tool, such as a compiler started by `bash`.
+permits subprocesses of a tool, such as a compiler started by `bash`, and
+subprocesses of a configured executable, such as the commands a verifier
+script runs. A grant covers the file a path resolves to, so a command
+reached through a symlink is covered only when the link's target is granted
+as well; a refused execution says so in the result and names the roots in
+force.
 
 ### `host_tools`
 

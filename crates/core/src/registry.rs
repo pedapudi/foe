@@ -70,6 +70,11 @@ impl Registry {
         }
         let mut hosts: BTreeMap<String, Arc<dyn Tool>> =
             host_tools.into_iter().map(|t| (t.spec().name.clone(), Arc::from(t))).collect();
+        // Formatted once: every configured executable names the same roots.
+        let execute: Arc<str> = match contract.grants.execute.as_slice() {
+            [] => Arc::from("nothing"),
+            roots => Arc::from(roots.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(", ")),
+        };
         let mut entries = Vec::new();
         for spec in specs {
             let name = spec.name.as_str();
@@ -79,7 +84,12 @@ impl Registry {
                     .tools
                     .get(name)
                     .ok_or_else(|| invalid(format!("configured tool `{name}` has no captured executable")))?;
-                let tool = Arc::new(ExecTool { spec: spec.clone(), def: def.clone(), executable: executable.clone() });
+                let tool = Arc::new(ExecTool {
+                    spec: spec.clone(),
+                    def: def.clone(),
+                    executable: executable.clone(),
+                    execute: execute.clone(),
+                });
                 exec = Some(tool.clone());
                 (tool, Source::Configured)
             } else if contract.host_tools.contains_key(name) {
@@ -314,6 +324,10 @@ pub struct ExecTool {
     spec: ToolSpec,
     def: ToolDef,
     executable: Arc<CapturedExecutable>,
+    /// The contract's execute roots, for the guidance a refused permission
+    /// carries. A configured executable runs other programs, and the roots
+    /// are what decides which of them it may run.
+    execute: Arc<str>,
 }
 
 impl ExecTool {
@@ -346,6 +360,12 @@ impl ExecTool {
         if result.timed_out {
             let seconds = self.def.timeout_seconds.to_string();
             rendered.push_str(&text::fill(text::EXEC_TIMED_OUT, &[("seconds", &seconds)]));
+        }
+        // A wrapped program's own exit code carries no meaning here, because
+        // the shell that ran it chooses it, so the standard error is what
+        // says a permission was refused.
+        if result.exit_code != Some(0) && stderr.contains("Permission denied") {
+            rendered.push_str(&text::fill(text::EXEC_DENIED, &[("roots", &self.execute)]));
         }
         rendered
     }
