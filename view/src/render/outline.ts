@@ -253,9 +253,13 @@ function rowElement(row: CausalityRow, start: number, open: boolean, handlers: O
         )
       : null,
     row.aside ? h("span", { class: "aside" }, row.aside) : null,
+    // What the episode was handed, which the row under this one carries.
+    row.handed ? h("span", { class: "handed" }, row.handed) : null,
     row.kind === "node" && row.firings.length > 1 ? h("span", { class: "aside" }, `${row.firings.length} passes`) : null,
   );
-  el.appendChild(name);
+  // A row whose kind was named on the line above has no name of its own to
+  // draw, and an empty name line would take the room the two lines saved.
+  if (row.kind !== "task" || row.label !== "") el.appendChild(name);
   if (row.body !== "" || row.kind === "outcome") el.appendChild(bodyElement(row));
   el.addEventListener("click", () => handlers.scope(row.id === selected() ? null : row.id));
   return el;

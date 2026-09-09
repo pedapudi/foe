@@ -238,6 +238,16 @@ export interface CausalityRow {
    * row costs a pass over the model per row.
    */
   openable?: boolean;
+  /**
+   * What this row was handed, named on the line that names the row: `task`
+   * on an episode row whose task the reading shows. The task keeps its own
+   * row, which carries the words, its own place in the order and its own
+   * selection; what moves up here is the one word naming what kind of thing
+   * that row holds, so an episode and what it was given read as two lines
+   * rather than three. Set by `visibleRows`, which knows whether the task
+   * row is on the page.
+   */
+  handed?: RowKind;
   /** A step row's own number and attempt count, for the label it earns. */
   stepNumber?: number;
   attempts?: number;
@@ -1010,6 +1020,17 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
 
   const out = outline.rows.filter((row) => isShown(row));
 
+  // An episode and the task it was given read as two lines: the episode's
+  // line names the episode and says that a task follows, and the task's own
+  // row carries the words. A row of its own holding the single word `task`
+  // would be a third line saying what those two already say.
+  const handsOver = new Map<string, RowKind>();
+  for (const row of out) {
+    if (row.kind !== "task" || row.parent === null) continue;
+    if (shown.get(row.parent) === true) handsOver.set(row.parent, row.kind);
+  }
+  const namedAbove = (row: CausalityRow): boolean => row.parent !== null && handsOver.get(row.parent) === row.kind;
+
   return out.map((row, index) => {
     const nested = levelOf(row);
     const openable = (under.get(row.id) ?? -1) > wanted;
@@ -1022,7 +1043,9 @@ export function visibleRows(outline: CausalityOutline, depth: Depth, opened: Rea
     const continues = before !== undefined && before.id === row.parent && before.seq === row.seq;
     // A row the log did not place has no time to print either.
     const showTime = !continues && row.time > 0;
-    if (row.kind !== "step") return { ...row, level: nested, openable, showTime };
+    const handed = handsOver.get(row.id);
+    // A row whose kind is named on the line above draws no name of its own.
+    if (row.kind !== "step") return { ...row, level: nested, openable, showTime, handed, label: namedAbove(row) ? "" : row.label };
     const callsShown = row.calls.some((call) => shown.get(`${row.id}/call/${call.id}`) === true);
     const composed = composeLabel({
       kind: "step",
@@ -1059,6 +1082,7 @@ export function rowSignature(row: CausalityRow, start: number, open: boolean): s
     // A call's label is split at its tool's name, so the name is drawn even
     // though it is part of the label.
     row.calls[0]?.name ?? "",
+    row.handed ?? "",
     row.firings.length,
     row.failed ? "failed" : "",
     row.showTime === false || row.time <= 0 ? "" : row.time - start,

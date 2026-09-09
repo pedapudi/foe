@@ -657,6 +657,24 @@ test("a caret opens one branch one level past the reading", () => {
   assert.ok(deeper.some((r) => r.id === "ep_root/step/1/call/tc_01/result"));
 });
 
+// docs/viewer.md "Causality": the word `task` stands on the episode's line
+// and the task's own row carries the words.
+test("what an episode was handed is named on the line that names the episode", () => {
+  const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
+  const rows = visibleRows(outline, "conversation");
+  const head = rows.find((row) => row.id === "ep_root")!;
+  const task = rows.find((row) => row.id === "ep_root/task")!;
+  assert.equal(head.handed, "task");
+  assert.equal(task.label, "", "the task's own row names nothing");
+  assert.notEqual(task.body, "", "and carries the words");
+  // A reading that hides the task leaves the episode's line naming the
+  // episode alone, and a caret that reveals it puts the word back.
+  assert.equal(visibleRows(outline, "steps").find((row) => row.id === "ep_root")!.handed, undefined);
+  const opened = visibleRows(outline, "steps", new Set(["ep_root"]));
+  assert.equal(opened.find((row) => row.id === "ep_root")!.handed, "task");
+  assert.equal(opened.find((row) => row.id === "ep_root/task")!.label, "");
+});
+
 // docs/viewer.md "The unified outline": a caret stands only where opening
 // the row would reveal something.
 test("a row is openable when the reading hides something that is part of it", () => {

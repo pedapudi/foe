@@ -3918,6 +3918,16 @@ kbd {
   white-space: nowrap;
 }
 
+/* What the episode was handed, standing on the line that names it, with the
+ * words themselves on the row below. It names a kind of thing rather than a
+ * thing, so it sets in the prose face at the size the identifier beside it
+ * takes, and faint, because the name is what a reader scans the column for. */
+.outline-name .handed {
+  font-size: calc(9.5px * var(--dt-font-scale, 1));
+  color: var(--v2-ink-faint);
+  white-space: nowrap;
+}
+
 /* The selected row lifts to full ink and its name takes the accent. No
  * rail, no wash, and no change of weight, so selecting reflows nothing. */
 .outline-row.selected .outline-name .label {
@@ -3925,6 +3935,7 @@ kbd {
 }
 
 .outline-row.selected .outline-when,
+.outline-row.selected .outline-name .handed,
 .outline-row.selected .outline-name .aside {
   color: var(--v2-ink);
 }
@@ -3979,9 +3990,9 @@ kbd {
  * inconsistency with the one-column rule above it.
  *
  * It starts under its own row's name rather than under the caret beside it,
- * so a task and the word `task` above it read as one thing. The offset is
- * the caret's width and the gap after it, which is what the name is inset
- * by, plus the indent a call takes. */
+ * so a task stands under the name of the episode it was given to. The
+ * offset is the caret's width and the gap after it, which is what the name
+ * is inset by, plus the indent a call takes. */
 .outline-body {
   grid-column: 3;
   margin-left: calc(var(--outline-step, 0px) + 17px);

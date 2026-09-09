@@ -53,11 +53,11 @@ gives every other field a titled section. The section holding the run's own
 task is titled by the block heading above it and carries no title of its
 own.
 
-The browser viewer reads a task the same way, on the row labelled `task`
-under each episode. A section holding a returned value sets that value's
-summary as prose and the whole value beneath it, behind the caret every
-other value in the viewer uses, so a node's answer is legible and its
-fields are one click away.
+The browser viewer reads a task the same way, on the row that hangs under
+each episode and carries the word `task` on the episode's own line. A
+section holding a returned value sets that value's summary as prose and the
+whole value beneath it, behind the caret every other value in the viewer
+uses, so a node's answer is legible and its fields are one click away.
 
 A forked episode's log opens with a copy of the events its origin wrote,
 ending at `seed/end`. Those events record what the origin did, so the
@@ -381,7 +381,11 @@ lane it belongs to. An episode's row carries the **task** it was given,
 read at conversation depth as the prose it is: the person's words for a
 run, and the words of the episode that opened it for a spawned one. Two
 children of one contract are told apart by it and by nothing else, so it
-hangs under every episode row rather than in the details pane alone. A **step** — one model request and the tool calls it
+hangs under every episode row rather than in the details pane alone. The
+task keeps a row of its own, with its own place in the order and its own
+selection, and the word `task` stands on the episode's line: an episode and
+what it was handed then read as the name and the words, over two lines
+rather than three. A **step** — one model request and the tool calls it
 produced, `step` on the log's own events — is a row on its episode's lane,
 and every step the log names is a row whether or not a message answered
 it. A **tool call** is a short tick off its step's row with its mark at the
