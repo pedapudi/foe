@@ -669,7 +669,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
   // with the name written beside it. A graph lane is not an agent; the
   // stylesheet draws it in neutral ink whatever slot it is given here.
   const openLane = (id: string, kind: LaneKind, of: CausalityEpisode, parentId: string | null, label: string, outcome: Outcome | null): void => {
-    const tone = kind === "workflow" ? 0 : identitySlot(label);
+    const tone = kind === "workflow" ? 0 : identitySlot(of.id);
     lanes.push({ id, kind, episodeId: of.id, parentId, tone, outcome, label, start: of.startTime, end: of.endTime });
   };
 

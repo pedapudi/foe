@@ -402,7 +402,7 @@ export class TrajectoryView {
     // sidebar and in the breadcrumbs, so the row does not repeat it.
     // The label carries the episode's identity color, the same color its
     // name takes in the tree, the outline, and the terminal transcript.
-    const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5, style: identityStyle(row.name) });
+    const label = svg("text", { class: "traj-label", x: row.labelX, y: row.y + 3.5, style: identityStyle(row.id) });
     label.textContent = row.label;
     label.addEventListener("click", () => this.handlers.select(row.id));
     // The card carries the id the label no longer prints, and the whole

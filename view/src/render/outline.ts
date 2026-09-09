@@ -166,7 +166,7 @@ function rowElement(row: CausalityRow, outline: CausalityOutline, state: Outline
     row.label
       ? h(
           "span",
-          row.kind === "episode" ? { class: "label identity", style: identityStyle(row.label) } : { class: "label" },
+          row.kind === "episode" ? { class: "label identity", style: identityStyle(row.episodeId) } : { class: "label" },
           ...labelParts(row),
         )
       : null,

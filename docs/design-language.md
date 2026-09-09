@@ -122,11 +122,17 @@ direction.
 
 The eight hues are spread around the colour circle with amber left out,
 because amber is the brand accent, and they are ordered so that consecutive
-slots sit at least 75 degrees apart. A name's colour is the slot its FNV-1a
-hash selects, so one role keeps one colour wherever it is written. Eight
-colours over four names collide more often than not, so a name whose slot is
-already held by another agent on screen moves on to the next free slot, and
-keeps what it was given for the rest of the run. Past the eighth agent the
+slots sit at least 75 degrees apart. A colour belongs to an episode rather
+than to a contract: two episodes of one contract run at the same time in an
+ordinary team, and a reading that interleaves them would leave column
+position as the only thing telling one worker's row from the other's. The
+episode's name selects the slot its FNV-1a hash names, so a run with one
+episode per contract writes each role in the colour that role keeps wherever
+it appears. Eight colours over four names collide more often than not, so an
+episode whose slot is already held by another agent on screen moves on to the
+next free slot, and keeps what it was given for the rest of the run. A caller
+holding a name and no episode, such as a board naming a roster member, reads
+the colour the first episode of that name took. Past the eighth episode the
 colours repeat.
 
 The causality figure draws a lane per episode, and that lane takes its

@@ -118,7 +118,7 @@ function rowLabel(row: PlacedRow, textLeft: number, selected: string | null, sca
     {
       class: `caus-label${row.id === selected ? " selected" : ""} ${row.kind}`,
       // An episode row names an agent and takes that agent's identity color.
-      style: row.kind === "episode" ? identityStyle(row.label) : null,
+      style: row.kind === "episode" ? identityStyle(row.episodeId) : null,
     },
     h("span", { class: "name" }, row.label),
     row.aside ? h("span", { class: "aside" }, row.aside) : null,

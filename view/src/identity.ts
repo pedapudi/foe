@@ -3,13 +3,20 @@
 // `tokens.css` holds the eight values and docs/design-language.md states where
 // the channel may be used: on a name set as text, never on a mark in a figure.
 //
-// The name's hash picks the color, so one role keeps one color across the
-// tree, the trajectory, the outline, the boards, and the terminal transcript.
-// A hash alone is not enough, because eight colors over four names collide
-// more often than not, and two agents in one figure wearing one color is the
-// failure this channel exists to prevent. `claim` therefore moves a name on to
-// the next free color when the color it hashes to is already held, and keeps
-// what it assigned, so a color never changes under a reader mid-run.
+// A color belongs to an episode, not to a contract. Two episodes of one
+// contract run at the same time in an ordinary team, and the outline reads
+// them interleaved, so a color shared between them leaves the reader with
+// nothing but column position to tell one worker's row from the other's.
+// The terminal has always assigned per lane for this reason.
+//
+// The episode's name still picks the first color it is offered, so a run
+// with one episode per contract writes each role in the color that role
+// keeps across the tree, the trajectory, the outline, and the boards. Eight
+// colors over four names collide more often than not, so `claim` moves an
+// episode on to the next free color when the one its name selects is held,
+// and keeps what it assigned, so a color never changes under a reader
+// mid-run. A caller that has only a name, such as a board naming a roster
+// member, reads the color the first episode of that name took.
 
 /** How many identity colors `tokens.css` defines. */
 export const IDENTITY_COLORS = 8;
@@ -31,41 +38,49 @@ export function identityIndex(name: string): number {
 const held = new Map<string, number>();
 
 /**
- * Gives every name a color of its own, keeping the ones already given out.
- * Call it with the run's episode names, in the order the run opened them,
- * whenever the fold changes: a name new to the run takes the color it hashes
- * to, or the next free one when another name holds that color. Order matters
- * only where two names want one color, and it is the order the run opened
- * them because that is the order a terminal transcript, which cannot revise
- * what it has already written, has to assign in. Past the eighth name the
- * colors repeat.
+ * Gives every episode a color of its own, keeping the ones already given out.
+ * Call it with the run's episodes, in the order the run opened them, whenever
+ * the fold changes: an episode new to the run takes the color its name
+ * selects, or the next free one when another episode holds that color. Order
+ * matters only where two episodes want one color, and it is the order the run
+ * opened them because that is the order a terminal transcript, which cannot
+ * revise what it has already written, has to assign in. Past the eighth
+ * episode the colors repeat.
+ *
+ * The first episode of a name also registers under that name, so a caller
+ * holding a name and no episode reads the same color.
  */
-export function claim(names: string[]): void {
+export function claim(episodes: { id: string; name: string }[]): void {
   const used = new Set(held.values());
-  for (const name of new Set(names)) {
-    if (held.has(name)) continue;
-    let slot = identityIndex(name);
+  for (const episode of episodes) {
+    if (held.has(episode.id)) continue;
+    let slot = identityIndex(episode.name);
     for (let step = 0; step < IDENTITY_COLORS && used.has(slot); step += 1) {
       slot = (slot + 1) % IDENTITY_COLORS;
     }
     used.add(slot);
-    held.set(name, slot);
+    held.set(episode.id, slot);
+    if (!held.has(episode.name)) {
+      held.set(episode.name, slot);
+    }
   }
 }
 
 /**
- * The color `name` holds: the one `claim` gave it, or the one it hashes to
- * when it was never claimed. A figure that draws a name rather than writing
- * it, such as the lane a causality drawing gives an episode, reads the slot
- * and not the custom property.
+ * The color `key` holds: the one `claim` gave it, or the one it hashes to
+ * when it was never claimed. `key` is an episode id wherever the caller has
+ * one, because a color belongs to an episode; a caller holding only a name
+ * passes that. A figure that draws a name rather than writing it, such as
+ * the lane a causality drawing gives an episode, reads the slot and not the
+ * custom property.
  */
-export function identitySlot(name: string): number {
-  return held.get(name) ?? identityIndex(name);
+export function identitySlot(key: string): number {
+  return held.get(key) ?? identityIndex(key);
 }
 
-/** The custom property holding the color for `name`, ready for a style value. */
-export function identityColor(name: string): string {
-  return `var(--foe-id-${identitySlot(name) + 1})`;
+/** The custom property holding the color for `key`, ready for a style value. */
+export function identityColor(key: string): string {
+  return `var(--foe-id-${identitySlot(key) + 1})`;
 }
 
 /**
@@ -73,6 +88,6 @@ export function identityColor(name: string): string {
  * identity color where it wants it. Setting `--id` rather than `color`
  * leaves the selected and hovered states, which are author rules, in charge.
  */
-export function identityStyle(name: string): string {
-  return `--id: ${identityColor(name)}`;
+export function identityStyle(key: string): string {
+  return `--id: ${identityColor(key)}`;
 }

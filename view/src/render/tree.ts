@@ -168,7 +168,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const nameText = fit(s.name, textW * 0.66, NAME_CHAR);
     // The name carries this episode's identity color, so one role reads the
     // same here as on its board and in its transcript.
-    const nameSpan = svg("tspan", { fill: identityColor(s.name) });
+    const nameSpan = svg("tspan", { fill: identityColor(s.id) });
     nameSpan.textContent = nameText;
     name.appendChild(nameSpan);
     const idRoom = textW - nameText.length * NAME_CHAR - 10;

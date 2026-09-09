@@ -389,7 +389,7 @@ export class App implements Sink {
     // name is given the identity colour it keeps for the rest of the run. An
     // episode whose `episode/start` has not been read yet stands under its
     // own id, which is not a name and takes no colour of its own.
-    claim(summaries.filter((s) => s.name !== s.id).map((s) => s.name));
+    claim(summaries.filter((s) => s.name !== s.id).map((s) => ({ id: s.id, name: s.name })));
     return summaries;
   }
 
