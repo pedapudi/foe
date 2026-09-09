@@ -218,10 +218,7 @@ function rowStrokes(row: PlacedRow, selected: string | null, card: Hovercard, ha
     pulseMark(mark);
     card.attach(mark, () => "running", () => row.label, () => "");
     group.appendChild(mark);
-  } else if (row.kind !== "concurrent") {
-    // A caption names a group of episodes the lanes beside it already draw.
-    // No event of the log stands behind it, so it takes no vertex: a vertex
-    // there would put a mark on the lane where nothing happened.
+  } else {
     group.appendChild(svg("circle", { class: "vertex", cx: row.x, cy: row.y, r: 2.4 }));
   }
   for (const call of row.calls) group.appendChild(callElement(row, call, card, handlers));

@@ -3522,12 +3522,6 @@ kbd {
   font-family: var(--v2-mono);
 }
 
-/* The caption over episodes that were open at the same time is a sentence
- * about them rather than a thing that happened, so it sets as prose. */
-.caus-label.concurrent .name {
-  font-family: var(--v2-sans);
-}
-
 .caus-label .aside {
   font-family: var(--v2-mono);
   font-size: calc(9.5px * var(--dt-font-scale, 1));
@@ -3891,17 +3885,6 @@ kbd {
  * from measured row heights, which exclude a margin. */
 .outline-row.kind-episode {
   padding-top: var(--dt-gap-item);
-}
-
-/* The caption over a group of episodes that were open at the same time. It
- * is a sentence about the rows under it rather than a thing that happened,
- * so it sets as prose in sans, and its span sets as data in the mono aside
- * every row shares. It takes no hue: hue in this view carries agent
- * identity and outcome, and a third meaning would cost one of those its
- * reading. */
-.outline-row.kind-concurrent .outline-name .label {
-  font-family: var(--v2-sans);
-  color: var(--v2-ink-soft);
 }
 
 /* The row that carries what the episode returned. Its word takes the hue of

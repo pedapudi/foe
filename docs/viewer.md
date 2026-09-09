@@ -569,12 +569,6 @@ One cost comes with the arrangement and is not hidden: one view reads at one
 place in the hierarchy, so a reader cannot study one step's output while the
 shape of the run stays in view. That is why the other arrangement remains.
 
-Episodes that one turn opened and that were open at the same time carry one
-caption where the group begins: how many there were, and the span from the
-first start to the last end. Episodes a declared graph's firings opened
-carry no such caption: each firing opens one child at its own point in the
-graph, so there is no single row where a group of them is opened.
-
 ### Figure and conversation
 
 The causal figure beside a conversation scoped to whatever is selected in
