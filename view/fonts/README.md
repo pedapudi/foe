@@ -2,28 +2,22 @@
 
 The viewer fetches no font over the network. It runs on loopback and from a
 single file, so a font service is unreachable in the environments it is
-built for. Every face the viewer can guarantee is therefore a woff2 file in
-this directory: the live server answers `GET /fonts/<name>.woff2` from the
-copy embedded in the binary, and the static export inlines the same bytes as
-a `data:` URI. `crates/view/build.rs` names the files it embeds; a file
-named there and absent here is left out, and the stylesheet's font stack
-falls back to the next family.
+built for. The face the viewer guarantees is therefore a woff2 file in this
+directory: the live server answers `GET /fonts/<name>.woff2` from the copy
+embedded in the binary, and the static export inlines the same bytes as a
+`data:` URI. `crates/view/build.rs` names the files it embeds; a file named
+there and absent here is left out, and the stylesheet's font stack falls
+back to the next family.
 
-The other nine faces the typeface picker offers resolve to the machine's own
-copy when it has one and to a system fallback otherwise.
-`docs/design-language.md` states that rule.
+Only the default typeface is guaranteed, because a binary carries what it
+embeds and every face costs its own bytes. Every other face the typeface
+picker offers resolves to the machine's own copy when it has one and to a
+system fallback otherwise. `docs/design-language.md` states that rule.
 
 | file | family | weight |
 |---|---|---|
 | `Inconsolata-Regular.woff2` | Inconsolata | 400 |
 | `Inconsolata-Bold.woff2` | Inconsolata | 700 |
-| `iAWriterMonoS-Regular.woff2` | iA Writer Mono | 400 |
-| `iAWriterMonoS-Bold.woff2` | iA Writer Mono | 700 |
-| `JetBrainsMono-Regular.woff2` | JetBrains Mono | 400 |
-| `JetBrainsMono-Bold.woff2` | JetBrains Mono | 700 |
-
-The iA Writer Mono and JetBrains Mono files are copied unchanged from
-zicato's `src/zicato/dashboard/static/fonts/`.
 
 ## Inconsolata
 

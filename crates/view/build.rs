@@ -28,14 +28,7 @@ fn deflated(text: &str) -> Vec<u8> {
     out.extend_from_slice(text.as_bytes());
     out
 }
-const FONTS: [&str; 6] = [
-    "Inconsolata-Regular.woff2",
-    "Inconsolata-Bold.woff2",
-    "iAWriterMonoS-Regular.woff2",
-    "iAWriterMonoS-Bold.woff2",
-    "JetBrainsMono-Regular.woff2",
-    "JetBrainsMono-Bold.woff2",
-];
+const FONTS: [&str; 2] = ["Inconsolata-Regular.woff2", "Inconsolata-Bold.woff2"];
 
 fn main() {
     let out = PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR for build scripts"));

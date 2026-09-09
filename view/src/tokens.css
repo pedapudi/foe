@@ -11,13 +11,12 @@
  * the bundle where a raw hex colour appears (docs/design-language.md,
  * "Colour").
  *
- * The six woff2 files under view/fonts/ are the self-hosted faces: the
- * Inconsolata pair the default typeface sets, and the two pairs the other
- * technical and display faces set. The live server serves them at
- * /fonts/<name>.woff2 and the static export inlines them as data URIs. No
- * other font is fetched: every other family resolves against the machine's
- * own copy or falls back to a system face. view/fonts/README.md records
- * where each file came from. */
+ * The two woff2 files under view/fonts/ are the self-hosted faces, the
+ * Inconsolata pair the default typeface sets. The live server serves them
+ * at /fonts/<name>.woff2 and the static export inlines them as data URIs.
+ * No other font is fetched: every other family the picker offers resolves
+ * against the machine's own copy or falls back to a system face.
+ * view/fonts/README.md records where each file came from. */
 
 @font-face {
   font-family: "Inconsolata"; font-style: normal; font-weight: 400;
@@ -28,26 +27,6 @@
   font-family: "Inconsolata"; font-style: normal; font-weight: 700;
   font-display: swap;
   src: url("/fonts/Inconsolata-Bold.woff2") format("woff2");
-}
-@font-face {
-  font-family: "iA Writer Mono"; font-style: normal; font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/iAWriterMonoS-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "iA Writer Mono"; font-style: normal; font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/iAWriterMonoS-Bold.woff2") format("woff2");
-}
-@font-face {
-  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "JetBrains Mono"; font-style: normal; font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
 }
 
 
