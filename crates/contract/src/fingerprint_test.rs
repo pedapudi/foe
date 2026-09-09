@@ -43,7 +43,7 @@ fn fingerprint_is_a_sha256_and_ignores_resolved_paths_model_and_task() {
     assert!(first.hash.starts_with("sha256:") && first.hash.len() == 7 + 64);
     let second = contract_with(&b, |v| {
         v["task"] = json!("a different task");
-        v["model"] = json!({ "provider": "anthropic", "model": "m", "api_key_file": a.join("k.key") });
+        v["model"] = json!({ "provider": "example", "model": "m", "api_key_file": a.join("k.key") });
     })
     .unwrap();
     assert_eq!(compute(&second, &[], &runtime()).unwrap().hash, first.hash);

@@ -1540,7 +1540,7 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
         std::fs::create_dir_all(project.join(sub)).unwrap();
     }
     std::fs::create_dir_all(&outside).unwrap();
-    std::fs::write(root.join("anthropic.key"), "sk-test\n").unwrap();
+    std::fs::write(root.join("endpoint.key"), "sk-test\n").unwrap();
     // Materialization installs only example-owned tools and checks. Configs,
     // prose, runners, build files, and host responses stay outside the episode.
     const NON_EXECUTABLE_FILES: [&str; 10] = [
@@ -1562,7 +1562,7 @@ fn materialize(root: &Path, name: &str, text: &str, task: &str) -> PathBuf {
         }
     }
     let rewritten = text
-        .replace("/home/user/.config/foe/anthropic.key", root.join("anthropic.key").to_str().unwrap())
+        .replace("/home/user/.config/foe/endpoint.key", root.join("endpoint.key").to_str().unwrap())
         .replace("/home/user/outside-grant", outside.to_str().unwrap())
         .replace("/home/user/foe", Path::new(EXAMPLES).parent().unwrap().to_str().unwrap())
         .replace("/home/user/project", project.to_str().unwrap());
@@ -1598,7 +1598,7 @@ fn plan_reports_reachable_tools_and_resolved_permissions() {
     let grand = json!({
         "name": "grand", "instructions": { "role": "inspect" }, "tools": ["inspect"],
         "host_tools": { "inspect": { "description": "Inspect through the host", "params": {}, "effect": "reads" } },
-        "model": {"provider": "openai", "model": "test", "api_key_file": credential},
+        "model": {"provider": "compatible-http", "model": "test", "base_url": "http://127.0.0.1:1/v1", "api_key_file": credential},
         "grants": { "read": [dir] }, "budget": { "model_calls": 1 }
     });
     let unused = json!({
@@ -1850,7 +1850,7 @@ fn a_repository_document_runs_when_the_command_line_names_none() {
     std::fs::write(dir.join(".foe/contract.json"), serde_json::to_vec_pretty(&document).unwrap()).unwrap();
     // A sandbox mode none of the three matches is refused by the built-in
     // document alone; a document in a file refuses `--sandbox` outright.
-    let refused_mode = ["--model", "openai/gpt-5.6-sol", "--sandbox", "nonsense", "--viewer", "off"];
+    let refused_mode = ["--model", "example/m", "--sandbox", "nonsense", "--viewer", "off"];
     let built_in_ran = "--sandbox nonsense: expected best-effort, required, or off";
     let run = |directory: &Path, args: &[&str]| {
         let output = Command::new(FOE).args(args).current_dir(directory).output().unwrap();

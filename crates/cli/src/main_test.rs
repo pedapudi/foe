@@ -72,14 +72,12 @@ fn every_form_parses_and_foreign_options_are_refused() {
         Ok(Command::Login(login::Options { provider: None, model: None, status: false, .. }))
     ));
     assert!(matches!(parse("login --status"), Ok(Command::Login(login::Options { provider: None, status: true, .. }))));
-    let Ok(Command::Login(login::Options { provider, model, .. })) = parse("login anthropic --model m") else {
-        panic!()
-    };
-    assert_eq!((provider.as_deref(), model.as_deref()), (Some("anthropic"), Some("m")));
+    let Ok(Command::Login(login::Options { provider, model, .. })) = parse("login example --model m") else { panic!() };
+    assert_eq!((provider.as_deref(), model.as_deref()), (Some("example"), Some("m")));
     assert!(parse("login a b").is_err(), "login takes one provider");
     assert!(matches!(parse("view logs --serve --port 8080"), Ok(Command::View { serve: true, port: 8080, .. })));
     assert!(matches!(parse("--config c.json --host"), Ok(Command::Run(run::Options { host: true, .. }))));
-    let Ok(Command::Run(options)) = parse("fix --model anthropic/m --service-tier priority --sandbox off --viewer off")
+    let Ok(Command::Run(options)) = parse("fix --model example/m --service-tier priority --sandbox off --viewer off")
     else {
         panic!()
     };
@@ -196,10 +194,10 @@ fn representative_invocations_parse_to_known_values() {
         ("init", "error"),
         ("init --repository repo extra", "error"),
         ("login", "login provider=None model=None key_file=None status=false"),
-        ("login openai --model gpt", "login provider=Some(\"openai\") model=Some(\"gpt\") key_file=None status=false"),
+        ("login example --model m", "login provider=Some(\"example\") model=Some(\"m\") key_file=None status=false"),
         (
-            "login openai --key-file /keys/openai.json",
-            "login provider=Some(\"openai\") model=None key_file=Some(\"/keys/openai.json\") status=false",
+            "login example --key-file /keys/endpoint.json",
+            "login provider=Some(\"example\") model=None key_file=Some(\"/keys/endpoint.json\") status=false",
         ),
         ("login --status", "login provider=None model=None key_file=None status=true"),
         ("view logs", "view dir=\"logs\" serve=false port=0"),

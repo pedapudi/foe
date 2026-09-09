@@ -218,7 +218,7 @@ fn network_policy_can_read_resolver_configuration() {
     let config: ContractDocument = serde_json::from_value(serde_json::json!({
         "version": 4, "name": "network", "instructions": {"role": "x"}, "tools": ["block"],
         "grants": {"read": ["/tmp"], "write": []}, "budget": {"model_calls": 1},
-        "model": {"provider": "openai", "model": "m"}, "task": "t"
+        "model": {"provider": "example", "model": "m"}, "task": "t"
     }))
     .unwrap();
     let policy = policy(&config, Path::new("/logs/ep"));
@@ -325,20 +325,20 @@ fn episode_policy_follows_grants_and_tool_defs() {
         }))
         .unwrap(),
     );
-    with_children.model = Some(foe_contract::ModelConfig::new("anthropic", "m"));
+    with_children.model = Some(foe_contract::ModelConfig::new("example", "m"));
     let mut p = policy(&with_children, Path::new("/logs/ep"));
     assert_eq!(p.read_files, resolver, "the credential file is appended by the binary after resolution");
     if let Ok(binary) = std::env::current_exe() {
         assert!(p.exec.contains(&binary), "the binary starts children");
     }
     assert!(p.connect_tcp);
-    p.read_files.push(PathBuf::from("/keys/anthropic"));
+    p.read_files.push(PathBuf::from("/keys/endpoint"));
     let offline = p.for_executable(Path::new("/bin/sh"), false).unwrap();
     assert!(offline.cleanup.is_empty(), "a configured executable cannot reach runtime storage");
     assert!(offline.read_files.is_empty(), "an executable without network reads no resolver file");
     let online = p.for_executable(Path::new("/bin/sh"), true).unwrap();
     assert_eq!(online.read_files, resolver, "an executable with network keeps the resolver file");
-    assert!(!online.read_files.contains(&PathBuf::from("/keys/anthropic")), "and never the credential file");
+    assert!(!online.read_files.contains(&PathBuf::from("/keys/endpoint")), "and never the credential file");
     assert_eq!(online.bind_tcp, vec![8080], "the episode's bind ports survive executable narrowing");
 }
 
@@ -471,13 +471,13 @@ fn an_ancestor_reserves_only_reachable_descendant_execute_and_network_access() {
             },
             "unreachable": {
                 "name": "unreachable", "instructions": {"role": "unused"}, "tools": ["block"],
-                "model": {"provider": "openai", "model": "unused"},
+                "model": {"provider": "example", "model": "unused"},
                 "grants": {"read": [dir], "execute": [unreachable_exec]}, "budget": {"model_calls": 1}
             }
         },
         "workflow": {"nodes": {"review": {"terminal": true, "model": {
             "name": "review", "instructions": {"role": "review"}, "tools": ["block"],
-            "model": {"provider": "openai", "model": "review"},
+            "model": {"provider": "example", "model": "review"},
             "grants": {"read": [dir], "execute": [workflow_exec]}, "budget": {"model_calls": 1}
         }}}},
         "task": "test"

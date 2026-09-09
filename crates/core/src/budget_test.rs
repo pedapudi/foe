@@ -231,7 +231,7 @@ fn compaction_end_does_not_charge_summary_usage_twice() {
 // ---- input admission under provider-reported usage ------------------------
 
 /// Provider-reported input is not monotonic within an episode: the staircase
-/// below is from a recorded `openai-codex` run whose reports fall mid-episode
+/// below is from a recorded run whose reports fall mid-episode
 /// (seq of `usage.input` per response). Admission therefore uses cumulative
 /// spend alone. A rule that inferred the next request's cost from the last
 /// report would have refused requests this episode completed within its

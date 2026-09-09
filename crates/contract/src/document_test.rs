@@ -212,7 +212,7 @@ fn every_rule_names_its_key() {
         ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": "string" }))),
         ("done_when.returns", Box::new(|v| v["done_when"] = json!({ "returns": { "pattern": "^a" } }))),
         ("model.provider", Box::new(|v| v["model"] = json!({ "provider": " ", "model": "m" }))),
-        ("model.model", Box::new(|v| v["model"] = json!({ "provider": "anthropic", "model": "" }))),
+        ("model.model", Box::new(|v| v["model"] = json!({ "provider": "example", "model": "" }))),
         (
             "child_contracts.kid.model.provider",
             Box::new({
@@ -360,11 +360,11 @@ fn children_override_or_inherit_models_and_inherit_sandbox() {
     let contract = contract_with(&root, |v| {
         v["tools"] = json!(["block", "spawn"]);
         v["grants"]["spawn"] = json!(["kid"]);
-        v["model"] = json!({ "provider": "anthropic", "model": "m", "api_key_file": root.join("k.key") });
+        v["model"] = json!({ "provider": "example", "model": "m", "api_key_file": root.join("k.key") });
         v["child_contracts"] = json!({ "kid": {
             "name": "kid", "instructions": { "a": "b" }, "tools": ["block"],
             "grants": { "read": [root.join("child")], "write": [root.join("child")] }, "budget": { "model_calls": 1 },
-            "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" },
+            "model": { "provider": "example", "model": "overriding", "reasoning_effort": "high" },
             "child_contracts": { "grandchild": {
                 "name": "grandchild", "instructions": { "a": "b" }, "tools": ["block"],
                 "grants": { "read": [root.join("child")] }, "budget": { "model_calls": 1 }
@@ -373,7 +373,7 @@ fn children_override_or_inherit_models_and_inherit_sandbox() {
     })
     .unwrap();
     let kid = &contract.child_contracts["kid"];
-    assert_eq!(kid.model.as_ref().unwrap().model, "gpt-5.6-luna");
+    assert_eq!(kid.model.as_ref().unwrap().model, "overriding");
     assert_eq!(kid.child_contracts["grandchild"].model, kid.model, "an omitted model inherits the nearest declaration");
     assert_eq!(kid.sandbox, contract.sandbox);
     assert_eq!(kid.grants.read, vec![std::fs::canonicalize(root.join("child")).unwrap()]);
@@ -387,15 +387,15 @@ fn children_override_or_inherit_models_and_inherit_sandbox() {
 fn a_workflow_model_node_can_select_its_model() {
     let root = tmp("config-workflow-model");
     let parent = contract_with(&root, |v| {
-        v["model"] = json!({ "provider": "openai-codex", "model": "gpt-5.6-sol" });
+        v["model"] = json!({ "provider": "example", "model": "declared" });
         v["workflow"] = json!({ "nodes": { "diagnose": { "terminal": true, "model": {
             "name": "diagnose", "instructions": { "role": "diagnose" }, "tools": ["block"],
             "grants": { "read": [root] }, "budget": { "model_calls": 1 },
-            "model": { "provider": "openai-codex", "model": "gpt-5.6-luna", "reasoning_effort": "high" }
+            "model": { "provider": "example", "model": "overriding", "reasoning_effort": "high" }
         } } } });
     })
     .unwrap();
-    assert_eq!(parent.workflow_contracts["diagnose"].model.as_ref().unwrap().model, "gpt-5.6-luna");
+    assert_eq!(parent.workflow_contracts["diagnose"].model.as_ref().unwrap().model, "overriding");
 }
 
 fn node(name: &str, root: &std::path::Path) -> Value {

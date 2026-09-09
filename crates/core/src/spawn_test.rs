@@ -345,12 +345,12 @@ fn an_ungranted_contract_name_is_refused_with_the_names_the_grant_carries() {
 #[test]
 fn child_document_preserves_a_model_override() {
     let mut config = parent_config();
-    config.model = Some(foe_contract::ModelConfig::new("openai-codex", "gpt-5.6-sol"));
+    config.model = Some(foe_contract::ModelConfig::new("example", "declared"));
     let worker = config.child_contracts.get_mut("worker").unwrap();
-    worker.model = Some(foe_contract::ModelConfig::new("openai-codex", "gpt-5.6-luna"));
+    worker.model = Some(foe_contract::ModelConfig::new("example", "overriding"));
     let contract = foe_contract::document::resolve(&config).unwrap();
     let child = child_document(contract.spawned_contract("worker").unwrap(), "t".into());
-    assert_eq!(child.model.unwrap().model, "gpt-5.6-luna");
+    assert_eq!(child.model.unwrap().model, "overriding");
 }
 
 /// docs/config.md `budget`: runtime reservations limit execution without
