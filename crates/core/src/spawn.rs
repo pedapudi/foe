@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::os::fd::AsFd;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -383,6 +383,23 @@ grant at least one root, or spawn a contract that declares no write tool",
                         tool.name, req.contract
                     )));
                 }
+            }
+            // A grant is a directory prefix, as this module's own
+            // documentation states, and `RootWriter` opens each root as a
+            // directory. A lead dividing work often narrows a worker to the
+            // one file its unit names, and that root cannot be opened: the
+            // child dies at construction with `grants.write: Not a directory`,
+            // which names neither the worker nor the call. Refuse the call
+            // instead, and say what to grant, for the same reason the empty
+            // grant above is refused.
+            if let Some(file) = roots.iter().find(|root| root.is_file()) {
+                let holder = file.parent().unwrap_or(Path::new("/"));
+                return Err(CapError::Invalid(format!(
+                    "write {} names a file, and a grant is a directory prefix: grant {} instead, \
+or spawn a contract that declares no write tool",
+                    file.display(),
+                    holder.display()
+                )));
             }
             if let Some(outside) = roots.iter().find(|root| !foe_contract::contains(&contract.grants.write, root)) {
                 let declared = &contract.grants.write;
