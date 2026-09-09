@@ -698,10 +698,16 @@ fn a_subordinate_episode_refuses_a_task_from_the_command_line() {
         serde_json::to_vec(&serde_json::json!({ "episode_id": "ep_child", "parent_id": "ep_parent" })).unwrap(),
     )
     .unwrap();
+    // A model is named here rather than left to the default a login wrote.
+    // foe reads no environment variable, including `HOME`: the home it looks
+    // in is the one the passwd database records, so a test that leaves the
+    // model out passes wherever a default exists and fails wherever it does
+    // not, which no environment setting can make reproducible.
     let hosted = Options {
         task: Some("a task of my own".into()),
         config: Some(format!("{BUILTIN_PREFIX}{BUILTIN_ONESHOT}")),
         log_dir: Some(dir.to_path_buf()),
+        model: Some("openai-codex/gpt-5.6-sol".into()),
         viewer: Viewer::Off,
         ..Options::default()
     };
