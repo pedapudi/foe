@@ -283,9 +283,18 @@ impl Store {
                 }
             }
         }
+        // Keeping the store outside every write root is what stops an
+        // episode overwriting the executable it will later run. A grant of
+        // the whole filesystem leaves no directory outside one, so the rule
+        // can name no candidate and the run cannot start; it also protects
+        // nothing, because an episode that may write everywhere reaches the
+        // store wherever it is put. Only
+        // `--dangerously-permit-everything-no-sandbox` grants that, and it
+        // says what it costs.
+        let everywhere = write_roots.iter().any(|root| root == Path::new("/"));
         let mut failures = Vec::new();
         for parent in candidates {
-            if write_roots.iter().any(|root| parent.starts_with(root)) {
+            if !everywhere && write_roots.iter().any(|root| parent.starts_with(root)) {
                 failures.push(format!("{}: lies under a declared write root", parent.display()));
                 continue;
             }
@@ -488,3 +497,7 @@ pub fn next_child_fd(used: impl Iterator<Item = i32>) -> i32 {
 pub fn parent_fd_path(fd: &Arc<OwnedFd>) -> PathBuf {
     PathBuf::from(format!("/proc/self/fd/{}", fd.as_raw_fd()))
 }
+
+#[cfg(test)]
+#[path = "captured_executable_test.rs"]
+mod tests;
