@@ -7,6 +7,7 @@ to find the relevant specification, report, or guide.
 |---|---|
 | [build.md](build.md) | how to install foe, build it with Bazel, run the end-to-end demos, and use Cargo for Rust development |
 | [design.md](design.md) | the guarantees foe makes and the structure that delivers each |
+| [runtime-efficiency.md](runtime-efficiency.md) | the proposed internal architecture for reducing repeated runtime work while preserving behavior |
 | [evaluation.md](evaluation.md) | how runtime conformance and model-backed task quality are measured |
 | [self-improvement.md](self-improvement.md) | how foe evaluates and improves a disposable copy of its own source, including measured results and operating guidance |
 | [evidence.md](evidence.md) | how portable evidence associates a proposed execution contract with an accepted verifier result |
