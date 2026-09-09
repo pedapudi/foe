@@ -1,0 +1,13 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "episode_cost_unit_test",
+    srcs = ["run_episode_cost_unit_tests.sh"],
+    data = [
+        "episode_cost_test.py",
+        "log_facts.py",
+        "search_in_logs.py",
+        "workflow_node_tokens.py",
+    ],
+    size = "small",
+)
