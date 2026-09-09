@@ -187,9 +187,53 @@ function bodyElement(row: CausalityRow): HTMLElement {
     if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
     body.appendChild(renderJson(value));
   }
+  else if (row.kind === "task") taskSections(body, row.body);
   else if (row.kind === "prose") body.appendChild(renderMarkdown(row.body));
   else body.appendChild(renderToolText(row.body, languageForPath(row.label)));
   return body;
+}
+
+/**
+ * A task a person wrote is prose. A task a workflow node was given is
+ * sections named by a `## heading`, and a section carries what an earlier
+ * node returned as the JSON that value travels as. Setting that JSON as
+ * prose wraps a single line of braces and quotation marks across the pane;
+ * it is set as the value it is, the way an outcome's value is.
+ */
+function taskSections(body: HTMLElement, text: string): void {
+  const close = (name: string | null, lines: string[]): void => {
+    const section = lines.join("\n").trim();
+    if (section === "") return;
+    // The row's own label already names the section holding the task itself.
+    if (name !== null && name !== "task") body.appendChild(h("div", { class: "label" }, name));
+    let value: unknown;
+    try {
+      value = JSON.parse(section);
+    } catch {
+      body.appendChild(renderMarkdown(section));
+      return;
+    }
+    if (value === null || typeof value !== "object") {
+      body.appendChild(renderMarkdown(section));
+      return;
+    }
+    const summary = obj(value).summary;
+    if (typeof summary === "string" && summary !== "") body.appendChild(renderMarkdown(summary));
+    body.appendChild(renderJson(value));
+  };
+  let name: string | null = null;
+  let lines: string[] = [];
+  for (const line of text.split("\n")) {
+    const heading = line.startsWith("## ") ? line.slice(3).trim() : null;
+    if (heading === null) {
+      lines.push(line);
+      continue;
+    }
+    close(name, lines);
+    name = heading;
+    lines = [];
+  }
+  close(name, lines);
 }
 
 /** The part of an outcome a reader came for: what it returned, or why not. */

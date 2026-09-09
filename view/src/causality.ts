@@ -125,7 +125,7 @@ export interface PlacedCall extends CausalityCall {
   y: number;
 }
 
-export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome";
+export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome" | "task";
 
 /**
  * How deep a reading goes. The rail, the tree, the causal figure and the
@@ -152,6 +152,7 @@ const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
   step: "steps",
   call: "calls",
   prose: "conversation",
+  task: "conversation",
   outcome: "conversation",
   result: "outputs",
 };
@@ -641,7 +642,7 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
     if (episode.task !== "") {
       push({
         id: `${episode.id}/task`,
-        kind: "prose",
+        kind: "task",
         episodeId: episode.id,
         laneId,
         parent: head.id,

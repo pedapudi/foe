@@ -51,6 +51,12 @@ gives every other field a titled section. The section holding the run's own
 task is titled by the block heading above it and carries no title of its
 own.
 
+The browser viewer reads a task the same way, on the row labelled `task`
+under each episode. A section holding a returned value sets that value's
+summary as prose and the whole value beneath it, behind the caret every
+other value in the viewer uses, so a node's answer is legible and its
+fields are one click away.
+
 A forked episode's log opens with a copy of the events its origin wrote,
 ending at `seed/end`. Those events record what the origin did, so the
 conversation skips them and shows the fork's own work alone; without that a
