@@ -40,7 +40,9 @@ ALLOWED_ROOT_FILES = ("BUILD.bazel", "Cargo.toml", "MODULE.bazel", "MODULE.bazel
 CODING_TOOLS = ["read", "grep", "edit", "bash"]
 SYSTEM_DEVELOPMENT_READ_DIRS = (Path("/usr/include"), Path("/usr/local/include"))
 FAST_SERVICE_CREDIT_MULTIPLIER = 2.5
-LINE_BUDGET_ROW = re.compile(r"^(\w+)\s+(\d+)\s+\(budget (\d+)\)$")
+# A row reads "kernel 6310 (budget 6350, 40 spare)". The lines spare or over
+# follow the ceiling inside the parentheses and carry no budget of their own.
+LINE_BUDGET_ROW = re.compile(r"^(\w+)\s+(\d+)\s+\(budget (\d+)(?:,[^)]*)?\)$")
 DIAGNOSIS_VALIDATOR_TOOL = "validate-candidate"
 DIAGNOSIS_VALIDATOR_MODULES = (
     "instruction_candidate.py",
@@ -797,7 +799,7 @@ if not findings:
         )
         counts = {{}}
         for line in result.stdout.splitlines():
-            match = re.fullmatch(r"(\\w+)\\s+(\\d+)\\s+\\(budget (\\d+)\\)", line.strip())
+            match = re.fullmatch(r"(\\w+)\\s+(\\d+)\\s+\\(budget (\\d+)(?:,[^)]*)?\\)", line.strip())
             if match:
                 name, count, _ = match.groups()
                 counts[name] = int(count)

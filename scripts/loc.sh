@@ -55,8 +55,22 @@ count() {
           END { print lines + 0 }' {} +
 }
 
+# report NAME COUNT CEILING: prints one row stating the lines still available
+# under the ceiling, or the lines by which the count exceeds it. The lines
+# still available are what makes pressure on a surface readable while the
+# surface still passes.
+report() {
+  if [ "$2" -gt "$3" ]; then
+    printf '%-10s %6d  (budget %d, %d over)\n' "$1" "$2" "$3" "$(($2 - $3))"
+  else
+    printf '%-10s %6d  (budget %d, %d spare)\n' "$1" "$2" "$3" "$(($3 - $2))"
+  fi
+}
+
 status=0
 declare -A measured
+counted=0
+allowed=0
 
 while IFS=$'\t' read -r surface ceiling _label crates; do
   total=0
@@ -66,7 +80,9 @@ while IFS=$'\t' read -r surface ceiling _label crates; do
     case $crates in *' '*) printf '%-10s %6d\n' "$crate" "$n" ;; esac
   done
   measured[$surface]=$total
-  printf '%-10s %6d  (budget %d)\n' "$surface" "$total" "$ceiling"
+  counted=$((counted + total))
+  allowed=$((allowed + ceiling))
+  report "$surface" "$total" "$ceiling"
   if [ "$total" -gt "$ceiling" ]; then
     echo "scripts/loc.sh: $surface has $total lines; the ceiling is $ceiling" >&2
     status=1
@@ -78,12 +94,18 @@ while IFS=$'\t' read -r group ceiling surfaces _phrase; do
   for surface in $surfaces; do
     total=$((total + measured[$surface]))
   done
-  printf '%-10s %6d  (budget %d)\n' "$group" "$total" "$ceiling"
+  report "$group" "$total" "$ceiling"
   if [ "$total" -gt "$ceiling" ]; then
     echo "scripts/loc.sh: $group has $total lines; the ceiling is $ceiling" >&2
     status=1
   fi
 done < <(rows "$groups")
+
+# The last row sums the per-surface rows. A group row bounds surfaces the sum
+# already holds, so it is not added again. The budget this row states is the
+# room the ceilings allow altogether: it moves only when a ceiling moves, and
+# a raise that another ceiling pays for leaves it where it was.
+report total "$counted" "$allowed"
 
 # quote FILE ANCHOR WINDOW: prints every ceiling FILE states for one surface
 # or group, one per line and without thousands separators. ANCHOR is the text
