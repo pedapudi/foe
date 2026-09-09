@@ -820,10 +820,7 @@ which `foe help` repeats, prints the running form's options and every other
 command word; `foe <command> --help`, which `foe help <command>` repeats,
 prints one command's options; both exit 0. An unrecognised option names
 itself and the help that lists what its command takes, rather than
-reprinting every form. The table also holds the spellings the running form
-dropped — `--fork`, `--at`, `--no-open`, `--headless`, and `--key-file` —
-so each is refused by its own name with the option that says the same
-thing.
+reprinting every form.
 
 By default, a run writes one JSON outcome line to standard output when the
 episode ends. This also applies to interactive terminals. A shell reads it

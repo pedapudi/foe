@@ -194,21 +194,6 @@ const OPTS: &[Opt] = &[
 /// The `--help` row, accepted by every form and listed in every help screen.
 const HELP: Opt = opt("*", "", "--help", "", "", "print this help and exit");
 
-/// Spellings the running form does not accept, each with the option that
-/// says the same thing. A command line using one is refused by its own name,
-/// because what it asked for is still available under another spelling.
-const RETIRED: &[(Text, Text)] = &[
-    ("--fork", "write --from DIR@SEQ instead"),
-    ("--at", "write --from DIR@SEQ instead"),
-    ("--no-open", "write --viewer serve instead"),
-    ("--headless", "write --viewer off instead"),
-    (
-        "--key-file",
-        "record the credential once with `foe login PROVIDER --key-file PATH`, or name it in the document's \
-         `model` block",
-    ),
-];
-
 /// How a message names a form: `foe` alone for the bare running form.
 fn spelled(form: &Form) -> String {
     format!("foe {}", form.name).trim_end().to_string()
@@ -274,10 +259,6 @@ fn given(form: &'static Form, argv: &[String]) -> Result<Given, String> {
         let arg = if arg == "--yolo" { "--dangerously-permit-everything-no-sandbox" } else { arg.as_str() };
         let Some(o) = accepted(form).find(|o| o.flag == arg) else {
             let it = spelled(form);
-            let retired = RETIRED.iter().find(|(flag, _)| form.name.is_empty() && *flag == arg);
-            if let Some((_, advice)) = retired {
-                return Err(format!("`{it}` no longer takes {arg}; {advice}"));
-            }
             return Err(format!("unknown option {arg} for `{it}`; run `{it} --help` for the options it takes"));
         };
         let value = match o.value.is_empty() {

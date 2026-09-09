@@ -341,25 +341,6 @@ fn the_top_level_help_names_every_command() {
     assert_eq!(golden("help login"), "help login", "`foe help <command>` is that command's help");
 }
 
-/// docs/design.md "The command line": a spelling the running form dropped is
-/// refused by its own name, with the option that says the same thing now.
-#[test]
-fn a_dropped_spelling_names_what_replaced_it() {
-    let cases = [
-        ("fix --fork /logs/ep_1", "--from DIR@SEQ"),
-        ("fix --at 12", "--from DIR@SEQ"),
-        ("fix --no-open", "--viewer serve"),
-        ("fix --headless", "--viewer off"),
-    ];
-    for (line, replacement) in cases {
-        let error = parse(line).err().unwrap_or_default();
-        assert!(error.contains("no longer takes"), "`foe {line}`: {error}");
-        assert!(error.contains(replacement), "`foe {line}`: {error}");
-    }
-    let elsewhere = parse("view logs --fork /logs/ep_1").err().unwrap_or_default();
-    assert!(elsewhere.starts_with("unknown option --fork"), "another form knows nothing of it: {elsewhere}");
-}
-
 /// An unknown option names itself and the help that would have listed it,
 /// rather than reprinting every form. An option of another form is unknown
 /// here, which is the acceptance the table replaced the cross-check with.
