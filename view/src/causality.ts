@@ -646,7 +646,10 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
         laneId,
         parent: head.id,
         depth: episode.depth + 1,
-        label: "",
+        // The row above names the episode; this one names what it was told
+        // to do. Without the label the prose reads as something the episode
+        // said rather than something it was given.
+        label: "task",
         aside: "",
         body: episode.task,
         fromSeq: 0,
