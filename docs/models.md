@@ -183,7 +183,17 @@ running it, and nothing else is found by convention.
 | `~/.config/foe/default-model.json` | the `model` block a bare `foe "task"` runs |
 
 The home directory is the one the passwd database records for the process's
-user id. No environment variable is read, including `HOME`.
+user id, so the same command resolves the same paths whatever the
+environment holds. `HOME` is read in one case: when the database holds no
+entry for the user at all. A statically linked binary, which is what the
+published release is, cannot load the modules `nsswitch.conf` names, so on a
+host keeping accounts in a directory service such as LDAP, SSSD, or
+systemd-homed every lookup finds nothing and refusing to run would leave
+nothing to fall back to. Where an entry exists it still decides, so the
+environment never overrides a database that answered, and the value `HOME`
+carries must be an absolute path to a directory that exists. `foe login` and
+a run that reads a convention credential each say so once when the fallback
+is what supplied the directory.
 
 A `model` block may omit its credential field. A provider that requires a
 credential then reads its convention file. `compatible-http` reads only an

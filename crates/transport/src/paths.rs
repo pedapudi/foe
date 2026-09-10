@@ -1,24 +1,71 @@
 //! The two convention paths foe has, and the private-file writer they share.
 //!
-//! foe reads no environment variable, including `HOME`. The home directory
-//! is the one the passwd database records for the process's real user id.
-//! Below it, `~/.config/foe/` holds the default model file and one
-//! credentials file per provider. Nothing else is looked up by convention;
-//! every other path arrives in a configuration document.
+//! The home directory is the one the passwd database records for the
+//! process's real user id, so the same command resolves the same paths
+//! whatever the environment holds. `HOME` is read in one case: when the
+//! database has no entry for the user at all. A statically linked binary
+//! cannot load the modules `nsswitch.conf` names, so on a host keeping
+//! accounts in a directory service every lookup finds nothing, and refusing
+//! to run leaves nothing to fall back to. Where an entry exists it still
+//! decides, so the environment never overrides a database that answered.
+//!
+//! Below the home directory, `~/.config/foe/` holds the default model file
+//! and one credentials file per provider. Nothing else is looked up by
+//! convention; every other path arrives in a configuration document.
 
 use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
-/// The home directory of the real user, from the passwd database.
-pub fn home_dir() -> Result<PathBuf, String> {
+/// Where a home directory came from, which the caller reports when it was
+/// not the passwd database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HomeSource {
+    Passwd,
+    Environment,
+}
+
+/// The home directory of the real user and where it came from.
+pub fn home_source() -> Result<(PathBuf, HomeSource), String> {
     let uid = nix::unistd::getuid();
     match nix::unistd::User::from_uid(uid) {
-        Ok(Some(user)) if user.dir.is_absolute() => Ok(user.dir),
+        Ok(Some(user)) if user.dir.is_absolute() => Ok((user.dir, HomeSource::Passwd)),
         Ok(Some(user)) => Err(format!("passwd entry for uid {uid} has a relative home directory {:?}", user.dir)),
-        Ok(None) => Err(format!("uid {uid} has no passwd entry")),
+        Ok(None) => from_environment(uid),
         Err(e) => Err(format!("reading the passwd entry for uid {uid}: {e}")),
     }
+}
+
+/// The home directory of the real user.
+pub fn home_dir() -> Result<PathBuf, String> {
+    home_source().map(|(dir, _)| dir)
+}
+
+/// `HOME` when the passwd database holds no entry for the user.
+fn from_environment(uid: nix::unistd::Uid) -> Result<(PathBuf, HomeSource), String> {
+    resolve_environment(uid, std::env::var_os("HOME"))
+}
+
+/// The home directory `home` names, or why it cannot stand for the missing
+/// passwd entry. It must be an absolute path to a directory that exists: a
+/// wrong one would write a credential where no reader would look for it,
+/// and the failure it replaces is one a reader has to be able to act on.
+fn resolve_environment(
+    uid: nix::unistd::Uid,
+    home: Option<std::ffi::OsString>,
+) -> Result<(PathBuf, HomeSource), String> {
+    let dir = home.filter(|value| !value.is_empty()).map(PathBuf::from);
+    let fault = match &dir {
+        None => "HOME is unset",
+        Some(dir) if !dir.is_absolute() => "HOME is not an absolute path",
+        Some(dir) if !dir.is_dir() => "HOME does not name a directory that exists",
+        Some(dir) => return Ok((dir.clone(), HomeSource::Environment)),
+    };
+    Err(format!(
+        "uid {uid} has no passwd entry, and {fault}. A statically linked binary cannot load the modules \
+nsswitch.conf names, so an account a directory service holds is invisible to it even where `getent passwd \
+{uid}` reports one. Set HOME to that account's home directory"
+    ))
 }
 
 /// `~/.config/foe`.
@@ -70,6 +117,32 @@ mod tests {
         assert!(home.is_absolute());
         assert_eq!(credentials_path(&home, "anthropic"), home.join(".config/foe/credentials/anthropic.json"));
         assert_eq!(default_model_path(&home), home.join(".config/foe/default-model.json"));
+    }
+
+    /// A statically linked binary cannot load the modules `nsswitch.conf`
+    /// names, so on a host keeping accounts in a directory service the
+    /// passwd lookup finds nothing and there is nothing to fall back to.
+    /// `HOME` stands for the missing entry, and only for a missing one, so
+    /// a database that answered is never overridden.
+    #[test]
+    fn home_falls_back_to_the_environment_only_where_the_database_has_no_entry() {
+        let uid = nix::unistd::getuid();
+        let dir = crate::test_support::scratch_dir("paths-home");
+        let os = |text: &str| Some(std::ffi::OsString::from(text));
+
+        let (found, source) = resolve_environment(uid, os(&dir.display().to_string())).unwrap();
+        assert_eq!((found.as_path(), source), (dir.as_ref(), HomeSource::Environment));
+
+        for absent in [None, os(""), os("relative/home"), os(&dir.join("gone").display().to_string())] {
+            let refused = resolve_environment(uid, absent.clone()).unwrap_err();
+            assert!(refused.contains("no passwd entry"), "{refused}");
+            assert!(refused.contains("nsswitch.conf"), "it names the mechanism: {refused}");
+            assert!(refused.contains("Set HOME"), "it names what to do: {refused}");
+        }
+
+        // This host records an entry, so the database decides and the
+        // environment is not consulted at all.
+        assert_eq!(home_source().unwrap().1, HomeSource::Passwd);
     }
 
     #[test]

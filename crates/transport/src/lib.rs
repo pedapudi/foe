@@ -83,6 +83,11 @@ pub struct Plan {
     pub model: ModelConfig,
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
+    /// True when the passwd database held no entry for the user and the
+    /// home directory came from `HOME`. A caller reports it, because a
+    /// credential read from a directory the environment named is worth
+    /// saying out loud.
+    pub home_from_environment: bool,
 }
 
 impl Plan {
@@ -133,8 +138,10 @@ pub fn context_window(config: &ModelConfig) -> Option<u64> {
 /// existing convention credential path, and checks every required option.
 /// Reads the managed-cloud convention file when it exists; reads no secret.
 pub fn plan(config: &ModelConfig) -> Result<Plan, TransportError> {
-    let home = paths::home_dir().map_err(TransportError::Home)?;
-    plan_with_home(config, &home)
+    let (home, source) = paths::home_source().map_err(TransportError::Home)?;
+    let mut plan = plan_with_home(config, &home)?;
+    plan.home_from_environment = source == paths::HomeSource::Environment;
+    Ok(plan)
 }
 
 /// [`plan`] with the home directory given, for tests and for callers that
@@ -198,7 +205,7 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
             None => return Err(TransportError::NoServiceTier { provider: provider.name }),
         }
     }
-    Ok(Plan { provider, model, credential_path })
+    Ok(Plan { provider, model, credential_path, home_from_environment: false })
 }
 
 /// Builds the transport a `model` block names. Reads the credential file
