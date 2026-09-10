@@ -126,6 +126,7 @@ used.
 | `openrouter` | `openai/gpt-6` | 1050000 |
 | `openrouter` | `openai/gpt-5` | 400000 |
 | `openrouter` | `google/gemini-2.5` | 1048576 |
+| `vertex` | `gemini-3` | 1048576 |
 | `vertex` | `gemini-2.5` | 1048576 |
 | `vertex` | `claude-` | 200000 |
 

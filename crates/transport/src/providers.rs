@@ -105,6 +105,7 @@ impl Provider {
 const CLAUDE: u64 = 200_000;
 const GPT5: u64 = 400_000;
 const GEMINI_25: u64 = 1_048_576;
+const GEMINI_3: u64 = 1_048_576;
 
 pub static PROVIDERS: &[Provider] = &[
     Provider {
@@ -204,8 +205,8 @@ pub static PROVIDERS: &[Provider] = &[
             ("project", "the Google Cloud project id"),
             ("location", "the region, for example us-east5 or global"),
         ],
-        presets: &["gemini-2.5-pro", "gemini-2.5-flash", "claude-opus-5"],
-        windows: &[("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
+        presets: &["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.1-pro", "claude-opus-5"],
+        windows: &[("gemini-3", GEMINI_3), ("gemini-2.5", GEMINI_25), ("claude-", CLAUDE)],
         headers: &[],
         service_tier: None,
         verify: Verify::MintToken,
@@ -270,6 +271,9 @@ mod tests {
         }
         if let Some(vertex) = find("vertex") {
             assert_eq!(vertex.context_window("gemini-2.5-flash"), Some(GEMINI_25));
+            for model in vertex.presets.iter().filter(|m| m.starts_with("gemini-")) {
+                assert_eq!(vertex.context_window(model), Some(GEMINI_3), "{model} has a window");
+            }
             assert_eq!(vertex.context_window("claude-sonnet-5"), Some(CLAUDE));
         }
         for name in ["openai", "openai-codex"] {
