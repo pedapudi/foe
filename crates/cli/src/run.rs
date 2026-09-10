@@ -29,7 +29,7 @@ use foe_core::spawn::{ChildLaunch, ProcessConnections, ProcessSpawner, Router, U
 use foe_core::wiring::{BudgetedSpawner, NoHostUplink};
 use foe_core::{Spawner, Tool, Transport, Writer};
 use foe_log::seed::{SeedContract, SeedHeader};
-use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome, TaskStatus};
+use foe_log::{ContentBlock, EpisodeStart, EventData, InboxItem, InboxSource, LogError, Outcome};
 use foe_team::{self as team, Team};
 use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
@@ -315,25 +315,6 @@ fn source_state(source: &Path) -> Result<(EpisodeStart, bool, u64), String> {
     let state = foe_log::fold::fold(&events).map_err(in_source)?;
     let start = state.start.ok_or_else(|| format!("{}: the log has no episode/start", source.display()))?;
     Ok((start, state.outcome.is_some(), events.len() as u64))
-}
-
-/// The delegated tasks a log holds in a status other than completed, one
-/// line each, naming the task, its roster name, and the outcome it reached.
-/// The first task is the episode itself, which settles after the team it
-/// leads, so the report starts at the second. See docs/design.md "Agent
-/// teams".
-fn unfinished_units(dir: &Path) -> Vec<String> {
-    let Ok(events) = foe_log::fold::read_all(dir) else { return Vec::new() };
-    team::fold(&events)
-        .tasks
-        .iter()
-        .skip(1)
-        .filter(|task| task.status != TaskStatus::Completed)
-        .map(|task| {
-            let outcome = serde_json::to_string(&task.outcome).unwrap_or_default();
-            format!("{} ({}) {outcome}", task.task_id, task.name)
-        })
-        .collect()
 }
 
 /// Refuses a `--from` value under which no log exists, naming the file: a
@@ -1067,17 +1048,6 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     let outcome = outcome?;
     if let Some(settings) = &telemetry {
         crate::telemetry::after_run(settings, &telemetry_log_dir);
-    }
-    // A lead reports its own completion. It may complete after a unit it
-    // delegated failed, and the outcome it prints says nothing about the
-    // board, so a reader who sees only the outcome cannot tell a team that
-    // worked from one that never ran. The two are stated together.
-    let unfinished = unfinished_units(&telemetry_log_dir);
-    if matches!(outcome, Outcome::Completed { .. }) && !unfinished.is_empty() {
-        eprintln!("foe: this episode completed while {} delegated task(s) did not:", unfinished.len());
-        for task in &unfinished {
-            eprintln!("foe:   {task}");
-        }
     }
     if !options.conversation {
         println!("{}", serde_json::to_string(&outcome).map_err(|e| e.to_string())?);

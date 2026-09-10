@@ -258,9 +258,9 @@ fn builtin_oneshot_takes_the_verifier_and_the_sandbox_mode() {
 /// document.
 #[rustfmt::skip]
 const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 3] = [
-    ("coding", "sha256:4d3c9b391747497abe0c1efa43b13f782e0472a78164b81fadef5e54acb3284b"),
-    ("oneshot", "sha256:82d2bb6b08f609d6eb184d505235c0b5d85012ff24c0ad9dcaed977ec262b964"),
-    ("team",    "sha256:01fad2a6cd997c9e289c48bc36d2ebf9786769d2a385f3763cb3f76c6feb2f5b"),
+    ("coding", "sha256:a74279905bafaf52b8eeb9dfbefbb9b77efc3971ed05ede5ccc4703b00a5ec3d"),
+    ("oneshot", "sha256:b9e403c07de9d458145f576e89f792faaf2c62ad46babe37ab85e5a42fb69e8e"),
+    ("team",    "sha256:c6cfd8465e47bf60eeda93690b9d68bf644156b433f188324a5bafc8a3d98d8b"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one

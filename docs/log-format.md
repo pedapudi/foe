@@ -509,7 +509,7 @@ itself is the first inbox item.
 | `peer` | a team member, via the lead's queue; `from` and `message_id` are set |
 | `request` | a question from a team member, sent with `ask`; `from` and `message_id` are set |
 | `response` | the answer to a question, carrying that question's `message_id`; the runtime writes one carrying the question's default answer when the deadline passes unanswered |
-| `verify` | the runtime, carrying findings from a `done_when` verifier |
+| `verify` | the runtime, carrying a finding that withheld a completion: one a `done_when` verifier reported, or a task on the board this episode leads that did not complete and that the returned value does not name |
 | `system` | the runtime, for text it must show the model, such as a budget warning |
 | `session` | the runtime, when it observes that a process session's process has ended |
 
@@ -994,7 +994,7 @@ in version 3. A supervising episode routes on it.
 | `goal-unreachable` | the model reported that the task cannot be completed as stated |
 | `ambiguous-task` | the model reported that the task admits incompatible readings |
 | `missing-capability` | the task needs a tool or grant the contract lacks |
-| `verification-unsatisfiable` | `done_when` retries were spent with findings still present |
+| `verification-unsatisfiable` | `done_when` retries were spent with verifier findings, or with board tasks the returned value does not name, still present |
 | `child-blocked` | a child episode was blocked and the parent cannot proceed |
 | `cancelled` | the episode was stopped by whatever started it, through the protocol's `cancel` line |
 | `recovery-exhausted` | request retries were spent, or a workflow reached a recovery bound |

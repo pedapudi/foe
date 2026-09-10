@@ -236,6 +236,11 @@ because the root episode settles after its delegated tasks. Every other
 dependency must already exist. These two rules keep dependency scheduling
 finite and acyclic without a model-driven claim protocol.
 
+An identifier is also what an episode writes into what it returns to account
+for a task that did not complete. Until it does, the completion is withheld
+and a `verify` inbox item names the task; design.md "Agent teams" states the
+rule.
+
 ## Built-in coding tools
 
 The six coding tools live in the `foe-code` crate, which exposes two

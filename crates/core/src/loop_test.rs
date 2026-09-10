@@ -1,4 +1,4 @@
-use super::{cited_findings, parse_tolerant, run, spill, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{cited_findings, parse_tolerant, run, spill, unaccounted, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
@@ -889,6 +889,44 @@ async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verif
     let verified = verifications(&events);
     assert_eq!(verified.len(), 1, "the semantic verifier runs only after the evidence contract passes");
     assert_eq!(verified[0].status, VerificationStatus::Accepted);
+}
+
+/// docs/design.md "Agent teams": a task on the board an episode leads is
+/// accounted for by its identifier written anywhere in what the episode
+/// returns, at any depth and in any field. The member's name does not
+/// account for it, because a member name is an ordinary word that a report
+/// can use without meaning that task. A completed task needs no account.
+#[test]
+fn a_board_task_is_accounted_for_by_its_identifier_and_not_by_its_member_name() {
+    let recorded = |seq: u64, id: &str, name: &str, revision: u64, status: foe_log::TaskStatus| foe_log::Event {
+        seq,
+        time: 0,
+        version: None,
+        data: EventData::TeamTask(foe_log::TeamTask {
+            task_id: id.into(),
+            revision,
+            name: name.into(),
+            contract: "worker".into(),
+            description: "the unit".into(),
+            context: foe_log::SpawnContext::Fresh,
+            status,
+            owner: None,
+            blocked_by: Vec::new(),
+            write: Vec::new(),
+            outcome: None,
+            call_id: "tc".into(),
+        }),
+    };
+    let board = [
+        recorded(0, "task_01", "unit", 0, foe_log::TaskStatus::Queued),
+        recorded(1, "task_01", "unit", 1, foe_log::TaskStatus::Failed),
+        recorded(2, "task_02", "survey", 0, foe_log::TaskStatus::Completed),
+    ];
+    let named = |value: serde_json::Value| unaccounted(&board, &value);
+    assert_eq!(named(json!("every unit is covered")), ["task_01 (unit) failed"], "the member name is not an account");
+    assert!(named(json!({ "units": [{ "finding": "task_01 failed: no root" }] })).is_empty(), "any depth counts");
+    assert!(named(json!({ "summary": "task_01 stalled" })).is_empty(), "any field counts");
+    assert!(named(json!(["task_02"])).len() == 1, "a completed task needs no account");
 }
 
 /// docs/config.md `done_when`: what activates the citation rule is the shape

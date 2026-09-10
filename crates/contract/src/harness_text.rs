@@ -61,6 +61,13 @@ completion, use the contract's declared completion signal in this response.";
 pub const VERIFY_FINDINGS: &str = "Verification by `{tool}` reported the findings below. Resolve each finding, \
 then finish again.\n\n{findings}";
 
+/// Frames the board tasks a lead's completion did not account for, fed back
+/// as an inbox item with source `verify`. See docs/design.md "Agent teams".
+pub const BOARD_UNACCOUNTED: &str = "The tasks below are on the board this episode leads and did not complete, \
+and what you returned names none of them. Wait for one that has not settled, or write each task identifier \
+below into what you return, beside what became of that unit and what it leaves undone. Then finish \
+again.\n\n{tasks}";
+
 /// Result text for every tool call in a response that hit the provider's
 /// output length limit. None of those calls ran.
 pub const LENGTH_LIMIT_ERROR: &str = "The response reached the output length limit before it ended, so no tool \
@@ -175,6 +182,7 @@ pub fn all() -> Vec<(&'static str, &'static str)> {
         ("return.required", RETURN_REQUIRED),
         ("final_request", FINAL_REQUEST),
         ("verify.findings", VERIFY_FINDINGS),
+        ("board.unaccounted", BOARD_UNACCOUNTED),
         ("length_limit_error", LENGTH_LIMIT_ERROR),
         ("interrupted_result", INTERRUPTED_RESULT),
         ("orphan_result", foe_log::seed::ORPHAN_RENDERED),

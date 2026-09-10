@@ -16,11 +16,12 @@ use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue,
 use foe_contract::document::{completion_evidence_fields, ResolvedContract};
 use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
+use foe_contract::DEFAULT_RETRIES;
 use foe_log::{
     fold, seed, AssistantMessage, BlockedCode, Chunk, CompactionStart, CompactionTrigger, ContentBlock, EpisodeStart,
     Event, EventData, ExhaustedLimit, HeaderReason, InboxItem, InboxSource, LogError, Message, ModelRequest, Outcome,
-    RequestHeader, RetryCause, StopReason, ThinkingBlock, ToolCall, ToolResult, ToolSchema, Usage, VerificationResult,
-    VerificationStatus, SUMMARY_REQUEST_PREFIX,
+    RequestHeader, RetryCause, StopReason, TaskStatus, TeamTask, ThinkingBlock, ToolCall, ToolResult, ToolSchema,
+    Usage, VerificationResult, VerificationStatus, SUMMARY_REQUEST_PREFIX,
 };
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -761,6 +762,18 @@ impl Episode {
             self.append_inbox(InboxSource::System, &message)?;
             return Ok(None);
         }
+        let retries = self.p.contract.done_when.as_ref().map_or(DEFAULT_RETRIES, |done| done.retries);
+        let tasks = self.p.log.with_events(|events| unaccounted(events, &candidate));
+        if !tasks.is_empty() {
+            if self.verify_attempts >= retries {
+                let message = format!("{} board task(s) unaccounted for after {retries} retries", tasks.len());
+                return Ok(Some(Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message }));
+            }
+            self.verify_attempts += 1;
+            let framed = text::fill(text::BOARD_UNACCOUNTED, &[("tasks", &tasks.join("\n"))]);
+            self.append_inbox(InboxSource::Verify, &framed)?;
+            return Ok(None);
+        }
         let Some(done) = self.p.contract.done_when.clone().filter(|d| d.verify.is_some()) else {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
@@ -791,6 +804,49 @@ impl Episode {
         self.append_inbox(InboxSource::Verify, &framed)?;
         Ok(None)
     }
+}
+
+/// Whether any string in `value`, at any depth, contains `needle`. Object
+/// keys come from the completion schema rather than from the model, so only
+/// values are read.
+fn names(value: &Value, needle: &str) -> bool {
+    match value {
+        Value::String(text) => text.contains(needle),
+        Value::Array(items) => items.iter().any(|item| names(item, needle)),
+        Value::Object(fields) => fields.values().any(|field| names(field, needle)),
+        _ => false,
+    }
+}
+
+/// The tasks on the board this episode leads that what it returns does not
+/// account for: those that did not complete and whose task identifier
+/// appears in no string of the returned value. A lead may legitimately
+/// complete after a unit failed, and what separates that from a team that
+/// never ran is whether the report says so, which is checkable without
+/// judging the work. The identifier rather than the member name is what
+/// counts, because a member name is a word a report can use by accident:
+/// a task named `unit` is named by any sentence about units. The episode's
+/// own root task is derived rather than recorded, and events copied by
+/// seeding carry another episode's board, so neither appears here.
+fn unaccounted(events: &[Event], candidate: &Value) -> Vec<String> {
+    let live_from = events.iter().rev().find(|e| matches!(e.data, EventData::SeedEnd {})).map_or(0, |e| e.seq + 1);
+    let mut board: BTreeMap<&str, &TeamTask> = BTreeMap::new();
+    for event in events.iter().filter(|e| e.seq >= live_from) {
+        if let EventData::TeamTask(task) = &event.data {
+            let known = board.entry(&task.task_id).or_insert(task);
+            if task.revision >= known.revision {
+                *known = task;
+            }
+        }
+    }
+    board
+        .values()
+        .filter(|task| task.status != TaskStatus::Completed)
+        .filter(|task| !names(candidate, &task.task_id))
+        // Every status name is one word, so the debug form lowercased is
+        // the name docs/log-format.md records for it.
+        .map(|task| format!("{} ({}) {}", task.task_id, task.name, format!("{:?}", task.status).to_lowercase()))
+        .collect()
 }
 
 /// The first reason `candidate` fails the citation rule, or the empty

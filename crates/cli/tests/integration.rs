@@ -900,7 +900,8 @@ fn a_team_blocks_work_whose_dependency_did_not_complete() {
     let mut blocked =
         call("tc_block", "block", r#"{"code":"goal-unreachable","message":"the prerequisite cannot complete"}"#);
     blocked.push(done("tool"));
-    let responses = vec![delegate, blocked, vec![text("dependency handled"), done("end")]];
+    let accounted = text("task_01 was blocked by its worker and task_02 never started");
+    let responses = vec![delegate, blocked, vec![accounted, done("end")]];
     let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
 
@@ -939,7 +940,7 @@ fn parent_settlement_closes_a_running_board_task_before_episode_end() {
     });
     let mut delegate = call("tc_spawn", "spawn", r#"{"contract":"worker","task":"work"}"#);
     delegate.push(done("end"));
-    let responses = vec![delegate, vec![text("child complete"), done("end")]];
+    let responses = vec![delegate, vec![text("task_01 was still running when I finished"), done("end")]];
     let (events, code) = host_run(&dir, &config, responses, |_, _| Value::Null);
     assert_eq!(code, 0, "{:?}", events.last());
     let states = events
@@ -1234,18 +1235,14 @@ fn a_team_surveys_delegates_answers_a_question_and_integrates() {
     }
 }
 
-/// docs/design.md "Agent teams": a run that ends `completed` while a task on
-/// the board it leads reached any other status names those tasks on standard
-/// error. The lead writes the outcome, so a lead that reports work its team
-/// never performed produces an outcome that says nothing is wrong; the board
-/// is the record of what each delegated task reached.
-#[test]
-fn a_completed_run_names_the_delegated_tasks_that_did_not_complete() {
-    let dir = scratch("team-unfinished-report");
-    let config = config(&dir, |c| {
+/// A lead that delegates one unit, whose worker blocks, and then reports as
+/// this script's `claim` says. The `account` responses follow it, so a
+/// script that gives none leaves the lead repeating the unaccounted claim.
+fn a_lead_whose_only_unit_blocked(dir: &Path, claim: &str, account: Vec<Vec<Value>>) -> (Vec<Value>, i32, PathBuf) {
+    let config = config(dir, |c| {
         c["tools"] = json!(["spawn", "wait"]);
         c["grants"]["spawn"] = json!(["worker"]);
-        c["budget"] = json!({ "model_calls": 6, "max_depth": 1, "max_episodes": 2 });
+        c["budget"] = json!({ "model_calls": 8, "max_depth": 1, "max_episodes": 2 });
         c["child_contracts"] = json!({ "worker": {
             "name": "worker", "instructions": { "role": "Complete the assigned task." }, "tools": ["block"],
             "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
@@ -1256,17 +1253,105 @@ fn a_completed_run_names_the_delegated_tasks_that_did_not_complete() {
     delegate.push(done("tool"));
     let mut blocked = call("tc_block", "block", r#"{"code":"goal-unreachable","message":"the unit cannot be done"}"#);
     blocked.push(done("tool"));
-    // The lead reports completion after its one worker blocked, which is the
-    // account no assertion on the outcome alone can question.
-    let claim = vec![text("every unit is covered"), done("end")];
-    let responses = in_order(vec![delegate, blocked, claim]);
-    let (events, code, _, reported) =
-        host_run_dispatched(&dir, &config, responses, |name, _| panic!("unexpected host tool {name}"));
+    let mut responses = vec![delegate, blocked, vec![text(claim), done("end")]];
+    responses.extend(account);
+    host_run_with_log(dir, &config, responses, |name, _| panic!("unexpected host tool {name}"))
+}
+
+/// docs/design.md "Agent teams": an episode that leads a team completes only
+/// once what it returns accounts for every task on its board that did not
+/// complete. A lead may complete after a unit it delegated failed, provided
+/// it says so, so naming the task is what the runtime requires. An
+/// unaccounted report is withheld, reaches the model as a `verify` inbox
+/// item naming the task, and the episode continues.
+#[test]
+fn a_lead_accounts_for_a_delegated_task_that_did_not_complete_before_it_completes() {
+    let dir = scratch("team-unaccounted-board");
+    let accounted = vec![vec![text("task_01 blocked: the unit cannot be done"), done("end")]];
+    let (events, code, _) = a_lead_whose_only_unit_blocked(&dir, "every unit is covered", accounted);
     assert_eq!(code, 0, "{:?}", events.last());
-    assert_eq!(events.last().unwrap()["data"]["outcome"]["kind"], "completed", "the lead reported completion");
-    assert!(reported.contains("completed while 1 delegated task(s) did not"), "{reported}");
-    assert!(reported.contains("task_01 (unit)"), "the report names the task and its roster name: {reported}");
-    assert!(reported.contains("goal-unreachable"), "the report carries the outcome the task reached: {reported}");
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(outcome["kind"], "completed", "{outcome}");
+    assert_eq!(outcome["value"], "task_01 blocked: the unit cannot be done", "the account is what completed");
+    let withheld: Vec<&Value> =
+        events.iter().filter(|event| event["type"] == "inbox/item" && event["data"]["source"] == "verify").collect();
+    assert_eq!(withheld.len(), 1, "the first report was withheld once");
+    let framed = withheld[0]["data"]["content"][0]["text"].as_str().unwrap();
+    assert!(framed.contains("task_01 (unit) blocked"), "the finding names the task, its member, and its status");
+}
+
+/// docs/design.md "Agent teams": the account is bounded by `done_when.retries`
+/// like any other withheld completion, so a lead that never answers for its
+/// board ends blocked rather than repeating the claim for as long as its
+/// budget lasts.
+#[test]
+fn a_lead_that_never_accounts_for_its_board_is_blocked() {
+    let dir = scratch("team-unaccounted-blocked");
+    let repeat = vec![vec![text("every unit is covered"), done("end")]; 2];
+    let (events, code, _) = a_lead_whose_only_unit_blocked(&dir, "every unit is covered", repeat);
+    let outcome = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(code, 2, "{outcome}");
+    assert_eq!(outcome["kind"], "blocked", "{outcome}");
+    assert_eq!(outcome["code"], "verification-unsatisfiable", "{outcome}");
+    assert!(outcome["message"].as_str().unwrap().contains("1 board task(s) unaccounted for"), "{outcome}");
+}
+
+/// docs/design.md "Agent teams": the account is required of every lead,
+/// including one that is itself a member of another team, because the check
+/// runs where an episode settles rather than where a run reports. The
+/// worker below leads a team of its own, and its own log carries the
+/// withheld completion and the finding that names its board task.
+#[test]
+fn a_child_that_leads_a_team_accounts_for_its_own_board() {
+    let dir = scratch("team-nested-account");
+    let helper = json!({
+        "name": "helper", "instructions": { "role": "Do the part." }, "tools": ["block"],
+        "grants": { "read": [dir] }, "budget": { "model_calls": 2, "max_depth": 0 }
+    });
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["spawn", "wait"]);
+        c["grants"]["spawn"] = json!(["worker"]);
+        c["budget"] = json!({ "model_calls": 12, "max_depth": 2, "max_episodes": 3 });
+        c["child_contracts"] = json!({ "worker": {
+            "name": "worker", "instructions": { "role": "Divide the unit." }, "tools": ["spawn", "wait"],
+            "grants": { "read": [dir], "spawn": ["helper"] },
+            "budget": { "model_calls": 8, "max_depth": 1, "max_episodes": 2 },
+            "child_contracts": { "helper": helper }
+        } });
+    });
+    let spawn_wait = |contract: &str, name: &str| {
+        let args = format!(r#"{{"contract":"{contract}","task":"the part","name":"{name}"}}"#);
+        let mut turn = call(&format!("tc_spawn_{name}"), "spawn", &args);
+        turn.extend(call(&format!("tc_wait_{name}"), "wait", "{}"));
+        turn.push(done("tool"));
+        turn
+    };
+    let root_delegates = spawn_wait("worker", "unit");
+    let worker_delegates = spawn_wait("helper", "part");
+    let mut blocked = call("tc_block", "block", r#"{"code":"goal-unreachable","message":"the part cannot be done"}"#);
+    blocked.push(done("tool"));
+    let responses = vec![
+        root_delegates,
+        worker_delegates,
+        blocked,
+        vec![text("the unit is covered"), done("end")],
+        vec![text("task_01 blocked: the part cannot be done"), done("end")],
+        vec![text("the worker completed its unit"), done("end")],
+    ];
+    let (events, code, log_dir) =
+        host_run_with_log(&dir, &config, responses, |name, _| panic!("unexpected host tool {name}"));
+    assert_eq!(code, 0, "{:?}", events.last());
+    assert_eq!(events.last().unwrap()["data"]["outcome"]["kind"], "completed", "the root's own unit completed");
+    let child_id = events.iter().find(|e| e["type"] == "spawn/start").unwrap()["data"]["child_id"].as_str().unwrap();
+    let path = log_dir.join("children").join(child_id).join("episode.jsonl");
+    let worker: Vec<Value> =
+        std::fs::read_to_string(path).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+    let withheld: Vec<&Value> =
+        worker.iter().filter(|e| e["type"] == "inbox/item" && e["data"]["source"] == "verify").collect();
+    assert_eq!(withheld.len(), 1, "the worker's own report was withheld once");
+    let framed = withheld[0]["data"]["content"][0]["text"].as_str().unwrap();
+    assert!(framed.contains("task_01 (part) blocked"), "the finding names the worker's own board task: {framed}");
+    assert_eq!(worker.last().unwrap()["data"]["outcome"]["kind"], "completed", "the worker completed after accounting");
 }
 
 /// docs/protocol.md "Children": a child replaces inherited executable
@@ -2108,18 +2193,18 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
 const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
-    ("bounded-question", "sha256:ddf1953bda3f9d0c599ba53a216887a416175c700202af4c1e35c73905494421"),
-    ("budget-exhausted", "sha256:48fd66d20e58e25b6ded5a1a79b0f84b16087f5c8fd5a64321caa811faba4e37"),
-    ("host-model-backend", "sha256:db2f90930f69e5a1b26b9383689f505b1ae8c656641bb205bd9a774b9a28532a"),
-    ("minimal", "sha256:ce95c4817b92ee8592d2768da9a4b553acf52cbc8be6ec4633fdee296e7d5063"),
-    ("recovery-exhausted", "sha256:a7f6eeaeb7ca442787bc4127a9e167f41486d01f99ddf3c1908a81986d588e29"),
-    ("sandbox", "sha256:3c6db65289a9a514e4a8c6cdab981a96168abd6c11890c9852a05f66d1103e85"),
-    ("self-extension", "sha256:b3b58c01f843bc3d8ba0deb649c3f4e088d09552a553acbfba5d2d87875db331"),
-    ("subagents", "sha256:c2e56a0a6fb96632680076f3b435e36cfa1f78cb26011c5f5f09fab43e71eba9"),
-    ("team", "sha256:9d6cb54ab443dde38d61a4616645acd6a6381ed70677f71b132beb322fe3cbf3"),
-    ("verification-unsatisfiable", "sha256:9915cd52c06137bdf8d1ec3723bc27c970e9c33cc06dcca259b4b05001555a81"),
-    ("workflow", "sha256:9b6b079dab41a1941c3a9406107b52722bd3b573c5b8b3d62176f4cac54cc501"),
-    ("wrap-a-binary", "sha256:5df87d2b61c1031c605aa29ea1a5fbcb6a843930933dafe32cd4423386f1cf67"),
+    ("bounded-question", "sha256:65eef8a7a8dcc6e447b572e76d615a0ebd2081e8245299fc869ca4a428e9d760"),
+    ("budget-exhausted", "sha256:ac8d80a6802ea6f48c7f7ad6ad9adbf5974bab6bedf8504c36d998e96619482e"),
+    ("host-model-backend", "sha256:2177fcc44879576f81dace6ca4f147e3e70392989df0ba2e7d217666f6a8e760"),
+    ("minimal", "sha256:8ba7f0fb85928a1dbb636d4e12f974407a53fb46a13203fecb4e9fa72c32ff30"),
+    ("recovery-exhausted", "sha256:06b55a22b5bb9ca75dfc51c8f5d0ed3917c383691c84a03233ec4a3e1281d333"),
+    ("sandbox", "sha256:e5488e1ec0899184ee2a6249167a84ee36790c6fa5c2886262aa476554a37bbf"),
+    ("self-extension", "sha256:15d1e7fe8cfdf44c5087885eddc73ffe82d12de5ddccb366c7309b1c6f074b38"),
+    ("subagents", "sha256:ed91fe9e7e957297ae2da5d1302a202d2f941c6cebba83be4fbd8afd433cc33d"),
+    ("team", "sha256:09fb9b788d24052677a05e1c86ffbd19d768b71df9aa57113bb3041ebf5f87fc"),
+    ("verification-unsatisfiable", "sha256:0782805ec4f5bbb2435f36caf4aa6e0d2230ee5068dca9ebfd9975210fc07132"),
+    ("workflow", "sha256:074afb36dfb2ebfef07a176d1329e782ab40b119586deae6264e4a58558741d6"),
+    ("wrap-a-binary", "sha256:40125c2bb4a91e51432835ddee0b5619df36dd2c5675f2d2a3e4922c94c966e4"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one

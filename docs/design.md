@@ -738,12 +738,23 @@ task inbox item that starts its episode. Other coordination uses the board
 projection and durable peer messages, so no idle worker or broadcast poll is
 required.
 
-A run that ends `completed` while a task on the board it leads settled in any
-other status names those tasks on standard error, one line for each, with the
-outcome that task reached. The outcome a run prints is the lead's own account
-of the work. A lead may complete after a unit it delegated failed, provided
-it says so, and the board is the record of what each delegated task reached,
-so the two are stated together.
+An episode that leads a team completes only once what it returns accounts
+for every task on the board it leads that did not complete. The account is
+the task's identifier written somewhere in the returned value. A lead may
+complete after a unit it delegated failed, provided it says so, and naming
+the task is the part of saying so that the runtime can check without judging
+the work; a report that names nothing is indistinguishable from a report of
+a team that never ran. The identifier rather than the member's name is what
+counts, because a member's name is an ordinary word that a report can use by
+accident: a member named `unit` would be named by any sentence about units.
+
+A completion the account does not satisfy is withheld exactly as a verifier
+finding is. The runtime appends a `verify` inbox item naming each unnamed
+task, its member, and the status it reached, and the episode takes another
+turn. `done_when.retries` bounds those turns, and an episode that spends
+them ends blocked with `verification-unsatisfiable`. The check runs where
+every episode settles, so it covers a lead that is itself a member of
+another team; that lead's own log carries its own withheld completion.
 
 ## Workspace notes
 

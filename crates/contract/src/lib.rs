@@ -181,12 +181,17 @@ pub fn contains(roots: &[PathBuf], path: &Path) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
+/// How many further turns an episode receives to answer a finding that
+/// withheld its completion, when `done_when.retries` states no other number
+/// and when the contract declares no `done_when` at all.
+pub const DEFAULT_RETRIES: u32 = 2;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DoneWhen {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify: Option<String>,
-    #[serde(default = "u32_default::<2>")]
+    #[serde(default = "u32_default::<DEFAULT_RETRIES>")]
     pub retries: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub returns: Option<serde_json::Value>,
