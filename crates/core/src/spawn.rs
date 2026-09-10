@@ -36,7 +36,9 @@ use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::watch;
 
 /// The descriptors a child speaks the host protocol on: it reads the
@@ -493,7 +495,7 @@ or spawn a contract that declares no write tool",
         let mut child = cmd.spawn().map_err(|e| CapError::ProcessStart(e.to_string()))?;
         let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
         self.connections.router.inner.lock().unwrap().children.insert(child_id.clone(), answers);
-        relay_stderr(child_id.clone(), stderr);
+        let diagnostics = relay_stderr(child_id.clone(), stderr);
         let (tx, run) = ChildRun::pending();
         let reader = Reader {
             child_id: child_id.clone(),
@@ -503,7 +505,7 @@ or spawn a contract that declares no write tool",
         };
         std::thread::spawn(move || {
             let read = std::thread::spawn(move || {
-                let settled = reader.run(events);
+                let settled = reader.run(events, diagnostics);
                 reader.router.remove(&reader.child_id);
                 settled
             });
@@ -523,8 +525,21 @@ or spawn a contract that declares no write tool",
     }
 }
 
+/// How much of a child's standard error the parent keeps to explain a child
+/// that died before it wrote `episode/end`. A construction failure is one
+/// short line; the bound is what stops a child that wrote a great deal from
+/// filling the parent's log and its lead's inbox with it.
+const DIAGNOSTIC_TAIL: usize = 2000;
+
+/// How long the reader waits for that tail once the child's own events have
+/// ended. A process the child left running holds the child's standard error
+/// open, so the wait is bounded rather than open.
+const DIAGNOSTIC_WAIT: Duration = Duration::from_secs(2);
+
 /// The child's diagnostics go to the parent's standard error, one line at a
-/// time, prefixed with the child's id. Standard error is never parsed.
+/// time, prefixed with the child's id. Standard error is never parsed. The
+/// returned channel carries the last [`DIAGNOSTIC_TAIL`] bytes of it once
+/// the stream ends, for a failure that has nothing else to say why.
 ///
 /// A terminal shows this stream beside whatever the parent draws on its own,
 /// and a conversation display holds an unterminated progress line on the
@@ -532,13 +547,23 @@ or spawn a contract that declares no write tool",
 /// and clearing that row, so the diagnostic starts a row of its own and the
 /// display redraws below it on its next tick. Redirected standard error
 /// carries no escape.
-fn relay_stderr(child_id: String, stderr: impl std::io::Read + Send + 'static) {
+fn relay_stderr(child_id: String, stderr: impl std::io::Read + Send + 'static) -> Receiver<String> {
     let clear = if std::io::stderr().is_terminal() { "\r\x1b[K" } else { "" };
+    let (tail, kept) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        let mut diagnostics = String::new();
         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
             eprintln!("{clear}[{child_id}] {line}");
+            diagnostics.push_str(&line);
+            diagnostics.push('\n');
+            while diagnostics.len() > DIAGNOSTIC_TAIL {
+                let first = diagnostics.find('\n').map_or(diagnostics.len(), |end| end + 1);
+                diagnostics.drain(..first);
+            }
         }
+        let _ = tail.send(diagnostics);
     });
+    kept
 }
 
 /// The call id and the tool name of a `host/tool-call` line, when the line
@@ -586,7 +611,7 @@ impl Reader {
         let _ = self.router.route(episode_id.unwrap_or(&self.child_id), &line.to_string());
     }
 
-    fn run(&self, events: impl std::io::Read) -> Settled {
+    fn run(&self, events: impl std::io::Read, diagnostics: Receiver<String>) -> Settled {
         let start = std::time::Instant::now();
         let mut usage = Usage::default();
         let mut calls = 0u64;
@@ -651,8 +676,15 @@ impl Reader {
                 break;
             }
         }
-        let outcome = outcome.unwrap_or_else(|| Outcome::Failed {
-            error: format!("child {} exited without episode/end", self.child_id),
+        // A child that died before `episode/start` wrote nothing this loop
+        // could read, and its own message for why went to standard error.
+        // Carrying it here is what puts it on the lead's board task and in
+        // the lead's inbox item rather than in this process's terminal alone.
+        let outcome = outcome.unwrap_or_else(|| {
+            let said = diagnostics.recv_timeout(DIAGNOSTIC_WAIT).unwrap_or_default();
+            let said = said.trim();
+            let why = if said.is_empty() { String::new() } else { format!(" and said: {said}") };
+            Outcome::Failed { error: format!("child {} exited without episode/end{why}", self.child_id) }
         });
         self.observer.ended(&self.child_id, &outcome);
         let spent = BudgetAmount {

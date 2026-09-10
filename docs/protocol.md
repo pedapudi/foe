@@ -283,6 +283,15 @@ answer carries the tag of the episode that made the call. Nothing above that
 process could answer, so the episode that called learns at once rather than
 waiting.
 
+A child writes its own diagnostics to standard error, which the parent
+relays line by line prefixed with the child's identifier and never parses.
+A child that exits without `episode/end` has told the parent nothing else
+about why, so the failure the parent records for it carries the last part of
+that stream, bounded so that a child which wrote a great deal cannot fill
+the parent's log with it. A child that dies while it constructs itself, such
+as one given a write root that names a file, therefore states its reason on
+its board task and in the inbox item its lead receives.
+
 An episode sends `cancel` to every child still running when it ends,
 whatever its outcome, and waits for each child's `episode/end` before
 writing its own. On a host with delegated cgroup v2, the parent also empties

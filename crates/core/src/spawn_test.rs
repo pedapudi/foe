@@ -161,6 +161,66 @@ pub(crate) fn nesting_child(dir: &Path) -> Vec<OsString> {
     script(dir, "nesting-foe.sh", NESTING_CHILD)
 }
 
+/// A stand-in child that dies while it constructs itself: it states its own
+/// reason on standard error and exits without `episode/start`. The reason
+/// stands in for one a real child gives, such as a write root naming a file.
+pub(crate) const DYING_CHILD: &str = r#"#!/bin/sh
+echo 'foe: grants.write: Not a directory' >&2
+exit 1
+"#;
+
+/// A stand-in child that dies after writing far more than the parent keeps,
+/// so that what the parent carries is the end of the stream and is bounded.
+pub(crate) const NOISY_DYING_CHILD: &str = r#"#!/bin/sh
+i=0
+while [ "$i" -lt 400 ]; do
+  echo "line $i: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" >&2
+  i=$((i + 1))
+done
+echo 'foe: grants.write: Not a directory' >&2
+exit 1
+"#;
+
+/// docs/protocol.md "Children": a child that exits before `episode/end`
+/// reports why. Its own message reaches the parent's standard error alone,
+/// so the parent carries a bounded tail of that stream into the failure it
+/// records, which is what puts the reason on the lead's board task and in
+/// its inbox item rather than in one terminal.
+#[tokio::test]
+async fn a_child_that_dies_during_construction_carries_its_own_message() {
+    let dir = scratch("spawn", "construction-failure");
+    let request = || SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: None,
+        call_id: "tc".into(),
+    };
+    let failure = |name: &str, body: &str| {
+        let spawner = process_spawner(
+            "ep_root",
+            dir.to_path_buf(),
+            parent_config(),
+            Arc::new(Lines::default()),
+            Arc::new(Router::new()),
+            Arc::new(Seen::default()),
+        )
+        .with_launcher(script(&dir, name, body));
+        spawner.spawn(request()).unwrap()
+    };
+
+    let settled = failure("dying-foe.sh", DYING_CHILD).run.settle().await;
+    let Outcome::Failed { error } = &settled.outcome else { panic!("{:?}", settled.outcome) };
+    assert!(error.contains("exited without episode/end"), "{error}");
+    assert!(error.contains("grants.write: Not a directory"), "the child's own reason travels with it: {error}");
+
+    let settled = failure("noisy-foe.sh", NOISY_DYING_CHILD).run.settle().await;
+    let Outcome::Failed { error } = &settled.outcome else { panic!("{:?}", settled.outcome) };
+    assert!(error.contains("grants.write: Not a directory"), "the end of the stream is what is kept: {error}");
+    assert!(error.len() < 2 * super::DIAGNOSTIC_TAIL, "a child that wrote a great deal cannot flood the parent");
+}
+
 pub(crate) fn script(dir: &Path, name: &str, body: &str) -> Vec<OsString> {
     let script = dir.join(name);
     std::fs::write(&script, body).unwrap();
