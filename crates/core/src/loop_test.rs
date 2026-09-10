@@ -1021,6 +1021,56 @@ async fn learned_completion_rejects_a_spilled_error() {
     assert!(cited_findings(&log, &candidate, &["learned"]).contains("does not name a successful tool/result"));
 }
 
+/// docs/config.md `done_when`: a sequence is a position in one log, so a
+/// citation of work this episode delegated names the episode that did it.
+/// Without a name the number is read against this episode's own log, where
+/// it may land on an unrelated result of this episode's own and pass, which
+/// is worse than failing. A name reaches a log directory, so only a name
+/// this episode opened resolves and only one that cannot leave the subtree
+/// is accepted at all.
+#[tokio::test]
+async fn a_citation_of_delegated_work_names_the_episode_that_did_it() {
+    let mut fx = Fixture::new(
+        "loop-cited-episode",
+        |v| v["tools"] = json!(["p"]),
+        vec![turn("observe", vec![call("c1", "p", "{}")]), turn("done", vec![])],
+    );
+    let _scratch = fx.take_scratch();
+    let dir = fx.dir.clone();
+    let (_, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    let cited = events
+        .iter()
+        .find(|event| matches!(&event.data, EventData::ToolResult(result) if !result.is_error))
+        .expect("a successful result")
+        .seq;
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let item = |value: serde_json::Value| json!({ "learned": [value] });
+
+    // Its own log answers for a citation that names no episode.
+    assert_eq!(cited_findings(&log, &item(json!({ "claim": "c", "seq": cited })), &["learned"]), "");
+
+    // An episode this one never opened has no log here, whatever the number
+    // would have found in this episode's own events.
+    let refused =
+        cited_findings(&log, &item(json!({ "claim": "c", "seq": cited, "episode": "ep_absent" })), &["learned"]);
+    assert!(refused.contains("is not an episode this one opened"), "{refused}");
+
+    // A name that could leave the subtree is refused before it reaches a path.
+    let escape = json!({ "claim": "c", "seq": cited, "episode": "../../elsewhere" });
+    let refused = cited_findings(&log, &item(escape), &["learned"]);
+    assert!(refused.contains("is not an episode identifier"), "{refused}");
+
+    // A child's own log answers for a citation that names it.
+    let child = dir.join("children/ep_child");
+    std::fs::create_dir_all(&child).unwrap();
+    let source = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
+    std::fs::write(child.join("episode.jsonl"), &source).unwrap();
+    let named = item(json!({ "claim": "c", "seq": cited, "episode": "ep_child" }));
+    assert_eq!(cited_findings(&log, &named, &["learned"]), "");
+    let beyond = item(json!({ "claim": "c", "seq": 9_999, "episode": "ep_child" }));
+    assert!(cited_findings(&log, &beyond, &["learned"]).contains("does not name a successful tool/result"));
+}
+
 #[tokio::test]
 async fn a_large_result_is_spilled_and_replaced_by_a_locator() {
     let mut fx = Fixture::new(

@@ -851,31 +851,70 @@ fn unaccounted(events: &[Event], candidate: &Value) -> Vec<String> {
 
 /// The first reason `candidate` fails the citation rule, or the empty
 /// string. Each named field is a non-empty array whose items each cite the
-/// sequence of a successful, reconstructible `tool/result` of this episode.
+/// sequence of a successful, reconstructible `tool/result`. A sequence is a
+/// position in one log, so an item that cites work this episode delegated
+/// names the episode that did it; without a name the citation is read
+/// against this episode's own log. Only an episode this one opened may be
+/// named: it is the one whose log this episode holds and can read, and a
+/// relayed citation is therefore re-cited at each level by the episode that
+/// could check it.
 /// Findings name the field the completion schema used.
 fn cited_findings(log: &Log, candidate: &Value, fields: &[&str]) -> String {
-    log.with_events(|events| {
+    let mut delegated = Vec::new();
+    let here = log.with_events(|events| {
         for field in fields {
             let Some(items) = candidate.get(field).and_then(Value::as_array).filter(|items| !items.is_empty()) else {
                 return format!("`value.{field}` is a non-empty array");
             };
             for (index, item) in items.iter().enumerate() {
+                let at = format!("{field}[{index}]");
                 let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-                let result =
-                    usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
-                        EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
-                        _ => None,
-                    });
-                let Some(result) = result else {
-                    return format!("`{field}[{index}].seq` {seq} does not name a successful tool/result");
-                };
-                if foe_log::artifact::read_canonical(&log.dir().join("spill"), seq, result).is_err() {
-                    return format!("`{field}[{index}].seq` {seq} does not reconstruct");
+                match item.get("episode").and_then(Value::as_str) {
+                    // The name reaches a path, so it is one log directory
+                    // name under this episode's own and never a traversal.
+                    Some(id) if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+                        return format!("`{at}.episode` {id} is not an episode identifier");
+                    }
+                    Some(id) => delegated.push((at, id.to_string(), seq)),
+                    None => {
+                        if let Some(fault) = miscited(events, &log.dir().join("spill"), &at, seq) {
+                            return fault;
+                        }
+                    }
                 }
             }
         }
         String::new()
-    })
+    });
+    if !here.is_empty() {
+        return here;
+    }
+    for (at, id, seq) in delegated {
+        let dir = log.dir().join("children").join(&id);
+        let Ok(events) = foe_log::fold::read_all(&dir) else {
+            return format!("`{at}.episode` {id} is not an episode this one opened");
+        };
+        if let Some(fault) = miscited(&events, &dir.join("spill"), &at, seq) {
+            return fault;
+        }
+    }
+    String::new()
+}
+
+/// Why `seq` does not cite a successful, reconstructible `tool/result` of
+/// `events`, or `None` when it does.
+fn miscited(events: &[Event], spill: &Path, at: &str, seq: u64) -> Option<String> {
+    let result = usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
+        EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+        _ => None,
+    });
+    match result {
+        None => Some(format!("`{at}.seq` {seq} does not name a successful tool/result")),
+        Some(result) if foe_log::artifact::read_canonical(spill, seq, result).is_err() => {
+            Some(format!("`{at}.seq` {seq} does not reconstruct"))
+        }
+        Some(_) => None,
+    }
 }
 
 #[async_trait::async_trait]

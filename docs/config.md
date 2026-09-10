@@ -496,7 +496,17 @@ of the rule: every required member of this shape is checked, and a finding
 names the member the schema declared. Every tool result shown to an episode
 with at least one such member starts with its log sequence as `[seq N]`.
 Before completion, the runtime requires at least one item in each required
-member. Each `seq` must name a successful `tool/result` in the same episode.
+member. Each `seq` must name a successful `tool/result`.
+
+A `seq` is a position in one log, so an item citing work this episode
+delegated names the episode that did it in an optional `episode` member, and
+the citation is read against that episode's log. Without a name the number is
+read against this episode's own log. Only an episode this one opened can be
+named: its log is the one this episode holds, so a citation relayed up a tree
+is re-cited at each level by the episode that could check it. A name that is
+not an episode identifier is refused before it reaches a path. Without this
+member a lead relaying a worker's number would have it read against the
+lead's own log, where it may land on an unrelated successful result and pass.
 An inlined canonical value is reconstructable from the event. A spilled
 canonical value must still be readable as JSON at the single-component path
 and byte length in the event. A recorded digest must also match the stored
