@@ -21,7 +21,9 @@
 //! expects the results of parallel calls. A tool result is
 //! `{"output": rendered}` and a failed one `{"error": rendered}`. Schema
 //! keywords the API rejects, `additionalProperties` and every `$`-prefixed
-//! keyword, are removed from function declarations.
+//! keyword, are removed from function declarations. A list of type names
+//! becomes `anyOf`, and `null` among them becomes `nullable`, because the
+//! API's schema holds one type name and refuses a list.
 //!
 //! Function calls carry no id in this API, so the transport numbers them
 //! `call_1`, `call_2`, ... per response. A `functionResponse` names the
@@ -120,17 +122,43 @@ fn declarations_json(tools: &[ToolSchema]) -> Vec<Value> {
         .collect()
 }
 
-/// Removes the JSON Schema keywords the API rejects.
+/// Removes the JSON Schema keywords the API rejects, and rewrites the one
+/// construct it cannot hold.
 pub fn sanitize_schema(schema: &Value) -> Value {
     match schema {
-        Value::Object(map) => Value::Object(
-            map.iter()
+        Value::Object(map) => {
+            let mut out: serde_json::Map<String, Value> = map
+                .iter()
                 .filter(|(k, _)| k.as_str() != "additionalProperties" && !k.starts_with('$'))
                 .map(|(k, v)| (k.clone(), sanitize_schema(v)))
-                .collect(),
-        ),
+                .collect();
+            widen_listed_type(&mut out);
+            Value::Object(out)
+        }
         Value::Array(items) => Value::Array(items.iter().map(sanitize_schema).collect()),
         other => other.clone(),
+    }
+}
+
+/// Rewrites a list of type names, which JSON Schema allows and the API's
+/// schema cannot hold: its `type` takes one value, and a list is refused
+/// with "Proto field is not repeating, cannot start list". The alternatives
+/// become `anyOf`, which the API does accept, and `null` among them becomes
+/// `nullable`. A single remaining name stays a plain `type`.
+fn widen_listed_type(object: &mut serde_json::Map<String, Value>) {
+    let Some(Value::Array(listed)) = object.get("type") else { return };
+    let names: Vec<String> = listed.iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+    let nullable = names.iter().any(|name| name == "null");
+    let named: Vec<&String> = names.iter().filter(|name| name.as_str() != "null").collect();
+    object.remove("type");
+    if let [only] = named.as_slice() {
+        object.insert("type".to_string(), json!(only));
+    } else if named.len() > 1 && !object.contains_key("anyOf") {
+        let branches = named.iter().map(|name| json!({ "type": name })).collect();
+        object.insert("anyOf".to_string(), Value::Array(branches));
+    }
+    if nullable {
+        object.insert("nullable".to_string(), json!(true));
     }
 }
 
@@ -359,6 +387,33 @@ data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name"
     const LENGTH: &str = r#"data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Once upon a"}]},"finishReason":"MAX_TOKENS"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":4,"totalTokenCount":16},"responseId":"r3"}
 
 "#;
+
+    /// docs/models.md "What each provider cannot express": the API's schema
+    /// holds one type name, so a JSON Schema list of them is refused with
+    /// "Proto field is not repeating, cannot start list". The built-in team
+    /// tools declare one, so a run that offers them reached the API and was
+    /// refused before a single call.
+    #[test]
+    fn sanitize_rewrites_a_list_of_types_the_api_cannot_hold() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "session": { "type": ["integer", "string"], "description": "session id" },
+                "note": { "type": ["string", "null"] },
+                "only": { "type": ["boolean", "null"] },
+            },
+        });
+        let out = sanitize_schema(&schema);
+        let properties = &out["properties"];
+        assert_eq!(
+            properties["session"],
+            json!({ "anyOf": [{ "type": "integer" }, { "type": "string" }], "description": "session id" }),
+            "alternatives the API does accept replace the list"
+        );
+        assert_eq!(properties["note"], json!({ "type": "string", "nullable": true }), "one name stays a plain type");
+        assert_eq!(properties["only"], json!({ "type": "boolean", "nullable": true }));
+        assert_eq!(out["type"], json!("object"), "a single name is left alone");
+    }
 
     fn request() -> ModelRequestBody {
         ModelRequestBody {
