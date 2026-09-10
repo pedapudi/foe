@@ -64,15 +64,29 @@ def region_of(request: dict) -> str:
     return "east" if "east" in user_texts(request)[0] else "west"
 
 
-def answered_question(request: dict, about: str) -> str | None:
-    """The identifier of a question this episode was asked, or None.
+def user_blocks(request: dict) -> list[str]:
+    """Every content block of every task and inbox message, in order."""
+    return [
+        block.get("text", "")
+        for message in request["messages"]
+        if message["role"] == "user"
+        for block in message["content"]
+    ]
 
-    A question carries its identifier in its own text, because a model reads
-    an inbox item's content and no other field.
+
+def answered_question(request: dict, about: str) -> str | None:
+    """The identifier of a question about `about`, or None.
+
+    A question is two blocks: what it asks, then the line naming the
+    identifier that answers it. Two recorders ask at the same time, so both
+    questions can arrive in one message, and searching that message for the
+    last identifier would answer the eastern question with the western one's
+    name. The pairing is by position instead.
     """
-    for item in user_texts(request):
-        if about in item and "reply_to " in item:
-            return item.rsplit("reply_to ", 1)[1].strip().rstrip(".")
+    texts = user_blocks(request)
+    for index, text in enumerate(texts):
+        if index > 0 and "reply_to " in text and about in texts[index - 1]:
+            return text.rsplit("reply_to ", 1)[1].strip().rstrip(".")
     return None
 
 
