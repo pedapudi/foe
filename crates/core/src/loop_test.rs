@@ -1,4 +1,4 @@
-use super::{learned_findings, parse_tolerant, run, spill, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{cited_findings, parse_tolerant, run, spill, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
@@ -891,6 +891,47 @@ async fn learned_completion_rejects_a_foreign_event_then_runs_the_declared_verif
     assert_eq!(verified[0].status, VerificationStatus::Accepted);
 }
 
+/// docs/config.md `done_when`: what activates the citation rule is the shape
+/// of a required array of claim-and-citation objects rather than any one
+/// field name, so a schema that calls the array `units` is checked the same
+/// way, and the finding names the field the schema used.
+#[tokio::test]
+async fn a_required_array_of_citations_is_checked_under_the_name_its_schema_gives_it() {
+    let units = json!({
+        "type": "object",
+        "properties": { "units": { "type": "array", "minItems": 1, "items": {
+            "type": "object",
+            "properties": { "finding": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 } },
+            "required": ["finding", "seq"], "additionalProperties": false
+        } } },
+        "required": ["units"], "additionalProperties": false
+    });
+    let returned = |seq: u64| format!(r#"{{"value":{{"units":[{{"finding":"the probe ran","seq":{seq}}}]}}}}"#);
+    let fx = Fixture::new(
+        "loop-units-completion",
+        |v| {
+            v["tools"] = json!(["p"]);
+            v["done_when"] = json!({ "returns": units });
+        },
+        vec![
+            turn("observe", vec![call("evidence", "p", "{}")]),
+            turn("wrong event", vec![call("bad-return", "return", &returned(9))]),
+            turn("cited result", vec![call("good-return", "return", &returned(10))]),
+        ],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!({ "units": [{ "finding": "the probe ran", "seq": 10 }] }) });
+    assert!(matches!(&events[10].data, EventData::ToolResult(r) if !r.is_error), "seq 10 is the probe result");
+    let notice = events
+        .iter()
+        .find_map(|event| match &event.data {
+            EventData::InboxItem(item) if item.source == InboxSource::System => Some(format!("{:?}", item.content)),
+            _ => None,
+        })
+        .expect("the rejected citation is answered with a finding");
+    assert!(notice.contains("`units[0].seq`"), "the finding names the field the schema used: {notice}");
+}
+
 /// docs/config.md `done_when`: a cited spilled result remains evidence only
 /// while its canonical JSON can be reconstructed from the episode directory.
 #[test]
@@ -913,10 +954,10 @@ fn learned_completion_requires_reconstructable_spilled_evidence() {
         .unwrap();
     let log = Log::create_or_open(&dir, None).unwrap();
     let candidate = json!({ "learned": [{ "claim": "the probe ran", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &candidate).is_empty());
+    assert!(cited_findings(&log, &candidate, &["learned"]).is_empty());
     let EventData::ToolResult(result) = &evidence.data else { unreachable!() };
     std::fs::remove_file(dir.join("spill").join(result.spill.as_ref().unwrap())).unwrap();
-    assert!(learned_findings(&log, &candidate).contains("does not reconstruct"));
+    assert!(cited_findings(&log, &candidate, &["learned"]).contains("does not reconstruct"));
 }
 
 /// docs/config.md `done_when`: spilling a result preserves whether the
@@ -939,7 +980,7 @@ async fn learned_completion_rejects_a_spilled_error() {
     assert!(result.is_error, "spilling preserves the tool-owned error flag");
     let log = Log::create_or_open(&dir, None).unwrap();
     let candidate = json!({ "learned": [{ "claim": "the call succeeded", "seq": evidence.seq }] });
-    assert!(learned_findings(&log, &candidate).contains("does not name a successful tool/result"));
+    assert!(cited_findings(&log, &candidate, &["learned"]).contains("does not name a successful tool/result"));
 }
 
 #[tokio::test]

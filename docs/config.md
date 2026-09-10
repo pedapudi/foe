@@ -479,27 +479,36 @@ general-purpose linter therefore needs a wrapper that reads the candidate,
 runs the linter, prints its findings, and exits with status zero whether it
 accepts the candidate or reports findings.
 
-A `returns` schema may declare a `learned` member. The member is an array of
-objects. Each object pairs a one-sentence `claim` string with an integer
-`seq` that cites the supporting event in this episode's log. This shape is
-the standard exit through which an episode exports observations. A schema
-that requires `learned` must declare this non-empty array shape.
+A `returns` schema may declare a member that is an array of objects whose
+items must carry an integer `seq`. Each such `seq` cites the supporting event
+in this episode's log, and the rest of the item states what the episode
+claims. This is the standard exit through which an episode exports an
+observation with the evidence for it. The built-in coding documents call the
+member `learned` and pair each `seq` with a one-sentence `claim`; the
+built-in team document calls it `units` and pairs each `seq` with the unit,
+the worker, and the finding. A member of this shape that the schema requires
+must declare a `minItems` above zero, and its `seq` must be an integer at or
+above zero.
 
-In an agent-loop contract, listing `learned` in the schema's `required` array
-makes the citations a completion condition. Every tool result shown to that
-episode starts with its log sequence as `[seq N]`. Before completion, the
-runtime requires at least one observation. Each `seq` must name a successful
-`tool/result` in the same episode. An inlined canonical value is
-reconstructable from the event. A spilled canonical value must still be
-readable as JSON at the single-component path and byte length in the event.
-A recorded digest must also match the stored bytes.
+In an agent-loop contract, listing such a member in the schema's `required`
+array makes its citations a completion condition. The field name is not part
+of the rule: every required member of this shape is checked, and a finding
+names the member the schema declared. Every tool result shown to an episode
+with at least one such member starts with its log sequence as `[seq N]`.
+Before completion, the runtime requires at least one item in each required
+member. Each `seq` must name a successful `tool/result` in the same episode.
+An inlined canonical value is reconstructable from the event. A spilled
+canonical value must still be readable as JSON at the single-component path
+and byte length in the event. A recorded digest must also match the stored
+bytes.
 
 An invalid citation returns a `system` inbox finding and the episode
 continues. The runtime does not judge whether the result supports the claim.
 The configured verifier, when present, runs only after every citation passes
-these structural checks. An optional `learned` member remains an exported
-observation that the runtime does not require for completion. The built-in
-coding workflow requires one to eight observations from every model episode.
+these structural checks. An optional member of the same shape remains an
+exported observation that the runtime does not require for completion. The
+built-in coding workflow requires one to eight observations from every model
+episode.
 
 Without `returns`, a non-error ordinary call to the declared verifier asks
 the runtime to verify the assistant text after the turn settles. Acceptance

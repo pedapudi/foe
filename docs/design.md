@@ -348,10 +348,12 @@ A contract author declares a schema only when the output has a known shape.
 A verifier is a tool, so an author who can check a result without being able
 to describe its shape declares the verifier alone.
 
-In an agent-loop episode, a return schema that requires `learned` also
-requires evidence citations. Each claim cites the sequence of a successful
-tool result in the same episode. The runtime checks that the result exists
-and that its canonical value remains reconstructable. A configured verifier
+In an agent-loop episode, a return schema that requires an array of objects
+carrying `seq` also requires evidence citations. Each item cites the sequence
+of a successful tool result in the same episode. The rule is the shape rather
+than the member's name, so the coding documents' `learned` and the team
+document's `units` are checked alike. The runtime checks that the result
+exists and that its canonical value remains reconstructable. A configured verifier
 then judges semantic correctness. Without a verifier, semantic judgment
 remains with the contract's model or a successor such as an independent
 audit.

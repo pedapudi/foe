@@ -339,9 +339,9 @@ decisions use the other fields. Successful results omit `failure`. The
 field is optional when reading so logs written before typed failures remain
 valid. An older error without the field retains its `is_error` value.
 
-When `done_when.returns` requires `learned`, `rendered` starts with
-`[seq N]`, where N is this event's `seq`. A `learned` observation cites that
-number. The prefix is runtime metadata and lies outside any complete
+When `done_when.returns` requires an array whose items carry `seq`,
+`rendered` starts with `[seq N]`, where N is this event's `seq`. An item of
+that array cites that number. The prefix is runtime metadata and lies outside any complete
 tool-owned rendering stored by `tool/rendering-archive`.
 
 `subject` is one line the tool writes after it has run, naming what the

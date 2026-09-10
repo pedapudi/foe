@@ -39,11 +39,22 @@ pub enum ContractTreeSelection {
     ExecutableReachable,
 }
 
-/// Whether the completion schema makes the standard `learned` observation
-/// channel an evidence requirement.
-pub fn completion_evidence_required(done: Option<&DoneWhen>) -> bool {
-    done.and_then(|d| d.returns.as_ref()?.get("required")?.as_array())
-        .is_some_and(|required| required.iter().any(|field| field == "learned"))
+/// The fields of a completion schema whose items cite the evidence for
+/// themselves: every required property that is an array of objects whose
+/// items must carry `seq`, the log sequence of a tool result. The runtime
+/// checks each citation before it accepts the value, so the shape rather
+/// than any one field name is what makes a claim answerable. Names are in
+/// the order the schema requires them.
+pub fn completion_evidence_fields(done: Option<&DoneWhen>) -> Vec<&str> {
+    let Some(returns) = done.and_then(|d| d.returns.as_ref()) else { return Vec::new() };
+    let Some(required) = returns.get("required").and_then(|r| r.as_array()) else { return Vec::new() };
+    let cites = |name: &str| {
+        let property = &returns["properties"][name];
+        property["type"] == "array"
+            && property["items"]["type"] == "object"
+            && property["items"]["required"].as_array().is_some_and(|r| r.iter().any(|field| field == "seq"))
+    };
+    required.iter().filter_map(|field| field.as_str()).filter(|name| cites(name)).collect()
 }
 
 /// An execution-contract document with `task` removed, every path canonical,
@@ -250,22 +261,14 @@ fn validate_section(prefix: &str, s: &ChildContractDocument) -> Result<(), Contr
         )?;
         if let Some(returns) = &done.returns {
             crate::schema::check(key("done_when.returns"), returns)?;
-            if completion_evidence_required(Some(done)) {
-                let learned = &returns["properties"]["learned"];
-                let item = &learned["items"];
-                let required = item["required"].as_array();
-                let shape = learned["type"] == "array"
-                    && learned["minItems"].as_u64().is_some_and(|n| n > 0)
-                    && item["type"] == "object"
-                    && item["properties"]["claim"]["type"] == "string"
-                    && item["properties"]["seq"]["type"] == "integer"
-                    && item["properties"]["seq"]["minimum"].as_i64() == Some(0)
-                    && required.is_some_and(|r| r.iter().any(|f| f == "claim") && r.iter().any(|f| f == "seq"));
-                require(
-                    shape,
-                    key("done_when.returns.properties.learned"),
-                    "is the standard non-empty array of claim and seq objects",
-                )?;
+            for name in completion_evidence_fields(Some(done)) {
+                let cited = &returns["properties"][name];
+                let seq = &cited["items"]["properties"]["seq"];
+                let shape = cited["minItems"].as_u64().is_some_and(|n| n > 0)
+                    && seq["type"] == "integer"
+                    && seq["minimum"].as_i64() == Some(0);
+                let rule = "is a non-empty array whose items carry `seq`, a log sequence at or above zero";
+                require(shape, key(&format!("done_when.returns.properties.{name}")), rule)?;
             }
         }
     }

@@ -13,7 +13,7 @@ use crate::inbox::Inbox;
 use crate::registry::{Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
-use foe_contract::document::{completion_evidence_required, ResolvedContract};
+use foe_contract::document::{completion_evidence_fields, ResolvedContract};
 use foe_contract::fingerprint::{canonical, sha256_hex};
 use foe_contract::harness_text as text;
 use foe_log::{
@@ -700,7 +700,7 @@ impl Episode {
         duration_ms: u64,
         synthetic: bool,
     ) -> Result<ToolResult, RuntimeError> {
-        let cite = completion_evidence_required(self.p.contract.done_when.as_ref());
+        let cite = !completion_evidence_fields(self.p.contract.done_when.as_ref()).is_empty();
         append_result(&self.p.log, &self.spill_dir, self.step, call, value, archive, duration_ms, synthetic, cite)
     }
 
@@ -754,13 +754,12 @@ impl Episode {
             (finished || verifier_called).then(|| Value::String(message.text.clone()))
         };
         let Some(candidate) = candidate else { return Ok(None) };
-        if completion_evidence_required(self.p.contract.done_when.as_ref()) {
-            let findings = learned_findings(&self.p.log, &candidate);
-            if !findings.is_empty() {
-                let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
-                self.append_inbox(InboxSource::System, &message)?;
-                return Ok(None);
-            }
+        let cited = completion_evidence_fields(self.p.contract.done_when.as_ref());
+        let findings = cited_findings(&self.p.log, &candidate, &cited);
+        if !findings.is_empty() {
+            let message = text::fill(text::INVALID_ARGS, &[("name", text::RETURN_NAME), ("reason", &findings)]);
+            self.append_inbox(InboxSource::System, &message)?;
+            return Ok(None);
         }
         let Some(done) = self.p.contract.done_when.clone().filter(|d| d.verify.is_some()) else {
             return Ok(Some(Outcome::Completed { value: candidate }));
@@ -794,23 +793,29 @@ impl Episode {
     }
 }
 
-fn learned_findings(log: &Log, candidate: &Value) -> String {
-    let Some(items) = candidate.get("learned").and_then(Value::as_array).filter(|items| !items.is_empty()) else {
-        return "`value.learned` is a non-empty array".into();
-    };
+/// The first reason `candidate` fails the citation rule, or the empty
+/// string. Each named field is a non-empty array whose items each cite the
+/// sequence of a successful, reconstructible `tool/result` of this episode.
+/// Findings name the field the completion schema used.
+fn cited_findings(log: &Log, candidate: &Value, fields: &[&str]) -> String {
     log.with_events(|events| {
-        for (index, item) in items.iter().enumerate() {
-            let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-            let result =
-                usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
-                    EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
-                    _ => None,
-                });
-            let Some(result) = result else {
-                return format!("`learned[{index}].seq` {seq} does not name a successful tool/result");
+        for field in fields {
+            let Some(items) = candidate.get(field).and_then(Value::as_array).filter(|items| !items.is_empty()) else {
+                return format!("`value.{field}` is a non-empty array");
             };
-            if foe_log::artifact::read_canonical(&log.dir().join("spill"), seq, result).is_err() {
-                return format!("`learned[{index}].seq` {seq} does not reconstruct");
+            for (index, item) in items.iter().enumerate() {
+                let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
+                let result =
+                    usize::try_from(seq).ok().and_then(|seq| events.get(seq)).and_then(|event| match &event.data {
+                        EventData::ToolResult(result) if !result.is_error && !result.synthetic => Some(result),
+                        _ => None,
+                    });
+                let Some(result) = result else {
+                    return format!("`{field}[{index}].seq` {seq} does not name a successful tool/result");
+                };
+                if foe_log::artifact::read_canonical(&log.dir().join("spill"), seq, result).is_err() {
+                    return format!("`{field}[{index}].seq` {seq} does not reconstruct");
+                }
             }
         }
         String::new()

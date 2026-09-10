@@ -1,4 +1,4 @@
-use super::{completion_evidence_required, parse, resolve, resolve_with_executables, validate, ContractTreeSelection};
+use super::{completion_evidence_fields, parse, resolve, resolve_with_executables, validate, ContractTreeSelection};
 use crate::test_util::{config, config_value, contract_with, tmp};
 use crate::ContractError;
 use serde_json::{json, Value};
@@ -86,32 +86,34 @@ fn unknown_keys_and_wrong_types_are_parse_errors() {
     assert!(matches!(parse(&value.to_string()), Err(ContractError::Parse(_))));
 }
 
-/// docs/config.md `done_when`: a required `learned` field activates the
-/// evidence contract only through its standard declared shape.
+/// docs/config.md `done_when`: a required array whose items carry `seq` is a
+/// cited field, whatever it is called, and it activates the evidence
+/// contract only through the declared shape a citation needs.
 #[test]
-fn required_learned_completion_has_the_evidence_shape() {
+fn every_required_array_of_citations_has_the_evidence_shape() {
     let root = tmp("config-completion-evidence");
+    let cited = |item: serde_json::Value| json!({ "type": "array", "minItems": 1, "items": { "type": "object", "properties": item, "required": ["seq"] } });
+    let seq = json!({ "type": "integer", "minimum": 0 });
     let schema = json!({
         "type": "object",
-        "properties": { "learned": {
-            "type": "array", "minItems": 1,
-            "items": {
-                "type": "object",
-                "properties": { "claim": { "type": "string" }, "seq": { "type": "integer", "minimum": 0 } },
-                "required": ["claim", "seq"]
-            }
-        } },
-        "required": ["learned"]
+        "properties": {
+            "learned": cited(json!({ "claim": { "type": "string" }, "seq": seq })),
+            "units": cited(json!({ "finding": { "type": "string" }, "seq": seq })),
+            "notes": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["learned", "units", "notes"]
     });
     let contract = contract_with(&root, |value| value["done_when"] = json!({ "returns": schema })).unwrap();
-    assert!(completion_evidence_required(contract.done_when.as_ref()));
+    assert_eq!(completion_evidence_fields(contract.done_when.as_ref()), ["learned", "units"]);
 
     let key = rejected(&root, |value| {
         value["done_when"] = json!({ "returns": {
-            "type": "object", "properties": { "learned": { "type": "string" } }, "required": ["learned"]
+            "type": "object",
+            "properties": { "units": cited(json!({ "seq": { "type": "string" } })) },
+            "required": ["units"]
         } });
     });
-    assert_eq!(key, "done_when.returns.properties.learned");
+    assert_eq!(key, "done_when.returns.properties.units");
 }
 
 #[test]
