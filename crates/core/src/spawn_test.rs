@@ -181,6 +181,45 @@ echo 'foe: grants.write: Not a directory' >&2
 exit 1
 "#;
 
+/// A stand-in child that records the home directory it was given, so that a
+/// test can read what the parent passed across the cleared environment.
+pub(crate) const HOME_REPORTING_CHILD: &str = r#"#!/bin/sh
+printf '%s' "${HOME-unset}" > "$(dirname "$0")/child-home.txt"
+exit 1
+"#;
+
+/// docs/models.md "Where credentials live": a child starts with a cleared
+/// environment, which leaves
+/// nothing for the home directory to rest on where the passwd database holds
+/// no entry for the user. The parent carries `HOME` across so that a child
+/// resolves the same directory its parent did. Without it every child on such
+/// a host dies while it constructs itself, although the root episode runs.
+#[tokio::test]
+async fn a_child_receives_the_home_directory_its_parent_reads() {
+    let dir = scratch("spawn", "child-home");
+    let expected = std::env::var("HOME").expect("the test environment names a home directory");
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        parent_config(),
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .with_launcher(script(&dir, "home-foe.sh", HOME_REPORTING_CHILD));
+    let request = SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: None,
+        call_id: "tc".into(),
+    };
+    spawner.spawn(request).unwrap().run.settle().await;
+    let seen = std::fs::read_to_string(dir.join("child-home.txt")).expect("the child recorded its home directory");
+    assert_eq!(seen, expected, "a child reads the home directory its parent did");
+}
+
 /// docs/protocol.md "Children": a child that exits before `episode/end`
 /// reports why. Its own message reaches the parent's standard error alone,
 /// so the parent carries a bounded tail of that stream into the failure it

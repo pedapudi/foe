@@ -194,7 +194,10 @@ nothing to fall back to. Where an entry exists it still decides, so the
 environment never overrides a database that answered, and the value `HOME`
 carries must be an absolute path to a directory that exists. `foe login` and
 a run that reads a convention credential each say so once when the fallback
-is what supplied the directory.
+is what supplied the directory. A child episode starts with a cleared
+environment, so its parent carries `HOME` across to it; otherwise a child
+would find neither a database entry nor a fallback on a host where the root
+episode ran on one.
 
 A `model` block may omit its credential field. A provider that requires a
 credential then reads its convention file. `compatible-http` reads only an
