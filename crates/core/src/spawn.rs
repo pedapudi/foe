@@ -472,6 +472,15 @@ or spawn a contract that declares no write tool",
             }
         };
         cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+        // A child resolves its own home directory, and where the passwd
+        // database holds no entry for the user it reads `HOME` instead. The
+        // cleared environment leaves a child nothing to read, so the one
+        // variable that answer can rest on is carried across. A passwd entry
+        // still wins wherever there is one, in a child as in its parent, so
+        // this decides nothing on a host that has one.
+        if let Some(home) = std::env::var_os("HOME") {
+            cmd.env("HOME", home);
+        }
         let executable_tree = self
             .executables
             .child(&req.contract)
