@@ -437,9 +437,22 @@ impl Sandbox {
     /// Starts `cmd` under this sandbox narrowed to `policy`. The domain the
     /// caller already has is kept; the policy only removes access.
     pub fn spawn_narrowed(&self, policy: &Policy, mut cmd: Command) -> Result<Child, RuntimeError> {
-        self.run_narrowed(policy, move || {
-            cmd.spawn().map_err(|e| RuntimeError::Sandbox(format!("spawn {:?}: {e}", cmd.get_program())))
-        })?
+        let program = cmd.get_program().to_os_string();
+        // A fork copies the whole descriptor table, so a process forking
+        // anywhere in this runtime holds every writable descriptor open
+        // until it execs its own image. While it does, the kernel refuses to
+        // execute a file one of those descriptors names: a captured
+        // executable another episode is still writing, or a file a tool has
+        // just produced. The window is another process's exec away from
+        // closing, so a busy file is waited out rather than reported.
+        for _ in 1..BUSY_ATTEMPTS {
+            match self.run_narrowed(policy, || cmd.spawn())? {
+                Err(e) if e.raw_os_error() == Some(nix::libc::ETXTBSY) => std::thread::sleep(BUSY_WAIT),
+                other => return other.map_err(|e| RuntimeError::Sandbox(format!("spawn {program:?}: {e}"))),
+            }
+        }
+        let last = self.run_narrowed(policy, || cmd.spawn())?;
+        last.map_err(|e| RuntimeError::Sandbox(format!("spawn {program:?}: {e}")))
     }
 
     /// Runs `f` on a thread restricted to `policy`, for code that must work
@@ -528,6 +541,14 @@ impl Sandbox {
         Ok(Some(created))
     }
 }
+
+/// How many times a spawn waits out a file another process holds open for
+/// writing, and how long each wait is. The holder is a fork that has not
+/// reached its own exec, so the wait is scheduler-length rather than
+/// work-length; ten of them cover a heavily loaded machine and still fail
+/// inside a second when the file is busy for some other reason.
+const BUSY_ATTEMPTS: u32 = 10;
+const BUSY_WAIT: std::time::Duration = std::time::Duration::from_millis(20);
 
 /// Restricts the calling thread with a compiled ruleset.
 fn apply(ruleset: RulesetCreated) -> Result<RulesetStatus, RuntimeError> {

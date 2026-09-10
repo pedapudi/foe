@@ -315,6 +315,14 @@ reachable through spawn grants and workflow nodes. Descriptor remapping
 preserves standard input, standard output, standard error, and every source
 descriptor when source and target numbers overlap.
 
+A spawn refused because the file is busy is tried again, ten times at twenty
+milliseconds. A fork copies the whole descriptor table, so a process forking
+anywhere in the runtime holds every writable descriptor open until it execs
+its own image, and while it does the kernel refuses to execute a file one of
+those descriptors names. The condition is another process's exec away from
+clearing, and every descriptor foe opens is already close-on-exec, so what
+remains is the window a fork holds rather than a descriptor foe leaked.
+
 This crate forbids unsafe code, so the narrowing is applied by a short-lived
 thread rather than by a hook between fork and exec. The thread applies the
 narrowed ruleset to itself, starts the process, hands the process handle
