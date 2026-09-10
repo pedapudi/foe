@@ -612,7 +612,8 @@ event.
 ```
 
 `team/delivered` — implemented. The target recorded the message in its own
-log.
+log, or, where the lead is itself the target, the lead recorded it in the
+log that holds both events.
 
 ```json
 { "message_id": "tm_07", "to": "ep_b2" }

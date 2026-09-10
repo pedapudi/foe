@@ -1186,8 +1186,15 @@ fn a_team_surveys_delegates_answers_a_question_and_integrates() {
     assert_eq!(queued[0]["data"]["to"], events[0]["data"]["id"], "the lead was asked");
     assert_eq!(queued[1]["data"]["message_id"], question, "the answer carries the question's identity");
     assert_eq!(queued[1]["data"]["to"], owner("task_01"), "the answer reached the worker that asked");
-    assert_eq!(delivered.len(), 1, "the answer to a member is confirmed; the question to the lead is its own inbox");
-    assert_eq!(delivered[0]["data"], json!({ "message_id": question, "to": owner("task_01") }));
+    // Both ends are confirmed. The answer's target is a member, which
+    // records the item and is observed doing so; the question's target is
+    // the lead, whose inbox the message reaches where it is sent, so the
+    // delivery is recorded there rather than left open for the run.
+    let confirmed: std::collections::BTreeSet<String> =
+        delivered.iter().map(|event| event["data"]["to"].as_str().unwrap_or_default().to_string()).collect();
+    assert_eq!(delivered.len(), 2, "the question to the lead and the answer to the member");
+    assert_eq!(confirmed, [events[0]["data"]["id"].as_str().unwrap().to_string(), owner("task_01")].into());
+    assert!(delivered.iter().all(|event| event["data"]["message_id"] == question), "both name the one identity");
 
     // The bytes on disk: each worker changed the file under the root it was
     // granted, the root it was not granted refused it, and the lead's own

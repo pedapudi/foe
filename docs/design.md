@@ -715,7 +715,8 @@ members.
    team/task      {task, revision, status, owner}
    team/roster    {member, name, phase}
    team/message   {id, from, to, content}  ──►  inbox/item {source, message_id}
-   team/delivered {id, to}                 ◄──  (written after the member's append)
+   team/delivered {id, to}                 ◄──  (after the member's append, or at once
+                                               when the lead is the target)
 ```
 
 Eight built-in tools serve teams. `spawn`, `wait`, `steer`, and `cancel` act

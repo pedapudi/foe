@@ -432,6 +432,10 @@ fn the_reserved_name_addresses_the_lead_whatever_its_contract_named_it() {
     assert_eq!((items[0].source, items[0].from.as_deref()), (InboxSource::Request, Some("ep_worker")));
     assert_eq!(team.state().queue[0].to, "ep_lead");
     assert_eq!(unique_name(&team.state(), LEAD, "task_01"), "lead-task_01", "no member takes the name");
+    // A message the lead is the target of reaches its inbox where it is
+    // sent, so no child observation follows to close the delivery. Left
+    // open, the board reports every question a member ever asked the lead.
+    assert_eq!(team.state().undelivered().count(), 0, "the lead's own delivery is recorded where it happens");
 }
 
 /// docs/tools.md `send`: an episode in the middle of a tree belongs to one
@@ -526,7 +530,12 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
     let met = wait(serde_json::json!({ "reply": question.clone() }), Some(far())).await;
     assert_eq!(met.value["matched"], serde_json::json!({ "reply": question.clone() }));
     // Question and answer share an identity and are two queue entries with
-    // two targets, so confirming the question leaves the answer outstanding.
+    // two targets, so one delivery does not answer for the other. The
+    // answer's target is the lead, and a message the lead is the target of
+    // reaches its inbox where it is sent, so only the question is
+    // outstanding until the teammate records it.
+    assert_eq!(team.state().queue.len(), 2);
+    assert_eq!(team.state().undelivered().map(|m| m.to.as_str()).collect::<Vec<_>>(), ["ep_b"]);
     let receipt = InboxItem {
         source: InboxSource::Request,
         content: vec![],
@@ -535,9 +544,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
         synthetic: false,
     };
     team.observe("ep_b", &event(9, EventData::InboxItem(receipt)));
-    let state = team.state();
-    assert_eq!(state.queue.len(), 2);
-    assert_eq!(state.undelivered().map(|m| m.to.as_str()).collect::<Vec<_>>(), ["ep_lead"]);
+    assert_eq!(team.state().undelivered().count(), 0);
 }
 
 /// docs/config.md `tools`: the eight team tools are built in. A root answers

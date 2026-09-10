@@ -14,8 +14,9 @@
 //! the lead's log with source `child`. A `send` becomes a `team/message` in the
 //! lead's log followed by an inbox item with source `peer` written to the
 //! target. `team` returns the selected board and its members. When the target
-//! records the peer item, the lead sees it and writes `team/delivered`. See
-//! docs/protocol.md "Children".
+//! records the peer item, the lead sees it and writes `team/delivered`. A
+//! message the lead is itself the target of reaches its inbox where it is
+//! sent, so its delivery is recorded there. See docs/protocol.md "Children".
 //!
 //! `ask` sends a question and requires a deadline and a default answer with
 //! it. The asking process holds the deadline and delivers the default to its
@@ -460,6 +461,12 @@ impl Team {
         let item = InboxItem::new(source, content, Some(from.to_string()), Some(message_id.clone()));
         if target.member_id == self.lead_id {
             self.inbox.append(item);
+            // A message the lead is the target of reaches its inbox here
+            // rather than through the router, so no child observation
+            // follows to close the delivery this message opened. Without
+            // this the board reports every question a member asked the lead
+            // as undelivered for the life of the run.
+            self.log.append(EventData::TeamDelivered { message_id: message_id.clone(), to: self.lead_id.clone() })?;
         } else {
             let _ = self.router.send_inbox(&target.member_id, &item);
         }

@@ -313,7 +313,10 @@ parent appends an `inbox/item` with source `child` to its own log and
 answers with a `tool/result`. A call to `send` or `ask` arrives the same way at
 the lead, which appends `team/message` to its log, delivers the message to
 the target member as an `inbox/item`, and appends `team/delivered` when the
-member's log has recorded it. The item's source is `peer` for a `send`
+member's log has recorded it. A message addressed to the lead reaches the
+lead's own inbox where it is sent rather than through the router, so its
+delivery is appended there; without that the board would report every
+question a member asked the lead as outstanding for the life of the run. The item's source is `peer` for a `send`
 without `reply_to`, `request` for an `ask`, and `response` for a `send` that
 names the question it answers. The deadline an `ask` carries stays in the
 asking process, which appends the question's default answer to its own log as
