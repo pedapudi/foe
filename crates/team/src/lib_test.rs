@@ -411,6 +411,29 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(listed.rendered.as_deref(), Some("members:\ntester\tep_b\tactive\ntasks:\n"));
 }
 
+/// docs/tools.md `ask`: `lead` addresses the episode leading the team,
+/// whatever that episode's contract named it. A member that holds `ask` and
+/// not `team` cannot read the roster, so a name it would have to look up is a
+/// name it cannot reach, and a worker under a dividing worker reaches its own
+/// lead by the same name. No member is given the name, so it is never
+/// ambiguous.
+#[test]
+fn the_reserved_name_addresses_the_lead_whatever_its_contract_named_it() {
+    let (team, log, inbox, _) = team();
+    let EventData::EpisodeStart(mut header) = start() else { panic!("the header is an episode start") };
+    header.contract = serde_json::json!({ "name": "team" });
+    log.append(EventData::EpisodeStart(header));
+    assert_eq!(team.state().roster[0].name, "team", "the lead's roster name is its contract's");
+    let question = serde_json::json!({ "to": LEAD, "content": "which schema does the manifest take?" });
+    let asked = team.host_call("ep_worker", "ask", &question).unwrap();
+    assert!(!asked.is_error, "{:?}", asked.rendered);
+    let items = inbox.0.lock().unwrap();
+    assert_eq!(items.len(), 1, "the question reached the lead's own inbox");
+    assert_eq!((items[0].source, items[0].from.as_deref()), (InboxSource::Request, Some("ep_worker")));
+    assert_eq!(team.state().queue[0].to, "ep_lead");
+    assert_eq!(unique_name(&team.state(), LEAD, "task_01"), "lead-task_01", "no member takes the name");
+}
+
 /// docs/tools.md `send`: an episode in the middle of a tree belongs to one
 /// team and leads another, so `send` and `ask` take the same `scope` `team`
 /// takes. A root's two teams are one, so both scopes reach its own roster

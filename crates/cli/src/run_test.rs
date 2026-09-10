@@ -260,7 +260,7 @@ fn builtin_oneshot_takes_the_verifier_and_the_sandbox_mode() {
 const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 3] = [
     ("coding", "sha256:4d3c9b391747497abe0c1efa43b13f782e0472a78164b81fadef5e54acb3284b"),
     ("oneshot", "sha256:82d2bb6b08f609d6eb184d505235c0b5d85012ff24c0ad9dcaed977ec262b964"),
-    ("team",    "sha256:ad73d6434b7459e2b20a47d374a3c37aedfbf4eb2cb7908076016645a9d9aa70"),
+    ("team",    "sha256:01fad2a6cd997c9e289c48bc36d2ebf9786769d2a385f3763cb3f76c6feb2f5b"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one

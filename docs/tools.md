@@ -196,8 +196,8 @@ of those schemas keeps the one-agent request header unchanged.
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
 | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
 | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
-| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. An answer sent after the question's deadline has passed is dropped, because the question's default answer already stands under that identifier. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
-| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`, or to the episode leading that team when `to` is `lead`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. An answer sent after the question's deadline has passed is dropped, because the question's default answer already stands under that identifier. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
+| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, or to the episode leading that team when `to` is `lead`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
 
 Each returned member includes its roster `phase`. A member assigned through
@@ -220,6 +220,15 @@ whatever answers the question, including a host application that runs no
 episode of its own. An inbox drops an item whose `message_id` it already
 holds, so exactly one answer reaches the asker: the teammate's answer when it
 arrives in time, and the default otherwise.
+
+`send` and `ask` take `lead` in `to` for the episode leading the addressed
+team. A member holds those tools without holding `team`, and its own system
+prompt, task item, and tool schemas never state the lead's roster name, so a
+name it would have to look up is a name it cannot reach. `spawn` never gives
+a member the name: a task that asks for it is named `lead-` followed by its
+task identifier. The name selects the lead of whichever team `scope` selects,
+so a worker that divides its own unit answers to `lead` for the children it
+leads and reaches its own lead by the same name.
 
 The root task uses `task_root`. Added tasks use `task_01`, `task_02`, and
 later identifiers in creation order. A dependency on `task_root` is refused

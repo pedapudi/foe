@@ -2108,7 +2108,7 @@ fn plan_reports_an_fingerprint_that_ignores_task_and_paths() {
 /// These values change only when the fingerprint inputs change.
 #[rustfmt::skip]
 const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
-    ("bounded-question", "sha256:571a49a63bf6bae22e3d6dc0e1c87850178beff0cf0e64dfb000b648ca2a7fff"),
+    ("bounded-question", "sha256:ddf1953bda3f9d0c599ba53a216887a416175c700202af4c1e35c73905494421"),
     ("budget-exhausted", "sha256:48fd66d20e58e25b6ded5a1a79b0f84b16087f5c8fd5a64321caa811faba4e37"),
     ("host-model-backend", "sha256:db2f90930f69e5a1b26b9383689f505b1ae8c656641bb205bd9a774b9a28532a"),
     ("minimal", "sha256:ce95c4817b92ee8592d2768da9a4b553acf52cbc8be6ec4633fdee296e7d5063"),
@@ -2116,7 +2116,7 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
     ("sandbox", "sha256:3c6db65289a9a514e4a8c6cdab981a96168abd6c11890c9852a05f66d1103e85"),
     ("self-extension", "sha256:b3b58c01f843bc3d8ba0deb649c3f4e088d09552a553acbfba5d2d87875db331"),
     ("subagents", "sha256:c2e56a0a6fb96632680076f3b435e36cfa1f78cb26011c5f5f09fab43e71eba9"),
-    ("team", "sha256:6e5440135b1f39b959a59446c812e3487acdbf62d11a505a223efbc3474009ff"),
+    ("team", "sha256:9d6cb54ab443dde38d61a4616645acd6a6381ed70677f71b132beb322fe3cbf3"),
     ("verification-unsatisfiable", "sha256:9915cd52c06137bdf8d1ec3723bc27c970e9c33cc06dcca259b4b05001555a81"),
     ("workflow", "sha256:9b6b079dab41a1941c3a9406107b52722bd3b573c5b8b3d62176f4cac54cc501"),
     ("wrap-a-binary", "sha256:5df87d2b61c1031c605aa29ea1a5fbcb6a843930933dafe32cd4423386f1cf67"),

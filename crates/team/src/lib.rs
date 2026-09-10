@@ -55,6 +55,12 @@ pub struct Queued {
     pub content: Vec<ContentBlock>,
 }
 
+/// The name that addresses the episode leading a team, whatever its
+/// contract named it. A member that holds `ask` and not `team` cannot read
+/// the roster, so the only name it can be sure of is one the runtime fixes.
+/// [`unique_name`] keeps it clear of every member name.
+pub const LEAD: &str = "lead";
+
 /// Team state folded from a lead's log.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TeamState {
@@ -428,7 +434,11 @@ impl Team {
     fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>, kind: Correlate) -> Result<String, CapError> {
         let _guard = self.operations.lock().unwrap();
         let state = self.state();
-        let target = state.member(to_name).ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
+        let target = match to_name {
+            LEAD => state.member_by_id(&state.lead_id),
+            name => state.member(name),
+        }
+        .ok_or_else(|| CapError::Invalid(format!("no member named {to_name}")))?;
         let (source, answers) = kind;
         // An answer carries the identifier of the question it answers, which
         // is what lets the asker wait for this reply rather than any arrival.
@@ -650,7 +660,8 @@ fn overlap(held: &[String], wanted: &[String]) -> Option<String> {
 }
 
 fn unique_name(state: &TeamState, requested: &str, task_id: &str) -> String {
-    if state.roster.iter().all(|member| member.name != requested)
+    if requested != LEAD
+        && state.roster.iter().all(|member| member.name != requested)
         && state.tasks.iter().all(|task| task.name != requested)
     {
         requested.to_string()
@@ -765,7 +776,7 @@ A question is bounded: `deadline_ms` says how long it stays open, `default` says
 `scope` selects the team: the one this episode belongs to, or the one it leads. Use it when one answer from one teammate decides what you do next; `send` is for telling.",
                 object(
                     serde_json::json!({
-                        "to": string("roster name of the teammate"),
+                        "to": string("roster name of the teammate, or `lead` for the episode leading the team"),
                         "content": string("the question"),
                         "deadline_ms": { "type": "integer", "minimum": 1, "description": "how long the question stays open, in milliseconds; when it passes with no answer the runtime delivers `default` as the answer" },
                         "default": string("the answer that stands when the deadline passes with no answer"),
@@ -782,7 +793,7 @@ the team: the one this episode belongs to, or the one it leads, which is how a m
 own child asked.",
                 object(
                     serde_json::json!({
-                        "to": string("roster name of the teammate"),
+                        "to": string("roster name of the teammate, or `lead` for the episode leading the team"),
                         "content": string("the message"),
                         "reply_to": string("the message_id of a question this answers"),
                         "scope": { "type": "string", "enum": ["member", "led"], "description": "member selects the team this episode belongs to, the default; led selects the team it leads" }

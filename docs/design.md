@@ -663,6 +663,15 @@ flight continues uninterrupted. A parent calls `wait` after delegation. The
 call consumes no model request while tasks are queued or running, and returns
 after every task has settled.
 
+A member addresses another member by roster name and its own lead by the
+fixed name `lead`. A member that may ask a question holds `ask` without
+necessarily holding `team`, and nothing it reads states the lead's roster
+name, which is its contract's `name`, so a lead it had to look up would be a
+lead it could not address. The board never gives a member the fixed name, so
+it names one episode. It names the lead of whichever team the call's `scope`
+selects, which is what lets an episode in the middle of a tree reach its own
+lead and answer to the same name from its own children.
+
 A message between members carries an identity, and an answer carries the
 identity of the question it answers. `ask` sends a question and returns that
 identity; `send` with `reply_to` answers the question that identity names.
