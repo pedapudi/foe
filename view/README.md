@@ -97,8 +97,16 @@ write: a retry now sits immediately before the attempt it announces, as
 viewer renders the file all the same, because a reader accepts every log it
 is handed. `pnpm fixtures` leaves it alone.
 
-Three screenshots of the static export at 1512 by 792 sit beside the source,
-each in one of the two default themes. `proof-light.png` and
+Seven screenshots of the static export at 1512 by 792 sit beside the source.
+`node view/proofs.mjs` regenerates every one of them, and `--only NAME`
+regenerates one; each needs a current `target/release/foe`, because a proof
+is a picture of the bundle that binary carries, and a browser it drives
+headless. The script lays each fixture out as a run's log tree, writes the
+settings a reader keeps into local storage before the page boots, clicks
+what a reader would click, and screenshots. No proof mixes the recorded
+`retries-exhausted.jsonl` with a written fixture: the outline measures its
+gutter from the earliest start in the run, and a tree holding logs from two
+eras spans the years between them. `proof-light.png` and
 `proof-dark.png` show the `overlap-parent` fixture and its two children in
 `google-light` and `google-dark`: the tree with its per-row measure and the
 spine on the selected row, the rail that carries depth in the trajectory's
@@ -120,8 +128,7 @@ lane, and the `survey` node selected so that the conversation below holds
 its two passes.
 
 `proof-outline-light.png` and `proof-outline-dark.png` show the unified
-outline over the `root` fixture, its spawned child, its fork and a run
-that exhausted its retries. The light one is the reading the viewer opens
+outline over the `root` fixture, its spawned child, and its fork. The light one is the reading the viewer opens
 in, `conversation`: the whole causal structure of the run and what the
 model said at each step, with none of the tool output. Every label starts
 in one column and the tool calls step in one level under the steps that

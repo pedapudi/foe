@@ -222,7 +222,18 @@ function child() {
   log.ev("model/request", { step: 1, attempt: 1, request_id: "rq_10", header_seq: header, consumed: [task, peer], messages: messages1 });
   log.ev("assistant/message", { step: 1, request_id: "rq_10", text: "", tool_calls: [grep], stop: "tool", usage: { input: 300, output: 20, cache_read: 0 }, interrupted: false });
   log.ev("tool/result", { step: 1, call_id: "tc_10", name: "bash", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: "grep -rn TODO src – exit 0 in 0.01s", duration_ms: 12, synthetic: false });
-  log.ev("workflow/node-end", { node: "survey", status: "ok" });
+  // docs/log-format.md `workflow/node-end`: a firing names itself and
+  // carries the value it produced. Written without them the event is not one
+  // the runtime could have written, and the Rust reader refuses the file the
+  // browser reader accepted, which is what left `foe view` unable to open
+  // these fixtures.
+  log.ev("workflow/node-end", {
+    node: "survey",
+    fire: 1,
+    value: { count: 1 },
+    rendered: grepOut,
+    duration_ms: 12,
+  });
   const messages2 = [...messages1, assistant("", [grep]), tool("tc_10", "bash", grepOut)];
   log.ev("model/request", { step: 2, attempt: 1, request_id: "rq_11", header_seq: header, consumed: [], messages: messages2 });
   log.ev("assistant/message", { step: 2, request_id: "rq_11", text: "One test: test_parse.", tool_calls: [], stop: "end", usage: { input: 350, output: 8, cache_read: 300 }, interrupted: false });
