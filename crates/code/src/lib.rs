@@ -102,7 +102,8 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
 /// nothing, so the shell needs a search path to find commands; `HOME` is
-/// the working directory, since the tools have no other writable location.
+/// the working directory, and `TMPDIR` is the episode's scratch directory,
+/// the one directory outside the grants that a command may write.
 ///
 /// The search path is the system directories followed by the directories
 /// holding the executables the contract grants, so that a granted toolchain
@@ -125,7 +126,17 @@ pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::
         ("PATH".to_owned(), path),
         ("HOME".to_owned(), cwd.display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
+        ("TMPDIR".to_owned(), scratch_dir(ctx).display().to_string()),
     ])
+}
+
+/// The scratch directory the kernel policy opens to executables: `tmp`
+/// beside the `spill` directory, both directly under the episode's log
+/// directory, which is the layout docs/log-format.md "Directory layout"
+/// fixes. The runtime creates it at launch.
+#[cfg(feature = "exec")]
+pub(crate) fn scratch_dir(ctx: &foe_core::CallCtx) -> std::path::PathBuf {
+    ctx.spill_dir.with_file_name(foe_core::sandbox::SCRATCH_DIR)
 }
 
 /// Every built-in coding tool, in the order `foe plan` lists them.

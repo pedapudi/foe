@@ -47,6 +47,7 @@ source cannot change the run.
 | a captured executable's absolute shebang interpreter or ELF dynamic loader | execute and read that exact file |
 | each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
+| the `tmp` directory beneath that log directory | read and write, the one part of the log directory every executable of the episode keeps; the shell tools name it as `TMPDIR` |
 | the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
 | the episode's cgroup boundary and, when the contract grants `task_session`, the invocation task cgroup | runtime-only read and write for process ownership; configured executables receive no access |
 | the invocation cgroup directory, for a root episode | runtime-only read and removal for cleanup; the shared manager directory above it carries directory removal alone |
@@ -196,7 +197,8 @@ The episode keeps:
 - execute on its own binary when a child contract is reachable;
 - read on the credential files resolved by its reachable model blocks;
 - read and write on its own log directory, which holds its children's
-  directories and its spill files;
+  directories, its spill files, and the `tmp` directory its executables
+  write;
 - the loader, system, and device paths;
 - outbound TCP when the episode calls a configured model endpoint or a reachable
   configured tool declares `network: true`;
@@ -268,7 +270,10 @@ subtree cleanup because a descendant can create a new group or session.
 A configured executable runs under the episode's ruleset narrowed once
 more. The narrowed policy keeps the read roots, write roots, explicit execute
 grants, library paths, system paths, and device paths. It also keeps execute on
-the captured inode and its exact interpreter. It drops the log directory, key
+the captured inode and its exact interpreter. Of the log directory it keeps
+only the `tmp` directory beneath it, which the runtime creates at launch and
+the shell tools name as `TMPDIR`, so a command has scratch space without a
+grant on the host's `/tmp`. It drops the rest of the log directory, the key
 file, and execute access to other configured tools. It keeps the episode's
 bind ports. A server started by a shell or held by a session can listen on a
 granted port. Outbound TCP remains available when the tool definition sets

@@ -129,6 +129,7 @@ A running foe is a tree of processes sharing one directory tree of logs.
                         <episode-dir>/
                           episode.jsonl
                           spill/
+                          tmp/
                           children/ep_9c21/episode.jsonl
 ```
 

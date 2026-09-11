@@ -32,6 +32,9 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(!req.network);
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
+    // docs/tools.md `bash`: the scratch directory is `tmp` beside `spill`.
+    assert_eq!(req.env["TMPDIR"], c.spill_dir.with_file_name("tmp").display().to_string());
+    assert_eq!(req.env.len(), 4, "the environment is exactly these four variables");
 }
 
 /// A granted toolchain is runnable by name. The search path is the system
