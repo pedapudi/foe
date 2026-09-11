@@ -261,6 +261,22 @@ def test_an_absent_root_and_a_relative_verifier_are_refused(tmp_path: Path) -> N
         foe.builtin("coding", root, binary=BINARY, verify="verify")
 
 
+def test_the_team_document_reaches_the_package_with_every_delegate_tool(tmp_path: Path) -> None:
+    """docs/design.md "The command line": the team lead holds `cancel` and a
+    worker holds `ask`; the package models both, so the document the binary
+    carries parses and writes the same tool lists back."""
+    root = _root(tmp_path)
+    contract = foe.builtin("team", root, binary=BINARY)
+    assert "cancel" in contract.tools and "spawn" in contract.tools
+    worker = contract.child_contracts["worker"]
+    assert "ask" in worker.tools and "notify" in worker.tools
+    assert "ask" in worker.child_contracts["worker"].tools
+    printed = _plan("builtin:team", root)["contract"]
+    written = json.loads(contract.to_json())
+    assert written["tools"] == printed["tools"]
+    assert written["child_contracts"]["worker"]["tools"] == printed["child_contracts"]["worker"]["tools"]
+
+
 def test_the_context_block_the_binary_prints_reaches_every_contract(tmp_path: Path) -> None:
     """docs/design.md "The command line": a built-in document compacts when
     the provider table knows the model's window, and the package carries the
