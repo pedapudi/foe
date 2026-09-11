@@ -936,7 +936,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     // paths are excluded from a fingerprint, and the policy below is built
     // from what stands here.
     if let Some(roots) = launch.effective_write.clone() {
-        contract.grants.write = roots;
+        contract.grants.write = foe_core::spawn::write_roots(&contract, Some(&roots), &extra_builtin_specs())
+            .map_err(|e| format!("child-launch.json effective_write: {e}"))?;
     }
     let limits = launch.effective_budget.clone().unwrap_or_else(|| contract.budget.clone());
     std::fs::create_dir_all(&log_dir).map_err(|e| format!("{}: {e}", log_dir.display()))?;

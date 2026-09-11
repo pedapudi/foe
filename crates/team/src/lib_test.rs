@@ -770,10 +770,10 @@ fn a_write_root_may_not_overlap_one_a_live_task_holds() {
             task: "audit".into(),
             context: SpawnContext::Fresh,
             reserve: BudgetAmount::default(),
-            write: None,
+            write: Some(write.iter().map(PathBuf::from).collect()),
             call_id: "tc".into(),
         };
-        team.delegate(spawner.clone(), req, Some(name), Vec::new(), write)
+        team.delegate(spawner.clone(), req, Some(name), Vec::new())
     };
 
     add("a", roots(&["/p/crates/log"])).unwrap();
@@ -786,6 +786,15 @@ fn a_write_root_may_not_overlap_one_a_live_task_holds() {
     // a prefix of characters.
     add("c", roots(&["/p/crates/core"])).unwrap();
     add("d", roots(&["/p/crates/log-other"])).unwrap();
+
+    let directory = tempfile::tempdir().unwrap();
+    let real = directory.path().join("real");
+    let alias = directory.path().join("alias");
+    std::fs::create_dir(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &alias).unwrap();
+    add("real", vec![real.display().to_string()]).unwrap();
+    let refused = add("alias", vec![alias.display().to_string()]).unwrap_err();
+    assert!(refused.to_string().contains("still writing"), "{refused}");
 }
 
 /// docs/design.md "Agent teams": waits read the maintained projection.

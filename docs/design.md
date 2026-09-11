@@ -662,9 +662,13 @@ from a contract fingerprint, so two children of one contract writing in
 different places are still that contract, exactly as two children with
 different reservations are.
 
-The board refuses a root that lies under or over one a task that has not
-settled still holds. Containment either way is an overlap: a worker given a
-directory and one given a file inside it write the same bytes.
+Before board admission, requested write directories are canonicalized against
+the selected child contract. Relative paths use its first declared write root.
+Directory aliases and `..` are resolved before containment and overlap checks.
+The board stores the resolved directories and refuses a root that overlaps
+one held by a task that has not settled, except for tasks it awaits.
+The parent repeats grant validation at launch, and the child validates the
+effective grant against its declared contract before applying it.
 
 Communication is an inbox append with a typed source. A parent steers a
 running child by appending to the child's inbox. A child notifies its parent
