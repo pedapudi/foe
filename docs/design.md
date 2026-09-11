@@ -827,9 +827,11 @@ ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
 becomes an execute rule on that exact file. The episode's log directory
 becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. Denied accesses are captured from the audit log and written to
-the episode log as `sandbox/denied` events. A blocked attempt therefore
-becomes evidence in the record.
+executables. The kernel reports a denial only to a privileged audit reader,
+so the runtime records none as an event of its own; a denied access reaches
+the log as the tool's result, which the built-in tools type as
+`capability-denied` and the shell marks as a possible denial
+([sandbox.md](sandbox.md#denied-accesses)).
 
 `sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
 the default, applies what the kernel supports and records which version it
