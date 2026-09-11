@@ -7,14 +7,14 @@
 use foe_log::{Event, EventData, InboxItem, InboxSource, State};
 use std::collections::BTreeMap;
 
-/// True for a message between members whose `message_id` an item in
-/// `events` already carries. The team lead redelivers messages it cannot
+/// True for a message whose source and identifier an item already carries.
+/// The team lead redelivers messages it cannot
 /// confirm, so a member sees duplicates and must drop them before
 /// appending. Statements, questions, and answers all carry an identity.
 pub fn is_duplicate(events: &[Event], item: &InboxItem) -> bool {
     let between_members = matches!(item.source, InboxSource::Peer | InboxSource::Request | InboxSource::Response);
     let Some(id) = item.message_id.as_deref().filter(|_| between_members) else { return false };
-    events.iter().any(|e| matches!(&e.data, EventData::InboxItem(i) if i.message_id.as_deref() == Some(id)))
+    events.iter().any(|e| matches!(&e.data, EventData::InboxItem(i) if i.source == item.source && i.message_id.as_deref() == Some(id)))
 }
 
 #[derive(Debug, Default)]

@@ -368,6 +368,13 @@ struct HostTool {
     spec: ToolSpec,
 }
 
+struct PendingCall<'a>(&'a Inner, &'a str);
+impl Drop for PendingCall<'_> {
+    fn drop(&mut self) {
+        lock(&self.0.calls).remove(self.1);
+    }
+}
+
 #[async_trait::async_trait]
 impl Tool for HostTool {
     fn spec(&self) -> &ToolSpec {
@@ -376,10 +383,10 @@ impl Tool for HostTool {
 
     async fn call(&self, args: Value, ctx: &CallCtx) -> ToolValue {
         let inner = &self.host.inner;
+        let _pending = PendingCall(inner, &ctx.call_id);
         let (tx, rx) = oneshot::channel();
         lock(&inner.calls).insert(ctx.call_id.clone(), tx);
         if inner.closed.load(Ordering::SeqCst) {
-            lock(&inner.calls).remove(&ctx.call_id);
             return ToolValue::unavailable(format!(
                 "the host closed the protocol channel before `{}` was called",
                 self.spec.name
@@ -392,18 +399,12 @@ impl Tool for HostTool {
             args,
         };
         if let Err(e) = inner.log.append(event) {
-            lock(&inner.calls).remove(&ctx.call_id);
             return ToolValue::unavailable(format!("`{}` could not be recorded: {e}", self.spec.name));
         }
-        // The wait ends three ways besides the answer: the protocol channel
-        // closed, the stop signal, and the `seconds` budget. A wait that ends
-        // without an answer forgets the call, so a `tool/result` that arrives
-        // afterwards is the protocol error it is.
+        // The registration guard also runs when an outer deadline drops
+        // this future. A later answer follows the unknown-id protocol rule.
         let name = &self.spec.name;
-        let unanswered = |why: String| {
-            lock(&inner.calls).remove(&ctx.call_id);
-            ToolValue::unavailable(format!("`{name}` went unanswered: {why}"))
-        };
+        let unanswered = |why: String| ToolValue::unavailable(format!("`{name}` went unanswered: {why}"));
         let stopped = |reason| format!("the episode stopped: {reason}");
         tokio::select! {
             answer = rx => match answer {
@@ -416,7 +417,6 @@ impl Tool for HostTool {
                 },
             },
             reason = wait_stop(inner.stop.subscribe()) => {
-                lock(&inner.calls).remove(&ctx.call_id);
                 ToolValue::failed(
                     ToolFailureCode::Interrupted,
                     format!("`{name}` went unanswered: {}", stopped(reason)),
@@ -425,7 +425,6 @@ impl Tool for HostTool {
                 )
             },
             _ = until(ctx.deadline) => {
-                lock(&inner.calls).remove(&ctx.call_id);
                 ToolValue::failed(
                     ToolFailureCode::BudgetExhausted,
                     format!("`{name}` went unanswered: the budget's seconds elapsed"),

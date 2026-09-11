@@ -200,6 +200,12 @@ of those schemas keeps the one-agent request header unchanged.
 | `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, or to the episode leading that team when `to` is `lead`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
 
+An `ask` deadline includes forwarding and waiting for delivery acknowledgement.
+An unacknowledged call returns `timed-out` with the default in its error text.
+An acknowledged question uses the remaining time before delivering its default
+as a synthetic response. Repeating a response with the same question identifier
+does not replace the answer already recorded.
+
 Each returned member includes its roster `phase`. A member assigned through
 the board also includes `task_status`, derived from the task whose owner is
 that member. The rendered summary uses task status when it is available.
