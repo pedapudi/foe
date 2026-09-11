@@ -7,14 +7,20 @@
 
 use foe_contract::fingerprint::sha256_hex;
 use foe_log::RuntimeInfo;
+use std::sync::OnceLock;
 
 /// The running binary's version and content hash. `build` is `unknown`
 /// when the binary cannot be read back, for example off Linux.
+/// The executable identity is immutable for this process and computed once.
 pub fn runtime_info() -> RuntimeInfo {
-    let build = std::fs::read("/proc/self/exe")
-        .map(|bytes| format!("sha256:{}", sha256_hex(&bytes)))
-        .unwrap_or_else(|_| "unknown".into());
-    RuntimeInfo { version: env!("CARGO_PKG_VERSION").into(), build }
+    static INFO: OnceLock<RuntimeInfo> = OnceLock::new();
+    INFO.get_or_init(|| {
+        let build = std::fs::read("/proc/self/exe")
+            .map(|bytes| format!("sha256:{}", sha256_hex(&bytes)))
+            .unwrap_or_else(|_| "unknown".into());
+        RuntimeInfo { version: env!("CARGO_PKG_VERSION").into(), build }
+    })
+    .clone()
 }
 
 #[cfg(test)]
