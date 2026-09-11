@@ -145,20 +145,18 @@ pub fn add_builtin_runtime_access(policy: &mut Policy, contract: &ResolvedContra
 /// transport. A descendant inherits the enclosing Landlock domain before
 /// it opens its own credential.
 pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
-    let mut reported = false;
     for (contract_key, descendant) in
         contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
     {
         let Some(model) = &descendant.model else { continue };
         let plan = foe_transport::plan(model).map_err(|e| format!("{contract_key}.model: {e}"))?;
-        // A credential read from a directory the environment named, rather
-        // than one the passwd database recorded, is said out loud once.
-        if plan.home_from_environment && !reported {
-            reported = true;
-            eprintln!("foe: this user has no passwd entry; the home directory comes from HOME");
-        }
         if let Some(path) = plan.credential_path {
-            policy.add_read_file(path, format!("credential for configured model endpoint in {contract_key}"));
+            let home = if plan.home_from_environment {
+                "; home directory resolved from HOME because the user has no passwd entry"
+            } else {
+                ""
+            };
+            policy.add_read_file(path, format!("credential for configured model endpoint in {contract_key}{home}"));
         }
     }
     Ok(())

@@ -36,6 +36,10 @@ nonempty assistant messages, returned child outcomes, and the final outcome.
 Tool requests, tool responses, reasoning, and system instructions are hidden.
 An image appears as a text placeholder.
 
+Home-directory fallback details remain in the credential permission records
+of `episode/start`. They appear only when inspecting raw events in the browser
+and are absent from the terminal and browser conversations.
+
 Communication headings name the sender, recipient, and message kind: `ask`,
 `reply`, `send`, `notify`, or `steer`. A dashed horizontal arrow joins two
 open lanes when the terminal has room. Missing endpoints, closed lanes, and

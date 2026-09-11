@@ -192,12 +192,12 @@ host keeping accounts in a directory service such as LDAP, SSSD, or
 systemd-homed every lookup finds nothing and refusing to run would leave
 nothing to fall back to. Where an entry exists it still decides, so the
 environment never overrides a database that answered, and the value `HOME`
-carries must be an absolute path to a directory that exists. `foe login` and
-a run that reads a convention credential each say so once when the fallback
-is what supplied the directory. A child episode starts with a cleared
-environment, so its parent carries `HOME` across to it; otherwise a child
-would find neither a database entry nor a fallback on a host where the root
-episode ran on one.
+carries must be an absolute path to a directory that exists. When a run grants
+access to a credential file, its resolved permission records whether the home
+directory came from this fallback. The record is part of `episode/start`.
+Successful fallback prints no startup notice and adds no conversation message.
+A child episode starts with a cleared environment. Its parent carries `HOME`
+across so the child can use the same fallback.
 
 A `model` block may omit its credential field. A provider that requires a
 credential then reads its convention file. `compatible-http` reads only an
