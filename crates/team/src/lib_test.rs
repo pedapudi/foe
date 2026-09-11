@@ -2,6 +2,68 @@ use super::*;
 use foe_contract::Budget;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// docs/design.md "Agent teams": question timers belong to the asking team.
+#[tokio::test(start_paused = true)]
+async fn dropping_the_asking_team_cancels_defaults_and_releases_its_inbox() {
+    let (team, log) = asking_team();
+    let inbox = Arc::downgrade(&team.inbox);
+    let ask = tools(team.clone(), None).into_iter().find(|tool| tool.spec().name == "ask").unwrap();
+    let answer = ask
+        .call(
+            serde_json::json!({"to": "peer", "content": "Which directory?",
+        "deadline_ms": 1000, "default": "Use the assigned directory."}),
+            &ctx(None),
+        )
+        .await;
+    assert!(!answer.is_error);
+    tokio::task::yield_now().await;
+    drop(ask);
+    drop(team);
+    tokio::time::advance(Duration::from_secs(2)).await;
+    tokio::task::yield_now().await;
+    assert!(inbox.upgrade().is_none());
+    assert!(!log.events().iter().any(|event| matches!(&event.data, EventData::InboxItem(item) if item.synthetic)));
+}
+
+/// docs/tools.md "Built-in team tools": omitted write roots grant no writes; malformed
+/// arguments cannot create a board task.
+#[tokio::test]
+async fn spawn_parsing_keeps_defaults_and_refuses_malformed_fields_before_admission() {
+    struct AtCapacity;
+    impl Spawner for AtCapacity {
+        fn allocate_id(&self) -> String {
+            "ep_child".into()
+        }
+        fn launch(&self, _: String, _: SpawnRequest) -> Result<foe_core::SpawnHandle, CapError> {
+            Err(CapError::Budget { limit: ExhaustedLimit::Concurrency, name: "max_concurrent".into() })
+        }
+    }
+    let (team, log, _, _) = team();
+    log.append(start());
+    let spawn = tools(team.clone(), None).into_iter().find(|tool| tool.spec().name == "spawn").unwrap();
+    let context = ctx(Some(Arc::new(AtCapacity)));
+    for (key, invalid) in [
+        ("write", serde_json::json!([1])),
+        ("blocked_by", serde_json::json!(null)),
+        ("context", serde_json::json!("invalid")),
+        ("name", serde_json::json!(3)),
+    ] {
+        let mut args = serde_json::json!({"contract": "worker", "task": "Review"});
+        args[key] = invalid;
+        let refused = spawn.call(args, &context).await;
+        assert!(refused.is_error, "{key}");
+        assert_eq!(team.state().tasks.len(), 1, "{key}: only the root task exists");
+    }
+    let accepted = spawn.call(serde_json::json!({"contract": "worker", "task": "Review"}), &context).await;
+    assert!(!accepted.is_error, "{:?}", accepted.rendered);
+    let state = team.state();
+    let task = &state.tasks[1];
+    assert_eq!(task.name, "worker");
+    assert_eq!(task.context, SpawnContext::Fresh);
+    assert!(task.write.is_empty());
+    assert!(task.blocked_by.is_empty());
+}
+
 fn fold(events: &[Event]) -> TeamState {
     let mut folded = foe_log::State::default();
     events.iter().for_each(|event| foe_log::fold::apply(&mut folded, event));

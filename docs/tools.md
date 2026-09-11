@@ -15,11 +15,11 @@ model turn's results show.
 The `tools` list in the configuration names every tool the model may call.
 Each name resolves against three sources, checked in this order.
 
-1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
+1. **Built-in tools.** Implemented in the runtime. There are sixteen: the
    six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
    `compose_tools` specified below;
    `retrieve`, which reads a bounded segment of a prior tool rendering;
-   `block`, by which the model reports a blocking condition; and the six
+   `block`, by which the model reports a blocking condition; and the eight
    team tools specified below. [design.md](design.md) and
    [log-format.md](log-format.md) specify `block`, spawning, waiting, and
    teams. One further tool, `return`, is synthesized rather than named in

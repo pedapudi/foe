@@ -522,8 +522,8 @@ capability checks it only when a `start` call requests task lifetime.
 Tools come from three sources, resolved in this order at construction.
 A name that resolves in two sources is an error.
 
-1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
-   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+1. Built in, sixteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
+   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `cancel`, `notify`, `send`, `ask`, and `team`.
 2. Configured executables, declared in `tool_defs` with a path and a
    description. The runtime passes the model's `args` array as argv, captures
    stdout and stderr, and reports the exit code as data. A non-zero exit is a
@@ -721,6 +721,8 @@ before that deadline produces a `timed-out` tool failure carrying the default
 in its message. Without an acknowledged message identifier, the runtime records
 no synthetic reply. Acknowledgement uses the remaining question time for the
 default answer.
+The asking team owns its default-answer timers. Dropping the team cancels
+outstanding timers and releases their inbox references.
 
 The second rule is that an `until` wait states how long it will block, because
 it returns for an arrival that only another episode produces. Such a call is
