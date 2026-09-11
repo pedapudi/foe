@@ -450,6 +450,9 @@ source cannot change the run.
   verification findings;
 - the runtime's version and build hash.
 
+The runtime reads and hashes its executable once per process. Contract
+fingerprinting and child launch checks reuse that immutable identity.
+
 The task, model route, sandbox mode, and paths in the resolved permission set
 are excluded.
 Two executions may use different values for those fields while retaining one
