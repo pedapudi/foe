@@ -297,6 +297,9 @@ whatever its outcome, and waits for each child's `episode/end` before
 writing its own. On a host with delegated cgroup v2, the parent also empties
 the child's recursive process boundary before it publishes settlement. A
 detached descendant therefore cannot outlive the child reservation.
+The lead records the task outcome after the process has exited and boundary
+cleanup has finished. A cleanup failure becomes the task and spawn outcome
+before budget release or waiter notification.
 
 The parent writes the child's episode and task cgroup paths in
 `child-launch.json` beside the child log. These paths are runtime launch metadata.
