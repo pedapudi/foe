@@ -795,8 +795,9 @@ pub(crate) fn team_contract_document(
     // neither, which is what ends the tree.
     let leaves = document["child_contracts"].clone();
     let worker = &mut document["child_contracts"]["worker"];
-    worker["tools"] =
-        serde_json::json!(["read", "grep", "edit", "bash", "spawn", "wait", "cancel", "send", "ask", "notify", "team"]);
+    worker["tools"] = serde_json::json!([
+        "read", "grep", "edit", "bash", "block", "spawn", "wait", "cancel", "send", "ask", "notify", "team"
+    ]);
     worker["grants"]["spawn"] = serde_json::json!(["worker", "surveyor"]);
     worker["child_contracts"] = leaves;
     worker["budget"] = serde_json::json!({

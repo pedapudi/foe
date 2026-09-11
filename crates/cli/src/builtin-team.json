@@ -10,6 +10,7 @@
     "grep",
     "edit",
     "bash",
+    "block",
     "spawn",
     "wait",
     "steer",
@@ -103,6 +104,7 @@
         "grep",
         "edit",
         "bash",
+        "block",
         "ask",
         "wait",
         "notify"
@@ -195,6 +197,7 @@
         "read",
         "grep",
         "bash",
+        "block",
         "ask",
         "wait",
         "notify"
