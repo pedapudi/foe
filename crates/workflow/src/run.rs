@@ -246,7 +246,7 @@ fn classify_tool(value: ToolValue, configured: bool) -> Output {
     }
     let failure = value.failure.map(|failure| *failure).unwrap_or_else(|| {
         let (code, details) = if timed_out {
-            (ToolFailureCode::TimedOut, json!({ "duration_ms": value.value["duration_ms"] }))
+            (ToolFailureCode::TimedOut, json!({}))
         } else if bad_exit {
             (ToolFailureCode::ProcessExit, json!({ "exit_code": value.value["exit_code"] }))
         } else {

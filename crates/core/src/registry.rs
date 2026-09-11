@@ -402,7 +402,6 @@ impl Tool for ExecTool {
                 let value = json!({
                     "exit_code": result.exit_code, "stdout": String::from_utf8_lossy(&result.stdout),
                     "stderr": String::from_utf8_lossy(&result.stderr), "timed_out": result.timed_out,
-                    "duration_ms": result.duration.as_millis() as u64,
                 });
                 ToolValue { value, rendered: Some(self.render(&result)), is_error: false, failure: None, subject: None }
             }

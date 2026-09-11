@@ -932,15 +932,11 @@ fn tool_failure_codes_drive_recovery() {
     assert_eq!(first.cause, "operation-failed");
 
     let exited =
-        classify_tool(ToolValue::ok(json!({ "exit_code": 9, "timed_out": false, "duration_ms": 12 }), "exit 9"), true)
-            .unwrap_err();
+        classify_tool(ToolValue::ok(json!({ "exit_code": 9, "timed_out": false }), "exit 9"), true).unwrap_err();
     assert_eq!(exited.cause, "process-exit");
     assert!(!exited.settled);
-    let timed_out = classify_tool(
-        ToolValue::ok(json!({ "exit_code": null, "timed_out": true, "duration_ms": 50 }), "timed out"),
-        true,
-    )
-    .unwrap_err();
+    let timed_out =
+        classify_tool(ToolValue::ok(json!({ "exit_code": null, "timed_out": true }), "timed out"), true).unwrap_err();
     assert_eq!(timed_out.cause, "timed-out");
     assert!(!timed_out.settled);
 }
