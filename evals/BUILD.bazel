@@ -5,6 +5,7 @@ exports_files(
     [
         "foe_build.py",
         "host_runtime.py",
+        "runtime_responses.py",
     ],
     visibility = ["//visibility:public"],
 )

@@ -1,0 +1,28 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# The deterministic enforcement matrix over foe and Codex CLI. Codex is taken
+# from PATH; `--skip-codex` runs the foe configurations alone.
+sh_binary(
+    name = "containment-matrix",
+    srcs = ["containment_matrix.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        "//:foe",
+        "//evals:host_runtime.py",
+        "//evals:runtime_responses.py",
+        "//python:foe_package",
+    ],
+)
+
+sh_test(
+    name = "cross_harness_unit_test",
+    srcs = ["run_unit_tests.sh"],
+    data = [
+        "containment_matrix.py",
+        "containment_matrix_test.py",
+        "//evals:host_runtime.py",
+        "//evals:runtime_responses.py",
+    ],
+    size = "small",
+)
