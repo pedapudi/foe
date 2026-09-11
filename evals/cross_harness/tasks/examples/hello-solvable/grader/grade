@@ -1,0 +1,37 @@
+#!/usr/bin/python3
+"""Hidden checks for hello-solvable: the whole description of greet, from the workspace."""
+
+import importlib.util
+import json
+import pathlib
+import sys
+
+sys.dont_write_bytecode = True
+root = pathlib.Path.cwd()
+findings = []
+try:
+    json.load(sys.stdin)
+except Exception as error:
+    findings.append(f"the grader input is not JSON: {error}")
+
+source = root / "src" / "greeting.py"
+if not source.is_file():
+    findings.append("src/greeting.py is absent")
+else:
+    try:
+        spec = importlib.util.spec_from_file_location("greeting", source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cases = {
+            "World": "Hello, World!",
+            "  Ada ": "Hello, Ada!",
+            "": "Hello, stranger!",
+            "   ": "Hello, stranger!",
+        }
+        for value, expected in cases.items():
+            observed = module.greet(value)
+            if observed != expected:
+                findings.append(f"greet({value!r}) returned {observed!r}; expected {expected!r}")
+    except Exception as error:
+        findings.append(f"loading or calling src/greeting.py failed: {error}")
+print("\n".join(findings))
