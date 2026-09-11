@@ -450,7 +450,11 @@ produced; an emitted rendering is never rewritten.
 The tool runs `/bin/bash -c COMMAND` through the executor with the first
 read root as the working directory and a fixed environment: `PATH` is
 `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, `HOME` is
-the working directory, and `LANG` is `C.UTF-8`. Standard input is `/dev/null`.
+the working directory, `LANG` is `C.UTF-8`, and `TMPDIR` is the `tmp`
+directory under the episode's log directory, which the runtime creates at
+launch and which the kernel policy opens to every executable of the episode
+([sandbox.md](sandbox.md)). No grant covers the host's `/tmp`, so a command
+that needs scratch space uses `TMPDIR`. Standard input is `/dev/null`.
 Outbound network access is closed; a process the command starts may bind
 the TCP ports `grants.bind` lists, and no others where the kernel enforces
 it ([sandbox.md](sandbox.md)).

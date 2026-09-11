@@ -992,6 +992,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
             .map_err(|e| format!("child-launch.json fork_source {}: {e}", source.display()))?;
     }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    let scratch = log_dir.join(foe_core::sandbox::SCRATCH_DIR);
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("{}: {e}", scratch.display()))?;
     let sandbox = Arc::new(Sandbox::new(contract.sandbox.mode).map_err(|e| e.to_string())?);
     let process = ProcessOwnership::enter(contract.sandbox.mode, &launch.episode_id, launch.process_boundary.clone())
         .map_err(|e| e.to_string())?;

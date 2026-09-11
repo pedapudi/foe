@@ -79,6 +79,7 @@ async fn start_runs_the_command_under_the_bash_contract() {
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
     assert_eq!(req.env["LANG"], "C.UTF-8");
+    assert_eq!(req.env["TMPDIR"], c.spill_dir.with_file_name("tmp").display().to_string());
 }
 
 #[tokio::test]

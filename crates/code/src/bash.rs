@@ -90,7 +90,7 @@ impl Tool for Bash {
             command: PathBuf::from(SHELL),
             captured_executable: None,
             args: vec!["-c".into(), a.command.clone()],
-            env: shell_environment(&cwd),
+            env: shell_environment(&cwd, ctx),
             cwd,
             timeout,
             network: false,

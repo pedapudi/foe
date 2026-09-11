@@ -124,7 +124,7 @@ impl Tool for Session {
                     name: display_name(&command),
                     command: SHELL.into(),
                     args: vec!["-c".into(), command.clone()],
-                    env: shell_environment(&cwd),
+                    env: shell_environment(&cwd, ctx),
                     cwd,
                     lifetime,
                 };

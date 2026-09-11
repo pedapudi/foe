@@ -192,6 +192,28 @@ fn executable_policy_keeps_explicit_subprocess_grants() {
     assert!(status.success(), "the explicit subprocess grant survives executable narrowing");
 }
 
+/// docs/sandbox.md "Executables": of the episode's log directory an
+/// executable keeps only the `tmp` directory beneath it, so a command can
+/// write scratch files there and nowhere else in the log.
+#[test]
+fn executable_policy_keeps_the_scratch_directory_beneath_the_log() {
+    let Some(s) = sandbox() else { return };
+    let log = temp_dir("scratch-log");
+    let scratch = log.join(SCRATCH_DIR);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let mut episode = Policy { log_dir: Some(log.to_path_buf()), ..Policy::default() };
+    episode.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
+    let tool = episode.for_executable(Path::new("/bin/sh"), false).unwrap();
+    assert_eq!(tool.log_dir, Some(scratch.clone()));
+    let write = |path: &Path| {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c").arg(format!("echo x > '{}'", path.display())).env_clear();
+        s.spawn_narrowed(&tool, cmd).unwrap().wait_with_output().unwrap().status.success()
+    };
+    assert!(write(&scratch.join("scratch.txt")), "the scratch directory is writable");
+    assert!(!write(&log.join("episode.jsonl")), "the log directory itself is not");
+}
+
 /// docs/sandbox.md "Executables": cleanup carries read and removal alone,
 /// so an episode can enumerate and delete its own runtime-owned directory
 /// while a sibling directory beneath the same shared parent stays outside

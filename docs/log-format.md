@@ -18,6 +18,7 @@ changing a required field requires a new log version.
   episode.jsonl          the log
   spill/                 canonical values and complete result renderings too large to inline
     renderings/          complete renderings, named by their SHA-256 digest
+  tmp/                   scratch space for the episode's executables, named as TMPDIR
   children/<child-id>/   child episodes, each with this same layout
 ```
 
