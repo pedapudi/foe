@@ -114,7 +114,6 @@ impl Tool for Bash {
                 "command": a.command,
                 "exit_code": res.exit_code,
                 "timed_out": res.timed_out,
-                "duration_ms": res.duration.as_millis() as u64,
                 "stdout": output.stdout,
                 "stderr": output.stderr,
                 "truncated": output.truncated,

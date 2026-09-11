@@ -22,7 +22,6 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["exit_code"], 2);
     assert_eq!(v.value["timed_out"], false);
-    assert_eq!(v.value["duration_ms"], 1500);
     assert_eq!(v.rendered.as_deref(), Some("[exit 2 in 1.50s]\nout\n--- stderr ---\nerr\n"));
     let req = exec.last().unwrap();
     assert_eq!(req.command, PathBuf::from("/bin/bash"));
@@ -33,6 +32,25 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(!req.network);
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
+}
+
+/// docs/tools.md `bash` and docs/design.md "Blocking conditions the runtime
+/// detects": the canonical value carries no timing, so the same command
+/// with the same output yields an identical value however long it ran, and
+/// a command repeated without progress counts toward `looping-tool-call`.
+#[tokio::test]
+async fn the_canonical_value_is_identical_across_run_durations() {
+    let fx = Fixture::new();
+    let mut slow = result(0, "same\n", "");
+    slow.duration = Duration::from_millis(9000);
+    let quick = Bash::new()
+        .call(json!({"command": "true"}), &ctx_with_executor(&fx, Arc::new(FakeExecutor::new(result(0, "same\n", "")))))
+        .await;
+    let slow =
+        Bash::new().call(json!({"command": "true"}), &ctx_with_executor(&fx, Arc::new(FakeExecutor::new(slow)))).await;
+    assert_eq!(quick.value, slow.value);
+    assert!(quick.value.get("duration_ms").is_none(), "{:?}", quick.value);
+    assert_ne!(quick.rendered, slow.rendered, "the rendering still states the duration");
 }
 
 /// docs/tools.md `bash`: exit 126 with the shell's permission diagnostic
