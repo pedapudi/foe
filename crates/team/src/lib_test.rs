@@ -78,6 +78,7 @@ async fn question_deadlines_cover_forwarding_and_default_delivery() {
     struct Parent {
         spec: ToolSpec,
         delay: Option<Duration>,
+        failed: bool,
     }
     #[async_trait::async_trait]
     impl Tool for Parent {
@@ -89,22 +90,37 @@ async fn question_deadlines_cover_forwarding_and_default_delivery() {
                 Some(delay) => tokio::time::sleep(delay).await,
                 None => std::future::pending().await,
             }
-            ToolValue::ok(serde_json::json!({"message_id": "question"}), "sent")
+            let value = serde_json::json!({"message_id": "question"});
+            if self.failed {
+                ToolValue { value, ..ToolValue::error("ask: delivery refused") }
+            } else {
+                ToolValue::ok(value, "sent")
+            }
         }
     }
-    for delay in [None, Some(Duration::from_millis(600))] {
+    for (delay, failed) in
+        [(None, false), (Some(Duration::from_millis(600)), false), (Some(Duration::from_millis(600)), true)]
+    {
         let (team, log) = asking_team();
         let ask = TeamTool {
             spec: Kind::Ask.spec(),
             kind: Kind::Ask,
             team: team.clone(),
-            parent: Some(Box::new(Parent { spec: Kind::Ask.spec(), delay })),
+            parent: Some(Box::new(Parent { spec: Kind::Ask.spec(), delay, failed })),
         };
         let started = Instant::now();
         let args = serde_json::json!({"to": "lead", "content": "Which directory?", "deadline_ms": 1000,
             "default": "Use the assigned directory."});
         let answer = tokio::time::timeout(Duration::from_secs(2), ask.call(args, &ctx(None))).await.unwrap();
-        if delay.is_none() {
+        if failed {
+            assert!(answer.is_error);
+            tokio::time::advance(Duration::from_secs(2)).await;
+            tokio::task::yield_now().await;
+            assert!(!log
+                .events()
+                .iter()
+                .any(|event| matches!(&event.data, EventData::InboxItem(item) if item.synthetic)));
+        } else if delay.is_none() {
             assert_eq!(answer.failure.unwrap().code, ToolFailureCode::TimedOut);
             assert_eq!(started.elapsed(), Duration::from_secs(1));
             assert!(!log

@@ -719,7 +719,9 @@ The question deadline starts when `ask` is admitted and covers forwarding as
 well as waiting for an answer. A parent that does not acknowledge delivery
 before that deadline produces a `timed-out` tool failure carrying the default
 in its message. Without an acknowledged message identifier, the runtime records
-no synthetic reply. Acknowledgement uses the remaining question time for the
+no synthetic reply. A failed acknowledgement also creates no default-answer
+timer, even if the result contains a message identifier.
+Successful acknowledgement uses the remaining question time for the
 default answer.
 The asking team owns its default-answer timers. Dropping the team cancels
 outstanding timers and releases their inbox references.

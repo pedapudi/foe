@@ -1031,7 +1031,9 @@ impl Tool for TeamTool {
                         }
                         _ => self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args)),
                     };
-                    if let (Some((after, default)), Some(id)) = (bound, sent.value["message_id"].as_str()) {
+                    if let (Some((after, default)), Some(id), false) =
+                        (bound, sent.value["message_id"].as_str(), sent.is_error)
+                    {
                         self.team.default_answer(id.to_string(), after.saturating_sub(started.elapsed()), default);
                     }
                     return sent;
