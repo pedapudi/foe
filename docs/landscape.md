@@ -286,7 +286,7 @@ The comparison below is against documented behavior of the surveyed systems.
   from outside the tree. An episode ends in one of `Completed`, `Blocked`
   with a code from a fixed vocabulary, `Exhausted`, or `Failed`, and the
   runtime itself ends an episode that repeats a tool call or a reasoning
-  turn three times. OpenHands headless mode and Antigravity's `/goal` also
+  turn eight times. OpenHands headless mode and Antigravity's `/goal` also
   omit a state that waits for a person. Among the surveyed systems, only foe
   documents a fixed blocking vocabulary for parent routing.
 

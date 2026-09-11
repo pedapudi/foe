@@ -398,11 +398,12 @@ never made.
 The runtime recognizes two forms of lack of progress without model judgment.
 
 - The same tool call, with identical arguments and an identical result,
-  issued in three consecutive steps ends the episode with `looping-tool-call`.
-- Three consecutive assistant turns with identical text end the episode with
+  issued in eight consecutive steps ends the episode with `looping-tool-call`.
+- Eight consecutive assistant turns with identical text end the episode with
   `looping-reasoning`.
 
-Both thresholds are configurable in `budget`. The model reports the
+Eight is the default of `budget.loop_threshold`, and one value sets both
+thresholds. The model reports the
 conditions it can recognize and the runtime cannot, such as an ambiguous task
 or a missing capability, by calling the built-in `block` tool with a code
 from the closed vocabulary. A contract that lists `spawn` and has a non-empty
