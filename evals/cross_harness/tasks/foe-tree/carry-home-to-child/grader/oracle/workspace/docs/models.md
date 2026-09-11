@@ -1,0 +1,373 @@
+# Models
+
+foe calls a model through one of its built-in clients or leaves the call to
+the process that launched it. This document covers the built-in clients:
+which providers exist, where their credentials live, how `foe login` sets
+them up, and what each provider cannot express.
+
+## Quick start
+
+```
+foe login anthropic
+foe "describe what this repository does"
+```
+
+The first command asks for an API key, checks it with one request, writes it
+to `~/.config/foe/credentials/anthropic.json`, and offers a list of models
+to make the default. The second command runs the built-in coding
+configuration against the current directory with that default model and
+prints the outcome as one JSON line by default. No flag names a model or a key file,
+because both were settled by the login.
+
+`foe login` alone lists every provider and whether each is
+configured. `foe login --status` shows the default model and every
+credential path.
+
+The built-in coding workflow uses low reasoning effort for its implementation
+episode with `gpt-5.6-sol` through `openai` or `openai-codex`. Its independent
+assessment and conditional repair episodes use xhigh effort. An explicit
+`reasoning_effort` in the default model file applies to all three episodes.
+Execution contracts given through `--config` use their model blocks without this coding
+default.
+
+## Providers
+
+A provider is a name in the `model` block of a configuration. The name
+decides the wire format, the kind of credential, and the default endpoint.
+
+| name | what it is | credential | what `foe login` asks for |
+|---|---|---|---|
+| `anthropic` | Anthropic's API | API key | the key |
+| `openai` | OpenAI's API, over the Responses API | API key | the key |
+| `compatible-http` | any server speaking the streaming chat-completion format | optional API key | the server's base URL, then an optional key |
+| `openrouter` | OpenRouter, one key for many models | API key | the key |
+| `openai-codex` | a ChatGPT subscription through the Codex backend | OAuth token, obtained in the browser | nothing typed; a browser sign-in |
+| `vertex` | Google Cloud Vertex AI: Gemini models, and Claude models by name | Google credentials | the credentials file, the project, the location |
+
+One `model` block per provider, each the smallest that runs after
+`foe login`:
+
+```json
+{ "provider": "anthropic", "model": "claude-opus-5" }
+{ "provider": "openai", "model": "gpt-6-astra" }
+{ "provider": "compatible-http", "model": "fixture-model", "base_url": "http://127.0.0.1:11434/v1" }
+{ "provider": "openrouter", "model": "anthropic/claude-opus-5" }
+{ "provider": "openai-codex", "model": "gpt-5.6-sol" }
+{ "provider": "vertex", "model": "gemini-2.5-pro" }
+```
+
+`foe plan --config FILE` prints a `model` line naming the resolved wire
+format and credential path. An unknown provider produces an error that lists
+the known names.
+
+## The `model` block
+
+| field | type | required | meaning |
+|---|---|---|---|
+| `provider` | string | yes | a name from the table above |
+| `model` | string | yes | the model identifier the provider expects |
+| `max_output_tokens` | integer | no | per-request output limit for a provider that accepts one; the default is the provider's |
+| any other key | string | per provider | a provider-specific option |
+
+Every provider-specific option is a flat string. The options by provider:
+
+| option | providers | meaning |
+|---|---|---|
+| `api_key_file` | API-key providers | absolute path of the key file; optional for `compatible-http` |
+| `token_file` | `openai-codex` | absolute path of the OAuth token file; see the next section for the default |
+| `credentials_file` | `vertex` | absolute path of a Google application-default-credentials file or service account key |
+| `project` | `vertex` | the Google Cloud project id; required |
+| `location` | `vertex` | the region, such as `us-east5`, or `global`; required |
+| `base_url` | every HTTP provider | replaces the default endpoint; required for `compatible-http` |
+| `reasoning_effort` | `openai`, `openai-codex` | sent as `reasoning.effort`; models without reasoning reject it |
+| `service_tier` | `openai`, `openai-codex` | the tier the provider processes the request in: `auto`, `default`, `flex`, or `priority`, sent as the `service_tier` request field |
+| `include_thoughts` | `vertex` with Gemini models | `"false"` leaves `thinkingConfig` out, for models without thinking |
+
+A service tier is one provider's vocabulary, so the provider table carries
+both halves of it: the request field the value travels in, and every value
+that provider accepts. Resolving a `model` block checks the configured value
+against that row and names the provider and its accepted values when the
+value is none of them. A provider whose row carries no tier, which is every
+provider absent from the `service_tier` row of the table above, refuses the
+option by name.
+
+The public OpenAI Responses API accepts `max_output_tokens`. The ChatGPT
+Codex backend used by `openai-codex` rejects that field, so foe omits it on
+that route. Foe charges the output usage that the backend reports after each
+response. One response can cross the remaining output-token allowance.
+
+`base_url` follows each provider's own convention. For `anthropic` it is an
+origin, `https://api.anthropic.com`, and `/v1/messages` is appended. For the
+OpenAI-shaped providers it includes the version prefix,
+`https://api.openai.com/v1` or `http://127.0.0.1:11434/v1`, and
+`/responses` or `/chat/completions` is appended. For `openai-codex` it is
+`https://chatgpt.com/backend-api` and `/codex/responses` is appended. For
+`vertex` it is the regional origin, derived from `location` when absent.
+
+Model selection does not participate in the contract fingerprint. A system
+that needs to record which model ran reads it from the log.
+
+### Context windows
+
+The provider table records the context window of the models it knows, so
+that a `context` block enabling compaction need not state `window_tokens`
+for them. A window is matched by the longest model-name prefix in the
+table; a name no prefix matches is unknown, and `context.window_tokens`
+is then required. [compaction.md](compaction.md) states how the window is
+used.
+
+| provider | model-name prefix | window in tokens |
+|---|---|---|
+| `anthropic` | `claude-` | 200000 |
+| `openai`, `openai-codex` | `gpt-6` | 1050000 |
+| `openai`, `openai-codex` | `gpt-5.6` | 1050000 |
+| `openai`, `openai-codex` | `gpt-5` | 400000 |
+| `openrouter` | `anthropic/claude-` | 200000 |
+| `openrouter` | `openai/gpt-6` | 1050000 |
+| `openrouter` | `openai/gpt-5` | 400000 |
+| `openrouter` | `google/gemini-2.5` | 1048576 |
+| `vertex` | `gemini-3` | 1048576 |
+| `vertex` | `gemini-2.5` | 1048576 |
+| `vertex` | `claude-` | 200000 |
+
+`compatible-http` knows no windows because the endpoint decides which model
+answers.
+
+## HTTP requests and cancellation
+
+Each built-in client opens an HTTP/1.1 connection for one request. The client
+uses compiled certificate roots and explicit headers. It does not discover
+proxies, follow redirects, decompress responses, or reuse connections.
+
+Cancelling a model request drops its pending connection or response. The
+runtime aborts the task that owns the socket. Credential refresh uses the
+same transport, and cancellation also releases the credential cache lock.
+No detached response worker or unbounded queue of decoded chunks remains.
+The decoder delivers each chunk directly to the runtime recorder.
+
+Connection establishment, including TLS negotiation, has a thirty-second
+limit. Waiting for response headers has a six-hundred-second limit. Each
+response body frame has the same idle limit. Episode cancellation and the
+contract's `seconds` allowance can end these waits earlier. The operating
+system's hostname lookup may continue after the requesting future is dropped.
+
+Response headers have a 64 KiB buffer limit and a limit of one hundred
+fields. Chunk extensions and trailers have separate 16 KiB limits.
+Each server-sent event line and the event's retained name and data have a
+one MiB limit. Retained data includes one newline per data field while the
+event is assembled. Empty data fields preserve their event and line
+boundaries. An incomplete event at end of input is discarded.
+
+Malformed headers, chunk framing, event text, and parser-limit violations
+produce nonretryable errors. Connection failures, idle timeouts, and
+incomplete response bodies are retryable. Error response text is read up to
+64 KiB. A successful credential response requires a complete UTF-8 JSON body
+of at most 64 KiB. A truncated credential body retains its transport error
+classification, and an oversized body is refused. Credential lifetimes that
+cannot be represented by the expiry clock are refused before caching or
+writing the token. These bounds cover response parsing; the runtime separately
+accounts for output tokens and retained context. Server-provided retry delays
+saturate at the largest millisecond value when their conversion would overflow.
+
+The Rust HTTP and credential methods are asynchronous. Callers await request,
+verification, and token-refresh results. The command-line login flow runs
+these methods on a local runtime while retaining synchronous terminal input.
+
+## Where credentials live
+
+foe has two convention paths, both under the home directory of the user
+running it, and nothing else is found by convention.
+
+| path | holds |
+|---|---|
+| `~/.config/foe/credentials/<provider>.json` | the credential of one provider |
+| `~/.config/foe/default-model.json` | the `model` block a bare `foe "task"` runs |
+
+The home directory is the one the passwd database records for the process's
+user id, so the same command resolves the same paths whatever the
+environment holds. `HOME` is read in one case: when the database holds no
+entry for the user at all. A statically linked binary, which is what the
+published release is, cannot load the modules `nsswitch.conf` names, so on a
+host keeping accounts in a directory service such as LDAP, SSSD, or
+systemd-homed every lookup finds nothing and refusing to run would leave
+nothing to fall back to. Where an entry exists it still decides, so the
+environment never overrides a database that answered, and the value `HOME`
+carries must be an absolute path to a directory that exists. `foe login` and
+a run that reads a convention credential each say so once when the fallback
+is what supplied the directory. A child episode starts with a cleared
+environment, so its parent carries `HOME` across to it; otherwise a child
+would find neither a database entry nor a fallback on a host where the root
+episode ran on one.
+
+A `model` block may omit its credential field. A provider that requires a
+credential then reads its convention file. `compatible-http` reads only an
+explicitly named key file and sends no authentication header when the option
+is absent. An explicit `api_key_file`, `token_file`, or `credentials_file`
+replaces a convention path. The resolved file path is written into the
+`model` block that `episode/start.contract` records.
+
+The convention file's shape depends on the credential kind.
+
+| kind | contents of `~/.config/foe/credentials/<provider>.json` |
+|---|---|
+| API key | `{ "api_key": "..." }` |
+| OAuth token | `{ "access": "...", "refresh": "...", "expires": N, "account_id": "..." }`, with `expires` in milliseconds since the Unix epoch; `refresh` may be omitted |
+| Google credentials | `{ "credentials_file": "/abs/path", "project": "...", "location": "..." }`, pointing at the file Google's tools wrote |
+
+A file named explicitly by `api_key_file` may hold the bare key instead of
+the JSON object; trailing whitespace is removed. When an OAuth token file
+contains `refresh`, Foe renews the token at the provider's token endpoint after
+the access token enters the sixty-second refresh window. Foe rewrites the token
+file atomically with mode 0600. When an OAuth token file omits `refresh`, Foe
+cannot renew the access token. This access-only credential works until the
+access token enters the same refresh window. Foe then returns an error before
+sending the model request. A Google access token is minted from the credentials
+file and cached in memory until sixty seconds before it expires; nothing is
+written back.
+
+A resolved credential file lies outside the grants that an episode may read.
+The sandbox adds it as a readable file so that a child episode can read it
+under the inherited restrictions. Tools never receive it.
+
+## `foe login`
+
+```
+foe login                      list providers with a one-line description and whether each is configured
+foe login <provider>           configure it, then set it as the default model when none is set
+foe login <provider> --model M set the default model explicitly
+foe login --status             show the default model and every configured credential path
+```
+
+Every prompt is plain text on standard error, answered on standard input.
+No secret is ever printed, and a key is typed with the terminal's echo off.
+Every error says what to do next.
+
+For a provider with an API key, the command prompts `Paste your <Provider>
+API key:` and sends one authenticated request that lists the provider's
+models; OpenRouter answers a key-information request instead. The
+credentials file is written with mode 0600 only when the provider accepted
+the key. A rejected key ends with the provider's message and the
+instruction to run the command again. `compatible-http` asks for the
+server's base URL first, then accepts a key or an empty answer. It stores
+the URL in the default model block and writes a credential file only when
+a key was entered. The default model block names that file explicitly.
+
+For `openai-codex`, the command starts a listener on `127.0.0.1:1455`, the
+callback address registered for the Codex client, prints an authorization
+URL, and opens it with `/usr/bin/xdg-open`. The flow is authorization code
+with PKCE against `https://auth.openai.com`. When the browser returns to the
+listener with a code, the command exchanges it for a token at
+`https://auth.openai.com/oauth/token`, writes the token file, and prints
+the last four characters of the account id. A busy port 1455 is reported
+with the instruction to stop the contract using it.
+
+For `vertex`, the command asks for the credentials file, offering
+`~/.config/gcloud/application_default_credentials.json` as the default, then
+the project id and the location. It mints one access token to prove the
+credentials work and writes the three values to the convention file.
+
+After configuring a credential, the command offers the provider's preset
+models as a numbered list when `~/.config/foe/default-model.json` does not
+exist, or writes the `--model` value without asking. The last line of every
+successful login is the next command to run:
+
+```
+next: foe "describe what this repository does"
+```
+
+A bare `foe "task"` reads the default model file when `--model` is absent.
+`--model PROVIDER/MODEL` on the command line replaces it for one run.
+`foe login PROVIDER --key-file PATH` records the file the provider's
+credential is read from, in the default model block's credential option, and
+a document's own `model` block names one for a single contract. A document
+named by `--config` that declares no `model` block takes its block from
+`--model` and `--service-tier` in the same way; a document that declares one
+refuses both.
+
+When the selected model is `gpt-5.6-sol` through `openai` or
+`openai-codex`, login writes `"reasoning_effort": "low"` into the default
+model file. A pre-existing default model file receives the same effective
+setting in memory when it omits the option. `foe login --status` reports
+the effective reasoning effort.
+
+## Formats and credential sources
+
+The transport crate pairs wire formats with credential sources through one
+provider table. A provider is one row of thirteen fields: the name a configuration
+writes, the title and one-line description `foe login` prints, the wire
+format, the credential source, the default base URL, the path appended to
+it, the options the `model` block must carry, the models `foe login`
+offers, the context windows by model-name prefix, any fixed headers, the
+service tier's request field and accepted values, and
+how `foe login` proves a credential works. The binary includes every format,
+credential source, and provider row.
+
+| wire format | module | providers |
+|---|---|---|
+| Anthropic Messages | `format/messages.rs` | `anthropic`, `vertex` for `claude*` models |
+| streaming chat completions | `format/chat.rs` | every provider row using `chat` |
+| OpenAI Responses | `format/responses.rs` | `openai`, `openai-codex` |
+| Gemini on Vertex AI | `format/gemini.rs` | `vertex` for other models |
+
+What a format does about prompt caching differs, because the request field
+that names a cache differs. The Messages format marks three breakpoints: the
+system prompt, the last tool definition, and the last block of the last turn.
+The first two cover the head that is fixed for the episode; the third covers
+the conversation, which is what grows, so each step reads the prefix the step
+before it wrote. The Responses format names the cache rather than marking it:
+every request carries `prompt_cache_key`, a digest over the system prompt and
+the tool names, which is the head every request of one episode repeats. The
+other two formats send neither, so a server that caches a repeated prefix
+there decides to on its own; `usage.cache_read` reports whether it did.
+
+| credential source | module | what it reads |
+|---|---|---|
+| API key | `auth/api_key.rs` | a key file |
+| OAuth token file | `auth/token_file.rs` | a token file, refreshed at the provider's token endpoint |
+| Google credentials | `auth/google.rs` | application default credentials or a service account key, exchanged for an access token |
+
+Adding a provider that speaks an existing format with an existing source is
+one row in `crates/transport/src/providers.rs`. A provider that serves the
+Chat Completions API at `https://api.example.com/v1` with a bearer key,
+offers two models with a 128,000-token window, and answers `GET /models`
+would be:
+
+```rust
+Provider {
+    name: "example",
+    title: "Example",
+    description: "Example's hosted models, over the Chat Completions API",
+    format: WireFormat::Chat,
+    auth: AuthKind::ApiKey { header: KeyHeader::Bearer, optional: false },
+    default_base_url: Some("https://api.example.com/v1"),
+    path: "/chat/completions",
+    required: &[],
+    presets: &["example-large", "example-small"],
+    windows: &[("example-", 128_000)],
+    headers: &[],
+    service_tier: None,
+    verify: Verify::GetJson("/models"),
+},
+```
+
+After that row exists, `foe login example` works, `{ "provider": "example",
+"model": "example-large" }` runs, and the credential lives at
+`~/.config/foe/credentials/example.json`. A provider with a new wire format
+or a new credential source needs a module implementing the `Format` or
+`Auth` trait beside the existing ones.
+
+## What each provider cannot express
+
+The chunk vocabulary of [protocol.md](protocol.md) has three stop reasons
+and no notion of a refusal. Each provider maps onto it with these losses.
+
+| provider | limit |
+|---|---|
+| `anthropic` | a `refusal` stop reason and any unknown stop reason become a non-retryable error |
+| `openai`, `openai-codex` | a `content_filter` incompletion and a refusal part become non-retryable errors; failed responses for server errors, unavailable service, rate limits, or an absent code are retried; reasoning is replayed only for items that arrived with `encrypted_content`, which every request asks for with `store: false` |
+| providers using `chat` | a `content_filter` finish becomes a non-retryable error; a failed tool result has no field and travels as text; reasoning blocks are never replayed because the format has no item for them |
+| `vertex` with Gemini | `SAFETY`, `RECITATION`, `BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`, `MALFORMED_FUNCTION_CALL`, and a blocked prompt become non-retryable errors; function calls have no ids, so the transport numbers them per response and results are matched by function name; a thought signature is replayed on a part of the kind it arrived on, and a signature whose part has no counterpart in the replayed turn is dropped; schema keywords the API rejects, `additionalProperties` and every `$`-prefixed keyword, are removed from tool declarations; a text message recorded after a tool result opens a turn of its own, because a `user` turn holding a `functionResponse` beside a text part is read as a turn of another kind and the request is refused |
+| `vertex` with Claude | as `anthropic` |
+Every provider replays reasoning only to the route that produced it. The
+runtime fixes the model for the whole episode, so every block in a log came
+from the route that will read it.

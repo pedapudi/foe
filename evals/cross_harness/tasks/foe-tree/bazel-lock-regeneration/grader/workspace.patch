@@ -1,0 +1,33 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..19085d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..18458f5
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/bash
++# The check suite of this task: a type check, then the lock must record the
++# current digest of Cargo.lock and of the manifest the dependency edge changes.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: cargo check"
++cargo check --workspace --quiet
++echo "step 2: MODULE.bazel.lock records the current Cargo.lock and crates/cli/Cargo.toml"
++for file in Cargo.lock crates/cli/Cargo.toml; do
++  if ! /usr/bin/grep -q "FILE:@@//$file $(/usr/bin/sha256sum "$file" | /usr/bin/cut -d' ' -f1)" MODULE.bazel.lock; then
++    echo "checks/run.sh: MODULE.bazel.lock does not record the current digest of $file; regenerate it with bazel" >&2
++    exit 1
++  fi
++done

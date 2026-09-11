@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "the change needs at least 40 production lines in crates/core; the kernel ceiling of 6450 leaves 0 and may not change"
+}

@@ -1,0 +1,323 @@
+use super::Pool;
+use foe_contract::Budget;
+use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
+
+pub fn budget() -> Budget {
+    Budget {
+        model_calls: Some(10),
+        input_tokens: Some(1000),
+        output_tokens: Some(400),
+        seconds: None,
+        max_depth: 1,
+        max_episodes: 3,
+        max_concurrent: 1,
+        loop_threshold: 3,
+    }
+}
+
+#[test]
+fn model_calls_count_every_request_including_retries() {
+    let mut pool = Pool::new(Budget { model_calls: Some(2), ..budget() });
+    assert_eq!(pool.exhausted(), None);
+    pool.note_request();
+    pool.note_request();
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::ModelCalls));
+}
+
+/// docs/config.md `budget`: a declared ceiling of `"unlimited"` leaves the
+/// dimension with no remainder to run out of, the way an absent
+/// `input_tokens` already does. The other dimensions still bound the run.
+#[test]
+fn an_unlimited_model_call_ceiling_never_exhausts() {
+    let mut pool = Pool::new(Budget { model_calls: None, input_tokens: Some(10), ..budget() });
+    for _ in 0..1000 {
+        pool.note_request();
+    }
+    assert_eq!(pool.remaining().model_calls, None, "no ceiling leaves no remainder");
+    assert_eq!(pool.exhausted(), None);
+    pool.note_usage(Usage { input: 10, output: 0, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens), "the dimensions stay independent");
+}
+
+#[test]
+fn input_and_output_tokens_have_independent_remainders() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 600, output: 300, cache_read: 500 });
+    assert_eq!(pool.remaining().input_tokens, Some(400));
+    assert_eq!(pool.remaining().output_tokens, Some(100));
+    pool.note_usage(Usage { input: 10, output: 100, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::OutputTokens));
+}
+
+#[test]
+fn external_usage_saturates_instead_of_overflowing_the_account() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: u64::MAX, output: u64::MAX, cache_read: 0 });
+    pool.note_usage(Usage { input: 1, output: 1, cache_read: 0 });
+    assert_eq!(pool.remaining().input_tokens, Some(0));
+    assert_eq!(pool.remaining().output_tokens, Some(0));
+}
+
+#[test]
+fn seconds_elapse_on_the_wall_clock() {
+    let pool = Pool::new(Budget { seconds: Some(1), ..budget() });
+    assert!(pool.deadline().is_some());
+    assert_eq!(pool.exhausted(), None);
+    let pool = Pool::new(Budget { seconds: Some(0), ..budget() });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::Seconds));
+}
+
+#[test]
+fn reservation_debits_the_remainder_until_release() {
+    let mut pool = Pool::new(budget());
+    pool.note_request();
+    let granted = pool.reserve("child", BudgetAmount { model_calls: Some(4), ..Default::default() }).unwrap();
+    assert_eq!(
+        granted,
+        BudgetAmount {
+            model_calls: Some(4),
+            input_tokens: Some(1000),
+            output_tokens: Some(400),
+            seconds: None,
+            episodes: Some(2),
+        },
+        "an unset dimension receives the remainder"
+    );
+    assert_eq!(pool.remaining().model_calls, Some(5));
+    assert_eq!(pool.remaining().input_tokens, Some(0));
+    assert_eq!(pool.remaining().output_tokens, Some(0));
+    pool.release(
+        "child",
+        BudgetAmount { model_calls: Some(1), input_tokens: Some(200), output_tokens: Some(50), ..Default::default() },
+    );
+    assert_eq!(pool.remaining().model_calls, Some(8));
+    assert_eq!(pool.remaining().input_tokens, Some(800));
+    assert_eq!(pool.remaining().output_tokens, Some(350));
+}
+
+#[test]
+fn reservation_beyond_the_remainder_names_the_limit() {
+    let mut pool = Pool::new(budget());
+    let err = pool.reserve("child", BudgetAmount { model_calls: Some(11), ..Default::default() }).unwrap_err();
+    assert_eq!(err, ExhaustedLimit::ModelCalls);
+    let err = pool
+        .reserve("child", BudgetAmount { model_calls: Some(1), input_tokens: Some(5000), ..Default::default() })
+        .unwrap_err();
+    assert_eq!(err, ExhaustedLimit::InputTokens);
+    let err = pool
+        .reserve("child", BudgetAmount { model_calls: Some(1), output_tokens: Some(5000), ..Default::default() })
+        .unwrap_err();
+    assert_eq!(err, ExhaustedLimit::OutputTokens);
+}
+
+#[test]
+fn a_grant_of_zero_on_any_dimension_names_that_limit() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 1000, output: 0, cache_read: 0 });
+    let err = pool.reserve("child", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err();
+    assert_eq!(err, ExhaustedLimit::InputTokens, "the input remainder is zero, so no child could start");
+    assert_eq!(pool.active_children(), 0, "a refused reservation holds nothing");
+}
+
+#[test]
+fn structural_caps_refuse_a_spawn() {
+    let mut pool = Pool::new(Budget { max_depth: 0, ..budget() });
+    assert_eq!(pool.reserve("a", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Depth);
+
+    let mut pool = Pool::new(budget());
+    let one_episode = |calls| BudgetAmount { model_calls: Some(calls), episodes: Some(1), ..Default::default() };
+    pool.reserve("a", one_episode(1)).unwrap();
+    assert_eq!(pool.reserve("b", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Concurrency);
+    pool.release("a", one_episode(1));
+    pool.reserve("b", one_episode(1)).unwrap();
+    pool.release("b", one_episode(1));
+    assert_eq!(
+        pool.reserve("c", BudgetAmount::default()).unwrap_err(),
+        ExhaustedLimit::Episodes,
+        "max_episodes counts this episode"
+    );
+}
+
+/// docs/config.md `budget`: `max_episodes` is the lifetime count of
+/// episodes in the tree, this one included. The count reaches the pool
+/// through the reservation a child receives and the count it reports back.
+#[test]
+fn the_episode_allowance_is_shared_out_and_reported_back() {
+    let mut pool = Pool::new(Budget { max_episodes: 4, max_concurrent: 2, ..budget() });
+    let first = pool.reserve("a", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(first.episodes, Some(3), "a request that names no count takes the whole remainder");
+    assert_eq!(
+        pool.reserve("b", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err(),
+        ExhaustedLimit::Episodes,
+        "the first reservation holds the rest of the allowance"
+    );
+
+    let mut pool = Pool::new(Budget { max_episodes: 4, max_concurrent: 2, ..budget() });
+    pool.reserve("a", BudgetAmount { model_calls: Some(1), episodes: Some(2), ..Default::default() }).unwrap();
+    pool.release("a", BudgetAmount { model_calls: Some(1), episodes: Some(2), ..Default::default() });
+    assert_eq!(pool.remaining().episodes, Some(1), "a settled subtree of two keeps its share");
+    pool.reserve("b", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap();
+    assert_eq!(pool.reserve("c", BudgetAmount::default()).unwrap_err(), ExhaustedLimit::Episodes);
+}
+
+#[test]
+fn folding_reserve_and_release_events_matches_live_calls() {
+    let mut live = Pool::new(budget());
+    live.note_request();
+    let granted = live.reserve("k", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap();
+    live.release(
+        "k",
+        BudgetAmount { model_calls: Some(2), input_tokens: Some(10), output_tokens: Some(3), ..Default::default() },
+    );
+
+    let mut folded = Pool::new(budget());
+    folded.apply(&EventData::ModelRequest(foe_log::ModelRequest {
+        step: 1,
+        attempt: 1,
+        request_id: "r".into(),
+        header_seq: 0,
+        consumed: vec![],
+        messages: vec![],
+        max_output_tokens: None,
+    }));
+    folded.apply(&EventData::BudgetReserve { child_id: "k".into(), reserved: granted });
+    folded.apply(&EventData::BudgetRelease {
+        child_id: "k".into(),
+        spent: BudgetAmount {
+            model_calls: Some(2),
+            input_tokens: Some(10),
+            output_tokens: Some(3),
+            ..Default::default()
+        },
+    });
+    assert_eq!(folded.remaining(), live.remaining());
+    assert_eq!(folded.active_children(), 0);
+}
+
+/// docs/config.md `budget`: the output cap for one request cannot exceed
+/// the output allowance that remains across the episode tree.
+#[test]
+fn request_output_is_clamped_to_the_remaining_allowance() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 10, output: 350, cache_read: 0 });
+    assert_eq!(pool.request_max_output(Some(200)), Ok(Some(50)));
+    assert_eq!(pool.request_max_output(Some(25)), Ok(Some(25)));
+}
+
+/// docs/config.md `budget`: provider-reported usage charges the input
+/// allowance after a response, so one response can cross the allowance.
+#[test]
+fn reported_input_can_cross_the_allowance_before_the_next_request() {
+    let mut pool = Pool::new(budget());
+    pool.note_usage(Usage { input: 990, output: 0, cache_read: 900 });
+    assert_eq!(pool.request_max_output(None), Ok(Some(400)));
+    pool.note_usage(Usage { input: 20, output: 0, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+}
+
+/// docs/compaction.md "How it is recorded": the summary response's
+/// `assistant/message` is the usage account. `compaction/end` repeats the
+/// usage as evidence and must not debit either allowance again.
+#[test]
+fn compaction_end_does_not_charge_summary_usage_twice() {
+    let mut pool = Pool::new(budget());
+    let usage = Usage { input: 80, output: 20, cache_read: 40 };
+    pool.note_usage(usage);
+    let once = pool.remaining();
+    pool.apply(&EventData::CompactionEnd { step: 2, ok: true, usage, active_estimate: 300, error: None });
+    assert_eq!(pool.remaining(), once);
+}
+
+// ---- input admission under provider-reported usage ------------------------
+
+/// Provider-reported input is not monotonic within an episode: the staircase
+/// below is from a recorded `openai-codex` run whose reports fall mid-episode
+/// (seq of `usage.input` per response). Admission therefore uses cumulative
+/// spend alone. A rule that inferred the next request's cost from the last
+/// report would have refused requests this episode completed within its
+/// allowance.
+#[test]
+fn admission_uses_cumulative_spend_and_never_a_per_request_inference() {
+    let recorded = [878u64, 1141, 1825, 3580, 7130, 7860, 8006, 8299, 4345, 4699, 5111, 5357];
+    let total: u64 = recorded.iter().sum();
+    let mut pool = Pool::new(Budget { model_calls: Some(20), input_tokens: Some(total + 1), ..budget() });
+    for &input in &recorded {
+        assert_eq!(pool.exhausted(), None, "admitted while cumulative spend is below the allowance");
+        pool.note_request();
+        pool.note_usage(Usage { input, output: 5, cache_read: 0 });
+    }
+    // The allowance is spent only when the sum crosses it, not when a report
+    // spikes: after every recorded response one token remains.
+    assert_eq!(pool.remaining().input_tokens, Some(1));
+    pool.note_usage(Usage { input: 1, output: 0, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+}
+
+/// The final request may cross the allowance, because its size cannot be
+/// known exactly beforehand; the crossing ends the episode afterwards.
+#[test]
+fn one_request_may_cross_the_input_allowance_and_the_next_is_refused() {
+    let mut pool = Pool::new(Budget { input_tokens: Some(1000), ..budget() });
+    pool.note_usage(Usage { input: 990, output: 5, cache_read: 0 });
+    assert_eq!(pool.exhausted(), None, "10 remain, so another request is admitted");
+    pool.note_usage(Usage { input: 700, output: 5, cache_read: 0 });
+    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
+}
+
+/// docs/config.md `budget`: restoration charges recorded consumption once before child admission.
+#[tokio::test(start_paused = true)]
+async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging() {
+    let reserved = BudgetAmount {
+        model_calls: Some(8),
+        input_tokens: Some(80),
+        output_tokens: Some(20),
+        episodes: Some(1),
+        seconds: None,
+    };
+    let events = vec![
+        foe_log::Event {
+            seq: 0,
+            time: 1_000,
+            version: None,
+            data: EventData::BudgetReserve { child_id: "child".into(), reserved },
+        },
+        foe_log::Event {
+            seq: 1,
+            time: 2_000,
+            version: None,
+            data: EventData::BudgetRelease { child_id: "child".into(), spent: reserved },
+        },
+    ];
+    let mut pool = Pool::new(Budget {
+        model_calls: Some(10),
+        input_tokens: Some(100),
+        output_tokens: Some(25),
+        seconds: Some(20),
+        max_episodes: 4,
+        ..budget()
+    });
+    pool.started = std::time::Instant::now() - std::time::Duration::from_secs(5);
+    pool.restore(&events, 6_000);
+    assert_eq!(
+        pool.remaining(),
+        BudgetAmount {
+            model_calls: Some(2),
+            input_tokens: Some(20),
+            output_tokens: Some(5),
+            seconds: Some(15),
+            episodes: Some(2)
+        }
+    );
+    assert_eq!(
+        pool.reserve("too-large", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap_err(),
+        ExhaustedLimit::ModelCalls
+    );
+    let granted =
+        pool.reserve("live", BudgetAmount { model_calls: Some(1), episodes: Some(1), ..Default::default() }).unwrap();
+    let before = pool.remaining();
+    pool.restore(&events, 100_000);
+    assert_eq!(pool.remaining(), before);
+    assert_eq!(pool.active_children(), 1);
+    pool.release("live", granted);
+    assert_eq!(pool.remaining().model_calls, Some(1));
+}

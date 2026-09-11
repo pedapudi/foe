@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "checks/run.sh step 2 waits 900 seconds for a reply that no service sends; the budget is 300 seconds"
+}

@@ -16,3 +16,7 @@ __pycache__/
 /bazel-*
 /site/build/*.json
 /.foe
+# A cross-harness task workspace is generated from a recorded commit and
+# grader/workspace.patch; a target directory under a task is a grading build.
+evals/cross_harness/tasks/foe-tree/*/workspace/
+evals/cross_harness/tasks/**/target/

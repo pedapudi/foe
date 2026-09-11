@@ -1,0 +1,23 @@
+{
+  "MODULE.bazel.lock": "0526757e8fc67bdb97d2a542192068b95d1e6ba9a9fee0a5cd1cade715d1113c",
+  "manifests": {
+    "Cargo.lock": "60d616e40e62fe5f63e4eeec897e3734c5adfef8102f8671fad835d30f452208",
+    "Cargo.toml": "d9989c15c9a344ded4bc0c19cd56514e3c63c63448810b49d54a4ca7f1cb7609",
+    "crates/cli/Cargo.toml": "7dcf2f63bb103034a4005e2dd048a98ad225bf8911d826ef8114e6032457c1bc",
+    "crates/code/Cargo.toml": "8e9f7e23adf2ab670e92b42c11a2657fc131819f0937fe3af00c2a35e79b4925",
+    "crates/context/Cargo.toml": "f1bd85c6063e33d0d5ddfbd8be9af07ac79b47c40716c86032b7d7d38599043c",
+    "crates/contract/Cargo.toml": "76a139e58b41c902392da6bc54a764567580cce2594b80e89934102a356bdce9",
+    "crates/core/Cargo.toml": "20e53808cd68e65ec0fe51af0d8b901e8d1089cda1352f0100a582fc36010e66",
+    "crates/evidence/Cargo.toml": "7c114ae786986abaaa43dc9af6ed2dd913976f82c8f4783056e02c9ed1875467",
+    "crates/log/Cargo.toml": "f106a4e0aea77901317b4c371b4ed34f9d96e68942f2a78b72bd745db7c51571",
+    "crates/team/Cargo.toml": "5aa82770f085386b0ecb6f4bc0f74fd5c52f7901a23220c9a5888e1fee797882",
+    "crates/telemetry/Cargo.toml": "1fb61a89ed60c8dab884abe1164ef583e6f218a4f347750c7d7492f821ad4686",
+    "crates/transport/Cargo.toml": "9f9a762bf8653bb9a435e304ada0cff5908d5006c756fb8c72d024cd699d848b",
+    "crates/view/Cargo.toml": "93fa48f57e220559e635be927d7362ada92b6e212c0002d4149063eff15995cc",
+    "crates/workflow/Cargo.toml": "694abe6f7e51b06da5020b533d26d8fb3103e543ac71c771e7f4de5c5b088267",
+    "spikes/size-baseline/Cargo.lock": "12eb7abd0de8ba1fac3d84519ff26e9ad1664906bfa624189a5517de8398ad53",
+    "spikes/size-baseline/Cargo.toml": "c0f38c2f924eccb17db394f0389488f3c17e922f2d821b7dcdedc792128e5225",
+    "spikes/starlark-confinement/Cargo.lock": "1d0778979155715897845df8bba4ea94d5b729aab70e79ee6e7bdc4db85066ea",
+    "spikes/starlark-confinement/Cargo.toml": "7035616f11a06842b7b9e137bcce5a07cca0f8c8f2169d0c56f226fee8805633"
+  }
+}

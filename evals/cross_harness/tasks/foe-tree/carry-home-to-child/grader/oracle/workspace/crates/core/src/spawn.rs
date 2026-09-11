@@ -1,0 +1,714 @@
+//! Child episodes: process start, launch metadata, budget reservation, and outcome collection.
+//!
+//! A child is a further `foe` process. The parent is the child's host: it
+//! writes the child's configuration under `children/<child_id>/`, starts
+//! the child with a pipe for the protocol in each direction, reads every
+//! event the child writes, forwards the ones that need a host answer upward
+//! tagged with the child's id, routes tagged answers back down, and collects
+//! the child's `episode/end`. See docs/protocol.md "Children".
+//!
+//! Two files are written beside the child's log before it starts.
+//! `config.json` is the configuration the child is launched with, derived
+//! from the parent's `child_contracts` entry with `version`, `model`, and
+//! `sandbox` inherited. `child-launch.json` names the child's own id, its parent,
+//! its team lead, its expected contract fingerprint, and its effective allowance.
+//! A child that reads it
+//! sends its `notify`, `send`, and `team` calls to this process, which
+//! answers them through the [`ChildObserver`].
+//!
+//! The parent never writes the child's log, and this module never writes
+//! the parent's. `budget/reserve`, `spawn/start`, `spawn/end`, and
+//! `budget/release` are the loop's to write around a call to
+//! [`Spawner::spawn`] and a wait on [`ChildRun`].
+
+use crate::captured_executable::CapturedExecutableTree;
+use crate::process_boundary::{command_in, ProcessBoundary};
+use crate::{CapError, SpawnHandle, SpawnRequest, Spawner, ToolValue};
+use command_fds::{CommandFdExt, FdMapping};
+use foe_contract::document::{ResolvedContract, CONTRACT_FORMAT_VERSION};
+use foe_contract::{Budget, ContractDocument, Effect, ToolSpec};
+use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::io::{BufRead, BufReader, IsTerminal, PipeWriter, Write};
+use std::os::fd::AsFd;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::watch;
+
+/// The descriptors a child speaks the host protocol on: it reads the
+/// answers its parent writes from the first and writes every event of its
+/// own log to the second. Both are pipes the parent creates, and both lie
+/// below the numbers the captured executable tree occupies.
+const PROTOCOL_READ_FD: i32 = 3;
+const PROTOCOL_WRITE_FD: i32 = 4;
+
+/// The link from this episode to the process hosting it.
+pub trait Uplink: Send + Sync {
+    /// Writes one line to the host. The line is a descendant's event that
+    /// needs a host answer; it carries `episode_id` and has no line feed.
+    fn forward(&self, line: &str);
+
+    /// Whether a process above this one can answer what is forwarded. A
+    /// process with no host answers nothing, so a `host/tool-call` it would
+    /// forward is refused where it stands rather than left waiting.
+    fn answers(&self) -> bool;
+}
+
+/// The parent's side of a child's log. The team coordinator implements this.
+pub trait ChildObserver: Send + Sync {
+    /// Sees every event a direct child writes, after forwarding, answering,
+    /// and settlement have been handled.
+    fn observe(&self, child_id: &str, event: &Event);
+
+    /// Answers a child's `host/tool-call` here rather than forwarding it.
+    /// `None` forwards the call to the host above.
+    fn host_call(&self, child_id: &str, name: &str, args: &serde_json::Value) -> Option<ToolValue> {
+        let _ = (child_id, name, args);
+        None
+    }
+
+    /// Sees the child's outcome once its output has ended: the one in its
+    /// `episode/end`, or a failure when the process ended without one.
+    fn ended(&self, child_id: &str, outcome: &Outcome) {
+        let _ = (child_id, outcome);
+    }
+}
+
+/// The protocol pipe into every running child, and the direct child under
+/// which each known descendant runs. Shared by the spawner, which registers
+/// children, and the host protocol reader, which routes answers.
+#[derive(Default)]
+pub struct Router {
+    inner: Mutex<RouterState>,
+}
+
+#[derive(Default)]
+struct RouterState {
+    children: HashMap<String, PipeWriter>,
+    below: HashMap<String, String>,
+}
+
+impl Router {
+    pub fn new() -> Self {
+        Router::default()
+    }
+
+    /// Delivers a host answer tagged `episode_id` to the direct child whose
+    /// subtree contains that episode. The tag stays on the line.
+    pub fn route(&self, episode_id: &str, line: &str) -> Result<(), CapError> {
+        let child =
+            {
+                let inner = self.inner.lock().unwrap();
+                if inner.children.contains_key(episode_id) {
+                    episode_id.to_string()
+                } else {
+                    inner.below.get(episode_id).cloned().ok_or_else(|| {
+                        CapError::Invalid(format!("episode {episode_id}: no running child leads to it"))
+                    })?
+                }
+            };
+        self.write(&child, line)
+    }
+
+    /// Writes an inbox item to a direct child.
+    pub fn send_inbox(&self, child_id: &str, item: &InboxItem) -> Result<(), CapError> {
+        let mut value = serde_json::to_value(item).map_err(|e| CapError::Invalid(e.to_string()))?;
+        value["type"] = "inbox/item".into();
+        self.write(child_id, &value.to_string())
+    }
+
+    /// Sends `cancel` to one running child, which ends its episode as
+    /// blocked with `cancelled`. It is an error when no such child runs.
+    pub fn cancel(&self, child_id: &str) -> Result<(), CapError> {
+        self.write(child_id, r#"{"type":"cancel"}"#)
+    }
+
+    /// Sends `cancel` to every running child.
+    pub fn cancel_all(&self) {
+        let ids: Vec<String> = self.inner.lock().unwrap().children.keys().cloned().collect();
+        for id in ids {
+            let _ = self.cancel(&id);
+        }
+    }
+
+    pub fn has_child(&self, child_id: &str) -> bool {
+        self.inner.lock().unwrap().children.contains_key(child_id)
+    }
+
+    fn write(&self, child_id: &str, line: &str) -> Result<(), CapError> {
+        let mut inner = self.inner.lock().unwrap();
+        let answers = inner
+            .children
+            .get_mut(child_id)
+            .ok_or_else(|| CapError::Invalid(format!("child {child_id}: not running")))?;
+        answers.write_all(line.as_bytes())?;
+        answers.write_all(b"\n")?;
+        answers.flush()?;
+        Ok(())
+    }
+
+    fn learn(&self, descendant: &str, child_id: &str) {
+        self.inner.lock().unwrap().below.insert(descendant.to_string(), child_id.to_string());
+    }
+
+    fn remove(&self, child_id: &str) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.children.remove(child_id);
+        inner.below.retain(|_, via| via != child_id);
+    }
+}
+
+/// A child that has ended: its outcome and what its whole subtree spent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Settled {
+    pub outcome: Outcome,
+    /// Token usage of the child's own requests.
+    pub usage: Usage,
+    /// Model calls and tokens of the child and every episode below it, and
+    /// the child's wall-clock seconds. This is what `budget/release` records.
+    pub spent: BudgetAmount,
+}
+
+/// A running child. Cloneable so that the loop and a tool can both wait.
+#[derive(Clone)]
+pub struct ChildRun {
+    rx: watch::Receiver<Option<Settled>>,
+}
+
+impl ChildRun {
+    /// A handle whose settlement its holder publishes, for a layer that
+    /// owes work after the child process ends and before its caller may
+    /// observe the child as settled.
+    pub(crate) fn pending() -> (watch::Sender<Option<Settled>>, Self) {
+        let (tx, rx) = watch::channel(None);
+        (tx, Self { rx })
+    }
+
+    pub async fn wait(self) -> (Outcome, Usage) {
+        let settled = self.settle().await;
+        (settled.outcome, settled.usage)
+    }
+
+    pub async fn settle(mut self) -> Settled {
+        loop {
+            if let Some(settled) = self.rx.borrow_and_update().clone() {
+                return settled;
+            }
+            if self.rx.changed().await.is_err() {
+                let error = "the reader of the child's output ended before episode/end".to_string();
+                let (usage, spent) = (Usage::default(), BudgetAmount::default());
+                return Settled { outcome: Outcome::Failed { error }, usage, spent };
+            }
+        }
+    }
+}
+
+pub struct ProcessSpawner {
+    episode_id: String,
+    log_dir: PathBuf,
+    contract: ResolvedContract,
+    executables: CapturedExecutableTree,
+    limits: Budget,
+    builtin_specs: Vec<ToolSpec>,
+    /// The child's argument vector prefix; the running `foe` binary.
+    launcher: Vec<OsString>,
+    connections: ProcessConnections,
+    boundary: Option<Arc<ProcessBoundary>>,
+    next: AtomicU64,
+}
+
+/// The three process-boundary channels a child launch uses.
+pub struct ProcessConnections {
+    pub uplink: Arc<dyn Uplink>,
+    pub router: Arc<Router>,
+    pub observer: Arc<dyn ChildObserver>,
+}
+
+/// Launch metadata written by a parent and consumed by its child process.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ChildLaunch {
+    pub episode_id: String,
+    pub parent_id: Option<String>,
+    pub team_id: Option<String>,
+    pub expected_contract_fingerprint: Option<String>,
+    pub effective_budget: Option<Budget>,
+    /// The write roots the parent granted, narrower than the ones the child
+    /// contract declares. The child applies them before it confines itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_write: Option<Vec<PathBuf>>,
+    #[serde(default)]
+    pub process_boundary: Option<crate::process_boundary::BoundaryPaths>,
+    pub fork_source: Option<PathBuf>,
+    pub fork_at: Option<u64>,
+}
+
+impl ProcessSpawner {
+    pub fn new(
+        episode_id: String,
+        log_dir: PathBuf,
+        contract: ResolvedContract,
+        executables: CapturedExecutableTree,
+        limits: Budget,
+        builtin_specs: Vec<ToolSpec>,
+        connections: ProcessConnections,
+    ) -> Result<Self, CapError> {
+        let exe = std::env::current_exe()?;
+        Ok(ProcessSpawner {
+            episode_id,
+            log_dir,
+            contract,
+            executables,
+            limits,
+            builtin_specs,
+            launcher: vec![exe.into_os_string()],
+            connections,
+            boundary: None,
+            next: AtomicU64::new(0),
+        })
+    }
+
+    /// Places each child and every descendant in one cgroup boundary.
+    pub fn with_boundary(mut self, boundary: Option<Arc<ProcessBoundary>>) -> Self {
+        self.boundary = boundary;
+        self
+    }
+
+    /// What to reserve for a request: the amount the caller named, and the
+    /// budget the child contract declares when the caller named none. A
+    /// dimension the contract leaves unlimited stays unset, and the pool
+    /// grants the parent's whole remainder for it. Reserving the remainder
+    /// for every dimension would exhaust the parent while one child runs.
+    pub fn reserve_for(&self, req: &SpawnRequest) -> BudgetAmount {
+        let all = |b: &Budget| BudgetAmount {
+            model_calls: b.model_calls,
+            input_tokens: b.input_tokens,
+            output_tokens: b.output_tokens,
+            seconds: b.seconds,
+            episodes: None,
+        };
+        let contract = self.contract.spawned_contract(&req.contract);
+        let declared = contract.filter(|_| req.reserve.model_calls.is_none());
+        let mut amount = declared.map_or(req.reserve, |p| all(&p.budget));
+        // A child that can start no children of its own holds exactly one
+        // episode, whatever allowance its contract declares. Asking for the
+        // declared allowance would hold the parent's whole remainder
+        // against a leaf and starve the leaf's siblings.
+        amount.episodes = contract.map(|p| {
+            let descends = self.limits.max_depth > 1
+                && p.budget.max_depth > 0
+                && (!p.grants.spawn.is_empty() || !p.workflow_contracts.is_empty());
+            if descends {
+                u64::from(p.budget.max_episodes)
+            } else {
+                1
+            }
+        });
+        amount
+    }
+}
+
+/// A child launch document preserves the declared contract. The effective
+/// reservation travels beside it in `child-launch.json`.
+pub fn child_document(contract: &ResolvedContract, task: String) -> ContractDocument {
+    let mut value = contract.to_value();
+    fn child_sections(section: &mut serde_json::Value) {
+        let Some(children) = section.get_mut("child_contracts").and_then(serde_json::Value::as_object_mut) else {
+            return;
+        };
+        for child in children.values_mut() {
+            let object = child.as_object_mut().expect("a resolved child is an object");
+            object.remove("sandbox");
+            child_sections(child);
+        }
+    }
+    child_sections(&mut value);
+    value["version"] = CONTRACT_FORMAT_VERSION.into();
+    value["task"] = task.into();
+    serde_json::from_value(value).expect("a resolved child is a contract document")
+}
+
+fn effective_budget(parent: &Budget, contract: &Budget, reserve: BudgetAmount) -> Budget {
+    let mut budget = contract.clone();
+    let tighter = |own: Option<u64>, reserved: Option<u64>| reserved.map_or(own, |n| Some(own.map_or(n, |t| t.min(n))));
+    budget.model_calls = tighter(budget.model_calls, reserve.model_calls);
+    budget.input_tokens = tighter(budget.input_tokens, reserve.input_tokens);
+    budget.output_tokens = tighter(budget.output_tokens, reserve.output_tokens);
+    budget.seconds = tighter(budget.seconds, reserve.seconds);
+    budget.max_depth = budget.max_depth.min(parent.max_depth.saturating_sub(1));
+    if let Some(episodes) = reserve.episodes {
+        budget.max_episodes = budget.max_episodes.min(episodes.try_into().unwrap_or(u32::MAX));
+    }
+    budget
+}
+
+impl Spawner for ProcessSpawner {
+    fn allocate_id(&self) -> String {
+        let n = self.next.fetch_add(1, Ordering::SeqCst);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let digest = Sha256::digest(format!("{}:{n}:{now}:{}", self.episode_id, std::process::id()));
+        format!("ep_{}", hex::encode(&digest[..4]))
+    }
+
+    fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
+        if !self.contract.permits_spawn(&req.contract) {
+            let (want, has) = (&req.contract, self.contract.grants.spawn.join(", "));
+            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list {want}; it lists {has}")));
+        }
+        let contract = self
+            .contract
+            .spawned_contract(&req.contract)
+            .ok_or_else(|| CapError::Invalid(format!("child_contracts has no entry named {}", req.contract)))?;
+        let expected =
+            foe_contract::fingerprint::compute(contract, &self.builtin_specs, &crate::fingerprint::runtime_info())
+                .map_err(|e| CapError::Invalid(e.to_string()))?;
+        let limits = effective_budget(&self.limits, &contract.budget, req.reserve);
+        // A granted root must lie inside what the child contract declares,
+        // which `resolve` has already held inside what this episode holds.
+        // A relative root is resolved against the first the contract declares,
+        // which is the directory a built-in document works in and the one a
+        // model names its paths from.
+        let granted = req.write.as_ref().map(|roots| {
+            let base = contract.grants.write.first().cloned().unwrap_or_default();
+            roots.iter().map(|root| if root.is_absolute() { root.clone() } else { base.join(root) }).collect::<Vec<_>>()
+        });
+        if let Some(roots) = &granted {
+            // A grant of no roots leaves a write tool with nothing it may
+            // write. The contract would not resolve, and the child would
+            // die at construction with nothing said about the call that
+            // caused it, so the call is what is refused.
+            if roots.is_empty() {
+                let specs = foe_contract::tools::resolve_specs(contract, &self.builtin_specs)
+                    .map_err(|e| CapError::Invalid(e.to_string()))?;
+                if let Some(tool) = specs.iter().find(|spec| spec.effect == Effect::Writes) {
+                    return Err(CapError::Invalid(format!(
+                        "write [] leaves `{}`, which the {} contract declares, with nothing it may write: \
+grant at least one root, or spawn a contract that declares no write tool",
+                        tool.name, req.contract
+                    )));
+                }
+            }
+            // A grant is a directory prefix, as this module's own
+            // documentation states, and `RootWriter` opens each root as a
+            // directory. A lead dividing work often narrows a worker to the
+            // one file its unit names, or to a file the unit has yet to
+            // create; neither root can be opened, and the child dies at
+            // construction with `grants.write: Not a directory` or
+            // `grants.write: No such file or directory`, which names neither
+            // the worker nor the call. Refuse the call instead, and name the
+            // nearest directory that does exist, for the same reason the
+            // empty grant above is refused.
+            if let Some(root) = roots.iter().find(|root| !root.is_dir()) {
+                let holder = root.ancestors().skip(1).find(|p| p.is_dir()).unwrap_or(Path::new("/"));
+                let what = if root.exists() { "names a file" } else { "names nothing on disk" };
+                return Err(CapError::Invalid(format!(
+                    "write {} {what}, and a grant is a directory prefix: grant {} instead, \
+or spawn a contract that declares no write tool",
+                    root.display(),
+                    holder.display()
+                )));
+            }
+            if let Some(outside) = roots.iter().find(|root| !foe_contract::contains(&contract.grants.write, root)) {
+                let declared = &contract.grants.write;
+                return Err(CapError::Invalid(format!(
+                    "write {} lies outside what the {} contract declares, {declared:?}",
+                    outside.display(),
+                    req.contract
+                )));
+            }
+        }
+        let dir = self.log_dir.join("children").join(&child_id);
+        std::fs::create_dir_all(&dir)?;
+        let boundary = self
+            .boundary
+            .as_ref()
+            .map(|parent| parent.child(&child_id))
+            .transpose()
+            .map_err(|e| CapError::Invalid(e.to_string()))?;
+        let invalid = |e: serde_json::Error| CapError::Invalid(e.to_string());
+        let config = child_document(contract, req.task);
+        let config_path = dir.join("config.json");
+        std::fs::write(&config_path, serde_json::to_vec_pretty(&config).map_err(invalid)?)?;
+        let mut launch = ChildLaunch {
+            episode_id: child_id.clone(),
+            parent_id: Some(self.episode_id.clone()),
+            team_id: Some(self.episode_id.clone()),
+            expected_contract_fingerprint: Some(expected.hash),
+            effective_budget: Some(limits),
+            effective_write: granted,
+            process_boundary: boundary.as_ref().map(|boundary| boundary.paths()),
+            ..ChildLaunch::default()
+        };
+        if req.context == SpawnContext::Fork {
+            let log_error =
+                |e: foe_log::LogError| CapError::Invalid(format!("seed from {}: {e}", self.log_dir.display()));
+            let until = foe_log::fold::read_all(&self.log_dir).map_err(log_error)?.len() as u64;
+            launch.fork_source = Some(self.log_dir.clone());
+            launch.fork_at = Some(until);
+        }
+        std::fs::write(dir.join("child-launch.json"), serde_json::to_vec_pretty(&launch).map_err(invalid)?)?;
+        let mut argv = self.launcher.clone();
+        argv.extend([
+            OsString::from("--config"),
+            config_path.as_os_str().to_owned(),
+            OsString::from("--protocol-fds"),
+            OsString::from(format!("{PROTOCOL_READ_FD},{PROTOCOL_WRITE_FD}")),
+            OsString::from("--viewer"),
+            OsString::from("off"),
+            OsString::from("--log-dir"),
+            dir.as_os_str().to_owned(),
+        ]);
+        let mut cmd = match &boundary {
+            Some(boundary) => command_in(&boundary.process_procs(), &argv),
+            None => {
+                let mut command = Command::new(&argv[0]);
+                command.args(&argv[1..]);
+                command
+            }
+        };
+        cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+        // A child resolves its own home directory, and where the passwd
+        // database holds no entry for the user it reads `HOME` instead. The
+        // cleared environment leaves a child nothing to read, so the one
+        // variable that answer can rest on is carried across. A passwd entry
+        // still wins wherever there is one, in a child as in its parent, so
+        // this decides nothing on a host that has one.
+        if let Some(home) = std::env::var_os("HOME") {
+            cmd.env("HOME", home);
+        }
+        let executable_tree = self
+            .executables
+            .child(&req.contract)
+            .ok_or_else(|| CapError::Invalid(format!("contract {} has no captured executable tree", req.contract)))?;
+        let mut mappings = executable_tree
+            .child_descriptors(&child_id)
+            .map_err(CapError::Invalid)?
+            .into_iter()
+            .map(|(child_fd, fd)| {
+                fd.as_fd().try_clone_to_owned().map(|parent_fd| FdMapping { parent_fd, child_fd }).map_err(|e| {
+                    CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let (child_answers, answers) = std::io::pipe()?;
+        let (events, child_events) = std::io::pipe()?;
+        mappings.push(FdMapping { parent_fd: child_answers.into(), child_fd: PROTOCOL_READ_FD });
+        mappings.push(FdMapping { parent_fd: child_events.into(), child_fd: PROTOCOL_WRITE_FD });
+        cmd.fd_mappings(mappings)
+            .map_err(|e| CapError::ProcessStart(format!("child {child_id}: fd mapping: {e:?}")))?;
+        let mut child = cmd.spawn().map_err(|e| CapError::ProcessStart(e.to_string()))?;
+        let stderr = child.stderr.take().ok_or_else(|| CapError::Invalid("child has no stderr".into()))?;
+        self.connections.router.inner.lock().unwrap().children.insert(child_id.clone(), answers);
+        let diagnostics = relay_stderr(child_id.clone(), stderr);
+        let (tx, run) = ChildRun::pending();
+        let reader = Reader {
+            child_id: child_id.clone(),
+            uplink: self.connections.uplink.clone(),
+            router: self.connections.router.clone(),
+            observer: self.connections.observer.clone(),
+        };
+        std::thread::spawn(move || {
+            let read = std::thread::spawn(move || {
+                let settled = reader.run(events, diagnostics);
+                reader.router.remove(&reader.child_id);
+                settled
+            });
+            let _ = child.wait();
+            let cleanup_error = boundary.and_then(|boundary| boundary.terminate().err());
+            let mut settled = read.join().unwrap_or_else(|_| Settled {
+                outcome: Outcome::Failed { error: "the reader of the child's output panicked".into() },
+                usage: Usage::default(),
+                spent: BudgetAmount::default(),
+            });
+            if let Some(error) = cleanup_error {
+                settled.outcome = Outcome::Failed { error: format!("child process boundary cleanup: {error}") };
+            }
+            let _ = tx.send(Some(settled));
+        });
+        Ok(SpawnHandle { child_id, dir, run })
+    }
+}
+
+/// How much of a child's standard error the parent keeps to explain a child
+/// that died before it wrote `episode/end`. A construction failure is one
+/// short line; the bound is what stops a child that wrote a great deal from
+/// filling the parent's log and its lead's inbox with it.
+const DIAGNOSTIC_TAIL: usize = 2000;
+
+/// How long the reader waits for that tail once the child's own events have
+/// ended. A process the child left running holds the child's standard error
+/// open, so the wait is bounded rather than open.
+const DIAGNOSTIC_WAIT: Duration = Duration::from_secs(2);
+
+/// The child's diagnostics go to the parent's standard error, one line at a
+/// time, prefixed with the child's id. Standard error is never parsed. The
+/// returned channel carries the last [`DIAGNOSTIC_TAIL`] bytes of it once
+/// the stream ends, for a failure that has nothing else to say why.
+///
+/// A terminal shows this stream beside whatever the parent draws on its own,
+/// and a conversation display holds an unterminated progress line on the
+/// current row. Each relayed line therefore opens by returning to column one
+/// and clearing that row, so the diagnostic starts a row of its own and the
+/// display redraws below it on its next tick. Redirected standard error
+/// carries no escape.
+fn relay_stderr(child_id: String, stderr: impl std::io::Read + Send + 'static) -> Receiver<String> {
+    let clear = if std::io::stderr().is_terminal() { "\r\x1b[K" } else { "" };
+    let (tail, kept) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut diagnostics = String::new();
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            eprintln!("{clear}[{child_id}] {line}");
+            diagnostics.push_str(&line);
+            diagnostics.push('\n');
+            while diagnostics.len() > DIAGNOSTIC_TAIL {
+                let first = diagnostics.find('\n').map_or(diagnostics.len(), |end| end + 1);
+                diagnostics.drain(..first);
+            }
+        }
+        let _ = tail.send(diagnostics);
+    });
+    kept
+}
+
+/// The call id and the tool name of a `host/tool-call` line, when the line
+/// is one. Other event lines pass through unread.
+fn host_call_of(value: &serde_json::Map<String, serde_json::Value>) -> Option<(String, String)> {
+    let data = value.get("data").filter(|_| value.get("type").is_some_and(|t| t == "host/tool-call"))?;
+    let field = |name| data.get(name)?.as_str().map(str::to_string);
+    Some((field("call_id")?, field("name")?))
+}
+
+/// The result a `host/tool-call` receives when no process above the one
+/// reading it can answer. The episode that called learns at once rather
+/// than waiting for an answer that cannot come; see docs/protocol.md
+/// "Children".
+fn no_host(episode_id: &str, name: &str) -> ToolValue {
+    ToolValue::unavailable(format!("`{name}`: no host above episode {episode_id} can answer a host tool call"))
+}
+
+/// Reads one child's protocol pipe to its end.
+struct Reader {
+    child_id: String,
+    uplink: Arc<dyn Uplink>,
+    router: Arc<Router>,
+    observer: Arc<dyn ChildObserver>,
+}
+
+impl Reader {
+    /// Sends the child's own request upward, tagged with the child's id.
+    fn forward(&self, mut value: serde_json::Map<String, serde_json::Value>) {
+        value.insert("episode_id".into(), self.child_id.clone().into());
+        self.uplink.forward(&serde_json::Value::Object(value).to_string());
+    }
+
+    /// Answers a host tool call that this process settled: one the observer
+    /// handled, or one no host above can answer. `episode_id` names the
+    /// descendant that made the call when it was not the direct child.
+    fn answer(&self, episode_id: Option<&str>, call_id: &str, result: ToolValue) {
+        let mut line = serde_json::json!({
+            "type": "tool/result", "call_id": call_id, "value": result.value,
+            "rendered": result.rendered, "is_error": result.is_error, "failure": result.failure,
+        });
+        if let Some(id) = episode_id {
+            line["episode_id"] = id.into();
+        }
+        let _ = self.router.route(episode_id.unwrap_or(&self.child_id), &line.to_string());
+    }
+
+    fn run(&self, events: impl std::io::Read, diagnostics: Receiver<String>) -> Settled {
+        let start = std::time::Instant::now();
+        let mut usage = Usage::default();
+        let mut calls = 0u64;
+        let mut below = BudgetAmount::default();
+        let mut outcome = None;
+        for line in BufReader::new(events).lines().map_while(Result::ok) {
+            let parsed: Result<serde_json::Map<String, serde_json::Value>, _> = serde_json::from_str(&line);
+            let Ok(value) = parsed else {
+                outcome = Some(Outcome::Failed {
+                    error: format!("child {} wrote a line that is not a JSON object", self.child_id),
+                });
+                break;
+            };
+            if let Some(id) = value.get("episode_id").and_then(|v| v.as_str()) {
+                // Forwarded by the child on behalf of one of its own descendants.
+                self.router.learn(id, &self.child_id);
+                match host_call_of(&value).filter(|_| !self.uplink.answers()) {
+                    Some((call_id, name)) => self.answer(Some(id), &call_id, no_host(id, &name)),
+                    None => self.uplink.forward(&line),
+                }
+                continue;
+            }
+            let Ok(event) = serde_json::from_value::<Event>(serde_json::Value::Object(value.clone())) else {
+                outcome = Some(Outcome::Failed {
+                    error: format!("child {} wrote an event that does not parse", self.child_id),
+                });
+                break;
+            };
+            match &event.data {
+                EventData::HostToolCall { call_id, name, args, .. } => {
+                    match self.observer.host_call(&self.child_id, name, args) {
+                        Some(result) => self.answer(None, call_id, result),
+                        None if self.uplink.answers() => self.forward(value),
+                        None => self.answer(None, call_id, no_host(&self.child_id, name)),
+                    }
+                }
+                // A host needs the header cited by each model request.
+                // Forwarding a header does not increment model-call accounting.
+                EventData::RequestHeader(_) => self.forward(value),
+                EventData::ModelRequest(_) => {
+                    calls += 1;
+                    self.forward(value);
+                }
+                EventData::AssistantMessage(m) => {
+                    usage.input += m.usage.input;
+                    usage.output += m.usage.output;
+                    usage.cache_read += m.usage.cache_read;
+                }
+                EventData::BudgetRelease { spent, .. } => {
+                    below.model_calls = Some(below.model_calls.unwrap_or(0) + spent.model_calls.unwrap_or(0));
+                    below.input_tokens = Some(below.input_tokens.unwrap_or(0) + spent.input_tokens.unwrap_or(0));
+                    below.output_tokens = Some(below.output_tokens.unwrap_or(0) + spent.output_tokens.unwrap_or(0));
+                    below.episodes = Some(below.episodes.unwrap_or(0) + spent.episodes.unwrap_or(0));
+                }
+                EventData::EpisodeEnd { outcome: o } => outcome = Some(o.clone()),
+                _ => {}
+            }
+            self.observer.observe(&self.child_id, &event);
+            // The log ends here; the caller closes the answer pipe so that
+            // a child waiting on its host can exit.
+            if matches!(event.data, EventData::EpisodeEnd { .. }) {
+                break;
+            }
+        }
+        // A child that died before `episode/start` wrote nothing this loop
+        // could read, and its own message for why went to standard error.
+        // Carrying it here is what puts it on the lead's board task and in
+        // the lead's inbox item rather than in this process's terminal alone.
+        let outcome = outcome.unwrap_or_else(|| {
+            let said = diagnostics.recv_timeout(DIAGNOSTIC_WAIT).unwrap_or_default();
+            let said = said.trim();
+            let why = if said.is_empty() { String::new() } else { format!(" and said: {said}") };
+            Outcome::Failed { error: format!("child {} exited without episode/end{why}", self.child_id) }
+        });
+        self.observer.ended(&self.child_id, &outcome);
+        let spent = BudgetAmount {
+            model_calls: Some(calls + below.model_calls.unwrap_or(0)),
+            input_tokens: Some(usage.input + below.input_tokens.unwrap_or(0)),
+            output_tokens: Some(usage.output + below.output_tokens.unwrap_or(0)),
+            seconds: Some(start.elapsed().as_secs()),
+            // The child itself, plus every episode its own releases account
+            // for. A process that started counts even when it wrote no log.
+            episodes: Some(1 + below.episodes.unwrap_or(0)),
+        };
+        Settled { outcome, usage, spent }
+    }
+}
+
+#[cfg(test)]
+#[path = "spawn_test.rs"]
+pub(crate) mod tests;

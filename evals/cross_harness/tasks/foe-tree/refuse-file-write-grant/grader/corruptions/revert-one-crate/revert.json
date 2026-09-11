@@ -1,0 +1,7 @@
+{
+  "crate": "crates/core",
+  "restore": [
+    "crates/core/src/spawn.rs"
+  ],
+  "remove": []
+}

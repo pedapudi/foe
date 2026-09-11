@@ -1,0 +1,73 @@
+{
+  "name": "unlimited-model-calls",
+  "family": "teams",
+  "class_name": "coherent",
+  "text": "Let a document declare a budget limit as unlimited.\n\nA contract can say that it allows no wall-clock limit, no input-token\nlimit, and no output-token limit, by leaving each key out. It cannot say\nthe same about model calls: the field is a plain integer, so the only way\nto run without a ceiling is to name a number large enough never to be\nreached, and a number above 2^53 renders as noise in every JSON reader that\nholds it as a double.\n\nMake `model_calls` a number or the string `\"unlimited\"`, with the resolved\nvalue an `Option<u64>` alongside the three dimensions that already mean\nunlimited by absence. The field stays required: a document states what it\nallows, and cannot become unbounded by leaving a key out. The wire form\ncarries the same word, so a log records an unbounded episode with it.\n\n`foe plan` prints \"no model-call limit\" for it, and the Python package\naccepts and validates the same two forms.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/config.md: \"unlimited\" declares no ceiling on this dimension.\n- docs/config.md: the field is required either way, so a document states what it allows and does not become unbounded by leaving one out\n- docs/log-format.md: model_calls is a number or the string \"unlimited\", which records that the episode enforces no ceiling on model requests; the other three spend dimensions record the same thing by absence.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe, foe-contract, foe-core, foe-log, foe-team, foe-workflow, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 210,
+    "input_tokens": 7000000,
+    "output_tokens": 300000,
+    "seconds": 7200
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "00db091acd12edaee3b3e585954855ceaaa51698",
+      "parent": "2209effdf55fb630f33d89315599c5055cc8680a",
+      "subject": "Let a document declare a budget limit as unlimited"
+    },
+    "crates": [
+      "crates/cli",
+      "crates/contract",
+      "crates/core",
+      "crates/log",
+      "crates/team",
+      "crates/workflow"
+    ],
+    "packages": [
+      "foe",
+      "foe-contract",
+      "foe-core",
+      "foe-log",
+      "foe-team",
+      "foe-workflow"
+    ],
+    "crate_count": 6,
+    "coupling": 1,
+    "identifiers": [
+      "Declared",
+      "UNLIMITED",
+      "declared_limit",
+      "deserialize",
+      "serialize"
+    ],
+    "allowed_traces": [
+      "Declared",
+      "serialize"
+    ],
+    "visible_tests": [
+      "crates/cli/src/init_test.rs",
+      "crates/core/src/budget_test.rs",
+      "crates/log/src/fold_test.rs",
+      "crates/team/src/lib_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/cli/src/init_test.rs",
+      "crates/cli/src/run_test.rs",
+      "crates/core/src/budget_test.rs",
+      "crates/core/src/spawn_test.rs",
+      "crates/core/src/wiring_test.rs",
+      "crates/log/src/fold_test.rs",
+      "crates/team/src/lib_test.rs"
+    ],
+    "review": "revised: the drafted text was rewritten in present-state specification voice after authoring; the sentence list and the checks paragraph are the tool's"
+  }
+}

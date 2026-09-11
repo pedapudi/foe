@@ -1,0 +1,45 @@
+{
+  "name": "refuse-file-write-grant",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "Refuse a write grant that names a file.\n\nA grant is a directory prefix. `grants.rs` says so in its first paragraph\nand `RootWriter` requires it: every write root is opened with\n`Dir::open_ambient_dir`.\n\nA lead dividing work across a team narrows each worker to the unit it was\ngiven, and a unit is usually one file. That narrowing is accepted, recorded\nas the child's `effective_write`, and then cannot be opened. The worker dies\nat construction with\n\n    grants.write: Not a directory (os error 20)\n\nwhich names neither the worker nor the call that made it. Its episode log is\ncreated and left empty, the lead reads only \"exited without episode/end\",\nand it goes on to do the work itself. The run reports `completed` with a\nunits list naming workers that never ran, so nothing about the outcome says\nthe team did not function.\n\nThe empty write narrowing a few lines above is refused for exactly this\nreason, and the comment there states the principle: the child \"would die at\nconstruction with nothing said about the call that caused it, so the call is\nwhat is refused\". A file-shaped root is the same failure. Refuse it too, and\nname the directory to grant, so the lead can act on the message.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-core, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "8f971752912506c23b75af395fc2a1ee9cbdcb97",
+      "parent": "f7fad053827b48fc6a2ed362c0e64e0ae64086fe",
+      "subject": "Refuse a write grant that names a file"
+    },
+    "crates": [
+      "crates/core"
+    ],
+    "packages": [
+      "foe-core"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/core/src/spawn_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/core/src/spawn_test.rs"
+    ],
+    "review": "revised: the drafted text was rewritten in present-state specification voice after authoring; the sentence list and the checks paragraph are the tool's"
+  }
+}

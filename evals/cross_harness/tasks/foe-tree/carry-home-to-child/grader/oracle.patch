@@ -1,0 +1,86 @@
+diff --git a/crates/core/src/spawn.rs b/crates/core/src/spawn.rs
+index e46df92d..d5a1f2ce 100644
+--- a/crates/core/src/spawn.rs
++++ b/crates/core/src/spawn.rs
+@@ -472,6 +472,15 @@ or spawn a contract that declares no write tool",
+             }
+         };
+         cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
++        // A child resolves its own home directory, and where the passwd
++        // database holds no entry for the user it reads `HOME` instead. The
++        // cleared environment leaves a child nothing to read, so the one
++        // variable that answer can rest on is carried across. A passwd entry
++        // still wins wherever there is one, in a child as in its parent, so
++        // this decides nothing on a host that has one.
++        if let Some(home) = std::env::var_os("HOME") {
++            cmd.env("HOME", home);
++        }
+         let executable_tree = self
+             .executables
+             .child(&req.contract)
+diff --git a/crates/core/src/spawn_test.rs b/crates/core/src/spawn_test.rs
+index b197c6c1..0aa5d57b 100644
+--- a/crates/core/src/spawn_test.rs
++++ b/crates/core/src/spawn_test.rs
+@@ -181,6 +181,45 @@ echo 'foe: grants.write: Not a directory' >&2
+ exit 1
+ "#;
+ 
++/// A stand-in child that records the home directory it was given, so that a
++/// test can read what the parent passed across the cleared environment.
++pub(crate) const HOME_REPORTING_CHILD: &str = r#"#!/bin/sh
++printf '%s' "${HOME-unset}" > "$(dirname "$0")/child-home.txt"
++exit 1
++"#;
++
++/// docs/models.md "Where credentials live": a child starts with a cleared
++/// environment, which leaves
++/// nothing for the home directory to rest on where the passwd database holds
++/// no entry for the user. The parent carries `HOME` across so that a child
++/// resolves the same directory its parent did. Without it every child on such
++/// a host dies while it constructs itself, although the root episode runs.
++#[tokio::test]
++async fn a_child_receives_the_home_directory_its_parent_reads() {
++    let dir = scratch("spawn", "child-home");
++    let expected = std::env::var("HOME").expect("the test environment names a home directory");
++    let spawner = process_spawner(
++        "ep_root",
++        dir.to_path_buf(),
++        parent_config(),
++        Arc::new(Lines::default()),
++        Arc::new(Router::new()),
++        Arc::new(Seen::default()),
++    )
++    .with_launcher(script(&dir, "home-foe.sh", HOME_REPORTING_CHILD));
++    let request = SpawnRequest {
++        contract: "worker".into(),
++        task: "t".into(),
++        context: SpawnContext::Fresh,
++        reserve: BudgetAmount::default(),
++        write: None,
++        call_id: "tc".into(),
++    };
++    spawner.spawn(request).unwrap().run.settle().await;
++    let seen = std::fs::read_to_string(dir.join("child-home.txt")).expect("the child recorded its home directory");
++    assert_eq!(seen, expected, "a child reads the home directory its parent did");
++}
++
+ /// docs/protocol.md "Children": a child that exits before `episode/end`
+ /// reports why. Its own message reaches the parent's standard error alone,
+ /// so the parent carries a bounded tail of that stream into the failure it
+diff --git a/docs/models.md b/docs/models.md
+index 78cc0a15..387584dd 100644
+--- a/docs/models.md
++++ b/docs/models.md
+@@ -194,7 +194,10 @@ nothing to fall back to. Where an entry exists it still decides, so the
+ environment never overrides a database that answered, and the value `HOME`
+ carries must be an absolute path to a directory that exists. `foe login` and
+ a run that reads a convention credential each say so once when the fallback
+-is what supplied the directory.
++is what supplied the directory. A child episode starts with a cleared
++environment, so its parent carries `HOME` across to it; otherwise a child
++would find neither a database entry nor a fallback on a host where the root
++episode ran on one.
+ 
+ A `model` block may omit its credential field. A provider that requires a
+ credential then reads its convention file. `compatible-http` reads only an

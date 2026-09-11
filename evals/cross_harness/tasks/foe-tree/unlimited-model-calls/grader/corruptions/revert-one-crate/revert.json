@@ -1,0 +1,8 @@
+{
+  "crate": "crates/cli",
+  "restore": [
+    "crates/cli/src/init.rs",
+    "crates/cli/src/plan.rs"
+  ],
+  "remove": []
+}
