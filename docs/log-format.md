@@ -190,6 +190,8 @@ The outcome is one of:
 `seed/end` — implemented. Marks the end of events copied from another log.
 Data is empty. Present only in a seeded log, where it follows the copied
 events and precedes the first live event.
+The live task and child projections exclude the copied source board and
+spawns. Their events remain available as conversation history.
 
 ### Requests
 

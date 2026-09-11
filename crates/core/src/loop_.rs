@@ -78,7 +78,7 @@ impl Log {
             true => foe_log::append::Writer::create(dir, mirror)?,
             false => foe_log::append::Writer::open(dir, mirror)?,
         };
-        Ok(Self { dir: dir.to_path_buf(), inner: Mutex::new((writer, events)), failure: watch::channel(None).0 })
+        Ok(Self { dir: dir.canonicalize()?, inner: Mutex::new((writer, events)), failure: watch::channel(None).0 })
     }
 
     pub fn dir(&self) -> &Path {
@@ -845,42 +845,40 @@ fn unaccounted(tasks: &[TeamTask], candidate: &Value) -> Vec<String> {
 /// could check it.
 /// Findings name the field the completion schema used.
 fn cited_findings(log: &Log, candidate: &Value, fields: &[&str]) -> String {
-    let mut delegated = Vec::new();
-    let here = log.with_events(|events| {
-        for field in fields {
-            let Some(items) = candidate.get(field).and_then(Value::as_array).filter(|items| !items.is_empty()) else {
-                return format!("`value.{field}` is a non-empty array");
-            };
-            for (index, item) in items.iter().enumerate() {
-                let at = format!("{field}[{index}]");
-                let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-                match item.get("episode").and_then(Value::as_str) {
-                    // The name reaches a path, so it is one log directory
-                    // name under this episode's own and never a traversal.
-                    Some(id) if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => {
+    let mut children = BTreeMap::new();
+    for field in fields {
+        let Some(items) = candidate.get(field).and_then(Value::as_array).filter(|items| !items.is_empty()) else {
+            return format!("`value.{field}` is a non-empty array");
+        };
+        for (index, item) in items.iter().enumerate() {
+            let at = format!("{field}[{index}]");
+            let seq = item.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
+            let fault = match item.get("episode").and_then(Value::as_str) {
+                Some(id) => {
+                    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
                         return format!("`{at}.episode` {id} is not an episode identifier");
                     }
-                    Some(id) => delegated.push((at, id.to_string(), seq)),
-                    None => {
-                        if let Some(fault) = miscited(events, &log.dir().join("spill"), &at, seq) {
-                            return fault;
+                    let dir = log.dir().join("children").join(id);
+                    let events = children.entry(id).or_insert_with(|| {
+                        if !log.with_state(|state| state.children.contains_key(id)) || dir.canonicalize().ok()? != dir {
+                            return None;
                         }
-                    }
+                        let events = fold::read_all(&dir).ok()?;
+                        let state = fold::fold(&events).ok()?;
+                        let start = state.start?;
+                        let parent = log.with_state(|state| state.start.as_ref().map(|start| start.id.clone()));
+                        (start.id == id && start.parent_id == parent).then_some(events)
+                    });
+                    let Some(events) = events else {
+                        return format!("`{at}.episode` {id} is not an episode this one opened");
+                    };
+                    miscited(events, &dir.join("spill"), &at, seq)
                 }
+                None => log.with_events(|events| miscited(events, &log.dir().join("spill"), &at, seq)),
+            };
+            if let Some(fault) = fault {
+                return fault;
             }
-        }
-        String::new()
-    });
-    if !here.is_empty() {
-        return here;
-    }
-    for (at, id, seq) in delegated {
-        let dir = log.dir().join("children").join(&id);
-        let Ok(events) = foe_log::fold::read_all(&dir) else {
-            return format!("`{at}.episode` {id} is not an episode this one opened");
-        };
-        if let Some(fault) = miscited(&events, &dir.join("spill"), &at, seq) {
-            return fault;
         }
     }
     String::new()

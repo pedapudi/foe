@@ -353,7 +353,11 @@ carrying `seq` also requires evidence citations. Each item cites the sequence
 of a successful tool result in the same episode. The rule is the shape rather
 than the member's name, so the coding documents' `learned` and the team
 document's `units` are checked alike. The runtime checks that the result
-exists and that its canonical value remains reconstructable. A configured verifier
+exists and that its canonical value remains reconstructable. A citation naming
+a child requires a recorded spawn by this episode and a structurally valid
+child log whose start names that child and this parent. A copied unrelated
+log, a directory alias, or a spawn copied through seeding supplies no such
+provenance. A configured verifier
 then judges semantic correctness. Without a verifier, semantic judgment
 remains with the contract's model or a successor such as an independent
 audit.

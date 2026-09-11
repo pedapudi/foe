@@ -1032,7 +1032,7 @@ pub struct State {
     pub inbox: BTreeMap<u64, (InboxItem, bool)>,
     pub usage: Usage,
     pub model_calls: u64,
-    /// Children by id, with their last known outcome.
+    /// This episode's children by id, with their last known outcome.
     pub children: BTreeMap<String, Option<Outcome>>,
     /// Added board tasks in creation order, at their latest revision.
     pub tasks: Vec<TeamTask>,
