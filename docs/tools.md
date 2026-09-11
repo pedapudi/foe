@@ -491,13 +491,17 @@ A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
 without the handles it needs.
 
-An exit code of 126 whose standard error contains `Permission denied` may
-mean that the sandbox refused an external command. Foe cannot prove the
-cause because the shell owns that exit status and diagnostic. The canonical
+A non-zero exit whose standard error contains `Permission denied` or
+`Operation not permitted` may mean that the sandbox refused a read, a
+write, or an external command. Foe cannot prove the cause because the shell
+and the commands it ran own that exit status and diagnostic. The canonical
 value sets `permission_denial` to `possible`, and the rendering explains
-that `grants.execute` must contain the command's absolute file or an enclosing
-directory. Other results set the field to null. A `session` poll applies the
-same rule after the session shell exits.
+that the path must be under `grants.read`, `grants.write`, or
+`grants.execute` as the operation requires. Other results set the field to
+null. A `session` poll applies the same rule after the session shell exits.
+The built-in `read`, `grep`, and `edit` tools need no such inference: a
+path outside their grants is refused in process and recorded as a
+`capability-denied` failure naming the path.
 
 ### `session`
 

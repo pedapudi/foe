@@ -85,6 +85,29 @@ async fn possible_external_command_denial_is_recorded_and_explained() {
     assert!(rendered.contains("grants.execute"), "{rendered}");
 }
 
+/// docs/tools.md `bash`: a denied read or write is marked the same way as a
+/// denied command, on any failing exit status, and a failure whose
+/// diagnostic is not the kernel's is not.
+#[tokio::test]
+async fn possible_read_and_write_denials_are_marked_on_any_failing_exit() {
+    let fx = Fixture::new();
+    for (code, stderr) in [
+        (1, "cat: /etc/shadow: Permission denied\n"),
+        (1, "cp: cannot create regular file '/usr/lib/x': Permission denied\n"),
+        (2, "bash: line 1: /tmp/out: Operation not permitted\n"),
+    ] {
+        let exec = Arc::new(FakeExecutor::new(result(code, "", stderr)));
+        let v = Bash::new().call(json!({"command": "cmd"}), &ctx_with_executor(&fx, exec)).await;
+        assert_eq!(v.value["permission_denial"], "possible", "{stderr}");
+        assert!(v.rendered.unwrap().contains("grants.read, grants.write, or grants.execute"), "{stderr}");
+    }
+    for (code, stderr) in [(0, "Permission denied is a substring of this successful output\n"), (1, "no such file\n")] {
+        let exec = Arc::new(FakeExecutor::new(result(code, "", stderr)));
+        let v = Bash::new().call(json!({"command": "cmd"}), &ctx_with_executor(&fx, exec)).await;
+        assert!(v.value["permission_denial"].is_null(), "{stderr}");
+    }
+}
+
 #[tokio::test]
 async fn timeout_argument_and_deadline_bound_the_request() {
     let fx = Fixture::new();
