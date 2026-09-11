@@ -192,6 +192,29 @@ fn executable_policy_keeps_explicit_subprocess_grants() {
     assert!(status.success(), "the explicit subprocess grant survives executable narrowing");
 }
 
+/// docs/sandbox.md "Executables": a directory execute grant runs the
+/// dynamically linked binaries beneath it, which the kernel starts through
+/// the host's loader under a library directory; without such a grant the
+/// library directories stay read-only and an ungranted binary is denied.
+#[test]
+fn a_directory_execute_grant_runs_dynamically_linked_binaries() {
+    let Some(s) = sandbox() else { return };
+    let run = |tool: &Policy| {
+        let mut cmd = Command::new("/bin/sh");
+        cmd.arg("-c").arg("/usr/bin/true").env_clear();
+        s.spawn_narrowed(tool, cmd).unwrap().wait_with_output().unwrap().status.success()
+    };
+    let mut granted = Policy { delegated_exec: vec!["/usr/bin".into()], ..Policy::default() };
+    granted.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
+    assert!(
+        run(&granted.for_executable(Path::new("/bin/sh"), false).unwrap()),
+        "a binary under the granted directory runs"
+    );
+    let mut exact = Policy::default();
+    exact.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
+    assert!(!run(&exact.for_executable(Path::new("/bin/sh"), false).unwrap()), "an ungranted binary is denied");
+}
+
 /// docs/sandbox.md "Executables": of the episode's log directory an
 /// executable keeps only the `tmp` directory beneath it, so a command can
 /// write scratch files there and nowhere else in the log.
