@@ -144,6 +144,11 @@ repository's size-oriented release settings to every Bazel build. The first
 build downloads those dependencies and the crates named by `Cargo.lock`.
 Later builds use the Bazel repository and action caches.
 
+After changing a Cargo manifest or `Cargo.lock`, run
+`bazel mod deps --lockfile_mode=update` and commit the resulting
+`MODULE.bazel.lock`. Continuous integration uses `--lockfile_mode=error`
+and refuses a module lockfile that does not describe those inputs.
+
 ## Run the end-to-end demos
 
 Three executable targets demonstrate workflows, kernel-enforced sandboxing,
