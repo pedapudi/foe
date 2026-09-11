@@ -63,8 +63,10 @@ jobs:
       - name: Line budget
         run: scripts/loc.sh
 
-      - name: Release guards
-        run: python3 scripts/release_test.py
+      - name: Script guards and measurement folds
+        run: |
+          python3 scripts/release_test.py
+          python3 evals/episode_cost/episode_cost_test.py
 
       # The slow tier. `cargo test --workspace` waits on no real clock; the
       # examples do, so they are a separate command. Three of them also have

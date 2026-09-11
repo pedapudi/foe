@@ -12,6 +12,9 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import grep_cost_curve
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -284,6 +287,23 @@ class WorkflowReportTest(unittest.TestCase):
         self.assertAlmostEqual(report["checking_input_ratio"], 3.0)
         self.assertAlmostEqual(report["checking_input_share"], 0.75)
 
+    def test_missing_child_usage_is_unknown_and_suppresses_ratios(self) -> None:
+        """README.md: missing child logs produce incomplete coverage and null node usage."""
+        with tempfile.TemporaryDirectory() as work:
+            root = self.corpus(Path(work))
+            source = root / "ep_root" / "children" / "ep_assess" / "episode.jsonl"
+            source.rename(source.with_name("unavailable.jsonl"))
+            report = workflow_node_tokens.corpus_report(root)
+        self.assertFalse(report["complete"])
+        self.assertEqual(report["missing_children"], ["ep_assess"])
+        self.assertIsNone(report["checking_input_ratio"])
+        self.assertIsNone(report["checking_input_share"])
+        node = report["runs"][0]["nodes"][1]
+        self.assertIsNone(node["input_tokens"])
+        self.assertIsNone(node["tool_calls"])
+        self.assertIsNone(report["runs"][0]["checking_input_ratio"])
+        self.assertIn("incomplete coverage", workflow_node_tokens.render(report))
+
     def test_a_reread_of_a_path_the_implementer_read_is_counted(self) -> None:
         with tempfile.TemporaryDirectory() as work:
             report = workflow_node_tokens.corpus_report(self.corpus(Path(work)))
@@ -296,6 +316,21 @@ class WorkflowReportTest(unittest.TestCase):
         self.assertIn("implement-task", text)
         self.assertIn("assess-task", text)
         self.assertIn("accept", text)
+
+
+class CacheConditionTest(unittest.TestCase):
+    def test_sequence_evicts_once_and_isolated_queries_evict_each_time(self) -> None:
+        """README.md: sequence reuse survives after an initially evicted query."""
+        def execute(binary, config, logs, respond):
+            for _ in range(3):
+                respond({})
+            return 0, logs
+        plan = [{"call_id": str(index), "args": {"pattern": str(index)}} for index in range(3)]
+        for each, expected in ((False, 1), (True, 3)):
+            with self.subTest(each=each), tempfile.TemporaryDirectory() as work:
+                with patch.object(grep_cost_curve, "evict") as evict, patch.object(grep_cost_curve.host_runtime, "run", execute), patch.object(grep_cost_curve, "observed", return_value={}):
+                    grep_cost_curve.run_episode(Path("/binary"), {"root": work}, [], plan, True, Path(work), "sequence", evict_each=each)
+                    self.assertEqual(evict.call_count, expected)
 
 
 if __name__ == "__main__":

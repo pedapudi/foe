@@ -5,6 +5,9 @@ sh_test(
     srcs = ["run_episode_cost_unit_tests.sh"],
     data = [
         "episode_cost_test.py",
+        "grep_cost_curve.py",
+        "//evals:host_runtime.py",
+        "//python:foe_package",
         "log_facts.py",
         "search_in_logs.py",
         "workflow_node_tokens.py",

@@ -9,7 +9,8 @@ take, and what share of the episode's tool time that is.
 
 Repetition: how often one episode, and how often the episodes of one run,
 issue a search that an earlier search in the same scope already answered.
-That rate bounds what any cache or index could remove.
+An index can reuse file inventory and content postings across distinct queries.
+Repeated arguments alone do not establish that file contents stayed unchanged.
 
 Follow-through: two behavioural proxies for result quality. Both are weak
 and the report labels them so. A search followed by a search whose pattern
@@ -95,9 +96,9 @@ def read_repeats(calls: list[dict[str, Any]]) -> dict[str, Any]:
     """Files read more than once in one ordered sequence of `read` calls.
 
     Two counts, because they mean different things. A repeated path with a
-    different window is a walk through a file too long for one call, and no
-    cache removes it. A repeated path with the same window returns bytes
-    the episode already holds, and a cache does remove it.
+    different window may request additional content. The same window may
+    contain edits. Reuse requires content identity and access checks as well
+    as matching arguments.
     """
     seen_paths: set[str] = set()
     seen_windows: set[str] = set()

@@ -76,22 +76,23 @@ def rendered_call_chars(episode: Episode) -> list[list[Any]]:
 
 
 def node_report(firing: dict[str, Any], child: Episode | None) -> dict[str, Any]:
-    usage = child.usage if child else {"input": 0, "output": 0, "cache_read": 0}
+    usage = child.usage if child else {"input": None, "output": None, "cache_read": None}
     return {
         "node": firing["node"],
         "role": role_of(firing["node"]),
         "fire": firing["fire"],
         "child_id": firing["child_id"],
         "child_log": str(child.path) if child else None,
+        "available": child is not None,
         "input_tokens": usage["input"],
         "output_tokens": usage["output"],
         "cache_read_tokens": usage["cache_read"],
-        "model_calls": child.model_calls if child else 0,
-        "tool_calls": len([call for call in child.calls if not call["synthetic"]]) if child else 0,
-        "read_calls": len(child.tool_calls("read")) if child else 0,
-        "grep_calls": len(child.tool_calls("grep")) if child else 0,
-        "bash_calls": len(child.tool_calls("bash")) if child else 0,
-        "tool_rendered_chars": sum(call["rendered_chars"] for call in child.calls) if child else 0,
+        "model_calls": child.model_calls if child else None,
+        "tool_calls": len([call for call in child.calls if not call["synthetic"]]) if child else None,
+        "read_calls": len(child.tool_calls("read")) if child else None,
+        "grep_calls": len(child.tool_calls("grep")) if child else None,
+        "bash_calls": len(child.tool_calls("bash")) if child else None,
+        "tool_rendered_chars": sum(call["rendered_chars"] for call in child.calls) if child else None,
         "duration_ms": firing["duration_ms"],
         "handoff_rendered_chars": firing["rendered_chars"],
         "error": firing["error"],
@@ -104,13 +105,14 @@ def node_report(firing: dict[str, Any], child: Episode | None) -> dict[str, Any]
 
 
 def run_report(root_episode: Episode, children: dict[str, Episode]) -> dict[str, Any]:
-    nodes = [node_report(firing, children.get(firing["child_id"] or "")) for firing in root_episode.node_firings]
+    nodes = [node_report(firing, children.get(firing["child_id"])) for firing in root_episode.node_firings if firing["child_id"]]
+    complete = all(node["available"] for node in nodes)
     by_role: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     for node in nodes:
         by_role[node["role"]].append(node)
 
     def total(role: str, field: str) -> int:
-        return sum(node[field] for node in by_role.get(role, []))
+        return sum(node[field] for node in by_role.get(role, []) if node["available"])
 
     implementation_input = total("implement", "input_tokens")
     checking_input = total("assess", "input_tokens") + total("repair", "input_tokens")
@@ -136,15 +138,17 @@ def run_report(root_episode: Episode, children: dict[str, Episode]) -> dict[str,
         "outcome": root_episode.outcome.get("kind", "unfinished"),
         "branches": root_episode.branches,
         "nodes": nodes,
-        "input_tokens": sum(node["input_tokens"] for node in nodes),
-        "output_tokens": sum(node["output_tokens"] for node in nodes),
-        "cache_read_tokens": sum(node["cache_read_tokens"] for node in nodes),
+        "complete": complete,
+        "missing_children": [node["child_id"] for node in nodes if not node["available"]],
+        "input_tokens": sum(node["input_tokens"] for node in nodes if node["available"]),
+        "output_tokens": sum(node["output_tokens"] for node in nodes if node["available"]),
+        "cache_read_tokens": sum(node["cache_read_tokens"] for node in nodes if node["available"]),
         "implementation_input_tokens": implementation_input,
         "checking_input_tokens": checking_input,
         "implementation_output_tokens": implementation_output,
         "checking_output_tokens": checking_output,
-        "checking_input_ratio": checking_input / implementation_input if implementation_input else None,
-        "checking_output_ratio": checking_output / implementation_output if implementation_output else None,
+        "checking_input_ratio": checking_input / implementation_input if complete and implementation_input else None,
+        "checking_output_ratio": checking_output / implementation_output if complete and implementation_output else None,
         "checking_read_calls": checking_reads,
         "checking_bash_calls": checking_bash,
         "checking_rereads_of_implemented_paths": len(rereads),
@@ -158,6 +162,7 @@ def corpus_report(root: Path) -> dict[str, Any]:
     episodes = load_episodes(root)
     by_id = {episode.id: episode for episode in episodes if episode.id}
     runs = [run_report(episode, by_id) for episode in episodes if episode.node_firings]
+    complete = all(run["complete"] for run in runs)
     role_totals: dict[str, dict[str, int]] = collections.defaultdict(
         lambda: {"firings": 0, "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "model_calls": 0,
                  "tool_calls": 0, "read_calls": 0, "grep_calls": 0, "bash_calls": 0, "duration_ms": 0,
@@ -169,7 +174,7 @@ def corpus_report(root: Path) -> dict[str, Any]:
             bucket = role_totals[node["role"]]
             bucket["firings"] += 1
             for field in list(bucket):
-                if field != "firings":
+                if field != "firings" and node[field] is not None:
                     bucket[field] += node[field]
             for tool, chars in node["rendered_by_tool"].items():
                 role_rendered[node["role"]][tool] += chars
@@ -194,14 +199,16 @@ def corpus_report(root: Path) -> dict[str, Any]:
     return {
         "corpus_root": str(root),
         "workflow_runs": len(runs),
+        "complete": complete,
+        "missing_children": [child for run in runs for child in run["missing_children"]],
         "node_firings": sum(len(run["nodes"]) for run in runs),
         "roles": {role: dict(bucket) for role, bucket in sorted(role_totals.items())},
         "rendered_by_tool": {role: dict(sorted(tools.items())) for role, tools in sorted(role_rendered.items())},
         "rendered_per_call": per_call,
-        "checking_input_ratio": checking_input / implementation_input if implementation_input else None,
-        "checking_output_ratio": checking_output / implementation_output if implementation_output else None,
+        "checking_input_ratio": checking_input / implementation_input if complete and implementation_input else None,
+        "checking_output_ratio": checking_output / implementation_output if complete and implementation_output else None,
         "checking_input_share": checking_input / (checking_input + implementation_input)
-        if checking_input + implementation_input
+        if complete and checking_input + implementation_input
         else None,
         "checking_rereads_of_implemented_paths": sum(run["checking_rereads_of_implemented_paths"] for run in runs),
         "checking_read_calls": sum(run["checking_read_calls"] for run in runs),
@@ -216,7 +223,7 @@ def render(report: dict[str, Any]) -> str:
         f"corpus {report['corpus_root']}",
         f"  {report['workflow_runs']} workflow runs, {report['node_firings']} model-node firings",
         "",
-        "per role, summed over every firing in the corpus",
+        "per role, observed usage from available child logs",
         "  role        fires   input tokens  cache read   output   model calls   tools   read   grep   bash",
     ]
     for role, bucket in report["roles"].items():
@@ -226,12 +233,14 @@ def render(report: dict[str, Any]) -> str:
             f"  {bucket['model_calls']:11d}  {bucket['tool_calls']:6d}"
             f"  {bucket['read_calls']:5d}  {bucket['grep_calls']:5d}  {bucket['bash_calls']:5d}"
         )
+    if not report["complete"]:
+        lines.insert(2, "  incomplete coverage; missing child logs: " + ", ".join(report["missing_children"]))
     ratio = report["checking_input_ratio"]
     share = report["checking_input_share"]
     output_ratio = report["checking_output_ratio"]
     lines.append("")
     if ratio is None:
-        lines.append("  no implementation input tokens recorded")
+        lines.append("  usage ratios unavailable: incomplete coverage or no implementation input tokens")
     else:
         lines.append(
             f"  assessment plus repair input tokens are {ratio:.2f} times implementation input tokens"
@@ -282,6 +291,9 @@ def render(report: dict[str, Any]) -> str:
     lines.append("  root episode   node             fire   input   cache read   output   tools   read   grep   ms")
     for run in report["runs"]:
         for node in run["nodes"]:
+            if not node["available"]:
+                lines.append(f"  {run['root_episode']}  {node['node']}  missing child log {node['child_id']}")
+                continue
             lines.append(
                 f"  {run['root_episode']:13s}  {node['node']:15s}  {node['fire']:4d}"
                 f"  {node['input_tokens']:6d}  {node['cache_read_tokens']:10d}  {node['output_tokens']:7d}"
