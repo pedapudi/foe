@@ -4,7 +4,7 @@
   "instructions": {
     "role": "Run the declared coding workflow against the task."
   },
-  "tools": ["read", "grep", "edit", "bash"],
+  "tools": ["read", "grep", "edit", "bash", "block"],
   "grants": {
     "read": [],
     "write": []
@@ -25,7 +25,7 @@
             "environment": "",
             "role": "Implement the task in the current directory, which is the root of every relative path. Inspect the workspace, make the smallest sufficient change, and run relevant checks after the final change. Each tool result begins with its log sequence as `[seq N]`. Report changed artifacts, validation, unresolved risks, and cited completion evidence."
           },
-          "tools": ["read", "grep", "edit", "bash"],
+          "tools": ["read", "grep", "edit", "bash", "block"],
           "grants": {
             "read": [],
             "write": []
@@ -188,7 +188,7 @@
             "environment": "",
             "role": "Repair the independent assessment's findings in the shared workspace. Treat every finding and unresolved risk as an obligation. Reproduce each finding before changing an artifact. Resolve it with the smallest sufficient change or show why it cannot affect a task requirement. Run relevant checks after the final change. Complete only after no task-critical risk remains. Return no unresolved risks, every changed path, observed validation results, and cited completion evidence."
           },
-          "tools": ["read", "grep", "edit", "bash"],
+          "tools": ["read", "grep", "edit", "bash", "block"],
           "grants": {
             "read": [],
             "write": []
