@@ -467,15 +467,14 @@
   --n-font-geo: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
   --v2-brand-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
-  --v2-sans: var(--n-font-inconsolata);
-  --v2-mono: var(--n-font-inconsolata);
-  --n-font-head: var(--n-font-inconsolata);
-  --n-font-paper: var(--n-font-inconsolata);
+  --v2-sans: "Source Sans 3", system-ui, sans-serif;
+  --v2-mono: "Source Code Pro", ui-monospace, monospace;
+  --n-font-head: var(--v2-sans);
+  --n-font-paper: var(--v2-sans);
   --dt-font-scale: 1;
 }
 
 /* ----- technical ----- */
-:root[data-typeface="technical"],
 :root[data-typeface="technical-inconsolata"] {
   --v2-sans: var(--n-font-inconsolata);
   --v2-mono: var(--n-font-inconsolata);
@@ -488,6 +487,7 @@
   --n-font-head: var(--n-font-prose-mono);
   --n-font-paper: var(--n-font-prose-mono);
 }
+:root[data-typeface="technical"],
 :root[data-typeface="technical-source"] {
   --v2-sans: 'Source Sans 3', system-ui, sans-serif;
   --v2-mono: 'Source Code Pro', ui-monospace, monospace;

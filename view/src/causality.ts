@@ -27,6 +27,8 @@
 import { outcomeLabel } from "./fold.js";
 import type { Row, StreamedCall, Summary } from "./fold.js";
 import { IDENTITY_COLORS, identitySlot } from "./identity.js";
+import { communications, readCommunication } from "./communication.js";
+import type { Communication, CommunicationEvidence } from "./communication.js";
 import { num, obj, str } from "./types.js";
 import type { Outcome } from "./types.js";
 
@@ -82,6 +84,8 @@ export interface CausalityStep {
   answered: boolean;
   /** What the model said in its own words, empty when it said nothing. */
   text: string;
+  textSeq?: number;
+  textTime?: number;
   /** How many attempts the request took, which is one unless it retried. */
   attempts: number;
   calls: CausalityCall[];
@@ -120,6 +124,8 @@ export interface CausalityEpisode {
   steps: CausalityStep[];
   /** Empty for an episode that runs the free loop rather than a graph. */
   firings: CausalityFiring[];
+  communication?: CommunicationEvidence[];
+  memberNames?: Map<string, string>;
 }
 
 // What the figure draws.
@@ -131,7 +137,7 @@ export interface PlacedCall extends CausalityCall {
   y: number;
 }
 
-export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome" | "task";
+export type RowKind = "episode" | "node" | "step" | "call" | "prose" | "result" | "outcome" | "task" | "message";
 
 /**
  * How deep a reading goes. The rail, the tree, the causal figure and the
@@ -161,6 +167,7 @@ const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
   task: "conversation",
   outcome: "conversation",
   result: "outputs",
+  message: "conversation",
 };
 
 /**
@@ -169,6 +176,7 @@ const APPEARS_AT: Readonly<Record<RowKind, Depth>> = {
  * `layoutLanes` places whichever of them a reader can currently see.
  */
 export interface CausalityRow {
+  communication?: Communication;
   /** Stable across redraws: the episode and what the row stands for. */
   id: string;
   kind: RowKind;
@@ -316,7 +324,7 @@ export interface CausalityLane extends LaneSpec {
   y2: number;
 }
 
-export type EdgeKind = "branch" | "merge" | "loop";
+export type EdgeKind = "branch" | "merge" | "loop" | "message";
 
 export interface CausalityEdge {
   kind: EdgeKind;
@@ -453,9 +461,9 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
   // it: a request that was retried until the budget ran out is where the
   // episode spent itself, and a figure that dropped it would show an
   // episode that did nothing.
-  const answers = new Map<number, { calls: StreamedCall[]; text: string }>();
+  const answers = new Map<number, { calls: StreamedCall[]; text: string; seq: number; time: number }>();
   for (const row of rows) {
-    if (row.kind === "assistant") answers.set(row.step, { calls: row.toolCalls, text: row.text });
+    if (row.kind === "assistant") answers.set(row.step, { calls: row.toolCalls, text: row.text, seq: row.seq, time: row.time });
   }
   const ranges = stepRanges(rows);
   const steps: CausalityStep[] = [...ranges.entries()]
@@ -467,6 +475,8 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
       endSeq: range.to,
       answered: answers.has(step),
       text: answers.get(step)?.text ?? "",
+      textSeq: answers.get(step)?.seq,
+      textTime: answers.get(step)?.time,
       attempts: (retries.get(step) ?? 0) + 1,
       calls: (answers.get(step)?.calls ?? []).map((call) => {
         const spawn = spawns.get(call.id);
@@ -498,6 +508,9 @@ export function readCausality(summary: Summary, allRows: Row[], depth: number): 
     endTime: summary.endTime,
     lastSeq: summary.lastSeq,
     steps,
+    communication: readCommunication(summary, rows),
+    memberNames: new Map(rows.flatMap((row) => row.kind === "note" && row.type === "team/roster"
+      ? [[str(obj(row.data).member_id), str(obj(row.data).name)] as [string, string]] : [])),
     firings: summary.firings.map((f) => ({
       node: f.node,
       fire: f.fire,
@@ -798,10 +811,10 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
             label: "",
             aside: "",
             body: step.text,
-            fromSeq: step.seq,
+            fromSeq: step.textSeq ?? step.seq,
             toSeq: step.endSeq,
-            seq: step.seq,
-            time: step.time,
+            seq: step.textSeq ?? step.seq,
+            time: step.textTime ?? step.time,
           });
         }
         // The children a turn opened, in the order its calls opened them,
@@ -918,6 +931,24 @@ export function causalityOutline(episodes: CausalityEpisode[]): CausalityOutline
   for (const episode of episodes) {
     if (episode.parentId !== null && byId.has(episode.parentId)) continue;
     emit(episode, null, null);
+  }
+  const names = new Map(episodes.map((episode) => [episode.id, episode.name]));
+  for (const episode of episodes) for (const [id, name] of episode.memberNames ?? []) names.set(id, name);
+  for (const message of communications(episodes.flatMap((episode) => episode.communication ?? []))) {
+    const recipient = byId.get(message.to);
+    const recipientActive = recipient && message.time >= recipient.startTime
+      && (recipient.endTime === null || message.time <= recipient.endTime);
+    const owner = (recipientActive ? recipient : byId.get(message.from)) ?? byId.get(message.episodeId);
+    if (!owner) continue;
+    const from = names.get(message.from) ?? (message.from || "You");
+    const to = names.get(message.to) ?? (message.toName || message.to || "recipient");
+    push({
+      id: message.id, kind: "message", communication: message,
+      episodeId: message.episodeId, laneId: owner.id, parent: owner.id, depth: owner.depth + 1,
+      label: message.kind === "default" ? `Default answer for ${to}` : `${from} → ${to}`,
+      aside: message.kind === "default" ? "default" : `${message.kind} · ${message.delivered ? "delivered" : "sent"}`,
+      body: message.body, fromSeq: message.seq, toSeq: message.seq, seq: message.seq, time: message.time,
+    });
   }
   return { rows: chronological(rows, start), lanes, loops, episodes, start };
 }
@@ -1221,6 +1252,16 @@ export function layoutLanes(outline: CausalityOutline, visible: CausalityRow[], 
   }
 
   const edges: CausalityEdge[] = [];
+  for (const row of rows) {
+    const message = row.communication;
+    if (!message || message.kind === "default") continue;
+    const from = builds.get(message.from)?.lane;
+    const to = builds.get(message.to)?.lane;
+    if (!from || !to || from.x === to.x) continue;
+    const y = row.y;
+    if (y < from.y1 || y > from.y2 || y < to.y1 || y > to.y2) continue;
+    edges.push({ kind: "message", from: { x: from.x, y }, to: { x: to.x, y }, bow: 0, tone: from.tone, laneId: to.id });
+  }
   for (const build of ordered) {
     const parent = build.lane.parentId === null ? undefined : builds.get(build.lane.parentId);
     if (!parent || !Number.isFinite(parent.first)) continue;

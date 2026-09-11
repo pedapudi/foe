@@ -41,9 +41,9 @@ export type TypefaceMode = "technical" | "editorial" | "display";
  * short as it stays unambiguous among the twelve.
  */
 export const TYPEFACES: { id: string; mode: TypefaceMode; label: string; sans: string; mono: string; head: string }[] = [
+  { id: "technical-source", mode: "technical", label: "source sans + source code", sans: "'Source Sans 3', system-ui, sans-serif", mono: "'Source Code Pro', ui-monospace, monospace", head: "'Source Sans 3', system-ui, sans-serif" },
   { id: "technical-inconsolata", mode: "technical", label: "inconsolata", sans: "'Inconsolata', ui-monospace, monospace", mono: "'Inconsolata', ui-monospace, monospace", head: "'Inconsolata', ui-monospace, monospace" },
   { id: "technical-ia-writer", mode: "technical", label: "ia writer + jetbrains", sans: "'iA Writer Mono', ui-monospace, monospace", mono: "'JetBrains Mono', ui-monospace, monospace", head: "'iA Writer Mono', ui-monospace, monospace" },
-  { id: "technical-source", mode: "technical", label: "source sans + source code", sans: "'Source Sans 3', system-ui, sans-serif", mono: "'Source Code Pro', ui-monospace, monospace", head: "'Source Sans 3', system-ui, sans-serif" },
   { id: "technical-ubuntu", mode: "technical", label: "ubuntu + ubuntu mono", sans: "'Ubuntu', system-ui, sans-serif", mono: "'Ubuntu Mono', ui-monospace, monospace", head: "'Ubuntu', system-ui, sans-serif" },
   { id: "editorial-source-serif", mode: "editorial", label: "source serif", sans: "'Source Serif 4', Georgia, serif", mono: "'Source Serif 4', Georgia, serif", head: "'Source Serif 4', Georgia, serif" },
   { id: "editorial-fraunces", mode: "editorial", label: "fraunces", sans: "'Fraunces', Georgia, serif", mono: "'Fraunces', Georgia, serif", head: "'Fraunces', Georgia, serif" },
@@ -83,7 +83,7 @@ export const SCALE_DEFAULT = 100;
  */
 export const DEFAULT_THEME_LIGHT = "google-light";
 export const DEFAULT_THEME_DARK = "google-dark";
-export const DEFAULT_TYPEFACE = "technical-inconsolata";
+export const DEFAULT_TYPEFACE = "technical-source";
 export const DEFAULT_FONTSIZE = "medium";
 
 /**

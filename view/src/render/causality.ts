@@ -162,9 +162,7 @@ export function laneStrokes(
   for (const lane of layout.lanes) lanes.appendChild(laneElement(lane, card, handlers));
   figure.appendChild(lanes);
 
-  // Cubic curves with their control points on the midline. No arrowheads:
-  // time runs down, so direction is already unambiguous and a head on
-  // every edge would be noise.
+  // Communication direction is horizontal; branch and merge direction follows time.
   const edges = svg("g", { class: "caus-edges" });
   for (const edge of layout.edges) edges.appendChild(edgeElement(edge));
   figure.appendChild(edges);
@@ -199,8 +197,17 @@ function laneElement(lane: CausalityLane, card: Hovercard, handlers: CausalityHa
   return group;
 }
 
-function edgeElement(edge: CausalityEdge): SVGPathElement {
-  return svg("path", { class: `caus-edge ${edge.kind} tone-${edge.tone}`, d: edgePath(edge) });
+function edgeElement(edge: CausalityEdge): SVGElement {
+  const path = svg("path", { class: `caus-edge ${edge.kind} tone-${edge.tone}`, d: edgePath(edge) });
+  if (edge.kind !== "message") return path;
+  const group = svg("g");
+  const { x, y } = edge.to;
+  const back = x - 5 * Math.sign(x - edge.from.x);
+  group.append(path, svg("path", {
+    class: `caus-edge message-head tone-${edge.tone}`,
+    d: `M ${back} ${y - 3} L ${x} ${y} L ${back} ${y + 3}`,
+  }));
+  return group;
 }
 
 /**

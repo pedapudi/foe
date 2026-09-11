@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod communication;
 mod project;
 mod server;
 mod terminal;

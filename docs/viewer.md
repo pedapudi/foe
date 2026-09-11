@@ -31,10 +31,28 @@ has already tuned them for its background. The rest of a heading stays cyan.
 [docs/design-language.md](design-language.md) states the same channel for the
 browser viewer.
 
-The conversation shows every episode's task, parent and peer messages,
+The conversation shows each episode's task, messages between team members,
 nonempty assistant messages, returned child outcomes, and the final outcome.
-Tool requests, tool responses, reasoning, system instructions, and internal
-notifications are hidden. An image appears as a text placeholder.
+Tool requests, tool responses, reasoning, and system instructions are hidden.
+An image appears as a text placeholder.
+
+Communication headings name the sender, recipient, and message kind: `ask`,
+`reply`, `send`, `notify`, or `steer`. A dashed horizontal arrow joins two
+open lanes when the terminal has room. Missing endpoints, closed lanes, and
+narrow terminals retain the sender-to-recipient heading. A synthetic answer
+is headed `Default answer for NAME` on the asking episode's lane.
+
+The display joins queued messages, recipient inbox entries, and successful
+tool acknowledgements. Each logical message body appears once. A queued
+message is `sent`; a matching receipt or delivery record confirms it as
+`delivered`. If delivery or the message kind becomes known after printing,
+a heading records that information without repeating the body.
+Unclassified queue records use `message` until stronger evidence arrives.
+
+Question routing guidance is hidden. Self-addressed questions and replies
+remain separate, although they share an identifier. Explicit notifications
+require a successful `notify` acknowledgement; automatic child-completion
+reports are represented by the child's returned outcome.
 
 A spawned episode's task is written under the branch that opened it, headed
 `NAME – Task` where the run's own task is headed `NAME – You`. It is the one
@@ -68,8 +86,9 @@ lead's four forked workers would each redraw the lead's whole history.
 Messages appear after their complete `assistant/message` event is recorded.
 Polling reads appended log bytes every 100 milliseconds while execution
 runs. Before displaying a returned result, the display reads every
-available message from that child. Independent episodes can be displayed
-in discovery order; the display does not claim a global event order.
+available message from that child. Each poll joins communication evidence before rendering its batch in recorded
+time order. Later polls append to scrollback, so delayed log discovery can
+place an earlier event after a later one.
 Existing recorded messages are displayed when execution resumes.
 
 While execution runs and standard output is a terminal, one line at the
@@ -110,9 +129,10 @@ alphabetical order, whose title is the field name with underscores replaced
 by spaces and the first letter capitalized. An array of strings is a bullet
 list. An array of objects has one bullet per object, with the object's
 scalar fields on the bullet line as `key: value` and its nested fields
-indented beneath. An item of the `learned` field of the built-in coding
-workflow, an object with `claim` and `seq`, is displayed as the claim
-followed by ` (seq N)`, where N is the log sequence the claim cites. A
+indented beneath. An object containing only `claim`, `seq`, and optionally `episode` is
+displayed as a citation. It retains both the episode identifier and the
+sequence when both are present. Objects with additional fields retain those
+fields in the ordinary object display. A
 nested object is displayed as `key: value` lines, with a nested array or
 object indented under its key. A field holding an empty string, array, or
 object is omitted. Markdown remains readable source text. A blocked,
@@ -140,8 +160,9 @@ The live viewer address goes to standard error when the run starts and the
 served page leaves with the process, three seconds after the final block
 is written, so the command is the reference that outlives the run.
 
-The display retains read offsets and episode labels, and reads logs through
-the viewer crate. It does not alter execution or retained evidence.
+The display retains read offsets, episode labels, and message correlation
+metadata. Printed message bodies are released. It reads logs through the
+viewer crate. It does not alter execution or retained evidence.
 A display error is reported on standard error while the episode continues
 to settle. Outcome exit codes retain their usual meanings.
 
@@ -488,7 +509,7 @@ Each rung is named for the class of row it adds to the one before it.
 | `episodes` | episodes alone, which is the rail |
 | `steps` | workflow nodes and steps, which is the tree |
 | `calls` | tool calls with their targets, which is the causal figure |
-| `conversation` | what the model said at each step |
+| `conversation` | tasks, response text, communication, and returned outcomes |
 | `outputs` | what each tool returned |
 
 What the model said and what its tools returned are separate rungs because
@@ -507,6 +528,19 @@ said would then show a run that said nothing. The row takes the outcome word,
 in the hue of the direction it reports, with the returned value's `summary`
 set as prose under it and the whole value beneath that, closed.
 `docs/viewer-study.md` carries the measurement over every fixture.
+
+The default typeface uses sans serif for prose and controls, and monospace
+for data and code. A saved typeface choice retains its existing meaning.
+
+Communication appears as message bodies beside the existing episode lanes.
+Dashed arrows point from sender to recipient when both lanes cover the
+message row. A missing endpoint or a closed lane retains its text label.
+The browser uses the same queue, receipt, and acknowledgement evidence as
+the terminal. It updates the row's kind and delivery state as logs arrive.
+Messages longer than 1,200 characters open through `Read message`.
+Selecting a question, reply, or default highlights rows sharing its question
+identifier. Response text uses its recorded response time, so messages
+received during the request precede that response in the outline.
 
 The reading is stored in `localStorage` under `foe.depth` beside the
 theme, the typeface, the text size and the arrangement, so a reader who

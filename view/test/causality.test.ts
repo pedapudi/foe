@@ -602,8 +602,8 @@ test("each reading adds the kinds of row it names", () => {
   // model said: an episode can spend every step on tool calls and answer only
   // in its typed return, and a reading that left it out would show a run that
   // said nothing.
-  assert.deepEqual(kinds("conversation"), ["call", "episode", "outcome", "prose", "step", "task"]);
-  assert.deepEqual(kinds("outputs"), ["call", "episode", "outcome", "prose", "result", "step", "task"]);
+  assert.deepEqual(kinds("conversation"), ["call", "episode", "message", "outcome", "prose", "step", "task"]);
+  assert.deepEqual(kinds("outputs"), ["call", "episode", "message", "outcome", "prose", "result", "step", "task"]);
   const graph = causalityOutline(run("workflow.jsonl"));
   assert.ok(visibleRows(graph, "steps").some((r) => r.kind === "node"));
 });
@@ -746,12 +746,11 @@ test("every row carries its log position, because a position is per episode", ()
 test("the gutter is printed once per event, not once per row", () => {
   const outline = causalityOutline(run("root.jsonl", "child.jsonl"));
   const deep = visibleRows(outline, "outputs");
-  // A step's prose and a call's result body stand for the event their own
-  // row already named, so they leave the column blank; a repeat would say
-  // that a second thing happened at that instant.
+  // The response follows the request at its own event time. A result body
+  // repeats the result event already represented by the call row.
   const prose = deep.find((r) => r.kind === "prose")!;
   const result = deep.find((r) => r.kind === "result")!;
-  assert.equal(prose.showTime, false);
+  assert.equal(prose.showTime, true);
   assert.equal(result.showTime, false);
   for (const row of deep) {
     if (row.showTime !== false) continue;
