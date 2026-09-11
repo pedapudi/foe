@@ -82,6 +82,39 @@ fn write_roots_allow_create_and_remove() {
     assert!(ok);
 }
 
+/// docs/sandbox.md "What is compiled": the writer and executable policies
+/// share the directories opened before confinement.
+#[test]
+fn writer_and_sandbox_keep_the_same_directory_after_path_replacement() {
+    let Some(s) = sandbox() else { return };
+    let dir = temp_dir("bound-write");
+    let root = dir.join("root");
+    let moved = dir.join("moved");
+    std::fs::create_dir(&root).unwrap();
+    let writer = Arc::new(crate::grants::RootWriter::new(vec![root.clone()]).unwrap());
+    let policy = Policy {
+        read: vec![dir.to_path_buf()],
+        write: vec![root.clone()],
+        bound_write: Some(writer.clone()),
+        ..Policy::default()
+    };
+    std::fs::rename(&root, &moved).unwrap();
+    std::fs::create_dir(&root).unwrap();
+    let narrowed = policy.narrowed();
+    s.run_narrowed(&narrowed, || {
+        writer.write(&root.join("via-writer"), b"bound").unwrap();
+        std::fs::write(moved.join("via-path"), b"bound").unwrap();
+        assert_eq!(
+            std::fs::write(root.join("replacement"), b"denied").unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+    })
+    .unwrap();
+    assert_eq!(std::fs::read(moved.join("via-writer")).unwrap(), b"bound");
+    assert_eq!(std::fs::read(moved.join("via-path")).unwrap(), b"bound");
+    assert!(!root.join("via-writer").exists());
+}
+
 /// docs/sandbox.md "Executables": a dynamically linked executable receives
 /// its exact ELF interpreter while general executable directories remain
 /// outside the policy.

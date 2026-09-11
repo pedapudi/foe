@@ -332,6 +332,10 @@ interval exists in which a checked pathname can be repointed before it is
 used. On Linux the kernel performs the resolution with `openat2` and
 `RESOLVE_BENEATH`.
 
+The operating-system write rules use the same directory handles as the
+in-process writer. Each child episode opens its directories during its own
+startup, after validating its delegated write roots against its contract.
+
 A read follows a symbolic link that stays inside a granted root and is denied
 by one that leaves it. A write names an entry in a granted directory and
 replaces that entry, so writing to a name that is a symbolic link replaces

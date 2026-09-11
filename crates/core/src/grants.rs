@@ -94,9 +94,10 @@ impl Reader for RootReader {
 
 /// Writes bounded to the directories the write roots named when the episode
 /// started.
+#[derive(Debug)]
 pub struct RootWriter {
     roots: Vec<PathBuf>,
-    dirs: Vec<Dir>,
+    pub(crate) dirs: Vec<Dir>,
     /// Distinguishes concurrent staged files of one process.
     stages: AtomicU64,
 }

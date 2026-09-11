@@ -18,7 +18,7 @@ use foe_core::confine::{Confined, Unconfined};
 use foe_core::context::ContextPolicy;
 use foe_core::exec::LocalExecutor;
 use foe_core::fingerprint::runtime_info;
-use foe_core::grants::{RootReader, RootWriter};
+use foe_core::grants::RootReader;
 use foe_core::loop_::{self, Log, Params};
 use foe_core::process_boundary::ProcessOwnership;
 use foe_core::protocol::{Channel, Host};
@@ -1157,12 +1157,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     builtins.push(foe_core::retrieval::tool(log.clone()));
     builtins.extend(team::tools(team.clone(), parent));
     let registry = Registry::new(&contract, &executables, host_tools, builtins).map_err(|e| format!("config: {e}"))?;
-    let write = contract.grants.write.clone();
     let reader = RootReader::new(contract.grants.read.clone()).map_err(|e| format!("grants.read: {e}"))?;
-    let writer = match write.is_empty() {
-        true => None,
-        false => Some(Arc::new(RootWriter::new(write).map_err(|e| format!("grants.write: {e}"))?) as Arc<dyn Writer>),
-    };
+    let writer =
+        policy.bound_write.clone().filter(|writer| !writer.roots().is_empty()).map(|writer| writer as Arc<dyn Writer>);
     let handles = Handles {
         reader: Some(Arc::new(reader)),
         writer,
