@@ -361,6 +361,21 @@ def test_run_config_rejects_missing_tool_implementations(fake_binary: Path, tmp_
         asyncio.run(foe.run_config(doc, model_backend=scripted([]), binary=fake_binary, log_dir=tmp_path / "e"))
 
 
+def test_nested_workflow_host_tools_are_checked_before_launch(tmp_path: Path) -> None:
+    """docs/sdk.md: every host tool in the contract tree needs an implementation."""
+    doc = contract_with(["read"]).to_dict("t")
+    leaf = contract_with(["read"]).to_dict(child=True)
+    leaf["host_tools"] = {"missing": {"description": "d", "params": {"type": "object"}, "effect": "pure"}}
+    model = contract_with(["read"]).to_dict(child=True)
+    model["child_contracts"] = {"leaf": leaf}
+    doc["workflow"] = {"nodes": {"outer": {"workflow": {"nodes": {"survey": {"model": model}}}}}}
+    with pytest.raises(ValueError, match="host_tools: no implementation was supplied for missing"):
+        asyncio.run(foe.start_config(
+            doc, model_backend=scripted([]), binary=tmp_path / "absent", log_dir=tmp_path / "e"
+        ))
+    assert not (tmp_path / "e").exists()
+
+
 def test_a_model_block_and_a_host_model_backend_are_exclusive(fake_binary: Path, tmp_path: Path) -> None:
     """docs/config.md `model`: the block decides who calls the model."""
     with_block = contract_with(["read"], model=configured_model()).to_dict("t")

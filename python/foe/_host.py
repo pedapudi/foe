@@ -46,44 +46,24 @@ def _load_config(config: Mapping[str, Any] | PathLike) -> dict[str, Any]:
     return loaded
 
 
-def _collect_host_tool_names(doc: Mapping[str, Any]) -> set[str]:
-    names = set(doc.get("host_tools") or {})
-    for child in (doc.get("child_contracts") or {}).values():
-        names |= _collect_host_tool_names(child)
-    return names
-
-
-def _descendant_contracts_with_a_model_block(doc: Mapping[str, Any], prefix: str = "") -> list[str]:
-    """The contract paths below `doc` that declare a `model` block."""
-    found: list[str] = []
-    for key, child in sorted((doc.get("child_contracts") or {}).items()):
-        name = f"{prefix}child_contracts.{key}"
-        if "model" in child:
-            found.append(name)
-        found.extend(_descendant_contracts_with_a_model_block(child, f"{name}."))
-    found.extend(_workflow_contracts_with_a_model_block(doc.get("workflow"), f"{prefix}workflow."))
-    return found
-
-
-def _workflow_contracts_with_a_model_block(workflow: Any, prefix: str) -> list[str]:
-    """The model contracts in one workflow tree that select their own model."""
-    if not isinstance(workflow, Mapping):
-        return []
-    found: list[str] = []
-    nodes = workflow.get("nodes")
-    if not isinstance(nodes, Mapping):
-        return found
-    for key, node in sorted(nodes.items()):
-        if not isinstance(node, Mapping):
-            continue
-        model_contract = node.get("model")
-        if isinstance(model_contract, Mapping):
-            name = f"{prefix}nodes.{key}.model"
-            if "model" in model_contract:
-                found.append(name)
-            found.extend(_descendant_contracts_with_a_model_block(model_contract, f"{name}."))
-        found.extend(_workflow_contracts_with_a_model_block(node.get("workflow"), f"{prefix}nodes.{key}.workflow."))
-    return found
+def _contract_tree(
+    doc: Mapping[str, Any], prefix: str = "", *, workflow: bool = False
+) -> Iterable[tuple[str, Mapping[str, Any]]]:
+    """Visit contracts in child declarations and nested workflow model nodes."""
+    if workflow:
+        for key, node in sorted((doc.get("nodes") or {}).items()):
+            if isinstance(node, Mapping):
+                for kind in ("model", "workflow"):
+                    child = node.get(kind)
+                    if isinstance(child, Mapping):
+                        yield from _contract_tree(child, f"{prefix}nodes.{key}.{kind}.", workflow=kind == "workflow")
+    else:
+        yield prefix.rstrip("."), doc
+        for key, child in sorted((doc.get("child_contracts") or {}).items()):
+            yield from _contract_tree(child, f"{prefix}child_contracts.{key}.")
+        child = doc.get("workflow")
+        if isinstance(child, Mapping):
+            yield from _contract_tree(child, f"{prefix}workflow.", workflow=True)
 
 
 def _pairing_error(first: Event) -> str | None:
@@ -472,14 +452,15 @@ async def start_config(
             "config: a document with a `model` block directs foe to call the configured endpoint, "
             "which takes no model backend"
         )
-    nested = _descendant_contracts_with_a_model_block(doc) if host_calls_the_model else []
+    contracts = list(_contract_tree(doc))
+    nested = [name for name, child in contracts if name and "model" in child] if host_calls_the_model else []
     if nested:
         raise ValueError(
             f"model: {', '.join(nested)} declares a `model` block while the document leaves the "
             "model to this host; one owner must serve model calls throughout the contract tree"
         )
     by_name = {t.name: t for t in tools}
-    missing = sorted(_collect_host_tool_names(doc) - set(by_name))
+    missing = sorted({name for _, child in contracts for name in child.get("host_tools") or {}} - set(by_name))
     if missing:
         raise ValueError(f"host_tools: no implementation was supplied for {', '.join(missing)}")
 

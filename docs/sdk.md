@@ -353,9 +353,10 @@ These take a complete document, as a dict or as the path of a JSON file,
 and run it the way `ExecutionContract.run` does. They exist for a document written
 by hand or produced by another contract. The document must carry `task`,
 and its `model` block decides whether `model_backend` is required or refused.
-`tools` supplies the implementation of every name
-in the document's `host_tools`; a missing implementation is an error before
-launch.
+`tools` supplies every host tool declared anywhere in the contract tree,
+including child contracts and model nodes inside nested workflows. The host
+uses the same contract traversal for tool coverage and model ownership.
+A missing implementation is an error before launch.
 
 `start_config` also accepts the keyword-only argument
 `start_new_session: bool = False`. On POSIX, setting it to `True` creates a
