@@ -1195,8 +1195,9 @@ file, OAuth token state, or a managed-cloud credential, according to the
 provider. Where no option names a file, a required convention file under
 `~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
 an explicitly named file and sends no authentication header when none is
-named. The home directory comes from the passwd database, never from the
-environment.
+named. The passwd database supplies the home directory. When it holds no
+entry for the user, the runtime uses a validated `HOME` directory as
+specified in [models.md](models.md#where-credentials-live).
 
 `--model` and `--service-tier` describe one `model` block between them, and
 the document under `--config` decides whether they apply. A document that

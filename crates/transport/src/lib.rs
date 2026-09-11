@@ -84,9 +84,8 @@ pub struct Plan {
     /// The file the transport reads for its credential, when it reads one.
     pub credential_path: Option<PathBuf>,
     /// True when the passwd database held no entry for the user and the
-    /// home directory came from `HOME`. A caller reports it, because a
-    /// credential read from a directory the environment named is worth
-    /// saying out loud.
+    /// home directory came from `HOME`. Recorded in credential permission
+    /// provenance rather than printed during startup.
     pub home_from_environment: bool,
 }
 
