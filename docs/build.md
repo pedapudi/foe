@@ -69,9 +69,16 @@ executable position-independent.
 It refuses a version that disagrees with `Cargo.toml`, a working tree with
 changes, and a machine without the musl target or a musl C compiler
 (`rustup target add x86_64-unknown-linux-musl` and `apt install musl-tools`).
-It builds, runs `foe plan` against the result, and creates the release tagged
-`v0.2.0` carrying `foe-x86_64-linux` and its SHA-256. `--draft` withholds it
-until you publish.
+It selects the checkout commit and requires that commit's most recent
+`ci.yml` run to have succeeded. An archive of that commit supplies the
+build source. The staged binary runs `foe plan`, the host protocol example,
+and the team example before publication. Its checksum is checked again
+after those executions.
+
+An existing remote release tag must name the selected commit, including
+when the tag is annotated. Otherwise the script creates the tag without
+overwriting an existing tag. The release uses that verified tag and carries
+`foe-x86_64-linux` and its SHA-256. `--draft` withholds publication.
 
 ## Pin the binary and Python package to one commit
 

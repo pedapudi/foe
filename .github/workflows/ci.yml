@@ -63,6 +63,9 @@ jobs:
       - name: Line budget
         run: scripts/loc.sh
 
+      - name: Release guards
+        run: python3 scripts/release_test.py
+
       # The slow tier. `cargo test --workspace` waits on no real clock; the
       # examples do, so they are a separate command. Three of them also have
       # Bazel targets, which the bazel job runs against the release binary.
