@@ -169,7 +169,8 @@ pub fn fingerprint(contract: &ResolvedContract) -> Result<Fingerprint, String> {
 }
 
 pub fn runtime() -> Result<tokio::runtime::Runtime, String> {
-    tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| format!("runtime: {e}"))
+    let mut runtime = tokio::runtime::Builder::new_multi_thread();
+    runtime.worker_threads(2).enable_all().build().map_err(|e| format!("runtime: {e}"))
 }
 
 /// What a run does about the browser viewer.

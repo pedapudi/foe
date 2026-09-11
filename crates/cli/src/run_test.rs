@@ -968,3 +968,10 @@ fn resume_refuses_an_incomplete_seed_without_changing_its_log() {
     assert!(error.contains("seed/end"), "{error}");
     assert_eq!(std::fs::read(dir.join(foe_log::fold::LOG_FILE)).unwrap(), before);
 }
+
+/// docs/design.md: episode worker allocation is independent of host processor count.
+#[test]
+fn episode_runtime_bounds_its_async_workers() {
+    let runtime = super::runtime().unwrap();
+    assert_eq!(runtime.metrics().num_workers(), 2);
+}
