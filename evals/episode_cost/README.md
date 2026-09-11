@@ -1,15 +1,20 @@
 # Episode cost measurements
 
-Three reports that say where an episode's time and tokens go. Two read
-stored logs and run nothing. One drives the built-in `grep` tool over
-controlled inputs through a host-supplied model backend, so it makes no
-provider request and needs no credential.
+These reports measure search time, runtime resources, and workflow token
+usage. The log reports read stored evidence. The search harnesses drive the
+built-in `grep` tool through scripted responses. They require no endpoint
+or credential. [Measured observations](measurements.md) include the corpus
+identity, commands, results, and limits of the comparisons.
 
 Two decisions rest on these numbers. Whether to maintain a search index
-depends on how often an episode repeats a search another search has already
-answered, and on how much time those searches take. Whether to change the
+depends on total search time, shared traversal and content work, and index
+construction and update costs. Distinct queries can reuse the same inventory
+and content index. Repeated arguments measure a separate opportunity for
+result caching, subject to content changes. Whether to change the
 built-in coding workflow's assessment stages depends on what fraction of a
-run's tokens those stages spend.
+run's tokens those stages spend. Input usage includes cache-read tokens.
+Cache hits can affect latency and cost while reported input stays the same.
+A report of cache markers alone establishes no measured saving.
 
 ## What each report measures
 
@@ -30,7 +35,9 @@ them so.
 and cache-read tokens to the workflow node that spent them. Each firing of
 a model node is a child episode, and `workflow/node-start` names it, so the
 split between implementing, assessing, and repairing is a fold over stored
-events. The report gives the ratio of assessment and repair input tokens to
+events. Missing model-child logs are reported as unavailable. Their metrics
+are null, observed totals are labeled, and usage ratios are withheld.
+Workflow tool nodes without a child episode do not count as model firings. The report gives the ratio of assessment and repair input tokens to
 implementation input tokens. It gives the rendered characters of tool
 output each role put into its own context. It gives the files an assessing
 or repairing node read that the implementing node had already read.
@@ -54,8 +61,10 @@ throughput in megabytes per second for a call that streamed every file in
 the corpus and stopped at no collection bound, which is the only case where
 the bytes read are known exactly. It also gives the cumulative
 time a fixed twenty-query sequence spends in search after 1, 2, 5, and 20
-queries. That cumulative figure is the denominator an index has to beat: an
-index pays for itself only when it removes more episode time than it adds.
+queries. Warm sequences begin after a full traversal. Content-evicted
+sequences evict before the first query and retain subsequent reuse. Isolated
+query rows evict before each query and label that condition separately.
+Directory metadata remains cached in both evicted conditions.
 
 ## Running the reports
 
@@ -95,6 +104,21 @@ systems give `/tmp` would leave the cold rows repeating the warm ones. The
 report prints the filesystem type of each corpus and states when a cold row
 measured the warm condition.
 
+`search_reuse.py` measures one process and two concurrent processes over the
+generated corpus. It runs mixed and distinct queries, and checks that edits
+and ignore-file changes affect subsequent searches. The supplied corpus must
+contain neither `mutation.txt` nor `.gitignore`; the harness retains its edits.
+Each output directory must be unused.
+
+```sh
+python3 evals/episode_cost/search_reuse.py --foe /absolute/path/to/foe --corpus /absolute/path/to/generated --keep /absolute/path/to/observations
+```
+
+Wall time includes startup and logging. CPU time covers child processes.
+Memory, thread, and descriptor counts are sampled every five milliseconds,
+so short spikes can be missed. A null count means the process refused
+inspection. The host process is excluded from these resource counts.
+
 Unit tests of the folds run without a binary and without a corpus:
 
 ```
@@ -114,9 +138,9 @@ machine that has just started.
 
 A per-call duration is not the metric that decides whether an index is
 worth building. The metric is the seconds a whole episode spends in search
-and the number of searches a completed task takes. An index that saves 200
-milliseconds per call and adds one tool result to the model's context, or
-returns worse candidates and causes one more search, is a loss. The
+and the number of searches a completed task takes. Latency savings must be compared with extra tool output, follow-up searches,
+and index maintenance. A faster isolated query does not establish a faster
+completed task. The
 cumulative sequence figures and the per-episode figures in the log report
 are stated for that reason.
 

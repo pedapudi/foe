@@ -11,8 +11,9 @@ Two corpora: the working tree this script is run against, and a tree this
 script generates from a seed so that anyone can reproduce it. Two page-cache
 conditions: warm, where an earlier query has already read the files, and
 cold, where the harness releases the corpus from the page cache before each
-query. Cold eviction uses `posix_fadvise` on each file, which needs no
-privilege and drops file contents while leaving directory metadata cached.
+isolated query. The sequence evicts only before its first query. Eviction
+uses `posix_fadvise` on each file and leaves directory metadata cached.
+The kernel may retain pages, so these labels describe the requested condition.
 
 The report gives, per query, the median and 95th-percentile duration and the
 files the tool streamed, and, over a fixed query sequence, the cumulative
@@ -289,6 +290,7 @@ def run_episode(
     cold: bool,
     work: Path,
     tag: str,
+    evict_each: bool = True,
 ) -> tuple[dict[str, dict[str, Any]], Path]:
     """Run one episode that issues `plan` in order and return its results.
 
@@ -298,10 +300,14 @@ def run_episode(
     writing its own log than searching.
     """
     root = Path(corpus["root"])
-    # One discarded call first. Without it the first measured call of a warm
-    # episode would be the one that brought the corpus into the page cache,
-    # and its duration would belong to the cold condition.
-    plan = [dict(plan[0], call_id="warm-up")] + plan
+    if not cold:
+        plan = [{"call_id": "warm-up", "args": {"pattern": "__foe_cost_warmup_absent__", "literal": True}}] + plan
+    first = True
+    def prepare() -> None:
+        nonlocal first
+        if cold and (first or evict_each):
+            evict(corpus_files)
+        first = False
     config_path = work / f"{tag}.json"
     config_path.write_text(json.dumps(config_for(tag, root, len(plan))), encoding="utf-8")
     log_parent = work / f"{tag}-logs"
@@ -310,7 +316,7 @@ def run_episode(
         binary,
         config_path,
         log_parent,
-        responder(plan, (lambda: evict(corpus_files)) if cold else (lambda: None)),
+        responder(plan, prepare),
     )
     if status != 0:
         raise RuntimeError(f"grep_cost_curve: episode {log_dir} ended with status {status}")
@@ -327,7 +333,7 @@ def measure(
     work: Path,
 ) -> dict[str, Any]:
     """Run every case `repeats` times, then one fixed sequence, and fold."""
-    condition = "cold" if cold else "warm"
+    condition = "contents-evicted-before-each-query" if cold else "warm-contents"
     if cold:
         # `POSIX_FADV_DONTNEED` releases only clean pages. A corpus this
         # script has just written is still dirty until writeback, so the
@@ -353,7 +359,7 @@ def measure(
         case = next(entry for entry in cases if entry["name"] == name)
         sequence_plan.append({"call_id": f"sequence-{step:02d}", "case": name, "args": case["args"]})
     sequence_results, sequence_log = run_episode(
-        binary, corpus, corpus_files, sequence_plan, cold, work, f"{prefix}-sequence"
+        binary, corpus, corpus_files, sequence_plan, cold, work, f"{prefix}-sequence", evict_each=False
     )
     logs.append(str(sequence_log))
     calls += len(sequence_plan)
@@ -395,6 +401,7 @@ def measure(
         "logs": logs,
         "grep_calls": calls,
         "cases": cases_report,
+        "sequence_cache": "contents-evicted-before-first-query" if cold else "warm-contents",
         "sequence_ms": sequence,
         "cumulative_ms": cumulative,
     }
@@ -425,8 +432,8 @@ def render(report: dict[str, Any]) -> str:
                 f"   {str(case['complete']):8s}  {rate}"
             )
         points = ", ".join(f"{count} queries {ms / 1000.0:.3f} s" for count, ms in run["cumulative_ms"].items())
-        lines.append(f"  fixed 20-query sequence, cumulative time in search: {points}")
-        if run["cache"] == "cold" and corpus["filesystem"] == "tmpfs":
+        lines.append(f"  fixed 20-query sequence ({run['sequence_cache']}), cumulative search time: {points}")
+        if run["cache"] == "contents-evicted-before-each-query" and corpus["filesystem"] == "tmpfs":
             lines.append(
                 "  this corpus is on a memory-backed filesystem, so its pages cannot be released;"
                 " the cold row measures the warm condition"
@@ -468,7 +475,7 @@ def main(argv: list[str]) -> int:
         tempfile.TemporaryDirectory(prefix="grep-cost-curve.", dir=args.work_dir) if args.keep is None else None
     )
     work = Path(holder.name) if holder else args.keep
-    work.mkdir(parents=True, exist_ok=True)
+    work.mkdir(parents=True, exist_ok=holder is not None)
     try:
         generated_root = work / "generated"
         generated_root.mkdir(parents=True, exist_ok=True)
