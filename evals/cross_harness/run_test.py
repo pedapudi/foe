@@ -6,11 +6,16 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
+import re
+import shutil
 import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from typing import Any
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -18,6 +23,8 @@ import run  # noqa: E402
 
 EXAMPLES = Path(__file__).resolve().parent / "tasks" / "examples"
 TASK = "hello-solvable"
+# A command name no host has on PATH, for the bare-name form of `harnesses.codex`.
+ABSENT_COMMAND = "cross-harness-absent-command"
 
 # The solution the example task's hidden grader accepts.
 SOLUTION = textwrap.dedent(
@@ -200,12 +207,35 @@ class Harness(unittest.TestCase):
     def behave(self, behaviour: str) -> None:
         (self.bin / "behaviour.txt").write_text(behaviour + "\n", encoding="utf-8")
 
-    def argv(self, *extra: str, arms: str = "foe-configured") -> list[str]:
-        return [
-            "--foe", str(self.foe), "--codex", str(self.codex), "--credential", str(self.credential),
-            "--family", "autonomy", "--tasks", str(EXAMPLES), "--arms", arms, "--attempts", "1",
-            "--route", "subscription", "--model", "fixture-model", "--out", str(self.out), *extra,
-        ]
+    def document(self, arms: Any = ("foe-configured",), name: str = "run", directory: Path | None = None, **keys: Any) -> Path:
+        """A run document written under the scratch directory, or under `directory`.
+
+        The defaults name the fake binaries, the example tasks, the given
+        arms, and the scratch output directory; `arms` and `keys` replace
+        whole top-level keys as written, so a value of the wrong type
+        reaches the runner, and a key set to None is left out.
+        """
+        content: dict[str, Any] = {
+            "tasks": str(EXAMPLES),
+            "arms": list(arms) if isinstance(arms, (list, tuple)) else arms,
+            "attempts": 1,
+            "model": {"route": "subscription", "name": "fixture-model"},
+            "harnesses": {"foe": str(self.foe), "codex": str(self.codex), "credential": str(self.credential)},
+            "out": str(self.out),
+        }
+        for key, value in {"arms": content["arms"], **keys}.items():
+            if value is None:
+                content.pop(key, None)
+            else:
+                content[key] = value
+        path = (directory or self.root) / f"{name}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
+        return path
+
+    def argv(self, *extra: str, arms: Any = ("foe-configured",), **keys: Any) -> list[str]:
+        """The runner's arguments: the path of a document written from `arms` and `keys`, then `extra`."""
+        return [str(self.document(arms=arms, **keys)), *extra]
 
     def main(self, argv: list[str]) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
@@ -218,8 +248,6 @@ class Harness(unittest.TestCase):
 
     def tasks_with_metadata(self, metadata: dict) -> Path:
         """A copy of the example task directory whose task carries `metadata`."""
-        import shutil
-
         tasks = self.root / "tasks"
         shutil.copytree(EXAMPLES / TASK, tasks / TASK)
         task_file = tasks / TASK / run.protocol.TASK_FILE
@@ -228,10 +256,14 @@ class Harness(unittest.TestCase):
         task_file.write_text(json.dumps(task, indent=2) + "\n", encoding="utf-8")
         return tasks
 
+    def assertResolved(self, out: str, label: str, value: str) -> None:
+        """The plan header states `value` on the row named `label`."""
+        self.assertRegex(out, rf"\n  {re.escape(label)}\s+{re.escape(value)}\n")
+
 
 class Planning(Harness):
     def test_without_confirmation_the_plan_names_every_attempt_and_nothing_runs(self) -> None:
-        status, out, _ = self.main(self.argv("--attempts", "2", arms="foe-configured,codex-default"))
+        status, out, _ = self.main(self.argv(attempts=2, arms=["foe-configured", "codex-default"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         for attempt in (1, 2):
             for arm in ("foe-configured", "codex-default"):
@@ -240,6 +272,25 @@ class Planning(Harness):
         self.assertIn("No attempt was launched", out)
         # Four attempts at eight model calls, 16,000 input tokens, and 4,000 output tokens each.
         self.assertRegex(out, r"\n\s+32\s+64,000\s+16,000\s+1200\s+every planned attempt")
+        # The header states every value the document resolved to.
+        self.assertIn(f"Run document {self.root / 'run.json'} resolved to:", out)
+        self.assertResolved(out, "tasks", str(EXAMPLES))
+        self.assertResolved(out, "family", "autonomy")
+        self.assertResolved(out, "selected", f"{TASK} (every task under tasks)")
+        self.assertResolved(out, "arms", "foe-configured, codex-default")
+        self.assertResolved(out, "attempts", "2")
+        self.assertResolved(out, "foe", str(self.foe))
+        self.assertResolved(out, "codex", str(self.codex))
+        self.assertResolved(out, "credential", str(self.credential))
+        self.assertResolved(out, "route", "subscription")
+        self.assertResolved(out, "model", "fixture-model")
+        self.assertResolved(out, "effort", run.DEFAULT_EFFORT)
+        self.assertResolved(out, "out", str(self.out))
+        self.assertResolved(out, "tool roots", "none beyond the system roots")
+        self.assertResolved(out, "budget", "every task's own budget")
+        self.assertResolved(out, "grader timeout", f"{run.DEFAULT_GRADER_TIMEOUT_SECONDS} seconds")
+        self.assertResolved(out, "source root", str(self.foe))
+        self.assertNotIn("placeholder", out)
         self.assertFalse(self.out.exists())
 
     def test_the_arms_rotate_across_attempts(self) -> None:
@@ -250,53 +301,231 @@ class Planning(Harness):
         triples = run.planned([run.Selected(EXAMPLES / TASK, run.protocol.load(EXAMPLES / TASK))], arms[:2], 2)
         self.assertEqual([(attempt, arm.name) for attempt, _, arm in triples], [(1, arms[0].name), (1, arms[1].name), (2, arms[1].name), (2, arms[0].name)])
 
-    def test_bad_arguments_are_refused_by_name(self) -> None:
-        status, _, err = self.main(self.argv(arms="foe-configured,codex-multi"))
+    def test_bad_values_are_refused_by_key(self) -> None:
+        status, _, err = self.main(self.argv(arms=["foe-configured", "codex-multi"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("codex-multi", err)
-        status, _, err = self.main(self.argv("--task", "absent-task"))
+        self.assertIn("key arms names 'codex-multi', which is not an arm of the autonomy family", err)
+        status, _, err = self.main(self.argv(select=["absent-task"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("absent-task", err)
-        status, _, err = self.main(self.argv("--route", "compatible"))
+        self.assertIn("key select names 'absent-task', which is not a task under", err)
+        status, _, err = self.main(self.argv(model={"route": "compatible", "name": "m"}))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("--base-url", err)
-        status, _, err = self.main(["--foe", str(self.foe), "--family", "autonomy", "--tasks", str(EXAMPLES), "--arms", "codex-default", "--route", "subscription", "--model", "m", "--out", str(self.out)])
+        self.assertIn("key model.base_url is absent", err)
+        status, _, err = self.main(self.argv(model={"route": "subscription", "name": "m", "base_url": "http://127.0.0.1:9/v1"}))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("--codex and --credential", err)
-        status, _, err = self.main(self.argv("--tool-root", str(self.root / "absent-root")))
+        self.assertIn("key model.base_url is 'http://127.0.0.1:9/v1'; the subscription route", err)
+        status, _, err = self.main(self.argv(model={"route": "subscription", "name": "m", "codex_wire_api": "responses"}))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("--tool-root", err)
+        self.assertIn("key model.codex_wire_api is 'responses'", err)
+        status, _, err = self.main(self.argv(model={"route": "compatible", "name": "m", "base_url": "http://127.0.0.1:9/v1", "codex_wire_api": "grpc"}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key model.codex_wire_api is 'grpc'; expected one of chat, responses", err)
+        status, _, err = self.main(self.argv(tool_roots=[str(self.root / "absent-root")]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key tool_roots names", err)
         self.assertIn("absent-root", err)
+        status, _, err = self.main(self.argv(harnesses={"foe": str(self.root / "absent-foe")}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key harnesses.foe names {self.root / 'absent-foe'}, which is not an executable file", err)
+        status, _, err = self.main(self.argv(tasks=str(self.root / "absent-tasks")))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key tasks names", err)
+        for key, value, fragment in (
+            ("attempts", 0, "key attempts is 0; expected a positive integer"),
+            ("attempts", "2", "key attempts is '2'; expected a positive integer"),
+            ("attempts", True, "key attempts is True; expected a positive integer"),
+            ("grader_timeout", 0, "key grader_timeout is 0; expected a positive integer"),
+            ("tasks", 3, "key tasks is 3; expected a non-empty string"),
+            ("select", "x", "key select is 'x'; expected a list of non-empty strings"),
+            ("select", [], "key select is []; expected at least one task name"),
+            ("arms", "foe-configured", "key arms is 'foe-configured'; expected a list of non-empty strings"),
+            ("model", "m", "key model is 'm'; expected an object with the keys route, name, effort, base_url, codex_wire_api"),
+            ("model", {"name": "m"}, "key model.route is absent; expected a non-empty string from subscription, compatible"),
+            ("model", {"route": "subscription"}, "key model.name is absent"),
+            ("model", {"route": "postal", "name": "m"}, "key model.route is 'postal'; expected one of subscription, compatible"),
+            ("harnesses", [], "key harnesses is []; expected an object with the keys foe, codex, credential"),
+            ("out", "", "key out is ''; expected a non-empty string"),
+        ):
+            status, _, err = self.main(self.argv(**{key: value}))
+            self.assertEqual(status, run.NOTHING_LAUNCHED, (key, value))
+            self.assertIn(fragment, err)
+        status, _, err = self.main(self.argv(model=None))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key model is absent", err)
+        status, _, err = self.main(self.argv(tasks=None))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key tasks is absent", err)
         self.assertFalse(self.out.exists())
 
-    def test_an_arms_value_naming_no_arm_is_refused(self) -> None:
+    def test_an_unknown_key_is_refused_by_name(self) -> None:
         for extra in ((), ("--confirm-spend",)):
-            status, _, err = self.main(self.argv(*extra, arms=","))
+            status, _, err = self.main(self.argv(*extra, surprise=1))
             self.assertEqual(status, run.NOTHING_LAUNCHED)
-            self.assertIn("--arms ',' names no arm", err)
+            self.assertIn(f"{self.root / 'run.json'}: key surprise is unknown; the keys are {', '.join(run.DOCUMENT_KEYS)}", err)
+        status, _, err = self.main(self.argv(model={"route": "subscription", "name": "m", "temperature": 0}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key model.temperature is unknown; the keys are {', '.join(run.MODEL_KEYS)}", err)
+        status, _, err = self.main(self.argv(harnesses={"foe": str(self.foe), "shell": "/bin/sh"}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key harnesses.shell is unknown; the keys are {', '.join(run.HARNESS_KEYS)}", err)
+        self.assertFalse(self.out.exists())
+
+    def test_a_document_that_is_not_a_json_object_is_refused_by_path(self) -> None:
+        path = self.root / "broken.json"
+        status, _, err = self.main([str(path)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"the run document {path} cannot be read", err)
+        path.write_text("{", encoding="utf-8")
+        status, _, err = self.main([str(path)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"the run document {path} is not JSON", err)
+        path.write_text("[]", encoding="utf-8")
+        status, _, err = self.main([str(path)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"the run document {path} is not an object", err)
+
+    def test_an_empty_arms_list_is_refused(self) -> None:
+        for extra in ((), ("--confirm-spend",)):
+            status, _, err = self.main(self.argv(*extra, arms=[]))
+            self.assertEqual(status, run.NOTHING_LAUNCHED)
+            self.assertIn("key arms is []; expected at least one arm name", err)
+        status, _, err = self.main(self.argv(arms=["foe-configured", "foe-configured"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key arms names an arm twice", err)
+        self.assertFalse(self.out.exists())
+
+    def test_a_relative_tasks_path_resolves_against_the_document_directory(self) -> None:
+        tasks = self.tasks_with_metadata({})
+        document = self.document(directory=self.root / "runs", tasks="../tasks")
+        status, out, err = self.main([str(document)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "tasks", str(tasks))
+        self.assertIn(f"{TASK} / foe-configured / 1", out)
+        # A relative path elsewhere in the document follows the same rule.
+        (self.root / "tools").mkdir()
+        document = self.document(directory=self.root / "runs", tasks="../tasks", tool_roots=["../tools"], out="out-here")
+        status, out, err = self.main([str(document)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "tool roots", str(self.root / "tools"))
+        self.assertResolved(out, "out", str(self.root / "runs" / "out-here"))
+
+    def test_the_default_out_is_named_by_the_document_stem(self) -> None:
+        document = self.document(name="pilot-3", out=None)
+        expected = Path(run.DEFAULT_OUT_ROOT).expanduser() / "pilot-3"
+        self.assertEqual(run.document_out(run.read_document(document)), expected)
+        status, out, err = self.main([str(document)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "out", str(expected))
+        self.assertFalse(expected.exists())
+
+    def test_a_leading_tilde_expands_to_the_home_directory(self) -> None:
+        home = Path("~").expanduser()
+        status, out, err = self.main(self.argv(tool_roots=["~"], out="~/cross-harness-test-out"))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "tool roots", str(home))
+        self.assertResolved(out, "out", str(home / "cross-harness-test-out"))
+        self.assertFalse((home / "cross-harness-test-out").exists())
+        # The default credential is under the home directory, and a document arm alone leaves it unread.
+        status, out, err = self.main(self.argv(harnesses={"foe": str(self.foe), "codex": str(self.codex)}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        expected = str(Path(run.DEFAULT_CREDENTIAL).expanduser())
+        self.assertTrue(re.search(rf"\n  credential\s+(none; key harnesses.credential names )?{re.escape(expected)}", out), out)
+
+    def test_the_default_foe_is_under_the_checkout_holding_the_document(self) -> None:
+        checkout = self.root / "checkout"
+        (checkout / run.GIT_ENTRY).mkdir(parents=True)
+        binary = checkout / run.DEFAULT_FOE
+        binary.parent.mkdir(parents=True)
+        shutil.copy2(self.foe, binary)
+        self.assertEqual(run.checkout_root(checkout / "evals" / "runs"), checkout)
+        self.assertIsNone(run.checkout_root(self.root))
+        document = self.document(directory=checkout / "evals" / "runs", harnesses=None)
+        status, out, err = self.main([str(document)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "foe", str(binary))
+        self.assertResolved(out, "source root", str(binary))
+        # The source root can point elsewhere in the checkout; the plan states it resolved.
+        document = self.document(directory=checkout / "evals" / "runs", harnesses=None, source_root="../..")
+        status, out, err = self.main([str(document)])
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "source root", str(checkout))
+        # A relative default foe with no checkout above the document falls back to the current directory's checkout.
+        with mock.patch.object(run.Path, "cwd", return_value=self.root):
+            status, _, err = self.main([str(self.document(harnesses=None))])
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key harnesses.foe is absent, and neither the document's directory", err)
+
+    def test_the_family_is_read_from_the_tasks_and_a_mixed_selection_is_refused(self) -> None:
+        tasks = self.tasks_with_metadata({})
+        shutil.copytree(EXAMPLES / TASK, tasks / "team-task")
+        task_file = tasks / "team-task" / run.protocol.TASK_FILE
+        task = json.loads(task_file.read_text(encoding="utf-8"))
+        task.update(name="team-task", family="teams", class_name="coherent")
+        task_file.write_text(json.dumps(task, indent=2) + "\n", encoding="utf-8")
+        for extra in ((), ("--confirm-spend",)):
+            status, out, err = self.main(self.argv(*extra, tasks=str(tasks), arms=None))
+            self.assertEqual(status, run.NOTHING_LAUNCHED)
+            self.assertIn(f"the selected tasks under {tasks} span two families: {TASK} is autonomy and team-task is teams", err)
+            self.assertNotIn("every planned attempt", out)
+        self.assertFalse(self.out.exists())
+        status, out, err = self.main(self.argv(tasks=str(tasks), select=["team-task"], arms=None))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "family", "teams")
+        self.assertResolved(out, "selected", "team-task")
+        self.assertResolved(out, "arms", ", ".join(arm.name for arm in run.ARMS["teams"]) + " (every arm of the teams family)")
+        status, out, err = self.main(self.argv(tasks=str(tasks), select=[TASK], arms=None))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "family", "autonomy")
+        self.assertResolved(out, "arms", ", ".join(arm.name for arm in run.ARMS["autonomy"]) + " (every arm of the autonomy family)")
+        # A teams arm is refused against an autonomy selection by name.
+        status, _, err = self.main(self.argv(tasks=str(tasks), select=[TASK], arms=["codex-multi"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key arms names 'codex-multi', which is not an arm of the autonomy family", err)
+
+    def test_only_a_codex_arm_needs_the_codex_binary_and_the_credential(self) -> None:
+        absent = {"foe": str(self.foe), "codex": ABSENT_COMMAND, "credential": str(self.root / "absent.json")}
+        status, out, err = self.main(self.argv(harnesses=absent))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertIn("No attempt was launched", out)
+        self.assertResolved(out, "codex", f"none; key harnesses.codex names {ABSENT_COMMAND!r}, which is absent from PATH, and no selected arm needs it")
+        self.assertResolved(out, "credential", f"none; key harnesses.credential names {self.root / 'absent.json'}, which is not a file, and no selected arm needs it")
+        status, out, err = self.main(self.argv(harnesses=absent, arms=["foe-configured", "codex-default"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"the arms codex-default need harnesses.codex and harnesses.credential: key harnesses.codex names {ABSENT_COMMAND!r}, which is absent from PATH", err)
+        self.assertNotIn("No attempt was launched", out)
+        status, _, err = self.main(self.argv(harnesses={**absent, "codex": str(self.codex)}, arms=["codex-default"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key harnesses.credential names {self.root / 'absent.json'}, which is not a file", err)
+        status, _, err = self.main(self.argv(harnesses={**absent, "codex": str(self.root / "auth.json"), "credential": str(self.credential)}, arms=["codex-default"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key harnesses.codex names {self.root / 'auth.json'}, which is not an executable file", err)
+        # A bare command name is looked up on PATH and the plan states what it found.
+        with mock.patch.dict(os.environ, {"PATH": f"{self.bin}{os.pathsep}{os.environ.get('PATH', '')}"}):
+            status, out, err = self.main(self.argv(harnesses={"foe": str(self.foe), "codex": "fake-codex", "credential": str(self.credential)}, arms=["codex-default"]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertResolved(out, "codex", f"{self.codex} (the command 'fake-codex' on PATH)")
         self.assertFalse(self.out.exists())
 
     def test_a_budget_override_replaces_one_key_in_the_plan_and_is_refused_by_name_when_malformed(self) -> None:
-        status, out, _ = self.main(self.argv("--attempts", "2", "--budget", "input_tokens=1000", "--budget", "seconds=7", arms="foe-configured,codex-default"))
+        status, out, _ = self.main(self.argv(attempts=2, budget={"input_tokens": 1000, "seconds": 7}, arms=["foe-configured", "codex-default"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         # Four attempts at eight model calls, 1,000 input tokens, 4,000 output tokens, and 7 seconds each.
         self.assertRegex(out, r"\n\s+8\s+1,000\s+4,000\s+7\s+hello-solvable / foe-configured / 1")
         self.assertRegex(out, r"\n\s+32\s+4,000\s+16,000\s+28\s+every planned attempt")
-        self.assertIn("--budget replaces input_tokens=1000, seconds=7", out)
+        self.assertIn("the document's budget replaces input_tokens=1000, seconds=7", out)
+        self.assertResolved(out, "budget", "input_tokens=1000, seconds=7 replace the same keys of every task's budget")
         self.assertIn("model calls are reported per arm", out)
         for bad, fragment in (
-            ("input_tokens", "not of the form KEY=VALUE"),
-            ("credits=3", "names 'credits', which is not a budget key"),
-            ("seconds=many", "seconds='many' is not an integer"),
-            ("seconds=0", "seconds=0 is not a positive integer"),
+            ("input_tokens", "key budget is 'input_tokens'; expected an object over the keys"),
+            ({"credits": 3}, "key budget.credits is not a budget key; the keys are"),
+            ({"seconds": "many"}, "key budget.seconds is 'many'; expected a positive integer"),
+            ({"seconds": 0}, "key budget.seconds is 0; expected a positive integer"),
+            ({"seconds": True}, "key budget.seconds is True; expected a positive integer"),
         ):
-            status, _, err = self.main(self.argv("--budget", bad))
+            status, _, err = self.main(self.argv(budget=bad))
             self.assertEqual(status, run.NOTHING_LAUNCHED, bad)
             self.assertIn(fragment, err)
-        status, _, err = self.main(self.argv("--budget", "seconds=5", "--budget", "seconds=6"))
-        self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("names seconds twice", err)
-        self.assertEqual(run.parse_budget(None), {})
+        self.assertEqual(run.parse_budget(None, Path("/run.json")), {})
         self.assertFalse(self.out.exists())
 
     def test_a_budget_the_documents_refuse_is_refused_before_the_plan_and_before_any_launch(self) -> None:
@@ -304,7 +533,7 @@ class Planning(Harness):
         by the document builders; the runner refuses it up front rather than
         planning attempts that would fault after other arms spent credit."""
         for extra in ((), ("--confirm-spend",)):
-            status, out, err = self.main(self.argv(*extra, "--budget", "seconds=1", arms="codex-default,foe-configured"))
+            status, out, err = self.main(self.argv(*extra, budget={"seconds": 1}, arms=["codex-default", "foe-configured"]))
             self.assertEqual(status, run.NOTHING_LAUNCHED)
             self.assertIn("hello-solvable: the effective budget is refused: budget.seconds is 1", err)
             self.assertNotIn("every planned attempt", out)
@@ -314,7 +543,7 @@ class Planning(Harness):
         tools = self.root / "tools"
         tools.mkdir()
         tasks = self.tasks_with_metadata({"tool_roots": [str(tools)]})
-        status, out, _ = self.main(self.argv("--tasks", str(tasks), arms="foe-configured,foe-as-shipped"))
+        status, out, _ = self.main(self.argv(tasks=str(tasks), arms=["foe-configured", "foe-as-shipped"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         self.assertIn("Recorded as not applicable and never launched:", out)
         self.assertIn(f"  {TASK} / foe-as-shipped / 1: the foe-as-shipped arm runs the built-in document builtin:coding, whose grants cannot take the tool roots task '{TASK}' names under metadata.tool_roots: {tools}", out)
@@ -325,11 +554,12 @@ class Planning(Harness):
     def test_the_plan_states_the_tool_roots_of_the_document_arms(self) -> None:
         tools = self.root / "tools"
         tools.mkdir()
-        status, out, _ = self.main(self.argv("--tool-root", str(tools)))
+        status, out, _ = self.main(self.argv(tool_roots=[str(tools)]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         self.assertIn(f"  {TASK}: {', '.join([*run.graphs.EXECUTE_ROOTS, str(tools)])}", out)
-        self.assertIn("--tool-root", out)
-        status, out, _ = self.main(self.argv(arms="codex-default"))
+        self.assertIn("to the document's tool_roots", out)
+        self.assertResolved(out, "tool roots", str(tools))
+        status, out, _ = self.main(self.argv(arms=["codex-default"]))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         self.assertNotIn("executes:", out)
 
@@ -519,7 +749,7 @@ class Pieces(unittest.TestCase):
             document = run.foe_document(run.arm_by_name("autonomy", "foe-configured"), self.task, workspace, Path(tmp) / "check", budget=budget)
             self.assertEqual(document["budget"]["seconds"], 9)
             self.assertEqual(document["budget"]["model_calls"], 2)
-        self.assertEqual(run.parse_budget(["model_calls=3", " seconds = 12 "]), {"model_calls": 3, "seconds": 12})
+        self.assertEqual(run.parse_budget({"model_calls": 3, "seconds": 12}, Path("/run.json")), {"model_calls": 3, "seconds": 12})
 
     def test_the_outcomes_are_stated_side_by_side(self) -> None:
         reported = run.foe_arm.reported("exhausted", "input_tokens", ["the limit was crossed"])
@@ -606,7 +836,7 @@ class Pieces(unittest.TestCase):
 
 class Running(Harness):
     def test_every_arm_kind_is_run_normalized_graded_and_recorded(self) -> None:
-        status, out, err = self.main(self.argv("--confirm-spend", arms="foe-configured,foe-as-shipped,codex-equivalent,codex-default"))
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "foe-as-shipped", "codex-equivalent", "codex-default"]))
         self.assertEqual(status, run.EVALUATED, err)
         summary = json.loads(out.strip().splitlines()[-1])
         self.assertEqual(summary["attempts"], 4)
@@ -615,6 +845,17 @@ class Running(Harness):
         self.assertEqual(settings["provenance"]["codex_version"], "codex-cli 0.153.4")
         self.assertTrue(settings["provenance"]["foe"]["runtime_binary"].startswith("sha256:"))
         self.assertIsNone(settings["provenance"]["foe"]["source_tree"])
+        # The run file records the resolved document beside the settings.
+        document = settings["document"]
+        self.assertEqual(document["path"], str(self.root / "run.json"))
+        self.assertEqual(document["tasks"], str(EXAMPLES))
+        self.assertEqual((document["select"], document["arms"]), (None, ["foe-configured", "foe-as-shipped", "codex-equivalent", "codex-default"]))
+        self.assertEqual(document["model"], {"route": "subscription", "name": "fixture-model", "effort": run.DEFAULT_EFFORT, "base_url": None, "codex_wire_api": run.DEFAULT_CODEX_WIRE_API})
+        self.assertEqual(document["harnesses"], {"foe": str(self.foe), "codex": str(self.codex), "codex_named": str(self.codex), "credential": str(self.credential)})
+        self.assertEqual((document["out"], document["budget"], document["tool_roots"]), (str(self.out), {}, []))
+        self.assertEqual((document["grader_timeout"], document["source_root"]), (run.DEFAULT_GRADER_TIMEOUT_SECONDS, str(self.foe)))
+        self.assertEqual(settings["settings"]["foe"], str(self.foe))
+        self.assertIn("Run document", settings["plan"])
 
         configured = self.record("foe-configured")
         self.assertEqual(configured["classification"], "correct-completion")
@@ -679,7 +920,7 @@ class Running(Harness):
 
     def test_a_stop_on_a_solvable_task_is_a_wrong_stop(self) -> None:
         self.behave("blocked")
-        status, _, err = self.main(self.argv("--confirm-spend", arms="foe-configured,codex-default"))
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "codex-default"]))
         self.assertEqual(status, run.EVALUATED, err)
         for arm in ("foe-configured", "codex-default"):
             record = self.record(arm)
@@ -708,8 +949,6 @@ class Running(Harness):
         self.assertIn("a record already exists", err)
 
     def test_a_leftover_attempt_directory_is_refused_by_name(self) -> None:
-        import shutil
-
         status, _, err = self.main(self.argv("--confirm-spend"))
         self.assertEqual(status, run.EVALUATED, err)
         shutil.rmtree(self.out / run.RECORDS_DIR)
@@ -723,7 +962,7 @@ class Running(Harness):
         status, out, err = self.main(self.argv("--confirm-spend"))
         self.assertEqual(status, run.EVALUATED, err)
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["run"], str(self.out / run.RUN_FILE))
-        status, out, err = self.main(self.argv("--confirm-spend", arms="foe-as-shipped"))
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-as-shipped"]))
         self.assertEqual(status, run.EVALUATED, err)
         second = self.out / "run-02.json"
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["run"], str(second))
@@ -733,7 +972,7 @@ class Running(Harness):
 
     def test_a_malformed_codex_session_is_a_fault_of_that_attempt_alone(self) -> None:
         self.behave("malformed-session")
-        status, out, err = self.main(self.argv("--confirm-spend", arms="codex-default,foe-configured"))
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["codex-default", "foe-configured"]))
         self.assertEqual(status, run.DEPLOYMENT_FAULT, err)
         codex = self.record("codex-default")
         self.assertIsNone(codex["classification"])
@@ -744,12 +983,13 @@ class Running(Harness):
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 1)
 
     def test_a_budget_override_bounds_every_attempt_and_is_recorded(self) -> None:
-        status, out, err = self.main(self.argv("--confirm-spend", "--budget", "seconds=7", "--budget", "model_calls=3", arms="foe-configured,foe-as-shipped,codex-default"))
+        status, out, err = self.main(self.argv("--confirm-spend", budget={"seconds": 7, "model_calls": 3}, arms=["foe-configured", "foe-as-shipped", "codex-default"]))
         self.assertEqual(status, run.EVALUATED, err)
         settings = json.loads((self.out / run.RUN_FILE).read_text(encoding="utf-8"))
         self.assertEqual(settings["settings"]["budget_overrides"], {"seconds": 7, "model_calls": 3})
+        self.assertEqual(settings["document"]["budget"], {"seconds": 7, "model_calls": 3})
         self.assertEqual(settings["budgets"][TASK], {"model_calls": 3, "input_tokens": 16000, "output_tokens": 4000, "seconds": 7})
-        self.assertIn("--budget replaces seconds=7, model_calls=3", settings["plan"])
+        self.assertIn("the document's budget replaces seconds=7, model_calls=3", settings["plan"])
         for arm in ("foe-configured", "foe-as-shipped", "codex-default"):
             record = self.record(arm)
             self.assertEqual(record["budget"], {"model_calls": 3, "input_tokens": 16000, "output_tokens": 4000, "seconds": 7}, arm)
@@ -765,7 +1005,7 @@ class Running(Harness):
 
     def test_a_codex_run_the_watcher_stopped_normalizes_to_the_crossed_limit(self) -> None:
         self.behave("exhaust")
-        status, out, err = self.main(self.argv("--confirm-spend", "--budget", "input_tokens=1000", arms="codex-default"))
+        status, out, err = self.main(self.argv("--confirm-spend", budget={"input_tokens": 1000}, arms=["codex-default"]))
         self.assertEqual(status, run.EVALUATED, err)
         record = self.record("codex-default")
         self.assertIsNone(record["infrastructure_error"])
@@ -788,13 +1028,14 @@ class Running(Harness):
         extra = self.root / "extra"
         extra.mkdir()
         tasks = self.tasks_with_metadata({"tool_roots": [str(tools)]})
-        status, out, err = self.main(self.argv("--confirm-spend", "--tasks", str(tasks), "--tool-root", str(extra), arms="foe-as-shipped,foe-configured"))
+        status, out, err = self.main(self.argv("--confirm-spend", tasks=str(tasks), tool_roots=[str(extra)], arms=["foe-as-shipped", "foe-configured"]))
         self.assertEqual(status, run.EVALUATED, err)
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 0)
         self.assertIn(f"{TASK} under foe-as-shipped is not applicable: the foe-as-shipped arm runs the built-in document builtin:coding", err)
         merged = [*run.graphs.EXECUTE_ROOTS, str(extra), str(tools)]
         settings = json.loads((self.out / run.RUN_FILE).read_text(encoding="utf-8"))
         self.assertEqual(settings["tool_roots"][TASK], merged)
+        self.assertEqual(settings["document"]["tool_roots"], [str(extra)])
 
         shipped = self.record("foe-as-shipped")
         self.assertIn(str(tools), shipped["not_applicable"])
@@ -822,7 +1063,7 @@ class Running(Harness):
         (tools / tool_name).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         (tools / tool_name).chmod(0o755)
 
-        status, out, err = self.main(self.argv("--confirm-spend", "--tasks", str(tasks)))
+        status, out, err = self.main(self.argv("--confirm-spend", tasks=str(tasks)))
         self.assertEqual(status, run.DEPLOYMENT_FAULT, err)
         record = self.record("foe-configured")
         self.assertIsNone(record["classification"])
@@ -834,7 +1075,7 @@ class Running(Harness):
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 1)
 
         granted = self.root / "granted"
-        status, _, err = self.main(self.argv("--confirm-spend", "--tasks", str(tasks), "--tool-root", str(tools), "--out", str(granted)))
+        status, _, err = self.main(self.argv("--confirm-spend", tasks=str(tasks), tool_roots=[str(tools)], out=str(granted)))
         self.assertEqual(status, run.EVALUATED, err)
         record = json.loads(run.record_path(granted, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
         self.assertEqual(record["classification"], "correct-completion")

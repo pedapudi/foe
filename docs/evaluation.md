@@ -680,8 +680,13 @@ specification sentences the oracle added, and hashes the protected paths.
 
 ### Running it
 
-`run.py` prints every planned attempt with its ceilings and launches
-nothing without `--confirm-spend`. Each attempt materializes its task into
+A run is one JSON document naming the tasks, the arms, the attempts, the
+model route, the budget ceilings, the tool roots, the harness binaries, and
+the output directory, with defaults for everything a host can supply;
+`evals/cross_harness/runs/` holds the shipped ones. `run.py DOCUMENT`
+prints every value the document resolved to and every planned attempt with
+its ceilings, and launches nothing without `--confirm-spend`; `report.py
+DOCUMENT` summarizes the records. Each attempt materializes its task into
 a fresh root, runs the arm, snapshots the workspace before and after so
 that files a shell command wrote are attributed to the agent whose command
 was running, normalizes the harness's own record into one trajectory

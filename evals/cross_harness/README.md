@@ -56,29 +56,37 @@ python3 evals/cross_harness/containment_matrix.py --foe target/debug/foe
 python3 evals/cross_harness/probe.py --foe target/debug/foe --live
 ```
 
-The runner prints its plan and launches nothing without `--confirm-spend`.
-Every option is a flag; the runner sets one environment variable,
-`CODEX_HOME`, on the Codex child process, because Codex locates its
-credential and session files by it, and records the value.
+A run is one JSON document, as an episode is one contract document. The
+runner takes the document and one flag; it prints every value the document
+resolved to and every planned attempt with its ceilings, and launches
+nothing without `--confirm-spend`. The report takes the same document.
 
 ```sh
-python3 evals/cross_harness/run.py \
-  --foe target/debug/foe --codex "$(command -v codex)" --credential ~/.codex/auth.json \
-  --family autonomy --tasks evals/cross_harness/tasks/foe-tree \
-  --arms foe-configured,codex-equivalent --attempts 1 \
-  --route subscription --model gpt-5.6-sol --effort medium \
-  --budget model_calls=40 --budget seconds=900 \
-  --tool-root ~/.cargo/bin --tool-root ~/.cargo --tool-root ~/.rustup --tool-root /usr/lib/gcc \
-  --out ~/.local/state/foe/cross-harness/pilot-1
-python3 evals/cross_harness/run.py ... --confirm-spend
-python3 evals/cross_harness/report.py --records ~/.local/state/foe/cross-harness/pilot-1/records
+python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json
+python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json --confirm-spend
+python3 evals/cross_harness/report.py evals/cross_harness/runs/autonomy-pilot.json
 ```
 
-`--tool-root` names directories the foe documents add to their execute and
-read grants so that a task's check suite can run its toolchain; the tasks
-on foe's tree need cargo. The foe-as-shipped arms cannot take tool roots
-and are recorded as not applicable for such tasks. `--budget KEY=VALUE`
-overrides a task's ceiling for every attempt and is recorded.
+`runs/smoke.json` runs the example task under one foe arm and one Codex
+arm; `runs/autonomy-pilot.json` runs the two cheapest tasks on foe's tree
+under the four autonomy arms. A document's keys, with relative paths
+resolved against the document's own directory:
+
+| key | meaning |
+|---|---|
+| `tasks` | the directory of task directories; the family comes from their `task.json` files |
+| `select` | task names to run; every task under `tasks` when omitted |
+| `arms` | arm names; every arm of the family when omitted |
+| `attempts` | independent attempts per task and arm; default 1 |
+| `model` | `route` (`subscription` or `compatible`), `name`, `effort` (default `medium`); the compatible route adds `base_url` and `codex_wire_api` |
+| `budget` | ceilings that replace the same keys of every task's budget |
+| `tool_roots` | directories the foe documents add to their read and execute grants so a check suite can run its toolchain; the tasks on foe's tree need cargo, and the foe-as-shipped arms, which cannot take them, are recorded as not applicable |
+| `harnesses` | `foe` (default the debug build under the checkout), `codex` (default the command on PATH), `credential` (default `~/.codex/auth.json`); the last two are needed only by a Codex arm |
+| `out` | where attempts, records, and the report are written; default `~/.local/state/foe/cross-harness/<document stem>` |
+
+The runner sets one environment variable, `CODEX_HOME`, on the Codex child
+process, because Codex locates its credential and session files by it, and
+records the value.
 
 ## Tests
 

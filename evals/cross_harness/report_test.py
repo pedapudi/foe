@@ -207,26 +207,36 @@ class Metrics(unittest.TestCase):
         rendered = report.markdown(report.build([skipped, record("solvable-2", "foe-as-shipped", 1, "correct-completion")], resamples=10, seed=0))
         self.assertIn("| `foe-as-shipped` | 2 | 1 | 0 | 1 | 1.00 (1/1) |", rendered)
 
-    def test_main_writes_both_files_and_refuses_a_malformed_record(self) -> None:
+    def test_main_reads_the_documents_out_writes_both_files_and_refuses_a_malformed_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            records = Path(tmp) / "records"
+            # The document names its out directory relative to itself, as run.py resolves it.
+            document = Path(tmp) / "runs" / "pilot.json"
+            document.parent.mkdir()
+            document.write_text(json.dumps({"tasks": "../tasks", "model": {"route": "subscription", "name": "m"}, "out": "../state/pilot"}), encoding="utf-8")
+            out_dir = Path(tmp) / "state" / "pilot"
+            records = out_dir / "records"
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                status = report.main([str(document)])
+            self.assertEqual(status, 2)
+            self.assertIn(f"the records directory {records} does not exist", err.getvalue())
             for item in self.records():
                 path = records / item["task"]["name"] / item["arm"] / f"{item['attempt']:02d}.json"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(item), encoding="utf-8")
-            out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                status = report.main(["--records", str(records), "--resamples", "50"])
+                status = report.main([str(document), "--resamples", "50"])
             self.assertEqual(status, 0, err.getvalue())
-            self.assertTrue((Path(tmp) / "report.md").is_file())
-            written = json.loads((Path(tmp) / "report.json").read_text(encoding="utf-8"))
+            self.assertTrue((out_dir / "report.md").is_file())
+            written = json.loads((out_dir / "report.json").read_text(encoding="utf-8"))
             self.assertEqual(written["records"], 11)
             self.assertEqual(written["settings"]["resamples"], 50)
             self.assertIn("## Paired comparisons", out.getvalue())
+            self.assertIn(f"report: {out_dir / 'report.json'}", out.getvalue())
             broken = records / "solvable-1" / "foe-configured" / "03.json"
             broken.write_text(json.dumps({"task": {"name": "solvable-1"}}), encoding="utf-8")
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                status = report.main(["--records", str(records)])
+                status = report.main([str(document)])
             self.assertEqual(status, 2)
             self.assertIn(str(broken), err.getvalue())
             # A record whose task names a family without declared pairs is refused by path and family.
@@ -234,9 +244,15 @@ class Metrics(unittest.TestCase):
             unknown["task"]["family"] = "other"
             broken.write_text(json.dumps(unknown), encoding="utf-8")
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                status = report.main(["--records", str(records)])
+                status = report.main([str(document)])
             self.assertEqual(status, 2)
             self.assertIn("task.family is 'other'", err.getvalue())
+            # A document with an unknown key is refused by the runner's rule before any record is read.
+            document.write_text(json.dumps({"tasks": "../tasks", "records": str(records)}), encoding="utf-8")
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                status = report.main([str(document)])
+            self.assertEqual(status, 2)
+            self.assertIn(f"{document}: key records is unknown", err.getvalue())
 
 
 if __name__ == "__main__":

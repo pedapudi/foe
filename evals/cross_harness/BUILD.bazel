@@ -16,6 +16,7 @@ filegroup(
             "tasks/examples/**",
             "tasks/foe-tree/*/task.json",
             "tasks/foe-tree/*/grader/**",
+            "runs/*.json",
         ],
         exclude = ["tasks/foe-tree/*/workspace/**"],
     ),
@@ -59,12 +60,14 @@ sh_binary(
     ],
 )
 
-# The model-backed runner. It prints its plan and launches nothing without
-# `--confirm-spend`.
+# The model-backed runner: `bazel run //evals/cross_harness:run -- DOCUMENT`.
+# It prints its plan and launches nothing without `--confirm-spend`. A run
+# document that names no foe binary resolves to the debug build under the
+# checkout; name `bazel-bin/crates/cli/foe` in the document to run the Bazel
+# build.
 sh_binary(
     name = "run",
     srcs = ["run.py"],
-    args = ["--foe", "$(rootpath //:foe)"],
     data = [
         ":sources",
         ":support",

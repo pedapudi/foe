@@ -53,10 +53,12 @@ of a resampled task comes along, and the interval holds the 2.5th and
 number of tasks it rests on, which is the number of clusters resampled.
 Both are computed in the standard library, so the report needs no package.
 
-    report.py --records DIR [--out DIR] [--resamples N] [--seed N]
+    report.py DOCUMENT [--resamples N] [--seed N]
 
-The report is written as `report.json` and `report.md` under `--out`, by
-default the parent of the records directory, and the Markdown is printed.
+`DOCUMENT` is the run document `run.py` ran; the report reads the
+document's `out` directory by the runner's own rule and summarizes the
+records under `<out>/records`. It is written as `report.json` and
+`report.md` under `out`, and the Markdown is printed.
 """
 
 from __future__ import annotations
@@ -69,9 +71,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "tasks"))
+HERE = Path(__file__).resolve().parent
+for directory in (HERE, HERE / "tasks"):
+    sys.path.insert(0, str(directory))
 
 import protocol  # noqa: E402
+import run  # noqa: E402
 
 SCHEMA_VERSION = 1
 DEFAULT_RESAMPLES = 2000
@@ -108,7 +113,7 @@ Predicate = Callable[[dict[str, Any]], bool]
 def load_records(records_dir: Path) -> list[dict[str, Any]]:
     """Every record under the directory, in path order; errors name the file and the missing key."""
     if not records_dir.is_dir():
-        raise FileNotFoundError(f"--records {records_dir} is not a directory")
+        raise FileNotFoundError(f"the records directory {records_dir} does not exist; run.py writes it under the document's out")
     records: list[dict[str, Any]] = []
     for path in sorted(records_dir.rglob("*.json")):
         try:
@@ -468,20 +473,20 @@ def markdown(report: dict[str, Any]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--records", required=True, type=Path, help="the records directory run.py wrote")
-    parser.add_argument("--out", type=Path, default=None, help="where report.json and report.md are written; the records directory's parent when omitted")
+    parser.add_argument("document", type=Path, help="the run document run.py ran; the report reads its out directory")
     parser.add_argument("--resamples", type=int, default=DEFAULT_RESAMPLES, help=f"bootstrap resamples; default {DEFAULT_RESAMPLES}")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help=f"the bootstrap generator's seed; default {DEFAULT_SEED}")
     args = parser.parse_args(argv)
     try:
-        records = load_records(args.records.resolve())
+        out = run.document_out(run.read_document(args.document))
+        records_dir = out / run.RECORDS_DIR
+        records = load_records(records_dir)
         if not records:
-            raise ValueError(f"no record under {args.records.resolve()}")
+            raise ValueError(f"no record under {records_dir}")
         report = build(records, args.resamples, args.seed)
     except (ValueError, FileNotFoundError) as exc:
         print(f"cross harness report: {exc}", file=sys.stderr)
         return 2
-    out = (args.out or args.records.resolve().parent).resolve()
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     rendered = markdown(report)

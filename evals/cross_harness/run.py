@@ -30,16 +30,56 @@ wrote is attributed to the agent that ran the command. It then reduces the
 harness's own records to the shared trajectory schema, grades the workspace
 with the task's hidden grader, and classifies the graded outcome into one
 confusion cell of `tasks/protocol.py`. One JSON record per attempt is
-written under `--out/records/<task>/<arm>/`. `report.py` reads those
+written under `<out>/records/<task>/<arm>/`. `report.py` reads those
 records.
+
+The runner takes one run document, a JSON file, and launches nothing
+without `--confirm-spend`:
+
+    run.py DOCUMENT [--confirm-spend]
+
+The document's keys follow. An unknown key and a value of the wrong type
+are refused by name. A relative path resolves against the directory the
+document is in, and a leading `~` expands to the home directory.
+
+    tasks           a directory holding task directories; required
+    select          the task names to run; every task under `tasks` when absent
+    arms            the arm names to run; every arm of the family when absent
+    attempts        independent attempts per task and arm; default 1
+    model           an object: `route` (subscription or compatible), `name`,
+                    `effort` (default medium); on the compatible route
+                    `base_url` (required there and refused on the subscription
+                    route) and `codex_wire_api` (chat or responses, default chat)
+    budget          an object whose keys, from `model_calls`, `input_tokens`,
+                    `output_tokens`, and `seconds`, replace the same key of every
+                    task's budget for every attempt of the run
+    tool_roots      directories every foe document arm may read and execute
+    harnesses       an object: `foe` (default `target/debug/foe` under the git
+                    checkout holding the document, or the one holding the
+                    current directory when the document is outside any),
+                    `codex` (a path, or a bare command name looked up on PATH;
+                    default `codex`), and `credential` (the auth.json a Codex
+                    login wrote; default `~/.codex/auth.json`); only a Codex
+                    arm needs `codex` and `credential`, and they are refused
+                    as missing only when such an arm is selected
+    out             where attempts and records are written; default
+                    `~/.local/state/foe/cross-harness/<document file stem>`
+    grader_timeout  seconds one grade script may run
+    source_root     a path inside the foe checkout the binary was built from;
+                    the binary's own path when absent
+
+The family is the one the selected tasks declare in their `task.json`; a
+selection spanning two families is refused naming both. The run file
+records the resolved document under `document`, so a reader can verify the
+run from the document alone.
 
 A document arm grants the whole workspace for writing unless the task
 metadata names `write_roots` under it, and for executing in every case,
 because a check suite runs the build scripts and test binaries its build
 wrote there. A tool root is a tree the episode may read, enumerate, and
-execute: the system directories of
-`contracts/graphs.py`, every `--tool-root`, and every path the task
-metadata names under `tool_roots`. Each enters the execute grant of every
+execute: the system directories of `contracts/graphs.py`, every directory
+of the run document's `tool_roots`, and every path the task metadata names
+under `tool_roots`. Each enters the execute grant of every
 contract in the document, and the ones beyond the system directories enter
 the read grant as well, because a compiler enumerates its own installation.
 The document's `check` tool runs the task's check suite with the tool roots
@@ -60,9 +100,9 @@ names `tool_roots` has its foe-as-shipped attempts recorded as not
 applicable, with the reason, and no such attempt runs.
 
 Every attempt runs under the task's budget: `model_calls`, `input_tokens`,
-`output_tokens`, and `seconds`. A `--budget KEY=VALUE` argument replaces
-one key of that budget for every attempt of the run; the run file and every
-record state the effective budget and the overrides. The two harnesses
+`output_tokens`, and `seconds`. Each key of the document's `budget`
+replaces that key of every task's budget for every attempt of the run; the
+run file and every record state the effective budget and the overrides. The two harnesses
 enforce the ceilings differently. A foe document declares every ceiling,
 and the runtime enforces `model_calls` inside the episode. Codex has no
 model-call ceiling: the budget watcher enforces the token ceilings and the
@@ -81,18 +121,16 @@ changed paths, so that a record from a development tree stays
 identifiable.
 
 The runner calls a real model and spends real credit, so without
-`--confirm-spend` it prints every planned attempt with the effective
-ceilings each one runs under and exits 2 without launching anything.
-
-    run.py --foe PATH --codex PATH --family autonomy|teams --tasks DIR [--task NAME]...
-           [--arms NAME,...] --attempts N --route subscription|compatible [--base-url URL]
-           --model MODEL [--effort EFFORT] --out DIR [--credential PATH]
-           [--tool-root PATH]... [--budget KEY=VALUE]... [--confirm-spend]
+`--confirm-spend` it prints every value the document resolved to and every
+planned attempt with the effective ceilings each one runs under, and exits
+2 without launching anything.
 
 Configuration reaches every child process as command-line arguments or as
 documents. The one exception is `CODEX_HOME`, which the Codex arm sets on
 its child because Codex locates its files by it; every record names the
-directory it was given. This module reads no environment variable.
+directory it was given. This module reads the environment in two places
+the document's rules call for: the PATH lookup of a bare `harnesses.codex`
+command name, and the home directory a leading `~` expands to.
 """
 
 from __future__ import annotations
@@ -101,6 +139,7 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -143,6 +182,22 @@ TEAM_CONCURRENCY = 4
 
 DEFAULT_EFFORT = "medium"
 DEFAULT_GRADER_TIMEOUT_SECONDS = feature_removal.GRADE_TIMEOUT_SECONDS
+
+# The keys of a run document, of its `model` object, and of its `harnesses` object; the module docstring states each one.
+DOCUMENT_KEYS: tuple[str, ...] = ("tasks", "select", "arms", "attempts", "model", "budget", "tool_roots", "harnesses", "out", "grader_timeout", "source_root")
+MODEL_KEYS: tuple[str, ...] = ("route", "name", "effort", "base_url", "codex_wire_api")
+HARNESS_KEYS: tuple[str, ...] = ("foe", "codex", "credential")
+# The foe binary a document without `harnesses.foe` runs, under the git checkout the document or the current directory is in.
+DEFAULT_FOE = "target/debug/foe"
+# The Codex command a document without `harnesses.codex` looks up on PATH.
+DEFAULT_CODEX = "codex"
+# The credential a document without `harnesses.credential` copies: the auth.json a Codex login writes.
+DEFAULT_CREDENTIAL = "~/.codex/auth.json"
+# A document without `out` writes under this directory, in a subdirectory named by the document's file stem.
+DEFAULT_OUT_ROOT = "~/.local/state/foe/cross-harness"
+DEFAULT_CODEX_WIRE_API = "chat"
+# The entry a git checkout's root holds: a directory, or the file a worktree keeps in its place.
+GIT_ENTRY = ".git"
 
 RECORDS_DIR, ATTEMPTS_DIR, RUN_FILE = "records", "attempts", "run.json"
 CHECK_SCRIPT_NAME = "check"
@@ -220,7 +275,7 @@ def arm_by_name(family: str, name: str) -> Arm:
     for arm in ARMS[family]:
         if arm.name == name:
             return arm
-    raise ValueError(f"--arms names {name!r}, which is not an arm of the {family} family; choose from: {', '.join(arm.name for arm in ARMS[family])}")
+    raise ValueError(f"key arms names {name!r}, which is not an arm of the {family} family; the arms are {', '.join(arm.name for arm in ARMS[family])}")
 
 
 @dataclass(frozen=True)
@@ -240,9 +295,9 @@ class Settings:
     codex_wire_api: str
     grader_timeout: int
     source_root: Path
-    # Absolute paths every document arm may read and execute, from --tool-root.
+    # Absolute paths every document arm may read and execute, from the document's `tool_roots`.
     tool_roots: tuple[str, ...] = ()
-    # The budget keys `--budget` replaces for every attempt of the run.
+    # The budget keys the document's `budget` replaces for every attempt of the run.
     budget_overrides: dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -273,52 +328,301 @@ class Selected:
     task: protocol.Task
 
 
-def discover_tasks(tasks_dir: Path, family: str, names: list[str] | None) -> list[Selected]:
-    """The task directories under `tasks_dir` of the family, or the named ones; errors name the path or the name."""
+def discover_tasks(tasks_dir: Path, names: Sequence[str] | None) -> list[Selected]:
+    """Every task directory under `tasks_dir`, or the ones `select` names in that order; errors name the key and the path or the name."""
     if not tasks_dir.is_dir():
-        raise FileNotFoundError(f"--tasks {tasks_dir} is not a directory")
+        raise FileNotFoundError(f"key tasks names {tasks_dir}, which is not a directory")
     found: dict[str, Selected] = {}
     for directory in sorted(path for path in tasks_dir.iterdir() if path.is_dir() and (path / protocol.TASK_FILE).is_file()):
         task = protocol.load(directory)
         if task.name in found:
             raise ValueError(f"{directory} and {found[task.name].directory} both declare the task {task.name!r}")
         found[task.name] = Selected(directory, task)
-    if names:
-        selected = []
-        for name in names:
-            if name not in found:
-                raise ValueError(f"--task {name!r} is not a task under {tasks_dir}; found: {', '.join(sorted(found)) or 'none'}")
-            if found[name].task.family != family:
-                raise ValueError(f"--task {name!r} belongs to the {found[name].task.family} family rather than {family}")
-            selected.append(found[name])
-        return selected
-    return [entry for entry in found.values() if entry.task.family == family]
+    if names is None:
+        if not found:
+            raise ValueError(f"key tasks names {tasks_dir}, which holds no task directory")
+        return list(found.values())
+    selected = []
+    for name in names:
+        if name not in found:
+            raise ValueError(f"key select names {name!r}, which is not a task under {tasks_dir}; the tasks are {', '.join(sorted(found)) or 'none'}")
+        selected.append(found[name])
+    return selected
 
 
-def parse_budget(values: Sequence[str] | None) -> dict[str, int]:
-    """The budget overrides `--budget KEY=VALUE` arguments name; every error names the argument."""
+def shared_family(tasks: list[Selected], tasks_dir: Path) -> str:
+    """The one family every selected task declares; a selection spanning two families is refused naming both."""
+    first_of: dict[str, str] = {}
+    for entry in tasks:
+        first_of.setdefault(entry.task.family, entry.task.name)
+    if len(first_of) > 1:
+        (family_a, name_a), (family_b, name_b) = list(first_of.items())[:2]
+        raise ValueError(f"the selected tasks under {tasks_dir} span two families: {name_a} is {family_a} and {name_b} is {family_b}; use select to name the tasks of one family")
+    return next(iter(first_of))
+
+
+def select_arms(names: Sequence[str] | None, family: str) -> list[Arm]:
+    """The arms the document's `arms` names, in that order, or every arm of the family when the key is absent."""
+    if names is None:
+        return list(ARMS[family])
+    if not names:
+        raise ValueError(f"key arms is []; expected at least one arm name from {', '.join(arm.name for arm in ARMS[family])}")
+    if len(set(names)) != len(names):
+        raise ValueError("key arms names an arm twice")
+    return [arm_by_name(family, name) for name in names]
+
+
+def parse_budget(value: Any, document: Path) -> dict[str, int]:
+    """The budget overrides the document's `budget` object names; every error names the document and the key."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{document}: key budget is {value!r}; expected an object over the keys {', '.join(protocol.BUDGET_KEYS)}")
     overrides: dict[str, int] = {}
-    for text in values or []:
-        key, separator, value = text.partition("=")
-        key = key.strip()
-        if not separator or not key:
-            raise ValueError(f"--budget {text!r} is not of the form KEY=VALUE; the keys are {', '.join(protocol.BUDGET_KEYS)}")
+    for key, number in value.items():
         if key not in protocol.BUDGET_KEYS:
-            raise ValueError(f"--budget names {key!r}, which is not a budget key; the keys are {', '.join(protocol.BUDGET_KEYS)}")
-        if key in overrides:
-            raise ValueError(f"--budget names {key} twice")
-        try:
-            number = int(value.strip())
-        except ValueError:
-            raise ValueError(f"--budget {key}={value!r} is not an integer") from None
-        if number <= 0:
-            raise ValueError(f"--budget {key}={number} is not a positive integer")
+            raise ValueError(f"{document}: key budget.{key} is not a budget key; the keys are {', '.join(protocol.BUDGET_KEYS)}")
+        if isinstance(number, bool) or not isinstance(number, int) or number <= 0:
+            raise ValueError(f"{document}: key budget.{key} is {number!r}; expected a positive integer")
         overrides[key] = number
     return overrides
 
 
+class Keyed:
+    """Typed reads of one object of a run document; every error names the document and the qualified key."""
+
+    def __init__(self, document: Path, data: dict[str, Any], prefix: str = "") -> None:
+        self.document = document
+        self.data = data
+        self.prefix = prefix
+
+    def error(self, key: str, rule: str) -> ValueError:
+        return ValueError(f"{self.document}: key {self.prefix}{key} {rule}")
+
+    def refuse_unknown(self, known: Sequence[str]) -> None:
+        for key in self.data:
+            if key not in known:
+                raise self.error(key, f"is unknown; the keys are {', '.join(known)}")
+
+    def string(self, key: str, default: str | None = None, choices: Sequence[str] | None = None, required: bool = False) -> str | None:
+        value = self.data.get(key, default)
+        if value is None:
+            if required:
+                raise self.error(key, "is absent; expected a non-empty string" + (f" from {', '.join(choices)}" if choices else ""))
+            return None
+        if not isinstance(value, str) or not value:
+            raise self.error(key, f"is {value!r}; expected a non-empty string")
+        if choices is not None and value not in choices:
+            raise self.error(key, f"is {value!r}; expected one of {', '.join(choices)}")
+        return value
+
+    def positive_integer(self, key: str, default: int) -> int:
+        value = self.data.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise self.error(key, f"is {value!r}; expected a positive integer")
+        return value
+
+    def strings(self, key: str) -> list[str] | None:
+        value = self.data.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise self.error(key, f"is {value!r}; expected a list of non-empty strings")
+        return list(value)
+
+    def obj(self, key: str, known: Sequence[str], required: bool = False) -> Keyed:
+        value = self.data.get(key)
+        if value is None:
+            if required:
+                raise self.error(key, f"is absent; expected an object with the keys {', '.join(known)}")
+            value = {}
+        if not isinstance(value, dict):
+            raise self.error(key, f"is {value!r}; expected an object with the keys {', '.join(known)}")
+        nested = Keyed(self.document, value, f"{self.prefix}{key}.")
+        nested.refuse_unknown(known)
+        return nested
+
+
+def read_document(path: Path) -> Keyed:
+    """The run document at `path` as an object with no unknown key; an unreadable file, a file that is not JSON, and a value that is not an object are refused by path."""
+    resolved = path.resolve()
+    try:
+        text = resolved.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise FileNotFoundError(f"the run document {resolved} cannot be read: {exc.strerror}") from None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"the run document {resolved} is not JSON: {exc}") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"the run document {resolved} is not an object; the keys are {', '.join(DOCUMENT_KEYS)}")
+    keyed = Keyed(resolved, data)
+    keyed.refuse_unknown(DOCUMENT_KEYS)
+    return keyed
+
+
+def document_path(keyed: Keyed, value: str) -> Path:
+    """A path the document names: a leading ~ expands to the home directory, and a relative path resolves against the document's directory."""
+    expanded = Path(value).expanduser()
+    return (expanded if expanded.is_absolute() else keyed.document.parent / expanded).resolve()
+
+
+def document_out(keyed: Keyed) -> Path:
+    """The document's `out` directory, or the directory under DEFAULT_OUT_ROOT named by the document's file stem."""
+    named = keyed.string("out")
+    if named is None:
+        return (Path(DEFAULT_OUT_ROOT).expanduser() / keyed.document.stem).resolve()
+    return document_path(keyed, named)
+
+
+def checkout_root(start: Path) -> Path | None:
+    """The nearest directory at or above `start` holding GIT_ENTRY, or None when no ancestor does."""
+    for candidate in (start, *start.parents):
+        if (candidate / GIT_ENTRY).exists():
+            return candidate
+    return None
+
+
+@dataclass(frozen=True)
+class Document:
+    """One run document with every default applied and every path resolved.
+
+    `codex` is the executable `harnesses.codex` resolved to: the PATH
+    lookup of a bare command name, or the named path; it is None when the
+    lookup found nothing. `credential` is the named file whether or not it
+    exists. `codex_fault` and `credential_fault` name what stops a Codex
+    arm, and the runner refuses them only when a Codex arm is selected.
+    """
+
+    path: Path
+    tasks: Path
+    select: tuple[str, ...] | None
+    arms: tuple[str, ...] | None
+    attempts: int
+    route: str
+    model: str
+    effort: str
+    base_url: str | None
+    codex_wire_api: str
+    budget: dict[str, int]
+    tool_roots: tuple[str, ...]
+    foe: Path
+    # The value of `harnesses.codex` as written, or DEFAULT_CODEX.
+    codex_named: str
+    codex: Path | None
+    credential: Path
+    out: Path
+    grader_timeout: int
+    source_root: Path
+
+    def codex_fault(self) -> str | None:
+        if self.codex is None:
+            return f"key harnesses.codex names {self.codex_named!r}, which is absent from PATH"
+        if not self.codex.is_file() or not os.access(self.codex, os.X_OK):
+            return f"key harnesses.codex names {self.codex}, which is not an executable file"
+        return None
+
+    def credential_fault(self) -> str | None:
+        if not self.credential.is_file():
+            return f"key harnesses.credential names {self.credential}, which is not a file"
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "tasks": str(self.tasks),
+            "select": None if self.select is None else list(self.select),
+            "arms": None if self.arms is None else list(self.arms),
+            "attempts": self.attempts,
+            "model": {"route": self.route, "name": self.model, "effort": self.effort, "base_url": self.base_url, "codex_wire_api": self.codex_wire_api},
+            "budget": dict(self.budget),
+            "tool_roots": list(self.tool_roots),
+            "harnesses": {"foe": str(self.foe), "codex": None if self.codex is None else str(self.codex), "codex_named": self.codex_named, "credential": str(self.credential)},
+            "out": str(self.out),
+            "grader_timeout": self.grader_timeout,
+            "source_root": str(self.source_root),
+        }
+
+
+def load_document(path: Path) -> Document:
+    """The run document at `path`, checked key by key and resolved; every error names the document and the key.
+
+    The checks that depend on the selected arms, whether the Codex binary
+    and the credential exist, are left to the caller through
+    `Document.codex_fault` and `Document.credential_fault`.
+    """
+    keyed = read_document(path)
+    tasks = document_path(keyed, keyed.string("tasks", required=True))
+    select = keyed.strings("select")
+    if select is not None and not select:
+        raise keyed.error("select", "is []; expected at least one task name, or no select key to run every task")
+    arms = keyed.strings("arms")
+    attempts = keyed.positive_integer("attempts", 1)
+    model = keyed.obj("model", MODEL_KEYS, required=True)
+    route = model.string("route", choices=ROUTES, required=True)
+    name = model.string("name", required=True)
+    effort = model.string("effort", DEFAULT_EFFORT)
+    base_url = model.string("base_url")
+    wire_api = model.string("codex_wire_api", choices=CODEX_WIRE_APIS)
+    if route == "compatible":
+        if base_url is None:
+            raise model.error("base_url", "is absent; the compatible route needs the server's base URL, ending in /v1")
+    else:
+        if base_url is not None:
+            raise model.error("base_url", f"is {base_url!r}; the {route} route reaches the model without a base URL, so the key is refused there")
+        if wire_api is not None:
+            raise model.error("codex_wire_api", f"is {wire_api!r}; the key names the compatible server's wire format and is refused on the {route} route")
+    budget = parse_budget(keyed.data.get("budget"), keyed.document)
+    tool_roots_: list[str] = []
+    for root in keyed.strings("tool_roots") or []:
+        resolved = document_path(keyed, root)
+        if not resolved.exists():
+            raise keyed.error("tool_roots", f"names {root!r}, which resolves to {resolved} and does not exist")
+        tool_roots_.append(str(resolved))
+    harnesses = keyed.obj("harnesses", HARNESS_KEYS)
+    foe_named = harnesses.string("foe")
+    if foe_named is None:
+        checkout = checkout_root(keyed.document.parent) or checkout_root(Path.cwd())
+        if checkout is None:
+            raise harnesses.error("foe", f"is absent, and neither the document's directory {keyed.document.parent} nor the current directory {Path.cwd()} is inside a git checkout, so the default {DEFAULT_FOE} has no checkout to resolve against")
+        foe = checkout / DEFAULT_FOE
+    else:
+        foe = document_path(keyed, foe_named)
+    if not foe.is_file() or not os.access(foe, os.X_OK):
+        raise harnesses.error("foe", f"names {foe}, which is not an executable file")
+    codex_named = harnesses.string("codex", DEFAULT_CODEX) or DEFAULT_CODEX
+    if "/" in codex_named:
+        codex: Path | None = document_path(keyed, codex_named)
+    else:
+        found = shutil.which(codex_named)
+        codex = None if found is None else Path(found).resolve()
+    credential = document_path(keyed, harnesses.string("credential", DEFAULT_CREDENTIAL) or DEFAULT_CREDENTIAL)
+    source_named = keyed.string("source_root")
+    return Document(
+        path=keyed.document,
+        tasks=tasks,
+        select=None if select is None else tuple(select),
+        arms=None if arms is None else tuple(arms),
+        attempts=attempts,
+        route=route,
+        model=name,
+        effort=effort or DEFAULT_EFFORT,
+        base_url=base_url,
+        codex_wire_api=wire_api or DEFAULT_CODEX_WIRE_API,
+        budget=budget,
+        tool_roots=tuple(tool_roots_),
+        foe=foe,
+        codex_named=codex_named,
+        codex=codex,
+        credential=credential,
+        out=document_out(keyed),
+        grader_timeout=keyed.positive_integer("grader_timeout", DEFAULT_GRADER_TIMEOUT_SECONDS),
+        source_root=foe if source_named is None else document_path(keyed, source_named),
+    )
+
+
 def effective_budget(settings: Settings, task: protocol.Task) -> dict[str, int]:
-    """The task's budget with the run's `--budget` overrides applied, over every key of `protocol.BUDGET_KEYS`."""
+    """The task's budget with the run's overrides applied, over every key of `protocol.BUDGET_KEYS`."""
     return {key: settings.budget_overrides.get(key, task.budget[key]) for key in protocol.BUDGET_KEYS}
 
 
@@ -358,13 +662,48 @@ def planned(tasks: list[Selected], arms: list[Arm], attempts: int) -> list[tuple
     return [(attempt, entry, arm) for attempt in range(1, attempts + 1) for entry in tasks for arm in rotated(arms, attempt)]
 
 
-def plan(settings: Settings, tasks: list[Selected], arms: list[Arm]) -> str:
-    """State every attempt and the largest spend the run can incur, before any model is called."""
+def header(document: Document, settings: Settings, tasks: list[Selected], arms: list[Arm]) -> list[str]:
+    """Every value the run document resolved to, one per line, so that a reader can verify the run from the document alone."""
+    if settings.codex is None:
+        codex = f"none; {document.codex_fault()}, and no selected arm needs it"
+    elif "/" in document.codex_named:
+        codex = str(settings.codex)
+    else:
+        codex = f"{settings.codex} (the command {document.codex_named!r} on PATH)"
+    credential = f"none; {document.credential_fault()}, and no selected arm needs it" if settings.credential is None else str(settings.credential)
+    overrides = ", ".join(f"{key}={value}" for key, value in settings.budget_overrides.items())
+    rows = [
+        ("tasks", str(document.tasks)),
+        ("family", settings.family),
+        ("selected", ", ".join(entry.task.name for entry in tasks) + ("" if document.select is not None else " (every task under tasks)")),
+        ("arms", ", ".join(arm.name for arm in arms) + ("" if document.arms is not None else f" (every arm of the {settings.family} family)")),
+        ("attempts", str(settings.attempts)),
+        ("foe", str(settings.foe)),
+        ("codex", codex),
+        ("credential", credential),
+        ("route", settings.route),
+        ("model", settings.model),
+        ("effort", settings.effort),
+        ("out", str(settings.out)),
+        ("tool roots", ", ".join(settings.tool_roots) or "none beyond the system roots"),
+        ("budget", f"{overrides} replace the same keys of every task's budget" if overrides else "every task's own budget"),
+        ("grader timeout", f"{settings.grader_timeout} seconds"),
+        ("source root", str(settings.source_root)),
+    ]
+    if settings.route == "compatible":
+        rows[9:9] = [("base URL", str(settings.base_url)), ("codex wire API", settings.codex_wire_api)]
+    width = max(len(label) for label, _ in rows)
+    return [f"Run document {document.path} resolved to:", *[f"  {label:<{width}}  {value}" for label, value in rows], ""]
+
+
+def plan(settings: Settings, tasks: list[Selected], arms: list[Arm], document: Document) -> str:
+    """State every resolved value, every attempt, and the largest spend the run can incur, before any model is called."""
     triples = planned(tasks, arms, settings.attempts)
     attempt_word = "attempt" if settings.attempts == 1 else "attempts"
     task_word = "task" if len(tasks) == 1 else "tasks"
     arm_word = "arm" if len(arms) == 1 else "arms"
     lines = [
+        *header(document, settings, tasks, arms),
         f"This evaluation calls {settings.model} over the {settings.route} route and spends real credit.",
         f"Largest spend it can incur, at {settings.attempts} {attempt_word} of each of {len(tasks)} {task_word} under {len(arms)} {arm_word}:",
         "",
@@ -387,7 +726,7 @@ def plan(settings: Settings, tasks: list[Selected], arms: list[Arm]) -> str:
     lines.append(f"  {totals['model_calls']:>11}  {totals['input_tokens']:>9,}  {totals['output_tokens']:>8,}  {totals['seconds']:>7}  every planned attempt")
     if settings.budget_overrides:
         lines.append("")
-        lines.append("The ceilings above are the effective ones: --budget replaces " + ", ".join(f"{key}={value}" for key, value in settings.budget_overrides.items()) + " in every task's budget.")
+        lines.append("The ceilings above are the effective ones: the document's budget replaces " + ", ".join(f"{key}={value}" for key, value in settings.budget_overrides.items()) + " in every task's budget.")
     if skipped:
         lines.append("")
         lines.append("Recorded as not applicable and never launched:")
@@ -411,7 +750,7 @@ def plan(settings: Settings, tasks: list[Selected], arms: list[Arm]) -> str:
         lines.extend(
             [
                 "A check suite that needs a command outside those roots cannot run under foe, and the attempt",
-                "is then recorded as a fault. Add --tool-root for each installation such a command lives in.",
+                "is then recorded as a fault. Add each installation such a command lives in to the document's tool_roots.",
                 "",
             ]
         )
@@ -507,7 +846,7 @@ def write_roots(task: protocol.Task, workspace: Path) -> tuple[bool, list[str]]:
 
 
 def tool_roots(settings: Settings, task: protocol.Task) -> list[str]:
-    """The tool roots of a document arm: the system roots, the run's `--tool-root` paths, and the task's `tool_roots`."""
+    """The tool roots of a document arm: the system roots, the run document's `tool_roots`, and the task metadata's `tool_roots`."""
     named = task.metadata.get(METADATA_TOOL_ROOTS)
     if named is None:
         named = []
@@ -595,7 +934,7 @@ def foe_route(settings: Settings) -> foe_arm.ModelRoute:
     provider = FOE_PROVIDERS[settings.route]
     if settings.route == "compatible":
         if not settings.base_url:
-            raise ValueError("--route compatible needs --base-url; docs/models.md requires base_url for compatible-http")
+            raise ValueError("the compatible route needs model.base_url; docs/models.md requires base_url for compatible-http")
         return foe_arm.ModelRoute(provider, settings.model, settings.base_url)
     return foe_arm.ModelRoute(provider, settings.model)
 
@@ -612,7 +951,7 @@ def codex_providers(settings: Settings) -> dict[str, dict[str, Any]] | None:
     if settings.route != "compatible":
         return None
     if not settings.base_url:
-        raise ValueError("--route compatible needs --base-url; the Codex provider override carries it as base_url")
+        raise ValueError("the compatible route needs model.base_url; the Codex provider override carries it as base_url")
     return {CODEX_COMPATIBLE_PROVIDER: {"name": CODEX_COMPATIBLE_PROVIDER, "base_url": settings.base_url, "wire_api": settings.codex_wire_api}}
 
 
@@ -719,7 +1058,7 @@ def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, 
     if arm.kind == "builtin":
         return run_builtin(arm, settings.foe, task, workspace, attempt_dir / "log", artifacts, foe_route(settings), seconds)
     if settings.codex is None or settings.credential is None:
-        raise ValueError(f"arm {arm.name} needs --codex and --credential")
+        raise ValueError(f"arm {arm.name} needs harnesses.codex and harnesses.credential")
     spec = codex_arm.CodexSpec(
         arm_name=arm.name,
         codex=settings.codex,
@@ -991,100 +1330,46 @@ def provenance_of(settings: Settings, needs_codex: bool) -> dict[str, Any]:
     }
 
 
-def parse_arms(text: str | None, family: str) -> list[Arm]:
-    if not text:
-        return list(ARMS[family])
-    names = [name.strip() for name in text.split(",") if name.strip()]
-    if not names:
-        raise ValueError(f"--arms {text!r} names no arm; choose from: {', '.join(arm.name for arm in ARMS[family])}")
-    if len(set(names)) != len(names):
-        raise ValueError("--arms names an arm twice")
-    return [arm_by_name(family, name) for name in names]
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0], epilog="Exit status 0 means every attempt evaluated the harness, 1 that at least one attempt hit a deployment fault, and 2 that nothing was launched.")
-    parser.add_argument("--foe", required=True, type=Path, help="the foe binary")
-    parser.add_argument("--codex", type=Path, default=None, help="the codex binary; needed by a Codex arm")
-    parser.add_argument("--family", required=True, choices=protocol.FAMILIES, help="the task family")
-    parser.add_argument("--tasks", required=True, type=Path, help="a directory holding task directories")
-    parser.add_argument("--task", action="append", default=None, help="run only this task; may be repeated")
-    parser.add_argument("--arms", default=None, help="comma-separated arm names; every arm of the family when omitted")
-    parser.add_argument("--attempts", type=int, default=1, help="independent attempts per task and arm")
-    parser.add_argument("--route", required=True, choices=ROUTES, help="how the model is reached")
-    parser.add_argument("--base-url", default=None, help="the compatible server's base URL, ending in /v1")
-    parser.add_argument("--model", required=True, help="the model name both harnesses request")
-    parser.add_argument("--effort", default=DEFAULT_EFFORT, help=f"the reasoning effort both harnesses request; default {DEFAULT_EFFORT}")
-    parser.add_argument("--out", required=True, type=Path, help="where attempts and records are written")
-    parser.add_argument("--credential", type=Path, default=None, help="the Codex auth.json a login wrote; needed by a Codex arm")
-    parser.add_argument("--codex-wire-api", default="chat", choices=CODEX_WIRE_APIS, help="the wire format the Codex compatible-route provider speaks")
-    parser.add_argument("--grader-timeout", type=int, default=DEFAULT_GRADER_TIMEOUT_SECONDS, help="seconds one grade script may run")
-    parser.add_argument("--source-root", type=Path, default=None, help="a path inside the foe checkout the binary was built from; the binary's own path when omitted")
-    parser.add_argument(
-        "--tool-root",
-        action="append",
-        type=Path,
-        default=None,
-        help="a tool installation every foe document arm may read and execute, such as a compiler's home; it also enters the check tool's search path; may be repeated",
-    )
-    parser.add_argument(
-        "--budget",
-        action="append",
-        default=None,
-        metavar="KEY=VALUE",
-        help=f"replace one key of every task's budget for this run; the keys are {', '.join(protocol.BUDGET_KEYS)}; may be repeated",
-    )
-    parser.add_argument("--confirm-spend", action="store_true", help="launch the attempts; without it the plan is printed and nothing runs")
+    parser.add_argument("document", type=Path, help="the run document, a JSON file whose keys the module docstring states")
+    parser.add_argument("--confirm-spend", action="store_true", help="launch the attempts; without it the resolved document and the plan are printed and nothing runs")
     args = parser.parse_args(argv)
 
     def refuse(message: str) -> int:
         print(f"cross harness: {message}", file=sys.stderr)
         return NOTHING_LAUNCHED
 
-    if args.attempts < 1:
-        return refuse("--attempts must be at least 1")
-    if args.grader_timeout < 1:
-        return refuse("--grader-timeout must be at least 1")
-    foe = args.foe.resolve()
-    if not os.access(foe, os.X_OK):
-        return refuse(f"--foe {foe} is not an executable file")
-    codex = None if args.codex is None else args.codex.resolve()
-    if codex is not None and not os.access(codex, os.X_OK):
-        return refuse(f"--codex {codex} is not an executable file")
-    credential = None if args.credential is None else args.credential.resolve()
-    if credential is not None and not credential.is_file():
-        return refuse(f"--credential {credential} is not a file")
-    tools: list[str] = []
-    for root in args.tool_root or []:
-        resolved = root.resolve()
-        if not resolved.exists():
-            return refuse(f"--tool-root {root} does not exist")
-        tools.append(str(resolved))
     try:
-        overrides = parse_budget(args.budget)
-    except ValueError as exc:
+        document = load_document(args.document)
+        tasks = discover_tasks(document.tasks, document.select)
+        family = shared_family(tasks, document.tasks)
+        arms = select_arms(document.arms, family)
+    except (ValueError, FileNotFoundError) as exc:
         return refuse(str(exc))
+    needs_codex = any(arm.harness == "codex" for arm in arms)
+    fault = document.codex_fault() or document.credential_fault()
+    if needs_codex and fault is not None:
+        return refuse(f"the arms {', '.join(arm.name for arm in arms if arm.harness == 'codex')} need harnesses.codex and harnesses.credential: {fault}")
     settings = Settings(
-        foe=foe,
-        codex=codex,
-        family=args.family,
-        attempts=args.attempts,
-        route=args.route,
-        base_url=args.base_url,
-        model=args.model,
-        effort=args.effort,
-        out=args.out.resolve(),
-        credential=credential,
-        codex_wire_api=args.codex_wire_api,
-        grader_timeout=args.grader_timeout,
-        source_root=(args.source_root or args.foe).resolve(),
-        tool_roots=tuple(tools),
-        budget_overrides=overrides,
+        foe=document.foe,
+        codex=document.codex if document.codex_fault() is None else None,
+        family=family,
+        attempts=document.attempts,
+        route=document.route,
+        base_url=document.base_url,
+        model=document.model,
+        effort=document.effort,
+        out=document.out,
+        credential=document.credential if document.credential_fault() is None else None,
+        codex_wire_api=document.codex_wire_api,
+        grader_timeout=document.grader_timeout,
+        source_root=document.source_root,
+        tool_roots=document.tool_roots,
+        budget_overrides=document.budget,
     )
     try:
-        arms = parse_arms(args.arms, args.family)
-        tasks = discover_tasks(args.tasks.resolve(), args.family, args.task)
-        if args.route == "compatible":
+        if settings.route == "compatible":
             foe_route(settings)
         for entry in tasks:
             tool_roots(settings, entry.task)
@@ -1097,13 +1382,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"{entry.task.name}: the effective budget is refused: {exc}") from exc
     except (ValueError, FileNotFoundError) as exc:
         return refuse(str(exc))
-    if not tasks:
-        return refuse(f"no task of the {args.family} family under {args.tasks.resolve()}")
-    needs_codex = any(arm.harness == "codex" for arm in arms)
-    if needs_codex and (codex is None or credential is None):
-        return refuse(f"the arms {', '.join(arm.name for arm in arms if arm.harness == 'codex')} need --codex and --credential")
     if not args.confirm_spend:
-        print(plan(settings, tasks, arms))
+        print(plan(settings, tasks, arms, document))
         return NOTHING_LAUNCHED
 
     triples = planned(tasks, arms, settings.attempts)
@@ -1114,7 +1394,7 @@ def main(argv: list[str] | None = None) -> int:
             return refuse(f"a record already exists: {record}")
         leftover = attempt_path(settings.out, entry.task.name, arm.name, attempt)
         if leftover.exists():
-            return refuse(f"an attempt directory already exists without a record: {leftover}; remove it or choose another --out")
+            return refuse(f"an attempt directory already exists without a record: {leftover}; remove it or choose another out")
     settings.out.mkdir(parents=True, exist_ok=True)
     try:
         provenance = provenance_of(settings, needs_codex)
@@ -1125,13 +1405,14 @@ def main(argv: list[str] | None = None) -> int:
         run_file,
         {
             "schema_version": SCHEMA_VERSION,
+            "document": document.to_dict(),
             "settings": settings.to_dict(),
             "provenance": provenance,
             "arms": [arm.name for arm in arms],
             "tasks": [entry.task.name for entry in tasks],
             "budgets": {entry.task.name: effective_budget(settings, entry.task) for entry in tasks},
             "tool_roots": {entry.task.name: tool_roots(settings, entry.task) for entry in tasks},
-            "plan": plan(settings, tasks, arms),
+            "plan": plan(settings, tasks, arms, document),
         },
     )
 

@@ -1,0 +1,8 @@
+{
+  "tasks": "../tasks/foe-tree",
+  "select": ["waiting-check-suite", "ceiling-bound-feature"],
+  "arms": ["foe-configured", "foe-ablated", "codex-equivalent", "codex-default"],
+  "attempts": 1,
+  "model": {"route": "subscription", "name": "gpt-5.6-sol", "effort": "medium"},
+  "tool_roots": ["~/.cargo/bin", "~/.cargo", "~/.rustup", "/usr/lib/gcc"]
+}
