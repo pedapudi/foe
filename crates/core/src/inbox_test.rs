@@ -49,6 +49,8 @@ fn a_second_answer_to_one_question_is_a_duplicate() {
     let default = InboxItem { synthetic: true, ..item(InboxSource::Response, Some("tm_1")) };
     let events = vec![event(1, EventData::InboxItem(item(InboxSource::Request, Some("tm_2"))))];
     assert!(!is_duplicate(&events, &default), "no answer to this question has arrived");
+    let self_asked = vec![event(1, EventData::InboxItem(item(InboxSource::Request, Some("tm_1"))))];
+    assert!(!is_duplicate(&self_asked, &default), "a question and its answer share an identifier and differ by source");
     let answered = vec![event(1, EventData::InboxItem(item(InboxSource::Response, Some("tm_1"))))];
     assert!(is_duplicate(&answered, &default), "the teammate answered before the deadline");
     let defaulted = vec![event(1, EventData::InboxItem(default))];

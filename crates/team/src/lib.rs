@@ -556,7 +556,7 @@ impl Team {
         let inbox = self.inbox.clone();
         tokio::spawn(async move {
             tokio::time::sleep(after).await;
-            let text = format!("no answer within {} ms; this default answer stands: {default}", after.as_millis());
+            let text = format!("no answer before the deadline; this default answer stands: {default}");
             let item = InboxItem::new(InboxSource::Response, text_content(&text), None, Some(message_id));
             inbox.append(InboxItem { synthetic: true, ..item });
         });
@@ -1015,6 +1015,7 @@ impl Tool for TeamTool {
                     (Err(e), _) | (_, Err(e)) => return e,
                 };
                 if matches!(self.kind, Kind::Send | Kind::Ask) {
+                    let started = Instant::now();
                     let bound = match (self.kind, asked_bound(&args)) {
                         (Kind::Ask, Err(invalid)) => return invalid,
                         (Kind::Ask, Ok(bound)) => Some(bound),
@@ -1022,11 +1023,20 @@ impl Tool for TeamTool {
                     };
                     let sent = match (leads_scope(&args), &self.parent) {
                         (Err(invalid), _) => return invalid,
-                        (Ok(false), Some(parent)) => parent.call(args, ctx).await,
+                        (Ok(false), Some(parent)) => {
+                            let call = parent.call(args, ctx);
+                            match &bound {
+                                Some((after, default)) => tokio::time::timeout_at(started + *after, call).await
+                                    .unwrap_or_else(|_| ToolValue::failed(ToolFailureCode::TimedOut,
+                                        format!("ask: deadline_ms elapsed before delivery was acknowledged; default: {default}"),
+                                        false, serde_json::json!({}))),
+                                None => call.await,
+                            }
+                        }
                         _ => self.team.send_value(&self.team.lead_id, to, content, correlate(self.kind, &args)),
                     };
                     if let (Some((after, default)), Some(id)) = (bound, sent.value["message_id"].as_str()) {
-                        self.team.default_answer(id.to_string(), after, default);
+                        self.team.default_answer(id.to_string(), after.saturating_sub(started.elapsed()), default);
                     }
                     return sent;
                 }

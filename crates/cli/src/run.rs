@@ -405,6 +405,24 @@ fn resume(dir: &Path, contract_fingerprint: &str) -> Result<Placement, String> {
         let (dir, recorded) = (dir.display(), &start.contract_fingerprint);
         return Err(format!("{dir}: resuming requires the contract that ran: the log records fingerprint {recorded}; the given contract document resolves to {contract_fingerprint}"));
     }
+    let unanswered = events
+        .iter()
+        .rev()
+        .take_while(|event| !matches!(event.data, EventData::SeedEnd {}))
+        .filter_map(|event| match &event.data {
+            EventData::ToolResult(result) if result.name == "ask" && !result.is_error && !result.synthetic => {
+                result.value["message_id"].as_str()
+            }
+            _ => None,
+        })
+        .find(|id| {
+            !state.inbox.values().any(|(item, _)| {
+                item.source == foe_log::InboxSource::Response && item.message_id.as_deref() == Some(id)
+            })
+        });
+    if let Some(id) = unanswered {
+        return Err(format!("{}: cannot continue with unanswered ask {id}; use --from DIR@SEQ to start a separate episode from an explicit prefix", dir.display()));
+    }
     if prepared || (!torn && foe_log::fold::open_obligations(&events).is_empty()) {
         let note = format!("continues episode {} in place", launch.episode_id);
         return Ok((dir, launch, Some(note)));

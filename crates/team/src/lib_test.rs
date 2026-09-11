@@ -10,6 +10,62 @@ fn fold(events: &[Event]) -> TeamState {
     team
 }
 
+#[tokio::test(start_paused = true)]
+async fn question_deadlines_cover_forwarding_and_default_delivery() {
+    // docs/design.md "Agent teams": forwarding and reply waiting share one deadline.
+    struct Parent {
+        spec: ToolSpec,
+        delay: Option<Duration>,
+    }
+    #[async_trait::async_trait]
+    impl Tool for Parent {
+        fn spec(&self) -> &ToolSpec {
+            &self.spec
+        }
+        async fn call(&self, _: serde_json::Value, _: &CallCtx) -> ToolValue {
+            match self.delay {
+                Some(delay) => tokio::time::sleep(delay).await,
+                None => std::future::pending().await,
+            }
+            ToolValue::ok(serde_json::json!({"message_id": "question"}), "sent")
+        }
+    }
+    for delay in [None, Some(Duration::from_millis(600))] {
+        let (team, log) = asking_team();
+        let ask = TeamTool {
+            spec: Kind::Ask.spec(),
+            kind: Kind::Ask,
+            team: team.clone(),
+            parent: Some(Box::new(Parent { spec: Kind::Ask.spec(), delay })),
+        };
+        let started = Instant::now();
+        let args = serde_json::json!({"to": "lead", "content": "Which directory?", "deadline_ms": 1000,
+            "default": "Use the assigned directory."});
+        let answer = tokio::time::timeout(Duration::from_secs(2), ask.call(args, &ctx(None))).await.unwrap();
+        if delay.is_none() {
+            assert_eq!(answer.failure.unwrap().code, ToolFailureCode::TimedOut);
+            assert_eq!(started.elapsed(), Duration::from_secs(1));
+            assert!(!log
+                .events()
+                .iter()
+                .any(|event| matches!(&event.data, EventData::InboxItem(item) if item.synthetic)));
+        } else {
+            assert!(!answer.is_error);
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_millis(399)).await;
+            assert!(!log
+                .events()
+                .iter()
+                .any(|event| matches!(&event.data, EventData::InboxItem(item) if item.synthetic)));
+            tokio::time::advance(Duration::from_millis(1)).await;
+            tokio::task::yield_now().await;
+            assert!(log.events().iter().any(|event| matches!(&event.data, EventData::InboxItem(item)
+                if item.synthetic && item.message_id.as_deref() == Some("question"))));
+            assert_eq!(started.elapsed(), Duration::from_secs(1));
+        }
+    }
+}
+
 #[test]
 fn maintained_team_projection_matches_replay_at_every_prefix() {
     // docs/log-format.md "Teams": append and replay derive the same board and queue.

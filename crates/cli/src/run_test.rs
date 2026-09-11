@@ -1,5 +1,84 @@
 use super::*;
 
+#[test]
+fn continuation_refuses_unanswered_questions_and_preserves_explicit_seeding() {
+    // docs/design.md "The command line": a lost question timer cannot be resumed.
+    for synthetic in [false, true] {
+        let dir = crate::tests::scratch("foe-cli-resume", "unanswered-question");
+        let mut writer = foe_log::append::Writer::create(&dir, None).unwrap();
+        writer
+            .append(EventData::EpisodeStart(EpisodeStart {
+                id: "ep_asker".into(),
+                parent_id: None,
+                fork_origin: None,
+                team_id: None,
+                contract: serde_json::json!({}),
+                contract_fingerprint: "sha256:question".into(),
+                task: "Ask.".into(),
+                runtime: runtime_info(),
+                sandbox: foe_log::SandboxInfo {
+                    mode: foe_log::SandboxMode::Off,
+                    landlock_abi: 0,
+                    resolved_permissions: Default::default(),
+                    process_boundary: Default::default(),
+                },
+                effective_budget: None,
+            }))
+            .unwrap();
+        for value in [
+            serde_json::json!({"type": "request/header", "data": {
+                "step": 1, "reason": "initial", "system": "Ask.", "tools": [],
+                "model": {"provider": "fixture", "model": "fixture"}
+            }}),
+            serde_json::json!({"type": "model/request", "data": {
+                "step": 1, "attempt": 1, "request_id": "request", "header_seq": 1, "consumed": [], "messages": []
+            }}),
+            serde_json::json!({"type": "assistant/message", "data": {
+                "step": 1, "request_id": "request", "text": "", "tool_calls": [
+                    {"id": "ask_call", "name": "ask", "args": {"to": "lead", "content": "Which directory?",
+                        "deadline_ms": 1000, "default": "Use the assigned directory."}}
+                ], "stop": "tool", "usage": {"input": 0, "output": 0, "cache_read": 0}, "interrupted": false
+            }}),
+            serde_json::json!({"type": "tool/result", "data": {
+                "step": 1, "call_id": "ask_call", "name": "ask", "value": {"message_id": "question"},
+                "rendered": "sent", "is_error": false, "spill": null, "duration_ms": 1, "synthetic": false
+            }}),
+        ] {
+            writer.append(serde_json::from_value(value).unwrap()).unwrap();
+        }
+        writer.sync().unwrap();
+        drop(writer);
+        let file = dir.join(foe_log::fold::LOG_FILE);
+        let before = std::fs::read(&file).unwrap();
+        let error = resume(&dir, "sha256:question").unwrap_err();
+        assert!(error.contains("cannot continue with unanswered ask question"), "{error}");
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+
+        let destination = dir.join("explicit-prefix");
+        std::fs::create_dir(&destination).unwrap();
+        foe_log::seed::seed(
+            &dir,
+            5,
+            &destination,
+            SeedHeader { new_id: "ep_seeded".into(), parent_id: None, team_id: None, contract: None },
+        )
+        .unwrap();
+        resume(&destination, "sha256:question").unwrap();
+
+        let mut writer = foe_log::append::Writer::open(&dir, None).unwrap();
+        let response = foe_log::InboxItem::new(
+            foe_log::InboxSource::Response,
+            vec![foe_log::ContentBlock::Text { text: "Use the assigned directory.".into() }],
+            None,
+            Some("question".into()),
+        );
+        writer.append(EventData::InboxItem(foe_log::InboxItem { synthetic, ..response })).unwrap();
+        writer.sync().unwrap();
+        drop(writer);
+        resume(&dir, "sha256:question").unwrap();
+    }
+}
+
 /// A protocol channel for a run that must reach the point where a host
 /// answers its model requests: two pipes this process holds open, and the
 /// descriptor numbers `--protocol-fds` names. The value stays in scope for

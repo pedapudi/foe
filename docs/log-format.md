@@ -537,7 +537,9 @@ receives the content of an item and none of its other fields. The answer
 is a `response` item carrying that same `message_id`, which is what lets
 the asker wait for this answer rather than for any arrival. A member
 redelivers nothing itself; the lead retries an unconfirmed delivery, so a
-member drops an item whose `message_id` it already holds.
+member drops an item with the same source and `message_id` as an item it
+already holds. A question and its answer have different sources, including
+when an episode addresses itself.
 
 Every question carries a deadline and a default answer, which `ask` requires
 of its caller. When the deadline passes and no answer has arrived, the asking
@@ -546,8 +548,8 @@ episode's own runtime appends the default to that episode's inbox as a
 `synthetic` is the optional boolean field that marks an item the runtime
 wrote in a member's place, and a default answer is the only item that sets
 it. Absence means a member wrote the item, and serialization omits the field
-when it is false, so no frozen version 3 payload changed. The rule that a member drops an item whose
-`message_id` it already holds settles which answer stands: the teammate's
+when it is false. Dropping a second `response` with the same `message_id`
+settles which answer stands: the teammate's
 answer when it arrives before the deadline, and the default otherwise.
 
 ### Budget and spawn

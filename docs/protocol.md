@@ -210,6 +210,12 @@ is a protocol error.
 
 ## Timeouts
 
+A host tool wait releases its pending answer registration when it finishes,
+including when its future is cancelled. An `ask` deadline includes the wait
+for its parent to acknowledge delivery. An unacknowledged question returns
+`timed-out`; an acknowledged question uses the remaining time for its default
+answer. An answer to a released registration follows the unknown-id rule above.
+
 After episode cleanup, the command-line process reports its outcome or
 recording error without waiting for the host to close the answer channel.
 An idle read of that channel does not extend the completed invocation.

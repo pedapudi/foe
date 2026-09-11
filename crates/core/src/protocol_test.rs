@@ -7,6 +7,20 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt;
 
+#[tokio::test(start_paused = true)]
+async fn dropping_a_host_call_releases_its_pending_answer_slot() {
+    // docs/protocol.md "Timeouts": ending a wait releases its protocol registration.
+    let (log, root) = log("cancelled-host-call");
+    let (host, _) = Host::new("ep_self".into(), log.clone(), None);
+    let tool = host.tool(crate::test_util::spec("ask", foe_contract::Effect::Pure));
+    let result =
+        tokio::time::timeout(std::time::Duration::from_millis(100), tool.call(json!({}), &ctx("question", &root)))
+            .await;
+    assert!(result.is_err());
+    assert!(host.inner.calls.lock().unwrap().is_empty());
+    assert!(log.events().iter().any(|event| matches!(event.data, EventData::HostToolCall { .. })));
+}
+
 /// Polls `probe` between yields to the runtime until it answers. The fast
 /// tier waits on no real clock, so the wait is over as soon as the task
 /// under test has run rather than after a span guessed in advance.

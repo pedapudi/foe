@@ -715,6 +715,12 @@ question's identity, marked `synthetic`. The wait on that answer then returns
 and the asker takes its next step. Because the deadline stays in the asking
 process, the rule applies whatever answers the question, including a host
 application that runs no episode.
+The question deadline starts when `ask` is admitted and covers forwarding as
+well as waiting for an answer. A parent that does not acknowledge delivery
+before that deadline produces a `timed-out` tool failure carrying the default
+in its message. Without an acknowledged message identifier, the runtime records
+no synthetic reply. Acknowledgement uses the remaining question time for the
+default answer.
 
 The second rule is that an `until` wait states how long it will block, because
 it returns for an arrival that only another episode produces. Such a call is
@@ -932,7 +938,11 @@ recorded `workflow/*` events is refused before queued tasks or nodes start.
 The restriction also applies to forks containing those events. Execution without a workflow
 can continue under the log's episode id. A log ending at `seed/end`
 — a prepared fork — or at an event boundary with every binding obligation
-closed continues in place. An interrupted log, cut short mid-line or with
+closed continues in place. A log containing a successful `ask` without a
+recorded response is refused because its process-owned deadline cannot be
+restored. An explicit `--from DIR@SEQ` starts a separate episode from the
+selected conversation prefix; questions in that prefix are historical.
+An interrupted log, cut short mid-line or with
 an obligation open, is repaired by seeding a copy at its last clean
 boundary into a fresh directory beside it, which the run then continues and
 names on standard error. Resuming requires the execution contract that ran.
