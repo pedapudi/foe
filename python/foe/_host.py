@@ -17,9 +17,10 @@ import json
 import os
 import shutil
 import tempfile
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Iterable, Mapping
+from typing import Any, AsyncIterator, BinaryIO, Callable, Iterable, Mapping
 
 from ._capabilities import PathLike
 from ._errors import BinaryError, CompatibilityError, ProtocolError
@@ -126,16 +127,18 @@ class Channel:
         self._events_transport.close()
 
 
-async def _open_channel(events_read: int, answers_write: int) -> Channel:
+async def _open_channel(events_read: BinaryIO, answers_write: BinaryIO) -> Channel:
     """Wraps the two descriptors this process kept in asyncio streams."""
     loop = asyncio.get_running_loop()
     events = asyncio.StreamReader(limit=_LINE_LIMIT)
     events_transport, _ = await loop.connect_read_pipe(
-        lambda: asyncio.StreamReaderProtocol(events), os.fdopen(events_read, "rb", 0)
+        lambda: asyncio.StreamReaderProtocol(events), events_read
     )
-    answers_transport, protocol = await loop.connect_write_pipe(
-        asyncio.streams.FlowControlMixin, os.fdopen(answers_write, "wb", 0)
-    )
+    try:
+        answers_transport, protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, answers_write)
+    except BaseException:
+        events_transport.close()
+        raise
     answers = asyncio.StreamWriter(answers_transport, protocol, None, loop)
     return Channel(events, answers, events_transport)
 
@@ -482,53 +485,77 @@ async def start_config(
 
     log_parent = Path(os.fspath(log_dir))
     log_parent.mkdir(parents=True, exist_ok=True)
-    config_dir = tempfile.mkdtemp(prefix="foe-contract-")
-    config_path = Path(config_dir) / "config.json"
-    config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    # One pipe in each direction. The binary inherits one end of each under
-    # the numbers `--protocol-fds` names, and this process closes those ends
-    # once the launch has taken them.
-    answers_read, answers_write = os.pipe()
-    events_read, events_write = os.pipe()
-    try:
-        process = await asyncio.create_subprocess_exec(
-            os.fspath(binary),
-            "--config",
-            str(config_path),
-            "--log-dir",
-            str(log_parent),
-            "--protocol-fds",
-            f"{answers_read},{events_write}",
-            "--viewer",
-            viewer,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.DEVNULL,
-            pass_fds=(answers_read, events_write),
-            start_new_session=start_new_session,
+    with ExitStack() as resources:
+        config_dir = tempfile.mkdtemp(prefix="foe-contract-")
+        resources.callback(shutil.rmtree, config_dir, ignore_errors=True)
+        config_path = Path(config_dir) / "config.json"
+        config_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+        def pipe() -> tuple[BinaryIO, BinaryIO]:
+            read, write = os.pipe()
+            reader = resources.enter_context(os.fdopen(read, "rb", 0))
+            writer = resources.enter_context(os.fdopen(write, "wb", 0))
+            return reader, writer
+
+        answers_read, answers_write = pipe()
+        events_read, events_write = pipe()
+        launch = asyncio.create_task(
+            asyncio.create_subprocess_exec(
+                os.fspath(binary),
+                "--config", str(config_path),
+                "--log-dir", str(log_parent),
+                "--protocol-fds", f"{answers_read.fileno()},{events_write.fileno()}",
+                "--viewer", viewer,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                pass_fds=(answers_read.fileno(), events_write.fileno()),
+                start_new_session=start_new_session,
+            )
         )
-    except OSError as exc:
-        for fd in (answers_read, answers_write, events_read, events_write):
-            os.close(fd)
-        shutil.rmtree(config_dir, ignore_errors=True)
-        raise BinaryError(f"{os.fspath(binary)}: {exc}") from exc
-    os.close(answers_read)
-    os.close(events_write)
-    handle = Handle(
-        process=process,
-        channel=await _open_channel(events_read, answers_write),
-        config=doc,
-        config_dir=config_dir,
-        log_parent=log_parent,
-        model_backend=model_backend,
-        tools=by_name,
-        on_event=on_event,
-        max_output_tokens=max_output_tokens,
-    )
-    if on_spawn is not None:
+        handle = None
+
+        async def abort() -> None:
+            # Creation must finish before its process can be reaped, even
+            # when cancellation arrives before the process handle does.
+            result = await asyncio.gather(launch, return_exceptions=True)
+            process = result[0]
+            if isinstance(process, BaseException):
+                return
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            if handle is not None:
+                await asyncio.gather(handle._reader, return_exceptions=True)
+            await process.wait()
+
         try:
-            on_spawn(handle)
+            try:
+                process = await asyncio.shield(launch)
+            except OSError as exc:
+                raise BinaryError(f"{os.fspath(binary)}: {exc}") from exc
+            answers_read.close()
+            events_write.close()
+            channel = await _open_channel(events_read, answers_write)
+            resources.callback(channel.close)
+            handle = Handle(
+                process=process,
+                channel=channel,
+                config=doc,
+                config_dir=config_dir,
+                log_parent=log_parent,
+                model_backend=model_backend,
+                tools=by_name,
+                on_event=on_event,
+                max_output_tokens=max_output_tokens,
+            )
+            if on_spawn is not None:
+                on_spawn(handle)
+            pairing_error = await handle._await_start()
+            if pairing_error is not None:
+                raise CompatibilityError(pairing_error)
         except BaseException:
-            cleanup = asyncio.create_task(_abort_spawn(handle), name="foe-host-spawn-cleanup")
+            cleanup = asyncio.create_task(abort(), name="foe-host-spawn-cleanup")
             while not cleanup.done():
                 try:
                     await asyncio.shield(cleanup)
@@ -536,19 +563,8 @@ async def start_config(
                     continue
             cleanup.result()
             raise
-    pairing_error = await handle._await_start()
-    if pairing_error is not None:
-        raise CompatibilityError(pairing_error)
-    return handle
-
-
-async def _abort_spawn(handle: Handle) -> None:
-    """Reap a process whose owner callback failed before the handshake."""
-    try:
-        handle._process.kill()
-    except ProcessLookupError:
-        pass
-    await asyncio.gather(handle._reader, return_exceptions=True)
+        resources.pop_all()
+        return handle
 
 
 async def run_config(

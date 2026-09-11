@@ -375,9 +375,14 @@ wants to read a finished run uses `foe.serve` over its log directory.
 synchronously after process creation, before the startup handshake. The
 callback can record `handle.pid` and arrange cancellation even when the binary
 never writes `episode/start`. At callback time, `runtime` and `episode_id` are
-`None`. The callback must return promptly. If it raises, the package kills and
-reaps the binary before propagating that same exception. Cancellation of the
-launch task during this cleanup does not interrupt the reap.
+`None`. The callback must return promptly.
+
+Until `start_config` returns, the launch owns the process, protocol pipes,
+and temporary configuration. Failure or cancellation during process creation,
+channel setup, the callback, or the handshake releases those resources and
+reaps the binary before propagating the original exception. Further
+cancellation during cleanup does not interrupt the reap. A successful return
+transfers ownership to the handle, whose reader performs cleanup at settlement.
 
 ### `serve`
 
