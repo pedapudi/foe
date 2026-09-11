@@ -27,6 +27,49 @@ impl ChildObserver for Seen {
 }
 
 #[tokio::test]
+async fn delegated_roots_cannot_escape_the_child_contract_through_aliases() {
+    // docs/design.md "Agent teams": canonical directory identity bounds delegation.
+    let dir = scratch("spawn", "delegated-write-ceiling");
+    let allowed = dir.join("allowed");
+    let outside = dir.join("outside");
+    std::fs::create_dir(&allowed).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, allowed.join("alias")).unwrap();
+    let mut config = parent_config();
+    config.grants.write = vec![dir.to_path_buf()];
+    config.child_contracts.get_mut("worker").unwrap().grants.write = vec![allowed.clone()];
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        config,
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        Arc::new(Seen::default()),
+    )
+    .with_launcher(vec!["/bin/true".into()]);
+    let request = |paths| SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: Some(paths),
+        call_id: "tc".into(),
+    };
+    for path in [allowed.join("../outside"), allowed.join("alias"), PathBuf::from("../outside")] {
+        match spawner.launch("ep_child".into(), request(vec![path])) {
+            Err(error) => assert!(error.to_string().contains("lies outside"), "{error}"),
+            Ok(handle) => {
+                handle.run.settle().await;
+                panic!("a delegated root escaped the child ceiling");
+            }
+        }
+    }
+    assert!(!dir.join("children").exists(), "validation precedes child directory creation");
+    let prepared = spawner.prepare(request(vec![PathBuf::from("."), allowed.clone()])).unwrap();
+    assert_eq!(prepared.write, Some(vec![allowed.canonicalize().unwrap()]));
+}
+
+#[tokio::test]
 async fn task_settlement_waits_for_process_exit() {
     // docs/protocol.md "Children": terminal task state follows process exit.
     struct Exited {

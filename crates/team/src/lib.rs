@@ -237,8 +237,10 @@ impl Team {
         req: SpawnRequest,
         name: Option<&str>,
         blocked_by: Vec<String>,
-        write: Vec<String>,
     ) -> Result<TeamTask, CapError> {
+        let req = spawner.prepare(req)?;
+        let write =
+            req.write.as_deref().unwrap_or_default().iter().map(|path| path.display().to_string()).collect::<Vec<_>>();
         let task_id;
         {
             let _guard = self.operations.lock().unwrap();
@@ -663,7 +665,8 @@ fn awaited(state: &TeamState, blocked_by: &[String]) -> BTreeSet<String> {
 /// Containment either way is an overlap: a worker given a directory and one
 /// given a file inside it write the same bytes.
 fn overlap(held: &[String], wanted: &[String]) -> Option<String> {
-    let under = |a: &String, b: &String| Path::new(a).starts_with(Path::new(b));
+    let canonical = |path: &String| Path::new(path).canonicalize().unwrap_or_else(|_| PathBuf::from(path));
+    let under = |a: &String, b: &String| canonical(a).starts_with(canonical(b));
     wanted.iter().find(|root| held.iter().any(|h| under(root, h) || under(h, root))).cloned()
 }
 
@@ -1004,7 +1007,7 @@ impl Tool for TeamTool {
                     write: Some(write.iter().map(PathBuf::from).collect()),
                     call_id: ctx.call_id.clone(),
                 };
-                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by, write) {
+                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by) {
                     Ok(task) => {
                         let owner = task.owner.as_deref().unwrap_or("unassigned");
                         ToolValue::ok(

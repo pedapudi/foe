@@ -191,7 +191,7 @@ of those schemas keeps the one-agent request header unchanged.
 
 | tool | effect | behavior |
 |---|---|---|
-| `spawn` | spawns | Adds a board task for a child contract named in `grants.spawn`. Required arguments are `contract` and `task`. Optional `name` sets the member name. Optional `context` is `fresh` or `fork`. Optional `blocked_by` lists earlier task identifiers. Optional `write` lists the write roots to grant the child, which must lie within the caller's own and within what the child contract declares, and may not overlap a root a live task holds; omitted, the child writes where its contract says. An empty list is refused when the child contract declares a tool that writes, because that tool would have nothing it may write. Each root is a directory prefix and must be a directory that exists: a root naming a file, or a file the child has yet to write, is refused with the nearest directory that does exist, because the child could not open it and would die at construction. |
+| `spawn` | spawns | Adds a board task for a permitted child contract. Required arguments are `contract` and `task`. Optional arguments are `name`, `context` (`fresh` or `fork`), `blocked_by` (earlier task identifiers), and `write` (existing directories). The grant rules below apply before admission. |
 | `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, inbox source, or the answer to one question named by `reply`. `timeout_seconds` bounds either form. An `until` wait requires a bound, because nothing the caller does makes the arrival it waits for happen: when the episode carries no `seconds` budget, omitting `timeout_seconds` is a validation error. A `reply` condition states its own bound like every other, and the deadline the question carries is a separate decision: it says how long the question stays open, whether or not the asker is blocked on it. The bare form needs no bound, because it waits on tasks this episode created and each of those is bounded in its turn. Waiting consumes wall-clock budget and no model request. |
 | `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
 | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
@@ -203,6 +203,16 @@ of those schemas keeps the one-agent request header unchanged.
 Each returned member includes its roster `phase`. A member assigned through
 the board also includes `task_status`, derived from the task whose owner is
 that member. The rendered summary uses task status when it is available.
+
+A spawn tool call grants the directories listed in `write`. Omitting `write`
+grants no write directories. An empty grant is refused when the selected
+contract declares a write tool. A requested root must be an existing directory;
+a refusal names its nearest existing parent when it names a file or missing path.
+Relative roots use the child contract's first declared write directory.
+Canonicalization resolves aliases and `..` before checking containment in the
+child contract and overlap with live board tasks. Tasks listed as dependencies,
+including their dependencies, may hold overlapping roots because they finish
+before the dependent task starts. The board records canonical roots.
 
 `spawn` returns the complete current task revision. A ready task normally
 returns with `status: running` and an owner episode. A concurrency-bound task

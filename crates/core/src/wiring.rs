@@ -85,6 +85,9 @@ impl BudgetedSpawner {
 }
 
 impl Spawner for BudgetedSpawner {
+    fn prepare(&self, req: SpawnRequest) -> Result<SpawnRequest, CapError> {
+        self.inner.prepare(req)
+    }
     fn allocate_id(&self) -> String {
         self.inner.allocate_id()
     }

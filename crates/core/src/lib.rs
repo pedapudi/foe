@@ -346,6 +346,10 @@ pub trait LeadLog: Send + Sync {
 
 /// Starts child episodes limited to the declared child contracts.
 pub trait Spawner: Send + Sync {
+    /// Validates and resolves grants before a task is admitted to the board.
+    fn prepare(&self, req: SpawnRequest) -> Result<SpawnRequest, CapError> {
+        Ok(req)
+    }
     /// Allocates an identifier without reserving budget or starting work.
     fn allocate_id(&self) -> String;
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError>;

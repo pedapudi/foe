@@ -347,7 +347,63 @@ fn effective_budget(parent: &Budget, contract: &Budget, reserve: BudgetAmount) -
     budget
 }
 
+/// Resolves a delegated directory grant against the child contract's ceiling.
+/// Parent admission and child construction apply the same validation.
+pub fn write_roots(
+    contract: &ResolvedContract,
+    requested: Option<&[PathBuf]>,
+    specs: &[ToolSpec],
+) -> Result<Vec<PathBuf>, CapError> {
+    let declared = &contract.grants.write;
+    let requested = requested.unwrap_or(declared);
+    if requested.is_empty() {
+        let specs =
+            foe_contract::tools::resolve_specs(contract, specs).map_err(|e| CapError::Invalid(e.to_string()))?;
+        if let Some(tool) = specs.iter().find(|spec| spec.effect == Effect::Writes) {
+            return Err(CapError::Invalid(format!(
+                "write [] leaves `{}`, which the {} contract declares, with nothing it may write: grant at least one root, or spawn a contract that declares no write tool",
+                tool.name, contract.name
+            )));
+        }
+    }
+    let mut roots = Vec::new();
+    for path in requested {
+        let path = declared.first().cloned().unwrap_or_default().join(path);
+        if !path.is_dir() {
+            let holder = path.ancestors().skip(1).find(|p| p.is_dir()).unwrap_or(Path::new("/"));
+            let what = if path.exists() { "names a file" } else { "names nothing on disk" };
+            return Err(CapError::Invalid(format!(
+                "write {} {what}, and a grant is a directory prefix: grant {} instead, or spawn a contract that declares no write tool",
+                path.display(), holder.display()
+            )));
+        }
+        let path = path.canonicalize().map_err(|e| CapError::Invalid(format!("write {}: {e}", path.display())))?;
+        if !foe_contract::contains(declared, &path) {
+            return Err(CapError::Invalid(format!(
+                "write {} lies outside what the {} contract declares, {declared:?}",
+                path.display(),
+                contract.name
+            )));
+        }
+        if !roots.contains(&path) {
+            roots.push(path);
+        }
+    }
+    Ok(roots)
+}
+
 impl Spawner for ProcessSpawner {
+    fn prepare(&self, mut req: SpawnRequest) -> Result<SpawnRequest, CapError> {
+        let (want, has) = (&req.contract, self.contract.grants.spawn.join(", "));
+        let contract = self
+            .contract
+            .spawned_contract(&req.contract)
+            .filter(|_| self.contract.permits_spawn(&req.contract))
+            .ok_or_else(|| CapError::CapabilityDenied(format!("grants.spawn does not list {want}; it lists {has}")))?;
+        req.write = Some(write_roots(contract, req.write.as_deref(), &self.builtin_specs)?);
+        Ok(req)
+    }
+
     fn allocate_id(&self) -> String {
         let n = self.next.fetch_add(1, Ordering::SeqCst);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -356,72 +412,12 @@ impl Spawner for ProcessSpawner {
     }
 
     fn launch(&self, child_id: String, req: SpawnRequest) -> Result<SpawnHandle, CapError> {
-        if !self.contract.permits_spawn(&req.contract) {
-            let (want, has) = (&req.contract, self.contract.grants.spawn.join(", "));
-            return Err(CapError::CapabilityDenied(format!("grants.spawn does not list {want}; it lists {has}")));
-        }
-        let contract = self
-            .contract
-            .spawned_contract(&req.contract)
-            .ok_or_else(|| CapError::Invalid(format!("child_contracts has no entry named {}", req.contract)))?;
+        let req = self.prepare(req)?;
+        let contract = self.contract.spawned_contract(&req.contract).expect("prepare resolved the child contract");
         let expected =
             foe_contract::fingerprint::compute(contract, &self.builtin_specs, &crate::fingerprint::runtime_info())
                 .map_err(|e| CapError::Invalid(e.to_string()))?;
         let limits = effective_budget(&self.limits, &contract.budget, req.reserve);
-        // A granted root must lie inside what the child contract declares,
-        // which `resolve` has already held inside what this episode holds.
-        // A relative root is resolved against the first the contract declares,
-        // which is the directory a built-in document works in and the one a
-        // model names its paths from.
-        let granted = req.write.as_ref().map(|roots| {
-            let base = contract.grants.write.first().cloned().unwrap_or_default();
-            roots.iter().map(|root| if root.is_absolute() { root.clone() } else { base.join(root) }).collect::<Vec<_>>()
-        });
-        if let Some(roots) = &granted {
-            // A grant of no roots leaves a write tool with nothing it may
-            // write. The contract would not resolve, and the child would
-            // die at construction with nothing said about the call that
-            // caused it, so the call is what is refused.
-            if roots.is_empty() {
-                let specs = foe_contract::tools::resolve_specs(contract, &self.builtin_specs)
-                    .map_err(|e| CapError::Invalid(e.to_string()))?;
-                if let Some(tool) = specs.iter().find(|spec| spec.effect == Effect::Writes) {
-                    return Err(CapError::Invalid(format!(
-                        "write [] leaves `{}`, which the {} contract declares, with nothing it may write: \
-grant at least one root, or spawn a contract that declares no write tool",
-                        tool.name, req.contract
-                    )));
-                }
-            }
-            // A grant is a directory prefix, as this module's own
-            // documentation states, and `RootWriter` opens each root as a
-            // directory. A lead dividing work often narrows a worker to the
-            // one file its unit names, or to a file the unit has yet to
-            // create; neither root can be opened, and the child dies at
-            // construction with `grants.write: Not a directory` or
-            // `grants.write: No such file or directory`, which names neither
-            // the worker nor the call. Refuse the call instead, and name the
-            // nearest directory that does exist, for the same reason the
-            // empty grant above is refused.
-            if let Some(root) = roots.iter().find(|root| !root.is_dir()) {
-                let holder = root.ancestors().skip(1).find(|p| p.is_dir()).unwrap_or(Path::new("/"));
-                let what = if root.exists() { "names a file" } else { "names nothing on disk" };
-                return Err(CapError::Invalid(format!(
-                    "write {} {what}, and a grant is a directory prefix: grant {} instead, \
-or spawn a contract that declares no write tool",
-                    root.display(),
-                    holder.display()
-                )));
-            }
-            if let Some(outside) = roots.iter().find(|root| !foe_contract::contains(&contract.grants.write, root)) {
-                let declared = &contract.grants.write;
-                return Err(CapError::Invalid(format!(
-                    "write {} lies outside what the {} contract declares, {declared:?}",
-                    outside.display(),
-                    req.contract
-                )));
-            }
-        }
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let boundary = self
@@ -440,7 +436,7 @@ or spawn a contract that declares no write tool",
             team_id: Some(self.episode_id.clone()),
             expected_contract_fingerprint: Some(expected.hash),
             effective_budget: Some(limits),
-            effective_write: granted,
+            effective_write: req.write,
             process_boundary: boundary.as_ref().map(|boundary| boundary.paths()),
             ..ChildLaunch::default()
         };
