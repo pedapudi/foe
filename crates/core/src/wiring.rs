@@ -50,15 +50,7 @@ impl LeadLog for Log {
         Ok(Log::check(self)?)
     }
 
-    fn events(&self) -> Vec<Event> {
-        Log::events(self)
-    }
-
-    fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
-        Log::with_events(self, read);
-    }
-
-    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State, &[Event])) {
         Log::with_state(self, read);
     }
 }

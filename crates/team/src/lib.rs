@@ -4,8 +4,8 @@
 //! episode itself. Spawning adds a task to that team's board. The runtime
 //! starts one child episode for the task when its dependencies and capacity
 //! permit. The lead's log holds every added task, roster change, and durable
-//! peer message. [`fold`] derives the complete team from those events and the
-//! episode lifecycle. See docs/design.md "Agent teams".
+//! peer message. The coordinator maintains its roster and queue from appended
+//! events and reads task revisions from the writer. See docs/design.md "Agent teams".
 //!
 //! Eight built-in tools belong here. `spawn`, `wait`, `steer`, and `cancel`
 //! act on the team this episode leads. `notify`, `send`, and `ask` act on the
@@ -123,29 +123,27 @@ impl TeamState {
 /// Folds the team events of a lead's log. Events copied from another log by
 /// seeding, which precede `seed/end`, belong to that log's episode and are
 /// skipped.
-pub fn fold(events: &[Event]) -> TeamState {
-    let live_from = events.iter().rev().find(|e| matches!(e.data, EventData::SeedEnd {})).map_or(0, |e| e.seq + 1);
-    let mut state = TeamState::default();
-    if let Some(start) = events.iter().find_map(|event| match &event.data {
-        EventData::EpisodeStart(start) => Some(start),
-        _ => None,
-    }) {
-        let outcome = events.iter().rev().find_map(|event| match &event.data {
-            EventData::EpisodeEnd { outcome } => Some(outcome.clone()),
-            _ => None,
-        });
+fn refresh(state: &mut TeamState, folded: &foe_log::State, events: &[Event]) {
+    let live_from = folded.seeded_through.map_or(0, |seq| seq + 1);
+    state.tasks.clear();
+    if let Some(start) = &folded.start {
+        let outcome = folded.outcome.clone();
         let phase =
             if matches!(outcome, Some(Outcome::Failed { .. })) { MemberPhase::Failed } else { MemberPhase::Active };
         let status = outcome.as_ref().map_or(TaskStatus::Running, task_status);
         let name = start.contract["name"].as_str().unwrap_or("lead").to_string();
         state.lead_id = start.id.clone();
-        state.roster.push(Member {
-            member_id: start.id.clone(),
-            name: name.clone(),
-            description: start.task.clone(),
-            phase,
-            task_status: Some(status),
-        });
+        if state.roster.is_empty() {
+            state.roster.push(Member {
+                member_id: start.id.clone(),
+                name: name.clone(),
+                description: start.task.clone(),
+                phase,
+                task_status: Some(status),
+            });
+        } else {
+            state.roster[0].phase = phase;
+        }
         state.tasks.push(TeamTask {
             task_id: "task_root".into(),
             revision: u64::from(outcome.is_some()),
@@ -161,6 +159,7 @@ pub fn fold(events: &[Event]) -> TeamState {
             call_id: String::new(),
         });
     }
+    state.tasks.extend(folded.tasks.iter().cloned());
     for event in events.iter().filter(|e| e.seq >= live_from) {
         match &event.data {
             EventData::TeamRoster { member_id, name, description, phase } => {
@@ -184,11 +183,6 @@ pub fn fold(events: &[Event]) -> TeamState {
             EventData::TeamDelivered { message_id, to } => {
                 state.delivered.insert((message_id.clone(), to.clone()));
             }
-            EventData::TeamTask(task) => match state.tasks.iter_mut().find(|known| known.task_id == task.task_id) {
-                Some(known) if task.revision > known.revision => *known = task.clone(),
-                None => state.tasks.push(task.clone()),
-                _ => {}
-            },
             _ => {}
         }
     }
@@ -196,7 +190,6 @@ pub fn fold(events: &[Event]) -> TeamState {
         member.task_status =
             state.tasks.iter().find(|task| task.owner.as_deref() == Some(&member.member_id)).map(|task| task.status);
     }
-    state
 }
 
 /// The lead's side of a team: writes roster and queue events to the lead's
@@ -210,6 +203,7 @@ pub struct Team {
     pool: Arc<Mutex<Pool>>,
     /// Serializes task creation, assignment, roster changes, and message allocation.
     operations: Mutex<()>,
+    projection: Mutex<(usize, TeamState)>,
 }
 
 impl Team {
@@ -220,13 +214,22 @@ impl Team {
         router: Arc<Router>,
         pool: Arc<Mutex<Pool>>,
     ) -> Self {
-        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()) }
+        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()), projection: Mutex::default() }
     }
 
     pub fn state(&self) -> TeamState {
-        let mut state = TeamState::default();
-        self.log.with_events(&mut |events| state = fold(events));
-        state
+        let mut projection = self.projection.lock().unwrap();
+        self.log.with_state(&mut |folded, events| {
+            let (scanned, state) = &mut *projection;
+            if folded.seeded_through.is_some_and(|seq| *scanned as u64 <= seq) {
+                *state = TeamState::default();
+            }
+            if *scanned < events.len() {
+                refresh(state, folded, &events[*scanned..]);
+                *scanned = events.len();
+            }
+        });
+        projection.1.clone()
     }
 
     /// Adds a task and starts every queued task whose dependencies and
@@ -304,36 +307,27 @@ impl Team {
                 let _guard = self.operations.lock().unwrap();
                 self.log.check()?;
                 let state = self.state();
-                let queued: Vec<&TeamTask> =
-                    state.tasks.iter().filter(|task| task.status == TaskStatus::Queued).collect();
-                let Some(task) = queued
+                let ready = state
+                    .tasks
                     .iter()
-                    .find(|task| {
-                        task.blocked_by
+                    .filter(|task| task.status == TaskStatus::Queued)
+                    .filter_map(|task| {
+                        let blockers: Vec<_> = task
+                            .blocked_by
                             .iter()
                             .filter_map(|id| state.task(id))
-                            .any(|blocker| blocker.status != TaskStatus::Completed && settled(blocker.status))
+                            .filter(|blocker| blocker.status != TaskStatus::Completed)
+                            .collect();
+                        (blockers.is_empty() || blockers.iter().any(|blocker| settled(blocker.status)))
+                            .then_some((task, blockers))
                     })
-                    .or_else(|| {
-                        queued.iter().find(|task| {
-                            task.blocked_by
-                                .iter()
-                                .filter_map(|id| state.task(id))
-                                .all(|blocker| blocker.status == TaskStatus::Completed)
-                        })
-                    })
-                    .map(|task| (*task).clone())
-                else {
+                    .min_by_key(|(_, blockers)| blockers.is_empty());
+                let Some((task, blockers)) = ready else {
                     return Ok(());
                 };
-                let blockers: Vec<&TeamTask> = task.blocked_by.iter().filter_map(|id| state.task(id)).collect();
-                if blockers.iter().any(|task| task.status != TaskStatus::Completed && settled(task.status)) {
-                    let names = blockers
-                        .iter()
-                        .filter(|task| task.status != TaskStatus::Completed)
-                        .map(|task| task.task_id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                let task = task.clone();
+                if !blockers.is_empty() {
+                    let names = blockers.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>().join(", ");
                     self.settle_task(
                         task,
                         Outcome::Blocked {
@@ -342,9 +336,6 @@ impl Team {
                         },
                     )?;
                     continue;
-                }
-                if blockers.iter().any(|task| !settled(task.status)) {
-                    return Ok(());
                 }
                 let child_id = spawner.allocate_id();
                 let request = SpawnRequest {
@@ -1082,7 +1073,7 @@ impl Tool for TeamTool {
                 if parsed.until.is_empty() {
                     loop {
                         let mut pending = 0;
-                        self.team.log.with_state(&mut |state| {
+                        self.team.log.with_state(&mut |state, _| {
                             pending = state.tasks.iter().filter(|task| !settled(task.status)).count();
                         });
                         let running = self.team.pool.lock().unwrap().active_children();
@@ -1103,7 +1094,7 @@ impl Tool for TeamTool {
                 }
                 loop {
                     let mut hit = None;
-                    self.team.log.with_state(&mut |state| hit = matched(state, &parsed.until));
+                    self.team.log.with_state(&mut |state, _| hit = matched(state, &parsed.until));
                     if let Some(index) = hit {
                         let met = serde_json::to_value(&parsed.until[index]).unwrap_or_default();
                         return ToolValue::ok(serde_json::json!({ "matched": met }), format!("matched: {met}"));

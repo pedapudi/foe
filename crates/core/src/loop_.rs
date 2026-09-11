@@ -128,8 +128,9 @@ impl Log {
         f(&lock(&self.inner).1)
     }
 
-    pub fn with_state<R>(&self, f: impl FnOnce(&foe_log::State) -> R) -> R {
-        f(lock(&self.inner).0.state())
+    pub fn with_state<R>(&self, f: impl FnOnce(&foe_log::State, &[Event]) -> R) -> R {
+        let inner = lock(&self.inner);
+        f(inner.0.state(), &inner.1)
     }
 
     /// True when a `model/request` with this id was written. Scans from the
@@ -762,7 +763,7 @@ impl Episode {
             return Ok(None);
         }
         let retries = self.p.contract.done_when.as_ref().map_or(DEFAULT_RETRIES, |done| done.retries);
-        let tasks = self.p.log.with_state(|state| unaccounted(&state.tasks, &candidate));
+        let tasks = self.p.log.with_state(|state, _| unaccounted(&state.tasks, &candidate));
         let (framed, message) = if !tasks.is_empty() {
             (
                 text::fill(text::BOARD_UNACCOUNTED, &[("tasks", &tasks.join("\n"))]),
@@ -860,13 +861,15 @@ fn cited_findings(log: &Log, candidate: &Value, fields: &[&str]) -> String {
                     }
                     let dir = log.dir().join("children").join(id);
                     let events = children.entry(id).or_insert_with(|| {
-                        if !log.with_state(|state| state.children.contains_key(id)) || dir.canonicalize().ok()? != dir {
+                        if !log.with_state(|state, _| state.children.contains_key(id))
+                            || dir.canonicalize().ok()? != dir
+                        {
                             return None;
                         }
                         let events = fold::read_all(&dir).ok()?;
                         let state = fold::fold(&events).ok()?;
                         let start = state.start?;
-                        let parent = log.with_state(|state| state.start.as_ref().map(|start| start.id.clone()));
+                        let parent = log.with_state(|state, _| state.start.as_ref().map(|start| start.id.clone()));
                         (start.id == id && start.parent_id == parent).then_some(events)
                     });
                     let Some(events) = events else {

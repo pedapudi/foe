@@ -337,11 +337,8 @@ pub struct SessionOutput {
 pub trait LeadLog: Send + Sync {
     fn append(&self, event: foe_log::EventData) -> Result<(), CapError>;
     fn check(&self) -> Result<(), CapError>;
-    fn events(&self) -> Vec<foe_log::Event>;
-    /// Reads event history under the append lock without copying it.
-    fn with_events(&self, read: &mut dyn FnMut(&[foe_log::Event]));
     /// Reads the writer's maintained projection under its append lock.
-    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State));
+    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State, &[foe_log::Event]));
 }
 
 /// Starts child episodes limited to the declared child contracts.

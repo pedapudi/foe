@@ -649,6 +649,9 @@ The log writer maintains task revisions, child outcomes, and inbox consumption
 as events are appended. Completion accounting and both forms of `wait` read
 that projection. Waiting therefore does not rescan the event history on each
 poll. Reopening the log reconstructs the projection from the same events.
+The coordinator updates its roster and message queue from the appended event
+suffix and uses the writer's task revisions. Both projections are read under
+the append lock, so one board response describes one committed log prefix.
 
 A dependency names an earlier task on the same board. This ordering makes a
 cycle unrepresentable. A dependent task starts after every dependency
