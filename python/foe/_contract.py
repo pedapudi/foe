@@ -113,6 +113,31 @@ class Budget:
 
 
 @dataclass(frozen=True, slots=True)
+class Context:
+    """Whether and how the episode's context is compacted: the `context` key
+    docs/compaction.md specifies.
+
+    A field left None takes the runtime's default, which docs/config.md
+    states; the document then omits the key. `window_tokens` may stay None
+    for a model the provider table knows, and is required otherwise.
+    """
+
+    compact: bool = True
+    window_tokens: int | None = None
+    reserve_tokens: int | None = None
+    keep_recent_tokens: int | None = None
+    margin_tokens: int | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"compact": self.compact}
+        for key in ("window_tokens", "reserve_tokens", "keep_recent_tokens", "margin_tokens"):
+            value = getattr(self, key)
+            if value is not None:
+                out[key] = value
+        return out
+
+
+@dataclass(frozen=True, slots=True)
 class Model:
     """The model foe calls itself. See docs/config.md `model`.
 
@@ -242,6 +267,7 @@ class ExecutionContract:
         model: Model | None = None,
         sandbox: str | None = None,
         workflow: Mapping[str, Any] | None = None,
+        context: Context | None = None,
     ) -> None:
         if not name:
             raise ConfigError("name: must not be empty")
@@ -263,6 +289,7 @@ class ExecutionContract:
         self.model = model
         self.sandbox = sandbox
         self.workflow: dict[str, Any] | None = dict(workflow) if workflow is not None else None
+        self.context = context
 
         listed: list[str | HostTool] = list(tools)
         if isinstance(done_when, Verified) and isinstance(done_when.verify, HostTool):
@@ -342,6 +369,8 @@ class ExecutionContract:
             doc["host_tools"] = {k: t.spec.to_dict() for k, t in sorted(self.host_tools.items())}
         doc["grants"] = self.grants.to_dict()
         doc["budget"] = self.budget.to_dict()
+        if self.context is not None:
+            doc["context"] = self.context.to_dict()
         if self.done_when is not None:
             doc["done_when"] = self.done_when.to_dict()
         if self.model is not None:

@@ -105,6 +105,7 @@ when the binary asks.
 | `foe.ReadFS`, `foe.WriteFS`, `foe.Exec` | capability handles a host tool may request |
 | `foe.Grants`, `foe.Budget`, `foe.ToolDef`, `foe.Model` | the `grants`, `budget`, `tool_defs`, and `model` keys |
 | `foe.Verified`, `foe.Returns` | the `done_when` key |
+| `foe.Context` | the `context` key: whether and how the context is compacted |
 | `foe.Completed`, `foe.Blocked`, `foe.Exhausted`, `foe.Failed` | the outcome union |
 | `foe.Event` | one log event, as delivered to `on_event` |
 | `foe.Runtime` | the version and build hash the binary states |
@@ -127,6 +128,7 @@ foe.ExecutionContract(
     model: foe.Model | None = None,
     sandbox: str | None = None,
     workflow: Mapping[str, Any] | None = None,
+    context: foe.Context | None = None,
 )
 ```
 
@@ -137,7 +139,13 @@ its own `model` when it declares one. `model` configures the endpoint the
 binary calls; when None the key is omitted and the host answers every model
 request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
-runtime's default applies.
+runtime's default applies. `context` is the compaction block
+[compaction.md](compaction.md) specifies; when None the key is omitted and
+the runtime compacts nothing. A built-in document reaches the package with
+`foe.Context()` on every contract when `model` names a model the provider
+table knows, because that is what the binary prints; without `model` the
+host answers every request, no window is known, and `foe.builtin` drops the
+block, as construction would otherwise refuse the document.
 
 `workflow` is the workflow declaration [workflow.md](workflow.md) specifies,
 given as the object the document carries. The package models the contract
