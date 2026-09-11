@@ -41,6 +41,10 @@ pub const SYSTEM_READ_DIRS: &[&str] = &["/etc", "/usr/share", "/proc", "/sys"];
 /// Device files any process may read and write.
 pub const DEVICE_FILES: &[&str] = &["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"];
 
+/// The directory beneath an episode's log directory that its executables
+/// may write, beside `spill/`; the shell tools name it as `TMPDIR`.
+pub const SCRATCH_DIR: &str = "tmp";
+
 /// What one process may reach. Compiled into a ruleset by [`Sandbox`].
 #[derive(Debug, Clone, Default)]
 pub struct Policy {
@@ -69,8 +73,11 @@ pub struct Policy {
     /// are present only in episode policies. Narrowed executables never
     /// receive credentials.
     pub read_files: Vec<PathBuf>,
-    /// The episode's own log directory, readable and writable. `None` for an
-    /// executable, which has no log of its own.
+    /// The directory this process owns, readable and writable: the episode's
+    /// log directory for the episode process, and for an executable the
+    /// `tmp` directory beneath it, which the runtime creates at launch and
+    /// names as `TMPDIR`, so a command has scratch space without a grant on
+    /// the host's `/tmp`. `None` before an episode directory exists.
     pub log_dir: Option<PathBuf>,
     /// TCP ports the process may bind. Enforced from ABI 4.
     pub bind_tcp: Vec<u16>,
@@ -206,6 +213,7 @@ impl Policy {
             bound_write: self.bound_write.clone(),
             delegated_exec: self.delegated_exec.clone(),
             bind_tcp: self.bind_tcp.clone(),
+            log_dir: self.log_dir.as_ref().map(|dir| dir.join(SCRATCH_DIR)),
             ..Policy::default()
         };
         policy.record_declared();
