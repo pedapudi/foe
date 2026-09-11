@@ -121,7 +121,15 @@ pub fn apply(state: &mut State, event: &Event) {
     match &event.data {
         EventData::EpisodeStart(start) => state.start = Some(start.clone()),
         EventData::EpisodeEnd { outcome } => state.outcome = Some(outcome.clone()),
-        EventData::SeedEnd {} => state.seeded_through = Some(event.seq),
+        EventData::SeedEnd {} => {
+            state.seeded_through = Some(event.seq);
+            state.tasks.clear();
+        }
+        EventData::TeamTask(task) => match state.tasks.iter_mut().find(|known| known.task_id == task.task_id) {
+            Some(known) if task.revision > known.revision => *known = task.clone(),
+            None => state.tasks.push(task.clone()),
+            _ => {}
+        },
         EventData::RequestHeader(header) => {
             state.header_seq = Some(event.seq);
             state.header = Some(header.clone());

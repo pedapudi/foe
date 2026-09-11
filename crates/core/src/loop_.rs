@@ -128,6 +128,10 @@ impl Log {
         f(&lock(&self.inner).1)
     }
 
+    pub fn with_state<R>(&self, f: impl FnOnce(&foe_log::State) -> R) -> R {
+        f(lock(&self.inner).0.state())
+    }
+
     /// True when a `model/request` with this id was written. Scans from the
     /// end, where the request in flight is.
     pub fn has_request(&self, request_id: &str) -> bool {
@@ -763,7 +767,7 @@ impl Episode {
             return Ok(None);
         }
         let retries = self.p.contract.done_when.as_ref().map_or(DEFAULT_RETRIES, |done| done.retries);
-        let tasks = self.p.log.with_events(|events| unaccounted(events, &candidate));
+        let tasks = self.p.log.with_state(|state| unaccounted(&state.tasks, &candidate));
         if !tasks.is_empty() {
             if self.verify_attempts >= retries {
                 let message = format!("{} board task(s) unaccounted for after {retries} retries", tasks.len());
@@ -806,12 +810,12 @@ impl Episode {
     }
 }
 
-/// Whether any string in `value`, at any depth, contains `needle`. Object
+/// Whether any string in `value` contains the complete identifier. Object
 /// keys come from the completion schema rather than from the model, so only
 /// values are read.
 fn names(value: &Value, needle: &str) -> bool {
     match value {
-        Value::String(text) => text.contains(needle),
+        Value::String(text) => text.split(|c: char| !c.is_alphanumeric() && c != '_').any(|word| word == needle),
         Value::Array(items) => items.iter().any(|item| names(item, needle)),
         Value::Object(fields) => fields.values().any(|field| names(field, needle)),
         _ => false,
@@ -828,19 +832,9 @@ fn names(value: &Value, needle: &str) -> bool {
 /// a task named `unit` is named by any sentence about units. The episode's
 /// own root task is derived rather than recorded, and events copied by
 /// seeding carry another episode's board, so neither appears here.
-fn unaccounted(events: &[Event], candidate: &Value) -> Vec<String> {
-    let live_from = events.iter().rev().find(|e| matches!(e.data, EventData::SeedEnd {})).map_or(0, |e| e.seq + 1);
-    let mut board: BTreeMap<&str, &TeamTask> = BTreeMap::new();
-    for event in events.iter().filter(|e| e.seq >= live_from) {
-        if let EventData::TeamTask(task) = &event.data {
-            let known = board.entry(&task.task_id).or_insert(task);
-            if task.revision >= known.revision {
-                *known = task;
-            }
-        }
-    }
-    board
-        .values()
+fn unaccounted(tasks: &[TeamTask], candidate: &Value) -> Vec<String> {
+    tasks
+        .iter()
         .filter(|task| task.status != TaskStatus::Completed)
         .filter(|task| !names(candidate, &task.task_id))
         // Every status name is one word, so the debug form lowercased is

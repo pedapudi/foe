@@ -638,6 +638,11 @@ complete snapshot. Only the lead process appends revisions. This single
 writer assigns each ready task to one new child, which removes agent-side
 claim races and makes assignment deterministic.
 
+The log writer maintains task revisions, child outcomes, and inbox consumption
+as events are appended. Completion accounting and both forms of `wait` read
+that projection. Waiting therefore does not rescan the event history on each
+poll. Reopening the log reconstructs the projection from the same events.
+
 A dependency names an earlier task on the same board. This ordering makes a
 cycle unrepresentable. A dependent task starts after every dependency
 completes. A dependency with another terminal status settles the dependent
@@ -741,7 +746,11 @@ required.
 
 An episode that leads a team completes only once what it returns accounts
 for every task on the board it leads that did not complete. The account is
-the task's identifier written somewhere in the returned value. A lead may
+the complete task identifier in a string value of the returned value.
+An identifier consists of letters, digits, and underscores: `task_10` in
+`task_100` does not account for `task_10`. This check establishes that the
+report mentions the task; it does not validate the explanation of its outcome.
+A lead may
 complete after a unit it delegated failed, provided it says so, and naming
 the task is the part of saying so that the runtime can check without judging
 the work; a report that names nothing is indistinguishable from a report of

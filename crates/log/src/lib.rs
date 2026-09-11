@@ -1034,6 +1034,8 @@ pub struct State {
     pub model_calls: u64,
     /// Children by id, with their last known outcome.
     pub children: BTreeMap<String, Option<Outcome>>,
+    /// Added board tasks in creation order, at their latest revision.
+    pub tasks: Vec<TeamTask>,
     pub seeded_through: Option<u64>,
     /// An archive event must be followed immediately by its result.
     pub pending_rendering_archive: Option<RenderingArchive>,

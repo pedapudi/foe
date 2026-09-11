@@ -57,6 +57,10 @@ impl LeadLog for Log {
     fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
         Log::with_events(self, read);
     }
+
+    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+        Log::with_state(self, read);
+    }
 }
 
 /// Reserves a child's budget from the pool before the child starts and
