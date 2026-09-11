@@ -124,6 +124,7 @@ pub fn apply(state: &mut State, event: &Event) {
         EventData::SeedEnd {} => {
             state.seeded_through = Some(event.seq);
             state.tasks.clear();
+            state.children.clear();
         }
         EventData::TeamTask(task) => match state.tasks.iter_mut().find(|known| known.task_id == task.task_id) {
             Some(known) if task.revision > known.revision => *known = task.clone(),

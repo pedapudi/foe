@@ -935,8 +935,24 @@ fn a_board_task_is_accounted_for_by_its_identifier_and_not_by_its_member_name() 
     assert!(named(json!("(task_01): failed")).is_empty());
     foe_log::fold::apply(&mut state, &recorded(3, "task_01", "unit", 0, foe_log::TaskStatus::Completed));
     assert_eq!(state.tasks[0].status, foe_log::TaskStatus::Failed, "a stale revision cannot overwrite a task");
-    foe_log::fold::apply(&mut state, &foe_log::Event { seq: 4, time: 0, version: None, data: EventData::SeedEnd {} });
+    foe_log::fold::apply(
+        &mut state,
+        &foe_log::Event {
+            seq: 4,
+            time: 0,
+            version: None,
+            data: EventData::SpawnStart {
+                child_id: "ep_source_child".into(),
+                contract: "worker".into(),
+                context: foe_log::SpawnContext::Fresh,
+                call_id: "source_call".into(),
+            },
+        },
+    );
+    assert!(state.children.contains_key("ep_source_child"));
+    foe_log::fold::apply(&mut state, &foe_log::Event { seq: 5, time: 0, version: None, data: EventData::SeedEnd {} });
     assert!(state.tasks.is_empty(), "seed/end discards the source board");
+    assert!(state.children.is_empty(), "seed/end discards the source spawn relationships");
 }
 
 /// docs/config.md `done_when`: what activates the citation rule is the shape
@@ -1076,9 +1092,47 @@ async fn a_citation_of_delegated_work_names_the_episode_that_did_it() {
     let source = std::fs::read_to_string(dir.join("episode.jsonl")).unwrap();
     std::fs::write(child.join("episode.jsonl"), &source).unwrap();
     let named = item(json!({ "claim": "c", "seq": cited, "episode": "ep_child" }));
-    assert_eq!(cited_findings(&log, &named, &["learned"]), "");
+    assert!(cited_findings(&log, &named, &["learned"]).contains("is not an episode this one opened"));
+    let empty = item(json!({ "claim": "c", "seq": cited, "episode": "" }));
+    assert!(cited_findings(&log, &empty, &["learned"]).contains("is not an episode identifier"));
+
+    std::fs::create_dir(dir.join("parent")).unwrap();
+    let parent = Log::create_or_open(&dir.join("parent"), None).unwrap();
+    let EventData::EpisodeStart(mut start) = events[0].data.clone() else { unreachable!() };
+    start.id = "ep_parent".into();
+    parent.append(EventData::EpisodeStart(start)).unwrap();
+    parent
+        .append(EventData::SpawnStart {
+            child_id: "ep_child".into(),
+            contract: "worker".into(),
+            context: foe_log::SpawnContext::Fresh,
+            call_id: "delegated".into(),
+        })
+        .unwrap();
+    let child = parent.dir().join("children/ep_child");
+    std::fs::create_dir_all(&child).unwrap();
+    let write_child = |events: &[Event]| {
+        let bytes = events.iter().map(|event| serde_json::to_string(event).unwrap() + "\n").collect::<String>();
+        std::fs::write(child.join("episode.jsonl"), bytes).unwrap();
+    };
+    write_child(&events);
+    assert!(cited_findings(&parent, &named, &["learned"]).contains("is not an episode this one opened"));
+    let mut delegated = events.clone();
+    let EventData::EpisodeStart(start) = &mut delegated[0].data else { unreachable!() };
+    start.id = "ep_child".into();
+    start.parent_id = Some("ep_parent".into());
+    write_child(&delegated);
+    assert_eq!(cited_findings(&parent, &named, &["learned"]), "");
     let beyond = item(json!({ "claim": "c", "seq": 9_999, "episode": "ep_child" }));
-    assert!(cited_findings(&log, &beyond, &["learned"]).contains("does not name a successful tool/result"));
+    assert!(cited_findings(&parent, &beyond, &["learned"]).contains("does not name a successful tool/result"));
+    let mut malformed = delegated.clone();
+    malformed[1].seq += 1;
+    write_child(&malformed);
+    assert!(cited_findings(&parent, &named, &["learned"]).contains("is not an episode this one opened"));
+    let EventData::EpisodeStart(start) = &mut delegated[0].data else { unreachable!() };
+    start.parent_id = Some("ep_unrelated".into());
+    write_child(&delegated);
+    assert!(cited_findings(&parent, &named, &["learned"]).contains("is not an episode this one opened"));
 }
 
 #[tokio::test]
