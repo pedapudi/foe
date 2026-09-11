@@ -739,13 +739,8 @@ impl Episode {
             return Ok(Some(outcome));
         }
         let finished = message.tool_calls.is_empty() && !message.interrupted && message.stop != StopReason::Length;
-        let verifier_called = self
-            .p
-            .contract
-            .done_when
-            .as_ref()
-            .and_then(|done| done.verify.as_deref())
-            .is_some_and(|name| succeeded(name).is_some());
+        let verifier = self.p.contract.done_when.as_ref().and_then(|done| done.verify.clone());
+        let verifier_called = verifier.as_deref().is_some_and(|name| succeeded(name).is_some());
         let candidate = if self.p.registry.has_return() {
             match succeeded(text::RETURN_NAME) {
                 Some(returned) => Some(returned.value["value"].clone()),
@@ -768,43 +763,39 @@ impl Episode {
         }
         let retries = self.p.contract.done_when.as_ref().map_or(DEFAULT_RETRIES, |done| done.retries);
         let tasks = self.p.log.with_state(|state| unaccounted(&state.tasks, &candidate));
-        if !tasks.is_empty() {
-            if self.verify_attempts >= retries {
-                let message = format!("{} board task(s) unaccounted for after {retries} retries", tasks.len());
-                return Ok(Some(Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message }));
+        let (framed, message) = if !tasks.is_empty() {
+            (
+                text::fill(text::BOARD_UNACCOUNTED, &[("tasks", &tasks.join("\n"))]),
+                format!("{} board task(s) unaccounted for after {retries} retries", tasks.len()),
+            )
+        } else if let Some(verifier) = verifier {
+            let (judged, _) = verify_recorded(
+                &self.p.log,
+                &self.p.registry,
+                &self.p.handles,
+                &self.p.start.runtime.build,
+                &verifier,
+                self.step,
+                &candidate,
+                self.spill_dir.clone(),
+                self.deadline(),
+            )
+            .await?;
+            let findings = judged.map_err(RuntimeError::Protocol)?;
+            if findings.is_empty() {
+                return Ok(Some(Outcome::Completed { value: candidate }));
             }
-            self.verify_attempts += 1;
-            let framed = text::fill(text::BOARD_UNACCOUNTED, &[("tasks", &tasks.join("\n"))]);
-            self.append_inbox(InboxSource::Verify, &framed)?;
-            return Ok(None);
-        }
-        let Some(done) = self.p.contract.done_when.clone().filter(|d| d.verify.is_some()) else {
+            (
+                text::fill(text::VERIFY_FINDINGS, &[("tool", &verifier), ("findings", &findings.join("\n"))]),
+                format!("`{verifier}` still reports {} finding(s) after {retries} retries", findings.len()),
+            )
+        } else {
             return Ok(Some(Outcome::Completed { value: candidate }));
         };
-        let verifier = done.verify.clone().unwrap_or_default();
-        let (judged, _) = verify_recorded(
-            &self.p.log,
-            &self.p.registry,
-            &self.p.handles,
-            &self.p.start.runtime.build,
-            &verifier,
-            self.step,
-            &candidate,
-            self.spill_dir.clone(),
-            self.deadline(),
-        )
-        .await?;
-        let findings = judged.map_err(RuntimeError::Protocol)?;
-        if findings.is_empty() {
-            return Ok(Some(Outcome::Completed { value: candidate }));
-        }
-        if self.verify_attempts >= done.retries {
-            let message =
-                format!("`{verifier}` still reports {} finding(s) after {} retries", findings.len(), done.retries);
+        if self.verify_attempts >= retries {
             return Ok(Some(Outcome::Blocked { code: BlockedCode::VerificationUnsatisfiable, message }));
         }
         self.verify_attempts += 1;
-        let framed = text::fill(text::VERIFY_FINDINGS, &[("tool", &verifier), ("findings", &findings.join("\n"))]);
         self.append_inbox(InboxSource::Verify, &framed)?;
         Ok(None)
     }
