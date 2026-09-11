@@ -73,8 +73,8 @@ pub trait ChildObserver: Send + Sync {
         None
     }
 
-    /// Sees the child's outcome once its output has ended: the one in its
-    /// `episode/end`, or a failure when the process ended without one.
+    /// Sees the final outcome after process exit and boundary cleanup.
+    /// Task settlement precedes reservation release and waiter notification.
     fn ended(&self, child_id: &str, outcome: &Outcome) {
         let _ = (child_id, outcome);
     }
@@ -513,6 +513,7 @@ or spawn a contract that declares no write tool",
             observer: self.connections.observer.clone(),
         };
         std::thread::spawn(move || {
+            let (observer, id) = (reader.observer.clone(), reader.child_id.clone());
             let read = std::thread::spawn(move || {
                 let settled = reader.run(events, diagnostics);
                 reader.router.remove(&reader.child_id);
@@ -528,6 +529,7 @@ or spawn a contract that declares no write tool",
             if let Some(error) = cleanup_error {
                 settled.outcome = Outcome::Failed { error: format!("child process boundary cleanup: {error}") };
             }
+            observer.ended(&id, &settled.outcome);
             let _ = tx.send(Some(settled));
         });
         Ok(SpawnHandle { child_id, dir, run })
@@ -695,7 +697,6 @@ impl Reader {
             let why = if said.is_empty() { String::new() } else { format!(" and said: {said}") };
             Outcome::Failed { error: format!("child {} exited without episode/end{why}", self.child_id) }
         });
-        self.observer.ended(&self.child_id, &outcome);
         let spent = BudgetAmount {
             model_calls: Some(calls + below.model_calls.unwrap_or(0)),
             input_tokens: Some(usage.input + below.input_tokens.unwrap_or(0)),

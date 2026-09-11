@@ -26,6 +26,45 @@ impl ChildObserver for Seen {
     }
 }
 
+#[tokio::test]
+async fn task_settlement_waits_for_process_exit() {
+    // docs/protocol.md "Children": terminal task state follows process exit.
+    struct Exited {
+        dir: PathBuf,
+        outcomes: Mutex<Vec<(Outcome, bool)>>,
+    }
+    impl ChildObserver for Exited {
+        fn observe(&self, _: &str, _: &Event) {}
+        fn ended(&self, id: &str, outcome: &Outcome) {
+            let finished = self.dir.join("children").join(id).join("finished").exists();
+            self.outcomes.lock().unwrap().push((outcome.clone(), finished));
+        }
+    }
+    let dir = scratch("spawn", "settlement-after-exit");
+    let observer = Arc::new(Exited { dir: dir.to_path_buf(), outcomes: Mutex::new(Vec::new()) });
+    // Closing the answer pipe releases the child after its episode/end.
+    let source = format!("{NESTING_CHILD}\nread -r closed\necho finished > finished\n");
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        parent_config(),
+        Arc::new(Lines::default()),
+        Arc::new(Router::new()),
+        observer.clone(),
+    )
+    .with_launcher(script(&dir, "settlement.sh", &source));
+    let request = SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: None,
+        call_id: "tc".into(),
+    };
+    let settled = spawner.spawn(request).unwrap().run.settle().await;
+    assert_eq!(*observer.outcomes.lock().unwrap(), vec![(settled.outcome, true)]);
+}
+
 impl ProcessSpawner {
     pub(crate) fn with_launcher(mut self, argv: Vec<OsString>) -> Self {
         self.launcher = argv;
