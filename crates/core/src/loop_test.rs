@@ -922,11 +922,21 @@ fn a_board_task_is_accounted_for_by_its_identifier_and_not_by_its_member_name() 
         recorded(1, "task_01", "unit", 1, foe_log::TaskStatus::Failed),
         recorded(2, "task_02", "survey", 0, foe_log::TaskStatus::Completed),
     ];
-    let named = |value: serde_json::Value| unaccounted(&board, &value);
+    let mut state = foe_log::State::default();
+    board.iter().for_each(|event| foe_log::fold::apply(&mut state, event));
+    let named = |value: serde_json::Value| unaccounted(&state.tasks, &value);
     assert_eq!(named(json!("every unit is covered")), ["task_01 (unit) failed"], "the member name is not an account");
     assert!(named(json!({ "units": [{ "finding": "task_01 failed: no root" }] })).is_empty(), "any depth counts");
     assert!(named(json!({ "summary": "task_01 stalled" })).is_empty(), "any field counts");
     assert!(named(json!(["task_02"])).len() == 1, "a completed task needs no account");
+    for value in ["task_010 completed", "prefix_task_01", "task_01_suffix", "étask_01"] {
+        assert_eq!(named(json!(value)).len(), 1, "{value} names a different identifier");
+    }
+    assert!(named(json!("(task_01): failed")).is_empty());
+    foe_log::fold::apply(&mut state, &recorded(3, "task_01", "unit", 0, foe_log::TaskStatus::Completed));
+    assert_eq!(state.tasks[0].status, foe_log::TaskStatus::Failed, "a stale revision cannot overwrite a task");
+    foe_log::fold::apply(&mut state, &foe_log::Event { seq: 4, time: 0, version: None, data: EventData::SeedEnd {} });
+    assert!(state.tasks.is_empty(), "seed/end discards the source board");
 }
 
 /// docs/config.md `done_when`: what activates the citation rule is the shape

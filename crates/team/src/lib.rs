@@ -33,10 +33,11 @@ use foe_core::loop_::SETTLE_POLL;
 use foe_core::protocol::{Host, InboxSink};
 use foe_core::spawn::{ChildObserver, Router};
 use foe_core::{CallCtx, CapError, LeadLog, SpawnRequest, Spawner, Tool, ToolFailureCode, ToolValue};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use tokio::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Member {
@@ -917,20 +918,11 @@ fn kind_of(outcome: &Outcome) -> OutcomeKind {
 /// the child's ended report once its `spawn/end` records a matching
 /// outcome; a session condition by the `session`-source item whose `from`
 /// is the session id.
-fn matched(events: &[Event], until: &[Condition]) -> Option<usize> {
-    let mut consumed: BTreeSet<u64> = BTreeSet::new();
-    let mut ended: BTreeMap<&str, OutcomeKind> = BTreeMap::new();
-    for event in events {
-        match &event.data {
-            EventData::ModelRequest(r) => consumed.extend(r.consumed.iter().copied()),
-            EventData::SpawnEnd { child_id, outcome } => {
-                ended.insert(child_id, kind_of(outcome));
-            }
-            _ => {}
+fn matched(state: &foe_log::State, until: &[Condition]) -> Option<usize> {
+    for (item, consumed) in state.inbox.values() {
+        if *consumed {
+            continue;
         }
-    }
-    for event in events.iter().filter(|e| !consumed.contains(&e.seq)) {
-        let EventData::InboxItem(item) = &event.data else { continue };
         let from = item.from.as_deref().unwrap_or_default();
         let met = |condition: &Condition| match condition {
             Condition::Inbox { inbox } => item.source == *inbox,
@@ -943,7 +935,11 @@ fn matched(events: &[Event], until: &[Condition]) -> Option<usize> {
             Condition::Child { child, outcome } => {
                 item.source == InboxSource::Child
                     && (child == "any" || child == from)
-                    && ended.get(from).is_some_and(|kind| outcome.is_none_or(|wanted| wanted == *kind))
+                    && state
+                        .children
+                        .get(from)
+                        .and_then(Option::as_ref)
+                        .is_some_and(|ended| outcome.is_none_or(|wanted| wanted == kind_of(ended)))
             }
         };
         if let Some(index) = until.iter().position(met) {
@@ -1067,7 +1063,7 @@ impl Tool for TeamTool {
                     return ToolValue::error("wait: `session` names a session id or \"any\"");
                 }
                 let timeout = parsed.timeout_seconds.map(|s| Instant::now() + Duration::from_secs(s));
-                let deadline = match (ctx.deadline, timeout) {
+                let deadline = match (ctx.deadline.map(Instant::from_std), timeout) {
                     (Some(budget), Some(asked)) => Some(budget.min(asked)),
                     (budget, asked) => budget.or(asked),
                 };
@@ -1082,8 +1078,10 @@ impl Tool for TeamTool {
                 let timed_out = || ToolValue::ok(serde_json::json!({ "matched": "timeout" }), "timeout");
                 if parsed.until.is_empty() {
                     loop {
-                        let pending =
-                            self.team.state().tasks.iter().skip(1).filter(|task| !settled(task.status)).count();
+                        let mut pending = 0;
+                        self.team.log.with_state(&mut |state| {
+                            pending = state.tasks.iter().filter(|task| !settled(task.status)).count();
+                        });
                         let running = self.team.pool.lock().unwrap().active_children();
                         if pending == 0 && running == 0 {
                             return ToolValue::ok(serde_json::json!({ "pending": 0 }), "every team task has settled");
@@ -1102,7 +1100,7 @@ impl Tool for TeamTool {
                 }
                 loop {
                     let mut hit = None;
-                    self.team.log.with_events(&mut |events| hit = matched(events, &parsed.until));
+                    self.team.log.with_state(&mut |state| hit = matched(state, &parsed.until));
                     if let Some(index) = hit {
                         let met = serde_json::to_value(&parsed.until[index]).unwrap_or_default();
                         return ToolValue::ok(serde_json::json!({ "matched": met }), format!("matched: {met}"));

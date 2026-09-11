@@ -34,6 +34,11 @@ impl LeadLog for MemLog {
     fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
         read(&self.0.lock().unwrap());
     }
+    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+        let mut state = foe_log::State::default();
+        self.with_events(&mut |events| events.iter().for_each(|event| foe_log::fold::apply(&mut state, event)));
+        read(&state);
+    }
 }
 
 impl MemLog {
@@ -59,6 +64,9 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
         }
         fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
             read(&[event(0, start())]);
+        }
+        fn with_state(&self, _: &mut dyn FnMut(&foe_log::State)) {
+            panic!("recording failure precedes a state read");
         }
     }
     struct NoLaunch;
@@ -600,13 +608,13 @@ fn ctx_deadline(deadline: std::time::Instant) -> CallCtx {
 }
 
 fn soon() -> std::time::Instant {
-    std::time::Instant::now() + Duration::from_millis(60)
+    (tokio::time::Instant::now() + Duration::from_millis(60)).into_std()
 }
 
 /// A seconds budget no test in this file spends, for a wait that must state a
 /// bound and is meant to return on its condition.
 fn far() -> std::time::Instant {
-    std::time::Instant::now() + Duration::from_secs(30)
+    (tokio::time::Instant::now() + Duration::from_secs(30)).into_std()
 }
 
 fn inbox_event(source: InboxSource, from: Option<&str>) -> EventData {
@@ -780,14 +788,13 @@ fn a_write_root_may_not_overlap_one_a_live_task_holds() {
     add("d", roots(&["/p/crates/log-other"])).unwrap();
 }
 
-/// The reading a wait does must not copy the log. `wait` folds the events
-/// fifty times a second for as long as it waits, and the fold keeps nothing
-/// of the copy; a run's log grows, so a copy per tick grows with it.
-#[tokio::test]
-async fn waiting_reads_the_log_in_place_and_never_copies_it() {
+/// docs/design.md "Agent teams": waits read the maintained projection.
+#[tokio::test(start_paused = true)]
+async fn waiting_reads_state_without_scanning_or_copying_events() {
     #[derive(Default)]
     struct Counted {
         events: Mutex<Vec<Event>>,
+        state: Mutex<foe_log::State>,
         copies: AtomicUsize,
         reads: AtomicUsize,
     }
@@ -796,6 +803,7 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
             let mut events = self.events.lock().unwrap();
             let seq = events.len() as u64;
             events.push(Event { seq, time: 0, version: None, data });
+            foe_log::fold::apply(&mut self.state.lock().unwrap(), events.last().unwrap());
             Ok(())
         }
         fn check(&self) -> Result<(), CapError> {
@@ -806,8 +814,12 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
             self.events.lock().unwrap().clone()
         }
         fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
-            self.reads.fetch_add(1, Ordering::SeqCst);
+            self.copies.fetch_add(1, Ordering::SeqCst);
             read(&self.events.lock().unwrap());
+        }
+        fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            read(&self.state.lock().unwrap());
         }
     }
 
@@ -820,9 +832,6 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
         Arc::new(Router::new()),
         Arc::new(Mutex::new(Pool::new(budget()))),
     ));
-    let _ = team.state();
-    // Both wait forms: the bare one folds the board, the `until` one reads
-    // the arrivals. Each spins until its deadline, so each ticks many times.
     let bare = wait_tool(team.clone()).call(serde_json::json!({}), &ctx_deadline(soon())).await;
     assert!(!bare.is_error || bare.rendered.is_some());
     let until = serde_json::json!({ "until": [{ "inbox": "child" }] });
