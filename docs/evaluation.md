@@ -565,43 +565,146 @@ task and model route. Keep task containers, evaluators, aggregate budgets, and
 timeouts fixed. Report the per-task results so aggregate differences remain
 auditable.
 
-### Comparative hypotheses
+## Cross-harness evaluation against Codex CLI
 
-foe has no comparative result against Claude Code or Codex CLI yet. The table
-below records expectations to test rather than results. A failed or exhausted
-attempt cannot count as an efficiency win merely because it stopped early.
-Token and latency comparisons use successful attempts, with all-attempt
-figures reported beside them.
+The Terminal-Bench campaign scores the final state of a container and so
+measures none of the properties foe claims as its own. The cross-harness
+evaluation under `evals/cross_harness/` compares foe with Codex CLI on
+those properties, with the same model, effort, task text, budget, and
+wall-clock cap in every arm, and with tasks and graders built so that foe
+can lose or tie as well as win. A cross-harness difference measures the two
+products; only the difference between a foe configuration and the same
+configuration with one mechanism removed attributes an effect to that
+mechanism, and a report states both without presenting the first as
+evidence for the second.
 
-| benchmark slice | expected advantage | reason | confidence |
-|---|---|---|---|
-| minimal typed repository lookup | lower input tokens than Claude Code and Codex CLI; slightly lower wall time than Claude Code | foe sends a small fixed charter and three task-relevant tool schemas, and starts no plugin, MCP, hook, or project-instruction discovery | medium |
-| micro untrusted instruction containment and AgentDojo workspace tasks | higher strict completion under policy and lower attack success | read and write roots are capabilities enforced below the model, so a successful injection cannot add filesystem permissions | high for denial, medium for useful completion |
-| micro typed configuration evidence and Harness-Bench evidence-grounded tasks | higher grounded-result accuracy under a fixed schema | the return value is schema checked, and the grader resolves each cited path and pointer against evidence the episode read | medium |
-| micro declared migration workflow | higher strict accuracy; higher tokens and latency | typed dataflow separates evidence, decision, and application, while the write grant excludes application code; the two model nodes add requests | medium |
-| micro compaction ledger continuity and CompactBench locked-obligation cases | higher retention of the task, completion rule, file history, child outcomes, and verifier findings | foe carries these fields from typed events rather than asking the summary model to remember them | medium |
-| micro delegated order quotation | lower latency only against a sequential delegation baseline; no expected advantage against tuned parallel subagents | foe starts independent children concurrently and preserves their typed reports, while Claude Code and Codex CLI can also run parallel agents | low |
-| selected Harness-Bench permission-sensitive and long-running tasks | higher strict completion when completion includes policy and trace conformance | declared permissions, typed outcomes, hierarchical budgets, and request reconstruction are part of the score | medium |
-| Terminal-Bench and SWE-bench Verified broad coding sets | no expected advantage | mature vendor harnesses have more tool tuning, language integrations, and benchmark exposure; foe's control mechanisms add overhead that these scorers mostly ignore | high |
+### Families
 
-The minimal lookup is a controlled harness-overhead benchmark. Give every
-harness the same small repository and ask for one schema-constrained fact with
-its source path. Disable optional plugins, MCP servers, and user instructions.
-Run foe and Claude Code with the same Claude model. Run foe and Codex CLI with
-the same OpenAI model. A three-way comparison with different models measures
-model and harness together and cannot isolate foe's contribution.
+Six families each isolate one property. The first two are implemented; the
+other four are specified here and share the same protocol.
 
-[Official OpenAI model guidance](https://developers.openai.com/api/docs/guides/latest-model)
-describes lean prompts as a possible source of token savings and parallel
-multi-agent execution as a possible source of lower wall time. Both effects
-remain workload-dependent. The delegated comparison therefore gives foe no
-expected latency advantage over a tuned parallel Codex configuration.
+| family | property | harness-determined behavior the tasks make matter |
+|---|---|---|
+| autonomy | an unattended run ends within its bounds with an outcome an automated consumer can act on | whether a false "done" can end the run, and whether a stop is bounded and reported truthfully; every task has a hidden grader its visible check under-covers, and one class per way a task can be impossible |
+| teams | dividing work among coordinated agents beats one agent, and foe's team beats Codex's multi-agent mode | who writes the shared interface first, whether two agents can touch one file, how children are scheduled and their reports carried |
+| containment | grants deny accesses below the model | tasks where the shortcut, editing a test, raising a ceiling, or reading a secret, is easier than the fix |
+| budget | what an agent does when told one request remains, and the state it leaves | partial-credit tasks stopped at a fraction of the median spend |
+| verifier | whether the runtime, or the model, decides that a check passed | visible checks that can be gamed |
+| compaction | which facts survive a summary | obligations stated once, early, and needed at the end |
 
-Report provider-observed input, output, cache-read, and compaction tokens.
-Report cold and warm wall time separately. Warm time starts after process and
-credential initialization. The accuracy comparison uses at least five paired
-attempts per task because the proposed micro slices contain too few tasks for
-a one-attempt difference to be meaningful.
+An autonomy task has one of four classes, and the task text never names
+it: `solvable`, `contradictory` (two requirements the task forbids
+reconciling by changing the frozen file or the ceiling), `missing-capability`
+(a tool the environment lacks), and `non-terminating` (a check that never
+returns). Correct outcomes are `completed` with the hidden grader passing
+for the first class, `blocked` with a code from foe's fixed vocabulary for
+the second and third, and any bounded stop without damage for the fourth,
+where the measured quantity is the cost to stop. A teams task is a
+`fan-out` (one change applied to many similar units), a `survey` (a
+question over the whole tree whose ground truth a script computes), or a
+`coherent` control that a team should decline to divide.
+
+### Arms
+
+Each family runs up to five arms: foe configured, the best contract or
+workflow written for the family, with bespoke graphs and a runtime-run
+verifier; foe ablated, the same document with the mechanism under test
+removed; foe as shipped, `builtin:coding` or `builtin:team`; Codex
+equivalent, the tightest Codex configuration that expresses the property,
+with foe's outcome vocabulary as an output schema and the graph's phases
+stated in the prompt; and Codex default. The configured foe arm and the
+equivalent Codex arm receive the same number of development-set iterations,
+recorded in a tuning log. Every single-agent arm runs with compaction on.
+
+The autonomy graph has four model nodes with `block` in every one: a
+read-only survey, an implementing node verified by the check, an assessing
+node without an edit tool that chooses `accept` or `repair`, and a terminal
+repairing node. The teams graph has five: a survey that chooses `divide` or
+`alone`, a node that writes the shared interface, a delegating node without
+an edit tool that spawns one worker per unit under that unit's write grant,
+an integrating node, and an implementing node for the `alone` path. Every
+model node declares `model_calls` as `"unlimited"`, so it draws on whatever
+the earlier firings left; a worker declares a fixed share, half the root
+allowance divided among the workers that run at once, because concurrent
+children reserve from one remainder. `evals/cross_harness/contracts/graphs.py`
+generates the documents per workspace.
+
+### Gates before a result counts
+
+1. Grader validity: the untouched fixture fails, the oracle passes, and
+   each recorded corruption fails the check it targets.
+2. Metric discrimination: degenerate policies applied to the fixture
+   without any harness (do nothing and report completed, do nothing and
+   report blocked, apply the oracle and report blocked, delete the tests
+   and report completed) each classify worse than the oracle policy.
+3. Label non-leakage: one model call per task with the task text and file
+   listing, asked for the class; accuracy above 40 percent over four
+   balanced classes fails. A feature-removal task adds a recall probe that
+   asks the model to name the repository and the feature from the text.
+4. Sensitivity: each family's floor and ceiling arms differ by more than
+   attempt-to-attempt noise in the pilot.
+5. Mechanism exercised: runs where the property did not occur are reported
+   apart.
+6. Harness isolation: a canary instruction planted where Codex must not load
+   it, and in foe's configuration directory, is absent from every recorded
+   request.
+7. Power: pilot variance sets the attempt count for a pre-registered minimum
+   effect; runs pair by task, with a cluster bootstrap over tasks and a
+   McNemar test on paired binary outcomes.
+8. Trajectory review: a person reads a fixed sample per arm.
+
+Development and holdout tasks are disjoint, both harness configurations are
+frozen before the holdout, and each family states in advance what counts as
+a win, a loss, and a tie. Primary metrics come from executable graders.
+
+### Tasks on foe's own tree
+
+Every task is a recipe under `evals/cross_harness/tasks/foe-tree/`: a
+`task.json` naming the class, the text, the correct outcomes, the budget,
+and the protected paths, plus a `grader/` directory holding the hidden
+tests, the oracle, the corruptions, and `workspace.patch`. The workspace is
+regenerated at run time as `git archive` of the recorded base commit plus
+that patch, so the tree holds no copy of itself. The authoring tool
+`tasks/feature_removal.py` turns one committed feature into a task: the
+parent commit's tree is the fixture, the commit's tests are the hidden
+checks, the commit is the oracle, and every identifier the implementation
+adds is grepped for in the fixture so that no trace of the answer remains.
+`tasks/constructions.py` emits the three classes that have no completion.
+
+A grader receives one JSON object on standard input, `reported` with
+`status`, `code`, and `evidence`, `candidate`, and `arm`, runs with the
+workspace as its working directory, and prints findings one per line; no
+findings and exit 0 is a pass. Every grader also checks the repository's
+own rules, `scripts/loc.sh`, clippy with warnings denied, and the
+specification sentences the oracle added, and hashes the protected paths.
+
+### Running it
+
+`run.py` prints every planned attempt with its ceilings and launches
+nothing without `--confirm-spend`. Each attempt materializes its task into
+a fresh root, runs the arm, snapshots the workspace before and after so
+that files a shell command wrote are attributed to the agent whose command
+was running, normalizes the harness's own record into one trajectory
+schema (`trajectory.py`, filled by `normalize_foe.py` from an episode log
+tree and by `normalize_codex.py` from session files and the event stream),
+grades, classifies, and writes one record. `report.py` states per-arm rates,
+per-task cells, and paired comparisons over declared pairs. Configuration
+reaches every process as command-line arguments or documents; the one
+environment variable set is `CODEX_HOME`, which Codex reads to locate its
+credential and session files, and its value is recorded.
+
+foe enforces `model_calls` inside the runtime and Codex has no model-call
+ceiling, so the token and wall-clock ceilings are the shared bound: the
+metering proxy `metering_proxy.py` enforces them on the compatible route,
+and `codex_budget_watcher.py` enforces them on the subscription route by
+following Codex's session files and stopping the process tree. `probe.py`
+establishes, before any spend, that both sandboxes are live on the host.
+
+The pipeline has run end to end once, on the subscription route with the
+example task, one attempt per arm. That run is a validation of the
+pipeline and states nothing about either harness; the pilot sizes in the
+plan are twenty autonomy tasks and twelve teams tasks at two attempts per
+arm.
 
 The [Inspect evaluation checklist](https://github.com/UKGovernmentBEIS/inspect_evals/blob/main/EVALUATION_CHECKLIST.md)
 provides additional evaluator controls. Applicable controls include an oracle

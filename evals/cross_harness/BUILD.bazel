@@ -1,6 +1,39 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+# Every module of the evaluation, its fixtures, and its task recipes. The
+# workspaces of the tasks under tasks/foe-tree are regenerated from the
+# repository's history at run time and are absent from the tree.
+filegroup(
+    name = "sources",
+    srcs = glob(
+        [
+            "*.py",
+            "arms/*.py",
+            "contracts/*.py",
+            "tasks/*.py",
+            "fixtures/**",
+            "tasks/examples/**",
+            "tasks/foe-tree/*/task.json",
+            "tasks/foe-tree/*/grader/**",
+        ],
+        exclude = ["tasks/foe-tree/*/workspace/**"],
+    ),
+)
+
+# The helpers under evals/ the modules import, and the Python package the
+# scripted host runtime speaks through.
+filegroup(
+    name = "support",
+    srcs = [
+        "//evals:foe_build.py",
+        "//evals:host_runtime.py",
+        "//evals:runtime_responses.py",
+        "//evals:trace_quality.py",
+        "//python:foe_package",
+    ],
+)
+
 # The deterministic enforcement matrix over foe and Codex CLI. Codex is taken
 # from PATH; `--skip-codex` runs the foe configurations alone.
 sh_binary(
@@ -8,10 +41,34 @@ sh_binary(
     srcs = ["containment_matrix.py"],
     args = ["--foe", "$(rootpath //:foe)"],
     data = [
+        ":sources",
+        ":support",
         "//:foe",
-        "//evals:host_runtime.py",
-        "//evals:runtime_responses.py",
-        "//python:foe_package",
+    ],
+)
+
+# Whether the host can run the evaluation, checked without a model.
+sh_binary(
+    name = "probe",
+    srcs = ["probe.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# The model-backed runner. It prints its plan and launches nothing without
+# `--confirm-spend`.
+sh_binary(
+    name = "run",
+    srcs = ["run.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
     ],
 )
 
@@ -19,10 +76,8 @@ sh_test(
     name = "cross_harness_unit_test",
     srcs = ["run_unit_tests.sh"],
     data = [
-        "containment_matrix.py",
-        "containment_matrix_test.py",
-        "//evals:host_runtime.py",
-        "//evals:runtime_responses.py",
+        ":sources",
+        ":support",
     ],
-    size = "small",
+    size = "medium",
 )
