@@ -204,6 +204,7 @@ pub struct Team {
     /// Serializes task creation, assignment, roster changes, and message allocation.
     operations: Mutex<()>,
     projection: Mutex<(usize, TeamState)>,
+    questions: Mutex<tokio::task::JoinSet<()>>,
 }
 
 impl Team {
@@ -214,7 +215,16 @@ impl Team {
         router: Arc<Router>,
         pool: Arc<Mutex<Pool>>,
     ) -> Self {
-        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()), projection: Mutex::default() }
+        Team {
+            lead_id,
+            log,
+            inbox,
+            router,
+            pool,
+            operations: Mutex::new(()),
+            projection: Mutex::default(),
+            questions: Mutex::default(),
+        }
     }
 
     pub fn state(&self) -> TeamState {
@@ -554,7 +564,9 @@ impl Team {
     /// does not.
     fn default_answer(&self, message_id: String, after: Duration, default: String) {
         let inbox = self.inbox.clone();
-        tokio::spawn(async move {
+        let mut questions = self.questions.lock().unwrap();
+        while questions.try_join_next().is_some() {}
+        questions.spawn(async move {
             tokio::time::sleep(after).await;
             let text = format!("no answer before the deadline; this default answer stands: {default}");
             let item = InboxItem::new(InboxSource::Response, text_content(&text), None, Some(message_id));
@@ -680,23 +692,21 @@ fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue>
     args.get(key).and_then(|v| v.as_str()).ok_or_else(|| ToolValue::invalid(format!("{key}: a string is required")))
 }
 
-fn string_list(args: &serde_json::Value, key: &str) -> Result<Vec<String>, ToolValue> {
-    let Some(value) = args.get(key) else { return Ok(Vec::new()) };
-    let Some(values) = value.as_array() else { return Err(ToolValue::invalid(format!("{key}: an array is required"))) };
-    values
-        .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .map(str::to_string)
-                .ok_or_else(|| ToolValue::invalid(format!("{key}: every item must be a string")))
-        })
-        .collect()
+#[derive(serde::Deserialize)]
+struct SpawnArgs {
+    contract: String,
+    task: String,
+    context: Option<SpawnContext>,
+    name: Option<String>,
+    #[serde(default)]
+    blocked_by: Vec<String>,
+    #[serde(default)]
+    write: Vec<PathBuf>,
 }
 
 // ---- tools --------------------------------------------------------------------
 
-/// The six team tools; the serialized name is the tool name.
+/// The eight team tools; the serialized name is the tool name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum Kind {
@@ -967,38 +977,24 @@ impl Tool for TeamTool {
                         serde_json::json!({ "capability": "spawn" }),
                     );
                 };
-                let (contract, task) = match (arg(&args, "contract"), arg(&args, "task")) {
-                    (Ok(p), Ok(t)) => (p.to_string(), t.to_string()),
-                    (Err(e), _) | (_, Err(e)) => return e,
-                };
-                let context = match args.get("context").and_then(|v| v.as_str()) {
-                    None | Some("fresh") => SpawnContext::Fresh,
-                    Some("fork") => SpawnContext::Fork,
-                    Some(other) => return ToolValue::invalid(format!("context: {other} is neither fresh nor fork")),
-                };
-                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&contract).to_string();
-                let blocked_by = match string_list(&args, "blocked_by") {
-                    Ok(values) => values,
-                    Err(error) => return error,
-                };
-                let write = match string_list(&args, "write") {
-                    Ok(values) => values,
-                    Err(error) => return error,
+                let parsed: SpawnArgs = match serde_json::from_value(args) {
+                    Ok(parsed) => parsed,
+                    Err(error) => return ToolValue::invalid(format!("spawn arguments: {error}")),
                 };
                 // The spawner reserves the child's whole share and records what it granted.
                 let req = SpawnRequest {
-                    contract: contract.clone(),
-                    task,
-                    context,
+                    contract: parsed.contract,
+                    task: parsed.task,
+                    context: parsed.context.unwrap_or(SpawnContext::Fresh),
                     reserve: BudgetAmount::default(),
                     // The tool always states the grant, so a worker writes
                     // where its lead named and nowhere else. A declared grant
                     // is the ceiling, never the default: an omitted `write`
                     // is a worker that writes nothing.
-                    write: Some(write.iter().map(PathBuf::from).collect()),
+                    write: Some(parsed.write),
                     call_id: ctx.call_id.clone(),
                 };
-                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by) {
+                match self.team.delegate(spawner.clone(), req, parsed.name.as_deref(), parsed.blocked_by) {
                     Ok(task) => {
                         let owner = task.owner.as_deref().unwrap_or("unassigned");
                         ToolValue::ok(
