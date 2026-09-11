@@ -26,6 +26,11 @@ A policy is the resolved permission set for one process. An episode policy is
 derived from its execution contract, log directory, and runtime-owned cgroup
 paths. The cgroup paths are launch metadata rather than configured grants.
 
+Before confinement, the runtime opens each configured write directory once.
+The in-process writer and the episode and executable write rules use those
+same directory handles. Replacing a directory pathname afterwards cannot
+redirect either form of write access to the replacement directory.
+
 During execution-contract construction, Foe captures each configured
 executable's bytes, digest, source path, and invocation name. Every later
 invocation uses the captured executable. Replacing, modifying, or deleting the

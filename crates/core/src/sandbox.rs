@@ -13,7 +13,7 @@
 
 use crate::captured_executable::{CapturedExecutable, CapturedExecutableTree};
 use crate::executable_support;
-use crate::RuntimeError;
+use crate::{RuntimeError, Writer};
 use foe_contract::document::{ContractTreeSelection, ResolvedContract};
 use foe_log::{ResolvedPathPermission, ResolvedPermissions, SandboxInfo, SandboxMode};
 use landlock::{
@@ -48,6 +48,8 @@ pub struct Policy {
     pub read: Vec<PathBuf>,
     /// Directories where files may be written, created, and removed.
     pub write: Vec<PathBuf>,
+    /// Configured write roots shared with the in-process writer.
+    pub bound_write: Option<Arc<crate::grants::RootWriter>>,
     /// Files that may be executed.
     pub exec: Vec<PathBuf>,
     /// Captured executable inodes retained during contract construction.
@@ -110,7 +112,7 @@ impl Policy {
             bind_tcp: config.grants.bind.clone(),
             ..Policy::default()
         };
-        policy.record_declared(config);
+        policy.record_declared();
         policy.record_implicit_reads();
         let contracts = config.contract_tree(ContractTreeSelection::ExecutableReachable);
         for (contract_key, contract) in &contracts {
@@ -147,6 +149,9 @@ impl Policy {
         log_dir: &Path,
     ) -> Result<Policy, String> {
         let mut policy = Self::for_plan(config)?;
+        policy.bound_write = Some(Arc::new(
+            crate::grants::RootWriter::new(policy.write.clone()).map_err(|error| format!("grants.write: {error}"))?,
+        ));
         policy.exec_files = executables.reachable();
         for path in executables.cleanup_roots() {
             policy.add_cleanup(path, "private captured-executable store");
@@ -198,49 +203,39 @@ impl Policy {
         let mut policy = Policy {
             read: self.read.clone(),
             write: self.write.clone(),
+            bound_write: self.bound_write.clone(),
             delegated_exec: self.delegated_exec.clone(),
             bind_tcp: self.bind_tcp.clone(),
             ..Policy::default()
         };
-        for path in policy.read.clone() {
-            policy.record_read(path, "declared by this contract's grants.read", None);
-        }
-        for path in policy.write.clone() {
-            policy.record_write(path, "declared by this contract's grants.write", None);
-        }
-        policy.permissions.bind_tcp = policy.bind_tcp.clone();
+        policy.record_declared();
         policy.record_implicit_reads();
         policy
     }
 
-    fn record_declared(&mut self, config: &ResolvedContract) {
-        for path in &config.grants.read {
-            self.record_read(path.clone(), "declared by contract.grants.read", None);
+    fn record_declared(&mut self) {
+        for path in self.read.clone() {
+            self.record_read(path, "declared by contract.grants.read", None);
         }
-        for path in &config.grants.write {
-            self.record_write(path.clone(), "declared by contract.grants.write", None);
+        for path in self.write.clone() {
+            self.record_write(path, "declared by contract.grants.write", None);
         }
-        self.permissions.bind_tcp = config.grants.bind.clone();
+        self.permissions.bind_tcp = self.bind_tcp.clone();
     }
 
     fn record_implicit_reads(&mut self) {
-        for path in LIBRARY_DIRS {
-            self.record_existing_read(PathBuf::from(path), "shared-library lookup");
-        }
-        for path in SYSTEM_READ_DIRS {
-            self.record_existing_read(PathBuf::from(path), "runtime system information");
+        for (paths, reason) in
+            [(LIBRARY_DIRS, "shared-library lookup"), (SYSTEM_READ_DIRS, "runtime system information")]
+        {
+            for path in paths.iter().map(PathBuf::from).filter(|path| path.exists()) {
+                self.record_read(path, reason, None);
+            }
         }
         for path in DEVICE_FILES {
             let path = PathBuf::from(path);
             if path.exists() {
                 self.record_read_write(path, "standard runtime device", None);
             }
-        }
-    }
-
-    fn record_existing_read(&mut self, path: PathBuf, reason: &str) {
-        if path.exists() {
-            self.record_read(path, reason, None);
         }
     }
 
@@ -496,9 +491,13 @@ impl Sandbox {
         // The crate's read set includes execute; a read root grants reading alone.
         let read = AccessFs::from_read(abi) & !AccessFs::Execute;
         let write = AccessFs::from_write(abi);
+        let mut write_paths = policy.write.clone();
+        if let Some(bound) = &policy.bound_write {
+            write_paths.retain(|path| !bound.roots().contains(path));
+        }
         let rules: Vec<(Vec<PathBuf>, BitFlags<AccessFs>)> = vec![
             (policy.read.clone(), read),
-            (policy.write.clone(), write),
+            (write_paths, write),
             (policy.exec.clone(), AccessFs::Execute | AccessFs::ReadFile),
             (policy.cleanup.clone(), read | AccessFs::RemoveFile | AccessFs::RemoveDir),
             (policy.cleanup_parents.clone(), BitFlags::from(AccessFs::RemoveDir)),
@@ -517,6 +516,9 @@ impl Sandbox {
                     created = created.add_rule(PathBeneath::new(fd, access)).map_err(err)?;
                 }
             }
+        }
+        for dir in policy.bound_write.iter().flat_map(|writer| &writer.dirs) {
+            created = created.add_rule(PathBeneath::new(dir, write)).map_err(err)?;
         }
         for executable in &policy.exec_files {
             let path = PathBuf::from(format!("/proc/self/fd/{}", executable.fd().as_raw_fd()));
