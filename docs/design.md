@@ -1105,7 +1105,13 @@ than completing on a guess. The assessment episode has `read`, `grep`, and
 returns its findings. All three episodes may read and write the current directory because
 builds and checks can create outputs. Each episode has a 60-call backstop. The
 root holds their additive 180-call allowance. A run without a verifier has a
-four-episode lifetime cap, including the root.
+four-episode lifetime cap, including the root. Every episode of a built-in
+document compacts its context when the provider table knows the model's
+window, so a long run continues under the continuation state
+[compaction.md](compaction.md) specifies rather than ending exhausted on the
+window. A model outside the table gets no compaction, because construction
+refuses `compact` without a window and a built-in document has no place to
+state one; a document in a file states `context.window_tokens` itself.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`

@@ -655,6 +655,39 @@ fn builtin_coding_can_retrieve_shortened_tool_results() {
     assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
 }
 
+/// docs/design.md "The command line": every built-in episode compacts its
+/// context when the provider table knows the model's window, and none does
+/// for a model outside the table, which construction would refuse.
+#[test]
+fn builtin_documents_compact_when_the_model_window_is_known() {
+    let compacts = |context: &Option<foe_contract::ContextConfig>| context.as_ref().is_some_and(|c| c.compact);
+    let known = ModelConfig::new("openai", "gpt-5.6-sol");
+    let workflow = coding("task".into(), known.clone(), None, None).unwrap();
+    resolve(&workflow).expect("the coding workflow resolves with compaction on");
+    assert!(compacts(&workflow.context));
+    for node in workflow.workflow.as_ref().unwrap().nodes.values() {
+        assert!(compacts(&node.model.as_ref().unwrap().context));
+    }
+    assert!(compacts(&oneshot("task".into(), known.clone(), None, None).unwrap().context));
+    let team = builtin_contract_document(BUILTIN_TEAM, "task".into(), Some(known), None, None).unwrap();
+    resolve(&team).expect("the team document resolves with compaction on");
+    assert!(compacts(&team.context));
+    let worker = &team.child_contracts["worker"];
+    assert!(compacts(&worker.context) && compacts(&team.child_contracts["surveyor"].context));
+    assert!(compacts(&worker.child_contracts["worker"].context));
+    assert!(compacts(&worker.child_contracts["surveyor"].context));
+
+    let unknown = ModelConfig::new("example", "m");
+    let workflow = coding("task".into(), unknown.clone(), None, None).unwrap();
+    assert!(!compacts(&workflow.context));
+    for node in workflow.workflow.as_ref().unwrap().nodes.values() {
+        assert!(!compacts(&node.model.as_ref().unwrap().context));
+    }
+    assert!(!compacts(&oneshot("task".into(), unknown.clone(), None, None).unwrap().context));
+    let team = builtin_contract_document(BUILTIN_TEAM, "task".into(), Some(unknown), None, None).unwrap();
+    assert!(!compacts(&team.context) && !compacts(&team.child_contracts["worker"].context));
+}
+
 /// docs/design.md "The command line": every built-in episode that works a
 /// task may report a blocking condition, so a task that cannot be done ends
 /// blocked with a code from the fixed vocabulary rather than completing on
