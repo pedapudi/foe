@@ -12,7 +12,7 @@
  * "Colour").
  *
  * The two woff2 files under view/fonts/ are the self-hosted faces, the
- * Inconsolata pair the default typeface sets. The live server serves them
+ * Inconsolata pair available through the typeface picker. The live server serves them
  * at /fonts/<name>.woff2 and the static export inlines them as data URIs.
  * No other font is fetched: every other family the picker offers resolves
  * against the machine's own copy or falls back to a system face.

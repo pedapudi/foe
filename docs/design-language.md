@@ -171,7 +171,7 @@ then applies.
 
 Typography is a separate axis from colour. A typeface is selected by
 `[data-typeface]` on the root and resolves four tokens: `--v2-sans` for body
-text, `--v2-mono` for data, labels, axis text, and code, `--n-font-head` for
+text and controls, `--v2-mono` for data, axis text, code, and key names, `--n-font-head` for
 headings, and `--n-font-paper` for long prose. Twelve typefaces are grouped
 into three modes of four, and the bare mode name on the root selects that
 mode's first face.
@@ -276,7 +276,7 @@ The top bar is sticky, blurred, and hairline-bottomed. Left to right:
 1. an up control that moves one level up the episode tree;
 2. the brand: the lockup from [brand/README.md](brand/README.md), a variant
    tag reading `viewer`, and the research-preview tag;
-3. breadcrumbs in mono and faint ink, from the root episode to the
+3. breadcrumbs in the body face and faint ink, from the root episode to the
    selected one;
 4. a flex spacer;
 5. the colour swatch dropdown and the typeface switch;
@@ -298,7 +298,7 @@ one. Those two values and the theme blocks are the only raw colours in the
 stylesheet.
 
 The research-preview tag states that the product is a research preview. It
-is two stacked words, `research` over `preview`, set in mono at 9.5 pixels,
+is two stacked words, `research` over `preview`, set in the body face at 9.5 pixels,
 uppercase, with letter-spacing of 0.1em, in `--v2-ink-faint`, behind a
 one-pixel left border in `--v2-rule` with 7 pixels of padding. It takes no
 pointer events and no selection and carries `role="note"`, because it
