@@ -63,9 +63,13 @@ pub(crate) fn render(
     for line in &lines[lines.len() - kept..] {
         let _ = writeln!(rendered, "{line}");
     }
-    let permission_denial = exit_code == Some(126) && stderr.contains("Permission denied");
+    // The shell owns the exit status and the diagnostic, so a denial is
+    // only ever possible: any failure whose diagnostic is the kernel's EACCES
+    // or EPERM text, on a read, write, or execute, is marked and explained.
+    let denied = stderr.contains("Permission denied") || stderr.contains("Operation not permitted");
+    let permission_denial = exit_code.is_some_and(|code| code != 0) && denied;
     if permission_denial {
-        rendered.push_str("[permission guidance] The shell reported a possible permission denial. Add the external command's absolute file or directory to grants.execute, or expose it as a configured tool.\n");
+        rendered.push_str("[permission guidance] The process reported a possible permission denial. A read, write, or execute the kernel refused is outside this contract's grants: add the path to grants.read, grants.write, or grants.execute as the operation requires, or expose the command as a configured tool.\n");
     }
     let line_count = stdout.lines().count() + stderr.lines().count();
     ProcessOutput { stdout, stderr, rendered, truncated, spill, line_count, permission_denial }
