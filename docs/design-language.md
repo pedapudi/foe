@@ -178,7 +178,7 @@ mode's first face.
 
 | mode | first face | body | data | headings |
 |---|---|---|---|---|
-| `technical` | Inconsolata (the default) | Inconsolata | Inconsolata | Inconsolata |
+| `technical` | Source Sans + Source Code (the default) | Source Sans 3 | Source Code Pro | Source Sans 3 |
 | `editorial` | Source Serif | Source Serif 4 | Source Serif 4 | Source Serif 4 |
 | `display` | Space Grotesk | Space Grotesk | JetBrains Mono | Archivo Narrow |
 

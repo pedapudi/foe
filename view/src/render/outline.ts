@@ -31,7 +31,7 @@
 // element under the reader's pointer must survive a click and the pane
 // must not empty while a run works.
 
-import { clear, fmtInt, h } from "../dom.js";
+import { clear, fmtInt, h, lazyDetails } from "../dom.js";
 import { elapsedLabel, layoutLanes, rowSignature, visibleRows } from "../causality.js";
 import { DEPTHS } from "../causality.js";
 import type { CausalityLayout, CausalityOutline, CausalityRow, Depth } from "../causality.js";
@@ -109,6 +109,7 @@ export class OutlineView {
     // inserted in front of the cursor.
     const elements: HTMLElement[] = [];
     const shown = new Set(visible.map((row) => row.id));
+    const selectedMessage = visible.find((row) => row.id === state.selected)?.communication;
     let at: ChildNode | null = this.list.firstChild;
     for (const row of visible) {
       // The cursor steps over the element this row holds before the row is
@@ -119,6 +120,9 @@ export class OutlineView {
       const el = this.element(row, outline.start, state.opened.has(row.id));
       if (el.parentNode !== this.list || el.nextSibling !== at) this.list.insertBefore(el, at);
       el.classList.toggle("selected", row.id === state.selected);
+      el.classList.toggle("related", Boolean(selectedMessage?.messageId
+        && row.communication?.messageId === selectedMessage.messageId
+        && ["ask", "reply", "default"].includes(row.communication.kind)));
       elements.push(el);
     }
     for (const [id, entry] of this.built) {
@@ -297,7 +301,10 @@ function bodyElement(row: CausalityRow): HTMLElement {
     body.appendChild(renderJson(value));
   }
   else if (row.kind === "task") taskBody(body, row.body);
-  else if (row.kind === "prose") body.appendChild(renderMarkdown(row.body));
+  else if (row.kind === "message" && row.body.length > 1200) {
+    body.appendChild(lazyDetails("Read message", () => renderMarkdown(row.body), { key: row.id }));
+  }
+  else if (row.kind === "prose" || row.kind === "message") body.appendChild(renderMarkdown(row.body));
   else body.appendChild(renderToolText(row.body, languageForPath(row.label)));
   return body;
 }

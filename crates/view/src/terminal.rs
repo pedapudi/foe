@@ -108,6 +108,7 @@ struct Terminal<W> {
     active: String,
     /// Whether the progress line stands on the last line written.
     drawn: bool,
+    messages: crate::communication::Messages,
 }
 
 /// How far one log directory has been read and whose episode it holds.
@@ -132,7 +133,20 @@ impl<W: Write> Terminal<W> {
     fn new(output: W, color: bool, interactive: bool, width: usize) -> Self {
         let (offsets, lanes, active) = Default::default();
         let started = tokio::time::Instant::now();
-        Self { output, color, interactive, width, offsets, lanes, started, ticks: 0, calls: 0, active, drawn: false }
+        Self {
+            output,
+            color,
+            interactive,
+            width,
+            offsets,
+            lanes,
+            started,
+            ticks: 0,
+            calls: 0,
+            active,
+            drawn: false,
+            messages: Default::default(),
+        }
     }
 
     /// Redraws the progress line in place: one pulsing mark per open lane,
@@ -204,6 +218,20 @@ impl<W: Write> Terminal<W> {
     }
 
     fn poll(&mut self, dir: &Path) -> io::Result<()> {
+        let mut events = Vec::new();
+        self.read(dir, &mut events)?;
+        events.sort_by_key(|(_, event)| event.time);
+        let messages: Vec<_> = events.iter().map(|(id, event)| self.messages.read(id, &event.data)).collect();
+        for ((id, event), message) in events.iter().zip(messages) {
+            self.event(id, &event.data)?;
+            if let Some(index) = message {
+                self.communication(index)?;
+            }
+        }
+        self.output.flush()
+    }
+
+    fn read(&mut self, dir: &Path, pending: &mut Vec<(String, foe_log::Event)>) -> io::Result<()> {
         if !dir.join("episode.jsonl").is_file() {
             return Ok(());
         }
@@ -225,16 +253,16 @@ impl<W: Write> Terminal<W> {
             }
             // A returned result follows every available message from its child.
             if let EventData::SpawnEnd { child_id, .. } = &event.data {
-                self.poll(&dir.join("children").join(child_id))?;
+                self.read(&dir.join("children").join(child_id), pending)?;
             }
-            self.event(&reader.id.clone(), &event.data)?;
+            pending.push((reader.id.clone(), event));
         }
         reader.offset = offset;
         self.offsets.insert(dir.into(), reader);
         for child in crate::project::episode_dirs(&dir.join("children")) {
-            self.poll(&child)?;
+            self.read(&child, pending)?;
         }
-        self.output.flush()
+        Ok(())
     }
 
     fn lane(&mut self, id: &str) -> usize {
@@ -275,19 +303,16 @@ impl<W: Write> Terminal<W> {
         match data {
             EventData::EpisodeStart(start) => {
                 let i = self.lane(id);
-                self.rename(i, start.contract["name"].as_str().unwrap_or(id).into());
+                let name = self
+                    .messages
+                    .names
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| start.contract["name"].as_str().unwrap_or(id).into());
+                self.rename(i, name);
                 self.active = self.lanes[i].1.clone();
             }
-            EventData::InboxItem(item)
-                if matches!(
-                    item.source,
-                    InboxSource::Parent
-                        | InboxSource::Peer
-                        | InboxSource::Request
-                        | InboxSource::Response
-                        | InboxSource::Task
-                ) =>
-            {
+            EventData::InboxItem(item) if item.source == InboxSource::Task => {
                 let i = self.lane(id);
                 fn text(block: &ContentBlock) -> &str {
                     match block {
@@ -335,6 +360,35 @@ impl<W: Write> Terminal<W> {
                 self.body(&body, None)?;
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn communication(&mut self, index: usize) -> io::Result<()> {
+        if let Some(message) = self.messages.take(index) {
+            let from = self.messages.name(&message.from);
+            let to = self.messages.name(&message.to);
+            let state = if message.delivered { "delivered" } else { "sent" };
+            let label = if message.kind == "default" {
+                format!("Default answer for {to}")
+            } else {
+                format!("{from} → {to}{FIELD}{}{FIELD}{state}", message.kind)
+            };
+            let mut prefix = self.prefix();
+            let lane = |id: &str| self.lanes.iter().position(|(key, ..)| key == id);
+            if let (Some(a), Some(b)) = (lane(&message.from), lane(&message.to)) {
+                if a != b && self.width > prefix.len() * 2 + MIN_TEXT_WIDTH {
+                    for segment in &mut prefix[a.min(b)..=a.max(b)] {
+                        *segment = "┄┄";
+                    }
+                    prefix[a] = if a < b { "├┄" } else { "┤ " };
+                    prefix[b] = if a < b { "▶ " } else { "◀┄" };
+                }
+            }
+            self.heading(&prefix.concat(), &[(CYAN, label)])?;
+            if !message.shown {
+                self.body(&[Row::Text(message.body.unwrap_or_default())], None)?;
+            }
         }
         Ok(())
     }
@@ -564,15 +618,18 @@ fn lines(key: &str, value: &Value, indent: usize) -> Vec<String> {
     }
 }
 
-/// One bullet for an item of the array field `key`. An item of `learned`
-/// holding `claim` and `seq` is the claim with the log sequence it cites.
-/// Another object item puts its scalar fields on the bullet line and nests
-/// the rest beneath.
+/// A citation retains its claim, episode, and sequence. Other object items
+/// put scalar fields on the bullet line and nest the remaining fields.
 fn bullet(key: &str, item: &Value, indent: usize) -> Vec<String> {
     let pad = " ".repeat(indent);
     let body = match item {
-        Value::Object(fields) if key == "learned" && fields.contains_key("claim") && fields.contains_key("seq") => {
-            vec![format!("{} (seq {})", scalar(&fields["claim"]), fields["seq"])]
+        Value::Object(fields)
+            if fields.keys().all(|key| matches!(key.as_str(), "claim" | "episode" | "seq"))
+                && fields.contains_key("claim")
+                && fields.contains_key("seq") =>
+        {
+            let episode = fields.get("episode").map(|value| format!("{} ", scalar(value))).unwrap_or_default();
+            vec![format!("{} ({episode}seq {})", scalar(&fields["claim"]), fields["seq"])]
         }
         Value::Object(fields) => {
             let (scalars, nested): (Vec<_>, Vec<_>) = fields

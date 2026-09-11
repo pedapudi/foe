@@ -3583,6 +3583,10 @@ kbd {
   vector-effect: non-scaling-stroke;
 }
 
+.caus-edge.message {
+  stroke-dasharray: 3 3;
+}
+
 .caus-node .vertex {
   fill: var(--caus-tone);
   stroke: none;
@@ -3930,6 +3934,7 @@ kbd {
 
 /* The selected row lifts to full ink and its name takes the accent. No
  * rail, no wash, and no change of weight, so selecting reflows nothing. */
+.outline-row.related .outline-name .label,
 .outline-row.selected .outline-name .label {
   color: var(--v2-accent);
 }

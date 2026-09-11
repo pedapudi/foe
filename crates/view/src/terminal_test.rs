@@ -519,3 +519,60 @@ fn each_episode_name_is_written_in_the_color_its_name_hashes_to() {
     assert!(plain.contains("reviewer – Completed"), "{plain}");
     assert!(!plain.contains('\x1b'), "{plain}");
 }
+
+/// docs/viewer.md: recorded communication appears once; delivery changes add status alone.
+#[test]
+fn recorded_communication_keeps_bodies_and_routes_without_tool_envelopes() {
+    let mut events = Vec::new();
+    for text in [
+        include_str!("../../../view/fixtures/communication/coordinator.jsonl"),
+        include_str!("../../../view/fixtures/communication/editor.jsonl"),
+        include_str!("../../../view/fixtures/communication/tester.jsonl"),
+    ] {
+        let parsed: Vec<Event> = text.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        let EventData::EpisodeStart(start) = &parsed[0].data else { panic!() };
+        let id = start.id.clone();
+        events.extend(parsed.into_iter().map(|event| (id.clone(), event)));
+    }
+    events.sort_by_key(|(_, event)| (event.time, event.seq));
+    let mut terminal = Terminal::new(Vec::new(), false, false, 100);
+    let messages: Vec<_> = events.iter().map(|(id, event)| terminal.messages.read(id, &event.data)).collect();
+    for ((id, event), message) in events.iter().zip(messages) {
+        terminal.event(id, &event.data).unwrap();
+        if let Some(index) = message {
+            terminal.communication(index).unwrap();
+        }
+    }
+    let output = String::from_utf8(terminal.output).unwrap();
+    for body in [
+        "Begin the review.",
+        "Checking the section.",
+        "Can this wording ship?",
+        "The wording is ready.",
+        "Check the title.",
+        "Publish the summary?",
+        "Keep the summary local.",
+    ] {
+        assert_eq!(output.matches(body).count(), 1, "{body}:\n{output}");
+    }
+    for kind in ["ask", "reply", "notify", "send", "Default answer for Editor"] {
+        assert!(output.contains(kind), "{kind}:\n{output}");
+    }
+    for private in ["Answer this with send", "tool_call", "deadline_ms", "ended: completed"] {
+        assert!(!output.contains(private), "{private}:\n{output}");
+    }
+    assert!(output.contains("┄"), "{output}");
+    assert!(output.contains("Editor → Tester"), "{output}");
+    assert!(output.contains("Tester → Editor"), "{output}");
+}
+
+/// docs/viewer.md: citation rendering preserves the episode that owns the sequence.
+#[test]
+fn citations_preserve_episode_identity_and_additional_fields() {
+    assert_eq!(
+        rendered(json!({"evidence": [{"claim": "Checked", "episode": "worker", "seq": 9}]})),
+        "[Evidence]\n- Checked (worker seq 9)"
+    );
+    assert!(rendered(json!({"evidence": [{"claim": "Checked", "seq": 9, "path": "file", "note": "retained"}]}))
+        .contains("note: retained"));
+}
