@@ -1359,6 +1359,11 @@ verification result. It depends on `crates/contract` for canonical hashing
 and on `crates/log` for the episode record. Nothing in the runtime depends on
 it.
 
+Each episode runtime uses two asynchronous worker threads. Child episodes
+run separate runtimes, so worker allocation remains independent of the host's
+processor count. Blocking operations and child-process readers use additional
+threads whose counts depend on the active tools and children.
+
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
