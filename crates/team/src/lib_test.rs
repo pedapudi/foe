@@ -2,6 +2,38 @@ use super::*;
 use foe_contract::Budget;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+fn fold(events: &[Event]) -> TeamState {
+    let mut folded = foe_log::State::default();
+    events.iter().for_each(|event| foe_log::fold::apply(&mut folded, event));
+    let mut team = TeamState::default();
+    refresh(&mut team, &folded, events);
+    team
+}
+
+#[test]
+fn maintained_team_projection_matches_replay_at_every_prefix() {
+    // docs/log-format.md "Teams": append and replay derive the same board and queue.
+    let (team, log, _, _) = team();
+    for data in [
+        start(),
+        EventData::TeamTask(task("task_01", 0, TaskStatus::Queued)),
+        message(0, "tm_source", "ep_a").data,
+        EventData::SeedEnd {},
+        roster(0, "ep_a", "worker", MemberPhase::Provisioning).data,
+        EventData::TeamTask(task("task_01", 0, TaskStatus::Queued)),
+        EventData::TeamTask(task("task_01", 1, TaskStatus::Running)),
+        roster(0, "ep_a", "worker", MemberPhase::Active).data,
+        message(0, "tm_01", "ep_a").data,
+        EventData::TeamDelivered { message_id: "tm_01".into(), to: "ep_a".into() },
+        EventData::EpisodeEnd { outcome: Outcome::Completed { value: "done".into() } },
+    ] {
+        log.append(data);
+        let expected = fold(&log.events());
+        assert_eq!(team.state(), expected);
+        assert_eq!(team.state(), expected, "an unchanged log adds no duplicate rows");
+    }
+}
+
 fn budget() -> Budget {
     Budget {
         model_calls: Some(10),
@@ -28,20 +60,18 @@ impl LeadLog for MemLog {
     fn check(&self) -> Result<(), CapError> {
         Ok(())
     }
-    fn events(&self) -> Vec<Event> {
-        self.0.lock().unwrap().clone()
-    }
-    fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
-        read(&self.0.lock().unwrap());
-    }
-    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State, &[Event])) {
+        let events = self.0.lock().unwrap();
         let mut state = foe_log::State::default();
-        self.with_events(&mut |events| events.iter().for_each(|event| foe_log::fold::apply(&mut state, event)));
-        read(&state);
+        events.iter().for_each(|event| foe_log::fold::apply(&mut state, event));
+        read(&state, &events);
     }
 }
 
 impl MemLog {
+    fn events(&self) -> Vec<Event> {
+        self.0.lock().unwrap().clone()
+    }
     fn append(&self, data: EventData) {
         LeadLog::append(self, data).unwrap();
     }
@@ -59,14 +89,11 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
         fn check(&self) -> Result<(), CapError> {
             Err(CapError::Log(foe_log::LogError::Recording("team/message recording failed".into())))
         }
-        fn events(&self) -> Vec<Event> {
-            vec![event(0, start())]
-        }
-        fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
-            read(&[event(0, start())]);
-        }
-        fn with_state(&self, _: &mut dyn FnMut(&foe_log::State)) {
-            panic!("recording failure precedes a state read");
+        fn with_state(&self, read: &mut dyn FnMut(&foe_log::State, &[Event])) {
+            let events = [event(0, start())];
+            let mut state = foe_log::State::default();
+            foe_log::fold::apply(&mut state, &events[0]);
+            read(&state, &events);
         }
     }
     struct NoLaunch;
@@ -804,7 +831,6 @@ async fn waiting_reads_state_without_scanning_or_copying_events() {
     struct Counted {
         events: Mutex<Vec<Event>>,
         state: Mutex<foe_log::State>,
-        copies: AtomicUsize,
         reads: AtomicUsize,
     }
     impl LeadLog for Counted {
@@ -818,17 +844,10 @@ async fn waiting_reads_state_without_scanning_or_copying_events() {
         fn check(&self) -> Result<(), CapError> {
             Ok(())
         }
-        fn events(&self) -> Vec<Event> {
-            self.copies.fetch_add(1, Ordering::SeqCst);
-            self.events.lock().unwrap().clone()
-        }
-        fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
-            self.copies.fetch_add(1, Ordering::SeqCst);
-            read(&self.events.lock().unwrap());
-        }
-        fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
+        fn with_state(&self, read: &mut dyn FnMut(&foe_log::State, &[Event])) {
             self.reads.fetch_add(1, Ordering::SeqCst);
-            read(&self.state.lock().unwrap());
+            // Withhold history so matching must use the maintained state.
+            read(&self.state.lock().unwrap(), &[]);
         }
     }
 
@@ -846,6 +865,9 @@ async fn waiting_reads_state_without_scanning_or_copying_events() {
     let until = serde_json::json!({ "until": [{ "inbox": "child" }] });
     wait_tool(team.clone()).call(until, &ctx_deadline(soon())).await;
 
-    assert_eq!(log.copies.load(Ordering::SeqCst), 0, "nothing copied the log");
     assert!(log.reads.load(Ordering::SeqCst) > 1, "and the reads happened");
+    LeadLog::append(&*log, EventData::InboxItem(InboxItem::new(InboxSource::Peer, text_content("hello"), None, None)))
+        .unwrap();
+    let hit = wait_tool(team).call(serde_json::json!({"until": [{"inbox": "peer"}]}), &ctx_deadline(soon())).await;
+    assert_eq!(hit.value["matched"]["inbox"], "peer");
 }
