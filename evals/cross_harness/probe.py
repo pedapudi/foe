@@ -157,7 +157,7 @@ def result_value(log: Path, data: dict[str, Any]) -> tuple[dict[str, Any], Path 
     value = data.get("value")
     if not isinstance(value, dict):
         return {}, None
-    if "spill" not in value:
+    if value.get("spill") is None:
         return value, None
     name = str(value["spill"])
     if Path(name).name != name:
