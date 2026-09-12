@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/contract/src/workflow.rs",
+    "old": "//! Specification: docs/workflow.md \"The graph\".",
+    "new": "//! Specification: docs/workflow.md \"Recovery\"."
+  }
+]

@@ -1,0 +1,114 @@
+{
+  "name": "bounded-result-names-its-bound",
+  "family": "teams",
+  "class_name": "fan-out",
+  "text": "Every built-in coding tool in crates/code cuts one result short when a bound of the crate is reached: read stops at the lines, entries, and characters one call shows, grep stops at the matches and result lines it collects, edit cuts the diff it renders, bash and session cut the output they keep, and compose_tools refuses a source above the source bound. A result the crate cut names the bound that cut it under `bound` in the canonical value, and a complete result leaves that field null.\n\nThe names come from one table, `BOUNDS` in crates/code/src/lib.rs, which holds every bound name beside what the bound holds, and `is_bound` reports whether a name stands in that table. The six names are `read.window`, `grep.results`, `edit.diff`, `bash.output`, `session.output`, and `compose_tools.source`. A result carries no name the table lacks.\n\nThe change applies to 6 units: crates/code/src/read.rs, crates/code/src/grep.rs, crates/code/src/edit.rs, crates/code/src/bash.rs, crates/code/src/session.rs, crates/code/src/python.rs. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: the tests of foe-code, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 180000,
+    "seconds": 4500
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
+      "subject": "Name the bound that cut a built-in coding tool's result"
+    },
+    "crate": "crates/code",
+    "package": "foe-code",
+    "units": {
+      "read": [
+        "crates/code/src/read.rs"
+      ],
+      "grep": [
+        "crates/code/src/grep.rs"
+      ],
+      "edit": [
+        "crates/code/src/edit.rs"
+      ],
+      "bash": [
+        "crates/code/src/bash.rs"
+      ],
+      "session": [
+        "crates/code/src/session.rs"
+      ],
+      "compose_tools": [
+        "crates/code/src/python.rs"
+      ]
+    },
+    "n": 6,
+    "unit_files": {
+      "read": [
+        "crates/code/src/read.rs"
+      ],
+      "grep": [
+        "crates/code/src/grep.rs"
+      ],
+      "edit": [
+        "crates/code/src/edit.rs"
+      ],
+      "bash": [
+        "crates/code/src/bash.rs"
+      ],
+      "session": [
+        "crates/code/src/session.rs"
+      ],
+      "compose_tools": [
+        "crates/code/src/python.rs"
+      ]
+    },
+    "unit_tests": {
+      "read": [
+        "crates/code/src/read_test.rs"
+      ],
+      "grep": [
+        "crates/code/src/grep_test.rs"
+      ],
+      "edit": [
+        "crates/code/src/edit_test.rs"
+      ],
+      "bash": [
+        "crates/code/src/bash_test.rs"
+      ],
+      "session": [
+        "crates/code/src/session_test.rs"
+      ],
+      "compose_tools": [
+        "crates/code/src/python_test.rs"
+      ]
+    },
+    "unit_test_names": {
+      "read": "read::tests::a_cut_read_names_its_bound_and_a_complete_read_names_none",
+      "grep": "grep::tests::a_stopped_search_names_its_bound_and_a_complete_search_names_none",
+      "edit": "edit::tests::a_cut_diff_names_its_bound_and_a_whole_diff_names_none",
+      "bash": "bash::tests::a_cut_bash_result_names_its_bound_and_a_whole_one_names_none",
+      "session": "session::tests::a_cut_poll_names_its_bound_and_a_whole_poll_names_none",
+      "compose_tools": "python::tests::a_refused_source_names_its_bound"
+    },
+    "checked_units": [
+      "read",
+      "grep",
+      "edit",
+      "bash",
+      "session",
+      "compose_tools"
+    ],
+    "interface_paths": [
+      "crates/code/src/lib.rs"
+    ],
+    "integration_test": "tests::every_bound_a_cut_result_names_stands_in_the_table",
+    "revert_unit": "grep",
+    "rename_unit": "read",
+    "authored": "by construction: the units, the shared element, and the tests are chosen rather than read from a commit",
+    "review": "pending: the text was drafted with the construction and has not been read by a person"
+  }
+}

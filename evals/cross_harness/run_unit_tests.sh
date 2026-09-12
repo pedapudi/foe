@@ -22,6 +22,7 @@ for test in \
   tasks/feature_removal_test.py \
   tasks/constructions_test.py \
   tasks/teams_test.py \
+  tasks/fanout_test.py \
   gates/label_leakage_test.py \
   gates/isolation_test.py \
   environment/environment_test.py \

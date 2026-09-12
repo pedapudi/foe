@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/contract/src/tools.rs",
+    "old": "//! refused here, before any tool is constructed.\n//!\n//! Specification: docs/design.md \"Tools\".\n",
+    "new": "//! refused here, before any tool is constructed.\n"
+  }
+]

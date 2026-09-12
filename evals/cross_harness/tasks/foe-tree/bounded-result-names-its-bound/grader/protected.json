@@ -1,0 +1,32 @@
+{
+  "outside": {
+    "grader/corruptions/rename-shared-element/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/rename-shared-element/edits.json": "3a849e92bf9b42bcca48210348398958ccc384ea96c25ecd3d47867ae1406573",
+    "grader/corruptions/revert-one-unit/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/revert-one-unit/edits.json": "54427d47aa5d1b6c6c38f77494a660180db092de63acef6e1189ac85fe3bbb4e",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "3920ddc063df690da3b79ab91ea184c67fa8aed2dc0af0841f3174e126424340",
+    "grader/oracle/workspace/crates/code/src/bash.rs": "8ed1ce573ce90fa7912b49ee018afa3f84e4b02ebaed4c1660885f9d6fb40b2c",
+    "grader/oracle/workspace/crates/code/src/edit.rs": "860bbf64471690bd6b778e37abbb28b54d5c9e9da5ec8e9738c0d3078b260d2d",
+    "grader/oracle/workspace/crates/code/src/grep.rs": "d58a3c32a6244380248063c1a146072a93b3078c6436a029a3ac92fcd1d30dd9",
+    "grader/oracle/workspace/crates/code/src/lib.rs": "a7e68ae2794ce9f184b99837dfc18a34678e1e6e9f2cd3dc872dbde5440ef3dc",
+    "grader/oracle/workspace/crates/code/src/python.rs": "75fe01f47fa38ba837b98cdffd9563bd99ded3833e43b3232a79be33d56b98f3",
+    "grader/oracle/workspace/crates/code/src/read.rs": "ee6bc75d5abdd610eaab5adc229648ec898c93df163b18e477a9e8a547f37f76",
+    "grader/oracle/workspace/crates/code/src/session.rs": "3ef43411840c9ee52b12e43219126a4e8defb716fb50a81f5090b148b98c14a5",
+    "grader/specification.json": "2d43cd512c5c08fa624069d20a1f8f5a20e9d7ad22f84a3efd1b5a62bf3910b0",
+    "grader/tests/crates/code/src/bash_test.rs": "960fccceb6367af31c12ecf7aa345522617ba51b6f37d66aa5d4a6213f7b03c3",
+    "grader/tests/crates/code/src/edit_test.rs": "4e117c05b5925709edbb277d67856c4c2360e44dfe68f0918ed44f04b224f040",
+    "grader/tests/crates/code/src/grep_test.rs": "820b91e20d258db17167d9eafbb481f819d172b76fe5c57726173298ce1dedbc",
+    "grader/tests/crates/code/src/lib_test.rs": "a12b70014a039a8c68336ccd465948be8da00524c30e2215fe96cea1891dbf6d",
+    "grader/tests/crates/code/src/python_test.rs": "aaff190addb6fcfb5671be7219b1a9e2ad99dbac1dc987740f88ee5afc82f2f1",
+    "grader/tests/crates/code/src/read_test.rs": "206f4cfc122e4732302426e11f529373e2a9ccc2b9b0bccabd61ecc0afe730b2",
+    "grader/tests/crates/code/src/session_test.rs": "d2465907fdc741e63b246a9942774c5542c01e7113438390175983c16026e73e",
+    "grader/workspace.patch": "714eb09f5fad637ee6c32db576ad50e8de318abd0b14676dd9cd19c45a56fe8c",
+    "task.json": "140414d5964418d74fb19b2ccf0d276818469867106785ddac4c38197ba241aa"
+  },
+  "workspace": {
+    "AGENTS.md": "016452f3106072be1c937c2325ab1e19a85a6dc9bd8b81f0f12f55a26464033d",
+    "checks/run.sh": "8060dccea63d34b1a1610669687377b934bde4c86b3dba50afbf4027afc8a882",
+    "scripts/loc.sh": "2f8baff94adced88f8cadddbb7de90c46d9f1c0911aacaca360255364748d0df"
+  }
+}

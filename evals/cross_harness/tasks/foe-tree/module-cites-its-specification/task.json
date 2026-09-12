@@ -1,0 +1,114 @@
+{
+  "name": "module-cites-its-specification",
+  "family": "teams",
+  "class_name": "fan-out",
+  "text": "Each module of crates/contract implements one section of one specification document of this repository, and states which one in a line of its module documentation reading `//! Specification: <document> \"<section>\".`, where the section stands as a heading in that document. A module states one citation, and the document it names is one of the six AGENTS.md \"Read first\" names: docs/design.md, docs/config.md, docs/log-format.md, docs/protocol.md, docs/workflow.md, and docs/compaction.md. crates/contract/src/document.rs carries its citation already.\n\nThe table `SPECIFICATIONS` in crates/contract/src/lib.rs holds one row for every module of the crate: the module's name, the document, and the section. The citation a module states is the one the table gives it, and the table names every module of the crate. `specification` reads one module's row.\n\nThe change applies to 6 units: crates/contract/src/fingerprint.rs, crates/contract/src/harness_text.rs, crates/contract/src/inspect.rs, crates/contract/src/schema.rs, crates/contract/src/tools.rs, crates/contract/src/workflow.rs. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: the tests of foe-contract, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 180000,
+    "seconds": 4500
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
+      "subject": "Cite the specification each module of the contract crate implements"
+    },
+    "crate": "crates/contract",
+    "package": "foe-contract",
+    "units": {
+      "fingerprint": [
+        "crates/contract/src/fingerprint.rs"
+      ],
+      "harness_text": [
+        "crates/contract/src/harness_text.rs"
+      ],
+      "inspect": [
+        "crates/contract/src/inspect.rs"
+      ],
+      "schema": [
+        "crates/contract/src/schema.rs"
+      ],
+      "tools": [
+        "crates/contract/src/tools.rs"
+      ],
+      "workflow": [
+        "crates/contract/src/workflow.rs"
+      ]
+    },
+    "n": 6,
+    "unit_files": {
+      "fingerprint": [
+        "crates/contract/src/fingerprint.rs"
+      ],
+      "harness_text": [
+        "crates/contract/src/harness_text.rs"
+      ],
+      "inspect": [
+        "crates/contract/src/inspect.rs"
+      ],
+      "schema": [
+        "crates/contract/src/schema.rs"
+      ],
+      "tools": [
+        "crates/contract/src/tools.rs"
+      ],
+      "workflow": [
+        "crates/contract/src/workflow.rs"
+      ]
+    },
+    "unit_tests": {
+      "fingerprint": [
+        "crates/contract/src/lib_test.rs"
+      ],
+      "harness_text": [
+        "crates/contract/src/lib_test.rs"
+      ],
+      "inspect": [
+        "crates/contract/src/lib_test.rs"
+      ],
+      "schema": [
+        "crates/contract/src/lib_test.rs"
+      ],
+      "tools": [
+        "crates/contract/src/lib_test.rs"
+      ],
+      "workflow": [
+        "crates/contract/src/lib_test.rs"
+      ]
+    },
+    "unit_test_names": {
+      "fingerprint": "tests::the_fingerprint_module_cites_a_standing_section",
+      "harness_text": "tests::the_harness_text_module_cites_a_standing_section",
+      "inspect": "tests::the_inspect_module_cites_a_standing_section",
+      "schema": "tests::the_schema_module_cites_a_standing_section",
+      "tools": "tests::the_tools_module_cites_a_standing_section",
+      "workflow": "tests::the_workflow_module_cites_a_standing_section"
+    },
+    "checked_units": [
+      "fingerprint",
+      "harness_text",
+      "inspect",
+      "schema",
+      "tools",
+      "workflow"
+    ],
+    "interface_paths": [
+      "crates/contract/src/lib.rs"
+    ],
+    "integration_test": "tests::every_module_agrees_with_the_specification_table",
+    "revert_unit": "tools",
+    "rename_unit": "workflow",
+    "authored": "by construction: the units, the shared element, and the tests are chosen rather than read from a commit",
+    "review": "pending: the text was drafted with the construction and has not been read by a person"
+  }
+}

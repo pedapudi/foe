@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/code/src/read.rs",
+    "old": "\"bound\": truncated.then_some(\"read.window\"),\n                \"content\": content,",
+    "new": "\"bound\": truncated.then_some(\"read.lines\"),\n                \"content\": content,"
+  }
+]

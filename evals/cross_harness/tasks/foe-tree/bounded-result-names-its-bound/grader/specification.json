@@ -1,0 +1,31 @@
+{
+  "task": "bounded-result-names-its-bound",
+  "package": "foe-code",
+  "units": [
+    {
+      "name": "read",
+      "test": "read::tests::a_cut_read_names_its_bound_and_a_complete_read_names_none"
+    },
+    {
+      "name": "grep",
+      "test": "grep::tests::a_stopped_search_names_its_bound_and_a_complete_search_names_none"
+    },
+    {
+      "name": "edit",
+      "test": "edit::tests::a_cut_diff_names_its_bound_and_a_whole_diff_names_none"
+    },
+    {
+      "name": "bash",
+      "test": "bash::tests::a_cut_bash_result_names_its_bound_and_a_whole_one_names_none"
+    },
+    {
+      "name": "session",
+      "test": "session::tests::a_cut_poll_names_its_bound_and_a_whole_poll_names_none"
+    },
+    {
+      "name": "compose_tools",
+      "test": "python::tests::a_refused_source_names_its_bound"
+    }
+  ],
+  "integration_test": "tests::every_bound_a_cut_result_names_stands_in_the_table"
+}

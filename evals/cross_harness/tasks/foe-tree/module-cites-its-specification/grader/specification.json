@@ -1,0 +1,31 @@
+{
+  "task": "module-cites-its-specification",
+  "package": "foe-contract",
+  "units": [
+    {
+      "name": "fingerprint",
+      "test": "tests::the_fingerprint_module_cites_a_standing_section"
+    },
+    {
+      "name": "harness_text",
+      "test": "tests::the_harness_text_module_cites_a_standing_section"
+    },
+    {
+      "name": "inspect",
+      "test": "tests::the_inspect_module_cites_a_standing_section"
+    },
+    {
+      "name": "schema",
+      "test": "tests::the_schema_module_cites_a_standing_section"
+    },
+    {
+      "name": "tools",
+      "test": "tests::the_tools_module_cites_a_standing_section"
+    },
+    {
+      "name": "workflow",
+      "test": "tests::the_workflow_module_cites_a_standing_section"
+    }
+  ],
+  "integration_test": "tests::every_module_agrees_with_the_specification_table"
+}

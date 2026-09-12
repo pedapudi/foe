@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/code/src/grep.rs",
+    "old": "                \"complete\": complete,\n                \"bound\": collected.stopped_at.map(|_| \"grep.results\"),\n                \"hits\": collected.hits,\n",
+    "new": "                \"complete\": complete,\n                \"hits\": collected.hits,\n"
+  }
+]
