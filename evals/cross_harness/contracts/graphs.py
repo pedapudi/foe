@@ -38,10 +38,15 @@ node's whole remainder and the runtime refuses the second. The share is half
 the root allowance divided by the number of workers that run at once. The
 other half is what the survey, the interface node, and the delegating node
 spend before and after the workers run; the delegating node needs at least
-three calls of its own, one to spawn, one to wait, and one to return. A
-delegation whose remainder is below what its concurrent workers ask sees the
-later spawns refused as exhausted, and the delegation report records that
-outcome per unit.
+three calls of its own, one to spawn, one to wait, and one to return. The
+same rule gives the worker its `input_tokens` and `output_tokens`, each
+half the root's ceiling divided by the workers that run at once, and only
+when the root declares that ceiling: the runtime reserves a dimension a
+child leaves undeclared as the parent's whole remainder, so under a root
+token ceiling a worker without a token share would leave nothing for the
+next worker. A delegation whose remainder is below what its concurrent
+workers ask sees the later spawns refused as exhausted, and the delegation
+report records that outcome per unit.
 
 The ablated autonomy variant removes the `block` tool from every node and
 every verifier declaration, so a run under it can show what those two
@@ -266,6 +271,20 @@ def worker_calls(model_calls: int, max_concurrent: int) -> int:
     and to return. At least 1, so a worker can return.
     """
     return max(1, model_calls // (2 * max_concurrent))
+
+
+# The root ceilings a worker takes a share of; the runtime reserves any other dimension as the parent's remainder.
+WORKER_SHARED_KEYS: tuple[str, ...] = ("model_calls", "input_tokens", "output_tokens")
+
+
+def worker_budget(limits: Mapping[str, int], max_concurrent: int) -> dict[str, int]:
+    """The ceilings one worker declares: the share of `worker_calls` for `model_calls` and for each token ceiling the root declares.
+
+    A dimension a child leaves undeclared is reserved as the parent's whole
+    remainder, so a worker without a token share under a root token ceiling
+    would leave the next worker nothing to reserve.
+    """
+    return {key: worker_calls(limits[key], max_concurrent) for key in WORKER_SHARED_KEYS if key in limits}
 
 
 def check_budget(budget: Mapping[str, Any]) -> dict[str, int]:
@@ -500,7 +519,7 @@ def teams(
         ("read", "grep", "edit", "bash", CHECK, "block", "ask", "notify", "wait"),
         worker_report(),
         max_depth=0,
-        model_calls=worker_calls(shape.limits["model_calls"], max_concurrent),
+        **worker_budget(shape.limits, max_concurrent),
     )
     survey = shape.contract(
         "survey",

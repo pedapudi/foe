@@ -102,9 +102,9 @@ def fired(episode: Path) -> list[str]:
     return [event["data"]["node"] for event in events(episode) if event["type"] == "workflow/node-end" and event["data"].get("error") is None]
 
 
-def reservations(episode: Path) -> list[int]:
-    """The `model_calls` each `budget/reserve` event granted, in order."""
-    return [event["data"]["reserved"]["model_calls"] for event in events(episode) if event["type"] == "budget/reserve"]
+def reservations(episode: Path, key: str = "model_calls") -> list[int]:
+    """The amount of `key` each `budget/reserve` event granted, in order; the event leaves out a dimension it granted without limit."""
+    return [event["data"]["reserved"][key] for event in events(episode) if event["type"] == "budget/reserve"]
 
 
 def spent(episode: Path) -> list[int]:
@@ -117,8 +117,13 @@ def node_errors(episode: Path) -> dict[str, str]:
     return {event["data"]["node"]: event["data"]["error"] for event in events(episode) if event["type"] == "workflow/node-end" and event["data"].get("error") is not None}
 
 
-def lead_document(workspace: Path, worker_calls: Any, model_calls: int) -> dict[str, Any]:
-    """A root that spawns workers under `child_contracts`, for a trial of how concurrent children reserve from one remainder."""
+def lead_document(workspace: Path, worker_calls: Any, model_calls: int, tokens: dict[str, int] | None = None, worker_tokens: dict[str, int] | None = None) -> dict[str, Any]:
+    """A root that spawns workers under `child_contracts`, for a trial of how concurrent children reserve from one remainder.
+
+    `tokens` adds token ceilings to the root's budget, and `worker_tokens`
+    token shares to the worker's; a worker without them reserves each token
+    dimension as the root's remainder.
+    """
     returns = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"], "additionalProperties": False}
     return {
         "version": 4,
@@ -126,14 +131,14 @@ def lead_document(workspace: Path, worker_calls: Any, model_calls: int) -> dict[
         "instructions": {"10-role": "Lead: add two worker tasks, wait for both, then return."},
         "tools": ["read", "spawn", "wait", "block"],
         "grants": {"read": [str(workspace)], "spawn": [graphs.WORKER]},
-        "budget": {"model_calls": model_calls, "seconds": 120, "max_depth": 1, "max_concurrent": 4, "max_episodes": 4},
+        "budget": {"model_calls": model_calls, "seconds": 120, "max_depth": 1, "max_concurrent": 4, "max_episodes": 4, **(tokens or {})},
         "child_contracts": {
             graphs.WORKER: {
                 "name": graphs.WORKER,
                 "instructions": {"10-role": "Worker: read the notes file, then return."},
                 "tools": ["read", "block"],
                 "grants": {"read": [str(workspace)]},
-                "budget": {"model_calls": worker_calls, "max_depth": 0},
+                "budget": {"model_calls": worker_calls, "max_depth": 0, **(worker_tokens or {})},
                 "done_when": {"returns": returns},
             }
         },
@@ -162,6 +167,95 @@ def lead_responder(workspace: Path) -> host_runtime.Responder:
         return runtime_responses.call("lead-return", "return", {"value": {"summary": "Both units settled."}}) + runtime_responses.done("tool")
 
     return respond
+
+
+# The units the scripted divide path names; each is a crate directory under the workspace.
+UNITS = ("alpha", "beta")
+# The spawn tool's rendered result: the board task, the roster name, and the owning episode.
+_SPAWN_RESULT = re.compile(r"\[seq (\d+)\]\n(task_\d+) \S+ as \S+ for (ep_\w+)")
+# The inbox line that carries a settled worker's report to the delegating node: the roster name, the episode, and the returned value.
+_WORKER_ENDED = re.compile(r"^\S+ \((ep_\w+)\) ended: completed with (\{.*\})$", re.MULTILINE)
+
+
+def divide_responder(workspace: Path) -> tuple[host_runtime.Responder, list[str]]:
+    """The teams graph's divide path with two units; the list receives the node, or worker unit, of each first request.
+
+    The survey chooses `divide` with one unit per entry of `UNITS`, the
+    interface node edits the notes file, the delegating node spawns one
+    fresh worker per unit with `write` narrowed to that unit's crate
+    directory and waits for both, each worker creates one file in its own
+    crate, and the integrating node reads the notes file and returns. The
+    delegation report cites, per unit, the board task the spawn result
+    named and the worker's episode with the sequence the worker's own
+    report cited, because a cited sequence under an `episode` names a
+    result in that child's log.
+    """
+    served: list[str] = []
+
+    def seq_of(results: list[dict[str, Any]]) -> int:
+        cited = re.search(r"\[seq (\d+)\]", json.dumps(results[-1]))
+        return int(cited.group(1)) if cited else 0
+
+    def respond(request: dict[str, Any]) -> list[dict[str, Any]]:
+        system = request["system"]
+        results = [message for message in request["messages"] if message.get("role") == "tool"]
+        task = runtime_responses.message_text(request["messages"])
+        learned = [{"claim": "The notes file was read.", "seq": seq_of(results) if results else 0}]
+        if "Survey the task and the workspace, then decide how the work divides" in system:
+            if not results:
+                served.append("survey")
+                return runtime_responses.call("read-notes", "read", {"path": str(workspace / "docs" / "notes.txt")}) + runtime_responses.done("tool")
+            units = [{"name": unit, "crates": [unit], "write_roots": [f"crates/{unit}"], "shared": ["docs/notes.txt"]} for unit in UNITS]
+            value = {"summary": "Two units.", "units": units, "unresolved_risks": [], "learned": learned, "branch": "divide"}
+            return runtime_responses.call("node-return", "return", {"value": value}) + runtime_responses.done("tool")
+        if "Write the shared elements the survey named" in system:
+            if not results:
+                served.append("interface")
+                edits = [{"old_text": "nothing the task changes", "new_text": "the interface every unit builds against"}]
+                return runtime_responses.call("edit-notes", "edit", {"path": str(workspace / "docs" / "notes.txt"), "edits": edits}) + runtime_responses.done("tool")
+            value = {"summary": "The interface is written.", "changed_paths": ["docs/notes.txt"], "validation": ["The notes file was edited."], "unresolved_risks": [], "learned": learned}
+            return runtime_responses.call("node-return", "return", {"value": value}) + runtime_responses.done("tool")
+        if "Give each unit the survey named to one worker" in system:
+            if not results:
+                served.append("delegate")
+                calls: list[dict[str, Any]] = []
+                for unit in UNITS:
+                    calls += runtime_responses.call(f"spawn-{unit}", "spawn", {"contract": graphs.WORKER, "task": f"Unit {unit}.", "context": "fresh", "write": [str(workspace / "crates" / unit)]})
+                return calls + runtime_responses.done("tool")
+            if len(results) == len(UNITS):
+                return runtime_responses.call("wait-all", "wait", {}) + runtime_responses.done("tool")
+            reports = {}
+            for episode_id, value in _WORKER_ENDED.findall(task):
+                report = json.loads(value)
+                reports[report["unit"]] = (episode_id, report["evidence"][0]["seq"])
+            units = []
+            for unit, result in zip(UNITS, results):
+                spawned = _SPAWN_RESULT.search(str(result.get("rendered", "")))
+                if spawned is None or unit not in reports:
+                    return [{"kind": "error", "message": f"unit {unit} has no spawn result or no worker report", "retryable": False}]
+                episode_id, cited = reports[unit]
+                units.append({"unit": unit, "task_id": spawned.group(2), "outcome": "completed", "episode": episode_id, "finding": "The worker wrote its file.", "seq": cited})
+            value = {"summary": "Both units settled.", "units": units, "changed_paths": [], "unresolved_risks": []}
+            return runtime_responses.call("node-return", "return", {"value": value}) + runtime_responses.done("tool")
+        if "Do the one unit your task names" in system:
+            unit = next((unit for unit in UNITS if f"Unit {unit}." in task), None)
+            if unit is None:
+                return [{"kind": "error", "message": "the worker's task names no unit", "retryable": False}]
+            if not results:
+                served.append(f"worker {unit}")
+                edits = [{"old_text": "", "new_text": f"// {unit}\n"}]
+                return runtime_responses.call("create-lib", "edit", {"path": str(workspace / "crates" / unit / "lib.rs"), "edits": edits}) + runtime_responses.done("tool")
+            value = {"unit": unit, "finding": "The file is written.", "changed_paths": [f"crates/{unit}/lib.rs"], "evidence": [{"claim": "The file was created.", "seq": seq_of(results)}], "needs_from_lead": []}
+            return runtime_responses.call("worker-return", "return", {"value": value}) + runtime_responses.done("tool")
+        if "Integrate what the workers returned" in system:
+            if not results:
+                served.append("integrate")
+                return runtime_responses.call("read-notes", "read", {"path": str(workspace / "docs" / "notes.txt")}) + runtime_responses.done("tool")
+            value = {"summary": "Integrated.", "changed_paths": [], "validation": ["The notes file was read."], "unresolved_risks": [], "learned": learned}
+            return runtime_responses.call("node-return", "return", {"value": value}) + runtime_responses.done("tool")
+        return [{"kind": "error", "message": "the request's system text names no known node", "retryable": False}]
+
+    return respond, served
 
 
 # The phrase in each node's role that identifies it in a request, and the value the node returns.
@@ -395,6 +489,26 @@ class Shape(unittest.TestCase):
         self.assertEqual(graphs.worker_calls(40, 1), 20)
         self.assertEqual(graphs.worker_calls(12, 4), 1)
         self.assertEqual(graphs.worker_calls(1, 4), 1)
+
+    def test_the_worker_declares_a_token_share_only_under_a_root_token_ceiling(self) -> None:
+        """A dimension a child leaves undeclared is reserved as the parent's remainder, so each token ceiling the root declares reaches the worker as a share."""
+        for name, document in every_document(self.workspace, self.check).items():
+            delegate = nodes(document).get("delegate")
+            if delegate is None:
+                continue
+            concurrent = delegate["model"]["budget"]["max_concurrent"]
+            root = document["budget"]
+            for worker in (delegate["model"]["child_contracts"]["worker"], document["child_contracts"]["worker"]):
+                budget = worker["budget"]
+                for key in ("input_tokens", "output_tokens"):
+                    self.assertEqual(budget[key], graphs.worker_calls(root[key], concurrent), f"{name}: {key}")
+                self.assertLessEqual(concurrent * budget["input_tokens"], root["input_tokens"] // 2, name)
+        without = graphs.teams(self.workspace, self.check, {"model_calls": 40, "seconds": 600}, max_concurrent=4)
+        worker = nodes(without)["delegate"]["model"]["child_contracts"]["worker"]["budget"]
+        self.assertEqual(worker, {"model_calls": graphs.worker_calls(40, 4), "max_depth": 0})
+        self.assertEqual(graphs.worker_budget({"model_calls": 40, "seconds": 600, "input_tokens": 100000}, 4), {"model_calls": 5, "input_tokens": 12500})
+        self.assertEqual(graphs.worker_budget({"model_calls": 40, "seconds": 600, "input_tokens": 100000, "output_tokens": 20000}, 1), {"model_calls": 20, "input_tokens": 50000, "output_tokens": 10000})
+        self.assertEqual(graphs.worker_budget({"model_calls": 4, "seconds": 600, "output_tokens": 7}, 4), {"model_calls": 1, "output_tokens": 1})
         self.assertEqual(graphs.check_budget({"model_calls": 4, "seconds": 2}), {"model_calls": 4, "seconds": 2})
         with self.assertRaises(ValueError) as refused:
             graphs.check_budget({"model_calls": 4, "seconds": 1})
@@ -582,6 +696,55 @@ class Fired(unittest.TestCase):
             self.assertEqual(reservations(episode), [40, 38], "each firing reserved the root's whole remainder")
 
 
+class Divided(unittest.TestCase):
+    """The teams graph's divide path under scripted responses: two fresh workers under the delegating node, each in its own write root.
+
+    The budget names `model_calls` and `seconds` alone, because a worker
+    declares a share of the model calls and no share of the tokens, so
+    under a token allowance the first worker reserves the whole remainder
+    and the second spawn is refused as exhausted.
+    """
+
+    def test_the_divide_path_spawns_two_workers_under_distinct_write_roots_and_completes(self) -> None:
+        if not os.access(FOE, os.X_OK):
+            self.skipTest(f"{FOE} is not built")
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace, check = materialize(Path(tmp))
+            for unit in UNITS:
+                (workspace / "crates" / unit).mkdir()
+            document = graphs.teams(workspace, check, {"model_calls": 40, "seconds": 600}, task="Probe.")
+            path = graphs.write(document, Path(tmp) / "documents" / "divide.json")
+            respond, served = divide_responder(workspace)
+            status, episode = host_runtime.run(FOE, path, Path(tmp) / "logs" / "divide", respond)
+            self.assertEqual(status, 0, outcome(episode))
+            self.assertEqual(outcome(episode)["kind"], "completed")
+            self.assertEqual(fired(episode), ["survey", "interface", "delegate", "integrate"])
+            self.assertEqual(sorted(served), sorted(["survey", "interface", "delegate", "worker alpha", "worker beta", "integrate"]))
+            # The delegating node is the root's child whose spawn names the delegate contract; its workers are its own children.
+            delegate_id = next(event["data"]["child_id"] for event in events(episode) if event["type"] == "spawn/start" and event["data"]["contract"] == "delegate")
+            delegate = episode / "children" / delegate_id
+            spawns = [event["data"] for event in events(delegate) if event["type"] == "spawn/start"]
+            self.assertEqual([spawn["contract"] for spawn in spawns], [graphs.WORKER] * 2)
+            self.assertEqual([spawn["context"] for spawn in spawns], ["fresh"] * 2)
+            for spawn in spawns:
+                self.assertTrue((delegate / "children" / spawn["child_id"] / "episode.jsonl").is_file(), spawn)
+            # The spawn tool's result records the write roots the board task holds; the spawn event names the call.
+            roots = {event["data"]["call_id"]: event["data"]["value"]["write"] for event in events(delegate) if event["type"] == "tool/result" and event["data"]["name"] == "spawn"}
+            by_child = {spawn["child_id"]: roots[spawn["call_id"]] for spawn in spawns}
+            self.assertEqual(sorted(root for write in by_child.values() for root in write), sorted(str(workspace / "crates" / unit) for unit in UNITS))
+            first, second = by_child.values()
+            self.assertNotEqual(first, second)
+            # Each worker's log records the narrowed grant, and its one edit lies inside it.
+            for child_id, write in by_child.items():
+                worker_events = events(delegate / "children" / child_id)
+                self.assertEqual(worker_events[0]["data"]["contract"]["grants"]["write"], write)
+                edited = [event["data"]["value"]["path"] for event in worker_events if event["type"] == "tool/result" and event["data"]["name"] == "edit"]
+                self.assertEqual(len(edited), 1, child_id)
+                self.assertTrue(str(workspace / edited[0]).startswith(write[0] + "/"), (edited, write))
+            self.assertEqual([(workspace / "crates" / unit / "lib.rs").read_text(encoding="utf-8") for unit in UNITS], [f"// {unit}\n" for unit in UNITS])
+            self.assertIn("the interface every unit builds against", (workspace / "docs" / "notes.txt").read_text(encoding="utf-8"))
+
+
 class Reserved(unittest.TestCase):
     """How the runtime reserves a node's budget, observed through scripted runs; these trials fix the declarations graphs.py makes.
 
@@ -659,6 +822,26 @@ class Reserved(unittest.TestCase):
         status, episode = host_runtime.run(FOE, shared, self.root / "logs" / "workers-shared", lead_responder(self.workspace))
         self.assertEqual(status, 0, outcome(episode))
         self.assertEqual(reservations(episode), [graphs.worker_calls(self.ROOT_CALLS, 2)] * 2, "both shared workers reserve their share")
+        self.assertEqual(spent(episode), [2, 2])
+
+    def test_concurrent_workers_without_a_token_share_starve_each_other_under_a_token_ceiling_and_a_share_lets_both_run(self) -> None:
+        tokens = {"input_tokens": 4000, "output_tokens": 1000}
+        calls = graphs.worker_calls(self.ROOT_CALLS, 2)
+        unshared = graphs.write(lead_document(self.workspace, calls, self.ROOT_CALLS, tokens), self.root / "documents" / "workers-unshared-tokens.json")
+        self.assertEqual(self.plan(unshared).returncode, 0)
+        status, episode = host_runtime.run(FOE, unshared, self.root / "logs" / "workers-unshared-tokens", lead_responder(self.workspace))
+        self.assertEqual(status, 3, "the second worker found no input tokens left to reserve")
+        self.assertEqual(outcome(episode), {"kind": "exhausted", "limit": "input_tokens"})
+        self.assertEqual(reservations(episode), [calls], "the model-call share alone did not keep the first worker from taking every token")
+        lead_input = runtime_responses.SMALL_USAGE["input"]
+        self.assertEqual(reservations(episode, "input_tokens"), [tokens["input_tokens"] - lead_input], "the first worker took every input token left after the lead's one call")
+        shares = graphs.worker_budget({"model_calls": self.ROOT_CALLS, "seconds": 120, **tokens}, 2)
+        shared = graphs.write(lead_document(self.workspace, shares["model_calls"], self.ROOT_CALLS, tokens, {key: shares[key] for key in tokens}), self.root / "documents" / "workers-shared-tokens.json")
+        self.assertEqual(self.plan(shared).returncode, 0)
+        status, episode = host_runtime.run(FOE, shared, self.root / "logs" / "workers-shared-tokens", lead_responder(self.workspace))
+        self.assertEqual(status, 0, outcome(episode))
+        self.assertEqual(reservations(episode, "input_tokens"), [shares["input_tokens"]] * 2, "both shared workers reserve their input share")
+        self.assertEqual(reservations(episode, "output_tokens"), [shares["output_tokens"]] * 2, "both shared workers reserve their output share")
         self.assertEqual(spent(episode), [2, 2])
 
 
