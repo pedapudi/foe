@@ -12,6 +12,8 @@ filegroup(
             "arms/*.py",
             "contracts/*.py",
             "tasks/*.py",
+            "gates/*.py",
+            "environment/**",
             "fixtures/**",
             "tasks/examples/**",
             "tasks/foe-tree/*/task.json",
@@ -72,6 +74,28 @@ sh_binary(
         ":sources",
         ":support",
         "//:foe",
+    ],
+)
+
+# The label non-leakage gate: `bazel run //evals/cross_harness:label-leakage -- DOCUMENT`.
+# It prints the number of calls and launches nothing without `--confirm-spend`.
+sh_binary(
+    name = "label-leakage",
+    srcs = ["gates/label_leakage.py"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# The harness isolation gate over a finished run's records, without a model.
+sh_binary(
+    name = "isolation",
+    srcs = ["gates/isolation.py"],
+    data = [
+        ":sources",
+        ":support",
     ],
 )
 

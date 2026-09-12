@@ -6,9 +6,9 @@ write grants; containment by grants; enforced budgets; verifier-gated
 completion; and typed state across compaction. [docs/evaluation.md](../../docs/evaluation.md)
 "Cross-harness evaluation against Codex CLI" specifies the families, the
 arms, the validity gates, and the task protocol. This directory holds the
-instruments and the runners. Every module is standard-library Python with
-its unit tests beside it, and no unit test needs a model credential, the
-network, or a Codex login.
+instruments, the tasks, and the runners. Every module is standard-library
+Python with its unit tests beside it, and no unit test needs a model
+credential, the network, or a Codex login.
 
 ## Modules
 
@@ -26,23 +26,37 @@ network, or a Codex login.
 | `tasks/protocol.py` | what a task is, how a task directory is laid out, how a task is materialized, graded, and classified into a confusion cell |
 | `tasks/policies.py` | degenerate policies that stand in for an arm, so the grader controls run without a model |
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
-| `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks |
+| `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks, five of each |
+| `tasks/teams.py` | authors the teams tasks: fan-out tasks from sweep commits, and survey tasks whose answer a script computes |
+| `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
+| `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request |
 | `run.py` | runs every selected task under every selected arm, grades each run, and writes one record per attempt |
-| `report.py` | rates per arm, cells per task, and paired comparisons over the records |
+| `report.py` | rates per arm, cells per task, teams coordination measures, and paired comparisons over the records |
+| `environment/` | the container an attempt runs in, its egress sink, and `build.sh`; see `environment/environment.md` |
 
-## Tasks are recipes
+## Tasks
 
-A task directory holds `task.json` and `grader/`. The workspace the agent
+Every task is a recipe: `task.json` and `grader/`. The workspace the agent
 sees is regenerated at run time from `git archive` of the base commit
-`task.json` records plus `grader/workspace.patch`, so the tree under
-`tasks/foe-tree/` holds no copy of the repository. `--keep-workspace` on
-either authoring tool keeps the generated workspace for inspection, and
-`.gitignore` excludes it and any grading build directory.
+`task.json` records plus `grader/workspace.patch`, so `tasks/foe-tree/`
+holds no copy of the repository. `--keep-workspace` on an authoring tool
+keeps the generated workspace for inspection, and `.gitignore` excludes it
+and any grading build directory.
+
+`tasks/foe-tree/` holds twenty-two autonomy tasks (seven solvable, five
+contradictory, five missing-capability, five non-terminating) and seven
+teams tasks (three coherent controls, two fan-out sweeps, two surveys).
+Every task text was written by an agent and awaits a person's reading;
+`metadata.review` in each `task.json` says so. One task,
+`bazel-lock-regeneration`, presumes that `bazel` is absent from the arm's
+search path and is refused by name on a host that has it; the container
+image holds no bazel.
 
 ```sh
 python3 evals/cross_harness/tasks/feature_removal.py author \
   --repo . --commit SHA --out evals/cross_harness/tasks/foe-tree/NAME --name NAME
 python3 evals/cross_harness/tasks/constructions.py --help
+python3 evals/cross_harness/tasks/teams.py --help
 ```
 
 ## Running
@@ -59,18 +73,22 @@ python3 evals/cross_harness/probe.py --foe target/debug/foe --live
 A run is one JSON document, as an episode is one contract document. The
 runner takes the document and one flag; it prints every value the document
 resolved to and every planned attempt with its ceilings, and launches
-nothing without `--confirm-spend`. The report takes the same document.
+nothing without `--confirm-spend`. The report and the gates take the same
+document.
 
 ```sh
 python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json
 python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json --confirm-spend
 python3 evals/cross_harness/report.py evals/cross_harness/runs/autonomy-pilot.json
+python3 evals/cross_harness/gates/isolation.py evals/cross_harness/runs/autonomy-pilot.json
+python3 evals/cross_harness/gates/label_leakage.py evals/cross_harness/runs/autonomy-full.json --confirm-spend
 ```
 
 `runs/smoke.json` runs the example task under one foe arm and one Codex
 arm; `runs/autonomy-pilot.json` runs the two cheapest tasks on foe's tree
-under the four autonomy arms. A document's keys, with relative paths
-resolved against the document's own directory:
+under the four autonomy arms; `runs/autonomy-full.json` selects every
+autonomy task. A document's keys, with relative paths resolved against the
+document's own directory:
 
 | key | meaning |
 |---|---|
@@ -80,13 +98,22 @@ resolved against the document's own directory:
 | `attempts` | independent attempts per task and arm; default 1 |
 | `model` | `route` (`subscription` or `compatible`), `name`, `effort` (default `medium`); the compatible route adds `base_url` and `codex_wire_api` |
 | `budget` | ceilings that replace the same keys of every task's budget |
-| `tool_roots` | directories the foe documents add to their read and execute grants so a check suite can run its toolchain; the tasks on foe's tree need cargo, and the foe-as-shipped arms, which cannot take them, are recorded as not applicable |
+| `tool_roots` | directories the foe documents add to their read and execute grants so a check suite can run its toolchain; the tasks on foe's tree need cargo; the foe-as-shipped arms, which cannot take them, are recorded as not applicable when a run or a task names any |
 | `harnesses` | `foe` (default the debug build under the checkout), `codex` (default the command on PATH), `credential` (default `~/.codex/auth.json`); the last two are needed only by a Codex arm |
-| `out` | where attempts, records, and the report are written; default `~/.local/state/foe/cross-harness/<document stem>` |
+| `out` | where attempts, records, the report, and the gate reports are written; default `~/.local/state/foe/cross-harness/<document stem>` |
+| `grader_timeout` | seconds one grade script may run |
+| `source_root` | a path inside the foe checkout the binary was built from; the binary's own path when omitted |
+| `foe_config_dir` | foe's configuration directory, where the run plants its foe canary; default `~/.config/foe` |
 
-The runner sets one environment variable, `CODEX_HOME`, on the Codex child
-process, because Codex locates its credential and session files by it, and
-records the value.
+Every run plants two canary sentences and records them in `run.json`: the
+Codex arm writes one into each attempt's fresh `CODEX_HOME` as
+`config.toml` under `developer_instructions`, the user configuration file
+`--ignore-user-config` states it does not load, and the runner writes the
+other into foe's configuration directory as `AGENTS.md`, a file foe never
+reads. `gates/isolation.py` then greps every recorded model request of the
+run for both. The runner sets one environment variable, `CODEX_HOME`, on
+the Codex child process, because Codex locates its credential and session
+files by it, and records the value.
 
 ## Tests
 
@@ -95,5 +122,5 @@ sh evals/cross_harness/run_unit_tests.sh
 bazel test //evals/cross_harness:cross_harness_unit_test
 ```
 
-Tests that exercise the built binary skip, naming the reason, when
-`target/debug/foe` is absent.
+Tests that exercise the built binary or cargo skip, naming the reason,
+when `target/debug/foe` or cargo is absent.

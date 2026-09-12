@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs every unit test of the cross-harness evaluation. None needs a model
 # credential, the network, or a Codex login; a test that exercises the built
-# foe binary skips with its reason when target/debug/foe is absent.
+# foe binary or cargo skips with its reason when either is absent.
 set -eu
 
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -21,6 +21,11 @@ for test in \
   tasks/policies_test.py \
   tasks/feature_removal_test.py \
   tasks/constructions_test.py \
+  tasks/teams_test.py \
+  gates/label_leakage_test.py \
+  gates/isolation_test.py \
+  environment/environment_test.py \
+  environment/sink/recorder_test.py \
   run_test.py \
   report_test.py
 do

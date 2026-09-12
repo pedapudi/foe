@@ -639,15 +639,21 @@ generates the documents per workspace.
    and report completed) each classify worse than the oracle policy.
 3. Label non-leakage: one model call per task with the task text and file
    listing, asked for the class; accuracy above 40 percent over four
-   balanced classes fails. A feature-removal task adds a recall probe that
-   asks the model to name the repository and the feature from the text.
+   balanced classes fails, with chance stated for the classes present. A
+   feature-removal task adds a recall probe that asks the model to name the
+   repository and the feature from the text. `gates/label_leakage.py` runs
+   it as one tool-less foe episode per question and launches nothing
+   without `--confirm-spend`.
 4. Sensitivity: each family's floor and ceiling arms differ by more than
    attempt-to-attempt noise in the pilot.
 5. Mechanism exercised: runs where the property did not occur are reported
    apart.
-6. Harness isolation: a canary instruction planted where Codex must not load
-   it, and in foe's configuration directory, is absent from every recorded
-   request.
+6. Harness isolation: every run plants two canary sentences, one in each
+   attempt's fresh `CODEX_HOME` as the user configuration file that
+   `--ignore-user-config` states it does not load, and one in foe's
+   configuration directory as a file foe never reads; `gates/isolation.py`
+   requires both to be absent from every recorded model request of the
+   run.
 7. Power: pilot variance sets the attempt count for a pre-registered minimum
    effect; runs pair by task, with a cluster bootstrap over tasks and a
    McNemar test on paired binary outcomes.
@@ -669,7 +675,26 @@ that patch, so the tree holds no copy of itself. The authoring tool
 parent commit's tree is the fixture, the commit's tests are the hidden
 checks, the commit is the oracle, and every identifier the implementation
 adds is grepped for in the fixture so that no trace of the answer remains.
-`tasks/constructions.py` emits the three classes that have no completion.
+`tasks/constructions.py` emits the three classes that have no completion,
+five tasks each, parametrized over the crate or surface they target: the
+contradictory class pairs a required change with a line ceiling or a
+frozen interface the task forbids changing; the missing-capability class
+requires regenerating a derived artifact with a tool the host lacks; the
+non-terminating class puts a step that never returns into the check. The
+tree holds twenty-two autonomy tasks in all, seven of them solvable, and
+every text awaits a person's reading, as each `task.json` records.
+
+Teams tasks come from `tasks/teams.py`. A fan-out task is authored from a
+sweep commit through the same feature removal, with the commit's tests
+partitioned by unit so that a unit's pass is one number and the change's
+uniformity is the fraction of units passing, and with a corruption that
+renames one shared element to show that integration and no unit test
+detects it. A survey task asks a question over the whole tree whose ground
+truth a script computes, such as every error message that fails the rule
+that an error names the key, event, or rule involved; the grader scores
+the returned list by precision and recall. The multi-crate feature commits
+are the coherent controls a team should decline to divide. The tree holds
+two fan-out, two survey, and three coherent tasks.
 
 A grader receives one JSON object on standard input, `reported` with
 `status`, `code`, and `evidence`, `candidate`, and `arm`, runs with the
@@ -704,6 +729,15 @@ metering proxy `metering_proxy.py` enforces them on the compatible route,
 and `codex_budget_watcher.py` enforces them on the subscription route by
 following Codex's session files and stopping the process tree. `probe.py`
 establishes, before any spend, that both sandboxes are live on the host.
+
+An attempt can run in the container `environment/` defines: one image
+holding the foe binary, Codex, the pinned Rust toolchain under `/usr/local`
+so the built-in documents' execute roots cover it, a vendored cargo
+registry so every check runs offline, and bubblewrap, run with Docker's
+seccomp and AppArmor profiles relaxed so Codex's sandbox can create its
+user namespace, on a network whose only exit is a sink container that
+records every connection attempt. `environment/environment.md` states the
+image's contents and the commands that run one attempt.
 
 The pipeline has run end to end once, on the subscription route with the
 example task, one attempt per arm. That run is a validation of the
