@@ -1520,7 +1520,12 @@ class Running(Harness):
             workspace.mkdir()
             script = run.write_check_script(Path(tmp) / "check", workspace, ["./checks/run.sh"])
             text = script.read_text(encoding="utf-8")
-            self.assertIn(f"HOME={shlex.quote(str(workspace))}", text)
+            import pwd as passwd_database
+            home = passwd_database.getpwuid(os.getuid()).pw_dir
+            self.assertIn(f"HOME={shlex.quote(home)}", text)
+            # The workspace is the wrong value: a toolchain manager would look for
+            # its installation there, find none, and attempt a denied download.
+            self.assertNotIn(f"HOME={shlex.quote(str(workspace))}", text)
             self.assertIn("export PATH LANG HOME TMPDIR", text)
             printed = subprocess.run(
                 ["/bin/sh", "-c", f"{shlex.quote(str(script))} >/dev/null 2>&1; :"], capture_output=True, text=True, check=False

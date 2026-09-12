@@ -225,6 +225,7 @@ import argparse
 import json
 import keyword
 import os
+import pwd
 import re
 import shlex
 import shutil
@@ -1109,11 +1110,16 @@ def write_check_script(path: Path, workspace: Path, command: list[str], search_p
     starts a configured executable with an empty environment, so the script
     sets its own. The search path is the system directories of docs/tools.md
     "bash" followed by every directory of `search_path`, and the language is
-    the one a bash command receives. HOME is the workspace, which is the
-    value a bash command of the same episode receives, because a suite whose
-    tests read the variable would otherwise see it unset under a foe arm and
-    set under a Codex arm, which inherits the runner's environment; the two
-    arms would then run different checks. TMPDIR is CHECK_SCRATCH_DIR under
+    the one a bash command receives. HOME is the real user's home directory,
+    read from the passwd database rather than from the environment, because
+    that is what a Codex arm inherits and the two arms must run the same
+    check. It is a string rather than a grant: the sandbox still refuses
+    every path the contract does not name, and the toolchain directories the
+    suite needs are named under the document's tool roots. Setting it to the
+    workspace instead makes a toolchain manager look for its installation
+    inside the workspace, find none, and attempt a download the sandbox
+    denies, which fails the check for a reason that has nothing to do with
+    the task. TMPDIR is CHECK_SCRATCH_DIR under
     the workspace, created with a cache tag so that the workspace snapshot
     leaves it out. It is not /tmp, which foe denies by design, so a suite
     whose tests require the shared temporary directory cannot run under a
@@ -1132,7 +1138,7 @@ def write_check_script(path: Path, workspace: Path, command: list[str], search_p
             "# The check tool of a cross-harness foe document: the task's check suite, run from the workspace.",
             f"PATH={shlex.quote(':'.join([SYSTEM_SEARCH_PATH, *directories]))}",
             "LANG=C.UTF-8",
-            f"HOME={shlex.quote(str(workspace))}",
+            f"HOME={shlex.quote(pwd.getpwuid(os.getuid()).pw_dir)}",
             f"TMPDIR={scratch}",
             "export PATH LANG HOME TMPDIR",
             f"cd {shlex.quote(str(workspace))} || {{ echo {shlex.quote(f'the workspace {workspace} cannot be entered')}; exit 0; }}",

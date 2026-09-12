@@ -154,6 +154,15 @@ def search_path() -> str:
     return ":".join([SYSTEM_SEARCH_PATH, *tool_roots()])
 
 
+
+def home_directory() -> str:
+    """The real user's home, from the passwd database rather than the environment.
+
+    A Codex arm inherits this value, and a toolchain manager reads it to find
+    its installation, so a check run under any environment states the same one.
+    """
+    return pwd.getpwuid(os.getuid()).pw_dir
+
 def wrapper_body(workspace: Path) -> str:
     """The shell body that runs a workspace's check suite with an environment of its own.
 
@@ -171,7 +180,7 @@ def wrapper_body(workspace: Path) -> str:
             f"PATH='{search_path()}'",
             "LANG=C.UTF-8",
             f"TMPDIR='{scratch}'",
-            f"HOME='{workspace}'",
+            f"HOME='{home_directory()}'",
             "export PATH LANG HOME TMPDIR",
             f"mkdir -p '{scratch}' || {{ echo 'the scratch directory {scratch} cannot be created'; exit 1; }}",
             f"cd '{workspace}' || {{ echo 'the workspace {workspace} cannot be entered'; exit 1; }}",
@@ -370,7 +379,7 @@ def measure_host(workspace: Path, seconds: int) -> Measurement:
     """Run the check suite on the host with a cleared environment, outside every sandbox."""
     scratch = workspace / CHECK_SCRATCH
     scratch.mkdir(parents=True, exist_ok=True)
-    command = ["env", "-i", f"PATH={search_path()}", "LANG=C.UTF-8", f"HOME={workspace}", f"TMPDIR={scratch}", "sh", "-c", f"./{CHECK_SUITE}"]
+    command = ["env", "-i", f"PATH={search_path()}", "LANG=C.UTF-8", f"HOME={home_directory()}", f"TMPDIR={scratch}", "sh", "-c", f"./{CHECK_SUITE}"]
     return _measure_process(HOST, command, workspace, seconds)
 
 

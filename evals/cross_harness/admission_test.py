@@ -376,7 +376,10 @@ class EpisodeDocument(unittest.TestCase):
         self.assertIn("export PATH LANG HOME TMPDIR", body)
         # HOME matches what a bash command of the same episode receives, so a
         # suite whose tests read it runs the same under either arm.
-        self.assertIn("HOME='/scratch/root/workspace'", body)
+        # The real user's home, so a toolchain manager finds its installation;
+        # the workspace would send it looking inside the tree and then to the network.
+        self.assertIn(f"HOME='{admission.home_directory()}'", body)
+        self.assertNotIn("HOME='/scratch/root/workspace'", body)
         self.assertIn(f"./{admission.CHECK_SUITE} 2>&1", body)
         self.assertIn(admission.CHECK_SUITE_UNAVAILABLE, body)
         # Nothing beyond the four is set: the runtime starts a configured
