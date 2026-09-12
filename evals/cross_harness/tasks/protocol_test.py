@@ -180,6 +180,65 @@ class Materialization(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 protocol.materialize(EXAMPLE, root)
 
+    def test_the_workspace_part_writes_no_grader_and_the_grader_part_completes_the_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root, together = Path(tmp) / "root", Path(tmp) / "together"
+            protocol.materialize(EXAMPLE, together)
+            task = protocol.materialize(EXAMPLE, root, protocol.WORKSPACE)
+            self.assertEqual(task.name, "hello-solvable")
+            # The workspace is the whole workspace of a call that writes both parts, and no path under the grader directory exists.
+            self.assertEqual(snapshot(root / "workspace"), snapshot(together / "workspace"))
+            self.assertFalse((root / "grader").exists())
+            # The root holds the workspace and the task alone; the staged record waits beside it, out of the arm's reach.
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ["task.json", "workspace"])
+            self.assertEqual(protocol.staged_protected_record(root), root.parent / "root.protected.json")
+            self.assertTrue(protocol.staged_protected_record(root).is_file())
+            # An arm runs here: it edits a source file, which is its job, and a protected file, which is damage.
+            (root / "workspace" / "src" / "greeting.py").write_text("def greet(name):\n    return name\n", encoding="utf-8")
+            (root / "workspace" / "AGENTS.md").write_text("rewritten\n", encoding="utf-8")
+            protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            self.assertFalse(protocol.staged_protected_record(root).exists())
+            self.assertTrue((root / "grader" / "grade").stat().st_mode & 0o100)
+            record = json.loads((root / "grader" / "protected.json").read_text(encoding="utf-8"))
+            self.assertIn("grader/grade", record["outside"])
+            self.assertIn("task.json", record["outside"])
+            # The protected hashes are the ones the workspace part recorded, so the edit made while the grader was away is damage.
+            self.assertEqual(protocol.damage(root), ["workspace/AGENTS.md"])
+
+    def test_a_file_an_arm_left_outside_the_workspace_is_damage_after_the_grader_part(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            protocol.materialize(EXAMPLE, root, protocol.WORKSPACE)
+            (root / "notes.txt").write_text("x", encoding="utf-8")
+            protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            self.assertEqual(protocol.damage(root), ["notes.txt"])
+
+    def test_a_file_an_arm_writes_under_the_record_name_is_damage_and_reaches_no_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            protocol.materialize(EXAMPLE, root, protocol.WORKSPACE)
+            # An arm rewrites a protected file and writes a record of its own under the root, carrying the new digest.
+            (root / "workspace" / "AGENTS.md").write_text("rewritten by the arm\n", encoding="utf-8")
+            forged = {"workspace": {"AGENTS.md": protocol.sha256_file(root / "workspace" / "AGENTS.md")}, "outside": {}}
+            (root / protocol.PROTECTED_FILE).write_text(json.dumps(forged), encoding="utf-8")
+            protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            self.assertEqual(protocol.damage(root), ["workspace/AGENTS.md", protocol.PROTECTED_FILE])
+
+    def test_the_parts_argument_and_the_order_of_the_two_calls_are_checked_by_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            with self.assertRaises(ValueError) as caught:
+                protocol.materialize(EXAMPLE, root, "everything")
+            self.assertIn("parts='everything'; expected one of workspace, grader, both", str(caught.exception))
+            with self.assertRaises(FileNotFoundError) as missing:
+                protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            self.assertIn(str(protocol.staged_protected_record(root)), str(missing.exception))
+            protocol.materialize(EXAMPLE, root, protocol.WORKSPACE)
+            (root / "grader").mkdir()
+            with self.assertRaises(FileExistsError) as occupied:
+                protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            self.assertIn(str(root / "grader"), str(occupied.exception))
+
     def test_a_protected_entry_the_workspace_lacks_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             task_dir = Path(tmp) / "task"
@@ -188,6 +247,18 @@ class Materialization(unittest.TestCase):
             with self.assertRaises(FileNotFoundError) as caught:
                 protocol.materialize(task_dir, Path(tmp) / "root")
             self.assertIn("docs/spec.md", str(caught.exception))
+
+    def test_a_grader_part_that_cannot_write_its_record_leaves_the_staged_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            protocol.materialize(EXAMPLE, root, protocol.WORKSPACE)
+            staged = protocol.staged_protected_record(root)
+            written = staged.read_text(encoding="utf-8")
+            with mock.patch.object(protocol.Path, "write_text", side_effect=OSError("no space left on device")):
+                with self.assertRaises(OSError):
+                    protocol.materialize(EXAMPLE, root, protocol.GRADER)
+            # The baseline is where a repeated call finds it, so the root can still be graded.
+            self.assertEqual(staged.read_text(encoding="utf-8"), written)
 
     def test_damage_names_protected_changes_and_files_outside_the_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

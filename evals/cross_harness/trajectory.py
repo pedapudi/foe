@@ -4,9 +4,10 @@
 A trajectory is what one run of a coding harness did, reduced to the facts
 the cross-harness comparison scores: which agents ran and how they nest,
 every model call with the usage the harness reported, every shell command
-with the paths it named, every file change, every compaction, and the
-outcome. The foe arm fills it from an episode log tree and the Codex arm
-from session files and event streams; the report reads one shape.
+with the paths it named, every tool call with a digest of its arguments,
+every file change, every compaction, and the outcome. The foe
+arm fills it from an episode log tree and the Codex arm from session files
+and event streams; the report reads one shape.
 
 Each record is a dataclass with `to_dict` and `from_dict`, so a trajectory
 round-trips through JSON without loss. `from_dict` checks every enumerated
@@ -22,6 +23,8 @@ harness reported none.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -61,6 +64,19 @@ def paths_in_command(text: str) -> list[str]:
     return found
 
 
+def arguments_digest(arguments: Any) -> str:
+    """`sha256:` followed by the SHA-256 of the canonical JSON of one call's arguments.
+
+    Canonical JSON is the form docs/log-format.md states for a recorded
+    digest: compact, object keys sorted, raw UTF-8. Two calls with equal
+    arguments therefore carry one digest, and no argument content reaches
+    the record, which keeps a path outside the workspace, a credential, or
+    a task's own text out of the trajectory.
+    """
+    text = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def _check_choice(prefix: str, key: str, value: Any, choices: tuple[str, ...]) -> str:
     if value not in choices:
         raise ValueError(f"{prefix}.{key}: {value!r} is not one of {', '.join(choices)}")
@@ -86,6 +102,13 @@ def _int(prefix: str, data: dict[str, Any], key: str) -> int:
     value = _require(prefix, data, key)
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{prefix}.{key}: {value!r} is not an integer")
+    return value
+
+
+def _optional_str(prefix: str, data: dict[str, Any], key: str) -> str | None:
+    value = data.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{prefix}.{key}: {value!r} is not a string or null")
     return value
 
 
@@ -191,6 +214,75 @@ class Command:
 
 
 @dataclass
+class ToolCall:
+    """One call to a tool, and what the harness recorded of its result.
+
+    `name` is the tool's own name, such as `bash`, `edit`, or the verifier
+    a contract declares. `arguments_digest` holds what the module function
+    of that name computes over the arguments the call carried, or None when
+    the record states no arguments, so a report tells repeated calls from
+    distinct ones while holding no argument content. `summary` is one short
+    string carrying the fact a report reads from this tool, such as the code
+    a block call named or the findings a verifier reported, and is None when
+    the record states nothing short. A summary that carries a count states
+    it before any other number, so that a reader taking the first integer
+    of a summary reads that count, and a summary that carries a path states
+    the path alone, so that a reader comparing it against a directory
+    reads a path.
+    `is_error` is true when the harness reported the call itself as failing;
+    a command that ran and exited nonzero is a result, so both arms leave
+    the flag false and record the status in the summary. `ended_ms` is None
+    for a call whose result never came, and `is_error` is then false,
+    because nothing judged the call. A call that is also a shell command
+    appears here and in `Agent.commands`, under the tool's name here and
+    with its text there.
+
+    Which calls a harness records here is the harness's own definition of a
+    tool call: the foe arm records every call its model issued, including
+    reads, searches, edits, and the runtime's own verifier invocations,
+    while the Codex arm records shell commands and calls to tools reached
+    over a protocol and records an edit as a file change. A comparison of
+    two arms' tool-call counts therefore reads
+    `Trajectory.totals()["tool_calls_by_name"]` to say which calls each
+    count holds.
+    """
+
+    name: str
+    started_ms: int
+    ended_ms: int | None
+    is_error: bool = False
+    arguments_digest: str | None = None
+    summary: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "started_ms": self.started_ms,
+            "ended_ms": self.ended_ms,
+            "is_error": self.is_error,
+            "arguments_digest": self.arguments_digest,
+            "summary": self.summary,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], prefix: str = "tool_call") -> ToolCall:
+        name = _require(prefix, data, "name")
+        if not isinstance(name, str):
+            raise ValueError(f"{prefix}.name: {name!r} is not a string")
+        is_error = data.get("is_error", False)
+        if not isinstance(is_error, bool):
+            raise ValueError(f"{prefix}.is_error: {is_error!r} is not a boolean")
+        return cls(
+            name=name,
+            started_ms=_int(prefix, data, "started_ms"),
+            ended_ms=_optional_int(prefix, data, "ended_ms"),
+            is_error=is_error,
+            arguments_digest=_optional_str(prefix, data, "arguments_digest"),
+            summary=_optional_str(prefix, data, "summary"),
+        )
+
+
+@dataclass
 class FileChange:
     """One change to one file, recorded by a file tool or attributed to a command."""
 
@@ -265,7 +357,9 @@ class Agent:
 
     `role` is free text the harness assigns, such as `root`, `worker`, or a
     workflow node name. `depth` is 0 for the root and one more for each
-    spawn below it.
+    spawn below it. `tool_calls` holds every tool call, the ones that also
+    appear as a command or a file change included, so a report reads the
+    whole stream from one list.
     """
 
     id: str
@@ -278,6 +372,7 @@ class Agent:
     commands: list[Command] = field(default_factory=list)
     file_changes: list[FileChange] = field(default_factory=list)
     compactions: list[Compaction] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -291,6 +386,7 @@ class Agent:
             "commands": [command.to_dict() for command in self.commands],
             "file_changes": [change.to_dict() for change in self.file_changes],
             "compactions": [compaction.to_dict() for compaction in self.compactions],
+            "tool_calls": [call.to_dict() for call in self.tool_calls],
         }
 
     @classmethod
@@ -313,6 +409,7 @@ class Agent:
             commands=[Command.from_dict(item, f"{prefix}.commands[{i}]") for i, item in enumerate(_list(prefix, data, "commands"))],
             file_changes=[FileChange.from_dict(item, f"{prefix}.file_changes[{i}]") for i, item in enumerate(_list(prefix, data, "file_changes"))],
             compactions=[Compaction.from_dict(item, f"{prefix}.compactions[{i}]") for i, item in enumerate(_list(prefix, data, "compactions"))],
+            tool_calls=[ToolCall.from_dict(item, f"{prefix}.tool_calls[{i}]") for i, item in enumerate(_list(prefix, data, "tool_calls"))],
         )
 
 
@@ -377,9 +474,19 @@ class Trajectory:
         says how many calls carried both an input and an output count.
         `wall_ms` runs from the earliest agent start to the latest agent or
         outcome end, and is None when nothing recorded an end.
+        `tool_calls_by_name` counts the whole tree's tool calls under each
+        tool's own name, ordered by name. `tool_calls` counts what the
+        harness that wrote the trajectory records as a tool call, and the
+        two harnesses record different populations, as `ToolCall` states, so
+        one arm's total is read beside the other's only through the
+        per-name counts.
         """
         calls = [call for agent in self.agents for call in agent.model_calls]
         commands = [command for agent in self.agents for command in agent.commands]
+        tool_calls = [call for agent in self.agents for call in agent.tool_calls]
+        by_name: dict[str, int] = {}
+        for call in tool_calls:
+            by_name[call.name] = by_name.get(call.name, 0) + 1
         ends = [agent.ended_ms for agent in self.agents if agent.ended_ms is not None]
         if self.outcome.ended_ms is not None:
             ends.append(self.outcome.ended_ms)
@@ -398,6 +505,8 @@ class Trajectory:
             "denials": sum(1 for command in commands if command.denial),
             "file_changes": sum(len(agent.file_changes) for agent in self.agents),
             "compactions": sum(len(agent.compactions) for agent in self.agents),
+            "tool_calls": len(tool_calls),
+            "tool_calls_by_name": {name: by_name[name] for name in sorted(by_name)},
         }
 
 

@@ -32,6 +32,10 @@ def sample() -> schema.Trajectory:
         ],
         file_changes=[schema.FileChange(path="/w/src/a.py", kind="edit", at_ms=2000, via="tool")],
         compactions=[schema.Compaction(at_ms=5000, tokens_before=45000)],
+        tool_calls=[
+            schema.ToolCall(name="bash", started_ms=1600, ended_ms=1700, is_error=False, arguments_digest=schema.arguments_digest({"command": "cat /etc/hostname"}), summary=None),
+            schema.ToolCall(name="check", started_ms=7000, ended_ms=None, is_error=False, arguments_digest=None, summary=None),
+        ],
     )
     worker = schema.Agent(
         id="child-1",
@@ -44,6 +48,7 @@ def sample() -> schema.Trajectory:
         commands=[],
         file_changes=[schema.FileChange(path="/w/src/b.py", kind="create", at_ms=2700, via="tool")],
         compactions=[],
+        tool_calls=[schema.ToolCall(name="edit", started_ms=2650, ended_ms=2700, is_error=True, arguments_digest=schema.arguments_digest({"path": "/w/src/b.py"}), summary="/w/src/b.py")],
     )
     return schema.Trajectory(
         harness="foe",
@@ -147,7 +152,34 @@ class Validation(unittest.TestCase):
 
     def test_absent_lists_read_as_empty(self) -> None:
         agent = schema.Agent.from_dict({"id": "a", "parent_id": None, "depth": 0, "role": "root", "started_ms": 0, "ended_ms": None})
-        self.assertEqual((agent.model_calls, agent.commands, agent.file_changes, agent.compactions), ([], [], [], []))
+        self.assertEqual((agent.model_calls, agent.commands, agent.file_changes, agent.compactions, agent.tool_calls), ([], [], [], [], []))
+
+    def test_a_record_written_before_tool_calls_existed_reads_as_no_tool_calls(self) -> None:
+        older = sample().to_dict()
+        for agent in older["agents"]:
+            del agent["tool_calls"]
+        restored = schema.Trajectory.from_dict(older)
+        self.assertEqual([agent.tool_calls for agent in restored.agents], [[], []])
+        totals = restored.totals()
+        self.assertEqual((totals["tool_calls"], totals["tool_calls_by_name"]), (0, {}))
+        self.assertEqual(totals["commands"], 2, "the rest of the older record is read as before")
+
+    def test_a_tool_call_field_of_the_wrong_type_names_the_key(self) -> None:
+        for key, value in (("arguments_digest", 7), ("summary", []), ("is_error", "yes"), ("name", None), ("started_ms", "7000"), ("started_ms", True), ("ended_ms", "8000")):
+            data = sample().to_dict()
+            data["agents"][0]["tool_calls"][1][key] = value
+            with self.assertRaises(ValueError, msg=key) as caught:
+                schema.Trajectory.from_dict(data)
+            self.assertIn(f"trajectory.agents[0].tool_calls[1].{key}", str(caught.exception))
+
+    def test_a_tool_call_without_a_start_is_refused_and_one_without_a_digest_is_read(self) -> None:
+        data = sample().to_dict()
+        del data["agents"][0]["tool_calls"][1]["started_ms"]
+        with self.assertRaises(ValueError) as caught:
+            schema.Trajectory.from_dict(data)
+        self.assertEqual(str(caught.exception), "trajectory.agents[0].tool_calls[1].started_ms: the key is required")
+        call = schema.ToolCall.from_dict({"name": "read", "started_ms": 10, "ended_ms": None})
+        self.assertEqual((call.arguments_digest, call.summary, call.is_error), (None, None, False), "a record that states no arguments carries no digest")
 
     def test_lookup_by_id_names_a_missing_agent(self) -> None:
         run = sample()
@@ -173,6 +205,9 @@ class Totals(unittest.TestCase):
         self.assertEqual(totals["denials"], 1)
         self.assertEqual(totals["file_changes"], 2)
         self.assertEqual(totals["compactions"], 1)
+        self.assertEqual(totals["tool_calls"], 3)
+        self.assertEqual(totals["tool_calls_by_name"], {"bash": 1, "check": 1, "edit": 1})
+        self.assertEqual(list(totals["tool_calls_by_name"]), ["bash", "check", "edit"], "the counts are ordered by name")
 
     def test_a_call_without_usage_makes_the_token_totals_none(self) -> None:
         run = sample()
@@ -200,6 +235,24 @@ class Totals(unittest.TestCase):
         self.assertEqual(totals["max_depth"], 0)
         self.assertIsNone(totals["wall_ms"])
         self.assertEqual(json.loads(json.dumps(totals)), totals)
+
+
+class ArgumentsDigest(unittest.TestCase):
+    def test_equal_arguments_share_a_digest_whatever_the_key_order(self) -> None:
+        first = schema.arguments_digest({"path": "/w/a.py", "edits": [{"old_text": "x", "new_text": "y"}]})
+        second = schema.arguments_digest({"edits": [{"new_text": "y", "old_text": "x"}], "path": "/w/a.py"})
+        self.assertEqual(first, second)
+        self.assertTrue(first.startswith("sha256:"))
+        self.assertEqual(len(first), len("sha256:") + 64)
+
+    def test_different_arguments_differ_and_no_argument_content_appears(self) -> None:
+        secret = schema.arguments_digest({"path": "/home/u/outside/secret.txt"})
+        self.assertNotEqual(secret, schema.arguments_digest({"path": "/w/a.py"}))
+        self.assertNotIn("secret", secret)
+        self.assertNotEqual(schema.arguments_digest({}), schema.arguments_digest([]))
+
+    def test_a_value_that_is_not_an_object_also_digests(self) -> None:
+        self.assertNotEqual(schema.arguments_digest(["bash", "-lc", "make"]), schema.arguments_digest(None))
 
 
 class PathsInCommand(unittest.TestCase):

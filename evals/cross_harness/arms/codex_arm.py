@@ -25,10 +25,30 @@ that ended without a readable last message is `failed`.
 Codex locates its credential and session files by `CODEX_HOME` and offers
 no flag for it, so the arm creates a fresh directory under the artifacts,
 copies the caller's credential file into it as `auth.json`, and passes that
-directory as the child's `CODEX_HOME`. The copy is removed as soon as the
-process has exited, before anything reads the run's output, unless the
-caller sets `keep_credential`; the record states whether it was removed.
-Nothing in this module reads, prints, or logs the credential's contents.
+directory as the child's `CODEX_HOME`.
+
+Codex rewrites that copy whenever it refreshes the credential, and a
+provider that rotates the refresh token on use leaves the source credential
+unusable once one attempt has refreshed it. So once the process has exited
+the arm compares the copy with the source and, when the copy differs,
+writes the copy back to the source: a temporary file in the source's
+directory, flushed to disk, then renamed over the source with mode 0600.
+The source path is resolved first, so a source that is a symbolic link
+keeps the link and the file it names receives the content. Three cases
+refuse the write-back: a copy that does not parse as JSON, a copy that
+lacks a key the source holds, and a rewritten copy whose source changed
+while the run held it. A copy the run never rewrote is written back in no
+case, including against a source another process wrote. A write-back that
+fails is recorded and the attempt continues. `write_back` states each case.
+
+The copy is removed once the write-back has settled, before anything reads
+the run's output, unless the caller sets `keep_credential`, and the copy is
+removed on every path out of the run, an interrupt among them. The record
+states what the write-back did and whether a copy remains, which it reads
+from the file rather than from the option the caller passed. Nothing in
+this module reads, prints, or logs the credential's contents, and the
+record carries no part of it.
+
 The child inherits the arm's own environment otherwise, so that the binary
 finds its shared libraries and certificates; this module reads no
 environment value itself. The record names the directory, every command
@@ -46,10 +66,11 @@ searches the recorded requests for it; the record names the file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -89,6 +110,13 @@ CODEX_HOME_NAME, CREDENTIAL_NAME = "codex-home", "auth.json"
 # a developer message if the file were loaded.
 CONFIG_CANARY_NAME, CONFIG_CANARY_KEY = "config.toml", "developer_instructions"
 SCHEMA_NAME, LAST_NAME, EVENTS_NAME, STDERR_NAME = "schema.json", "last.txt", "events.jsonl", "stderr.txt"
+
+# What the write-back of the credential copy did, as the record states it:
+# the copy holds what the run was given and nothing was written; the copy
+# was written back to the source; the copy was refused as unusable; the
+# copy was gone when the run ended; or the write-back raised.
+WRITE_BACK_STATES: tuple[str, ...] = ("unchanged", "written", "refused", "absent", "failed")
+WRITE_BACK_UNCHANGED, WRITE_BACK_WRITTEN, WRITE_BACK_REFUSED, WRITE_BACK_ABSENT, WRITE_BACK_FAILED = WRITE_BACK_STATES
 
 
 @dataclass(frozen=True)
@@ -343,8 +371,45 @@ def interpret(
     return reported(FAILED, None, evidence), candidate, problems
 
 
-def prepare_home(spec: CodexSpec) -> Path:
-    """A fresh `CODEX_HOME` under the artifacts holding the credential file, and the config canary when the spec gives one."""
+@dataclass(frozen=True)
+class CredentialCopy:
+    """The credential copy one run holds, and what the source held when the copy was made.
+
+    `source` is the credential file the copy came from, with symbolic links
+    resolved, so that a write-back reaches the file a link names rather than
+    replacing the link. `path` is the copy under `CODEX_HOME`.
+    `source_digest` is the SHA-256 of the source's bytes at the moment of the
+    copy, which shows whether another process wrote the source while the run
+    held the copy. A digest identifies the content and carries none of it.
+    """
+
+    source: Path
+    path: Path
+    source_digest: str
+
+
+def content_digest(data: bytes) -> str:
+    """The SHA-256 of a file's bytes."""
+    return hashlib.sha256(data).hexdigest()
+
+
+def key_paths(value: Mapping[str, Any], prefix: str = "") -> set[str]:
+    """Every key of a JSON object as a dotted path, descending into the objects it holds."""
+    paths: set[str] = set()
+    for key, inner in value.items():
+        path = f"{prefix}{key}"
+        paths.add(path)
+        if isinstance(inner, dict):
+            paths |= key_paths(inner, f"{path}.")
+    return paths
+
+
+def prepare_home(spec: CodexSpec) -> tuple[Path, CredentialCopy]:
+    """A fresh `CODEX_HOME` under the artifacts holding the credential copy, the copy itself, and the config canary when the spec gives one.
+
+    The copy is created with mode 0600 and never widens, so no other user of
+    the host reads it while the run holds it.
+    """
     source = Path(spec.credential_source)
     if not source.is_file():
         raise FileNotFoundError(f"credential source {source} is not a file")
@@ -352,11 +417,155 @@ def prepare_home(spec: CodexSpec) -> Path:
     if home.exists():
         raise FileExistsError(f"{home} exists; a run needs a fresh CODEX_HOME, so give each run its own artifacts directory")
     home.mkdir(parents=True)
-    shutil.copyfile(source, home / CREDENTIAL_NAME)
-    (home / CREDENTIAL_NAME).chmod(0o600)
+    # The source is resolved once here, and the write-back after the run
+    # uses the resolved path, so a source that is a symbolic link is read
+    # and written through to the file it names.
+    resolved = source.resolve()
+    data = resolved.read_bytes()
+    copy = home / CREDENTIAL_NAME
+    descriptor = os.open(copy, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(data)
+    copy.chmod(0o600)
     if spec.config_canary is not None:
         (home / CONFIG_CANARY_NAME).write_text(config_canary_text(spec.config_canary), encoding="utf-8")
-    return home
+    return home, CredentialCopy(resolved, copy, content_digest(data))
+
+
+def write_back_record(state: str, reason: str, source: Path) -> dict[str, Any]:
+    """What the record states about one write-back: the state, whether the source was written, the reason, and the source path."""
+    if state not in WRITE_BACK_STATES:
+        raise ValueError(f"write-back state is {state!r}; expected one of {', '.join(WRITE_BACK_STATES)}")
+    return {"state": state, "written": state == WRITE_BACK_WRITTEN, "reason": reason, "source": str(source)}
+
+
+def write_back(credential: CredentialCopy) -> dict[str, Any]:
+    """Write a copy that Codex rewrote back to the source credential, and state what was done.
+
+    Codex refreshes the credential inside `CODEX_HOME` and writes the new
+    tokens to the copy. A provider that rotates the refresh token on use
+    leaves the source credential unusable once one attempt has refreshed
+    it, so a rewritten copy returns to the source before the copy is
+    removed.
+
+    The write is atomic: a temporary file in the source's directory,
+    flushed to disk, then renamed over the source with mode 0600, so a
+    concurrent reader sees the whole old file or the whole new one. Three
+    cases refuse the write and name what was found. A copy that does not
+    parse as JSON and a copy that lacks a key the source holds are what a
+    process killed during a write leaves behind. A source whose bytes
+    changed while the run held the copy belongs to another process holding
+    the same credential, whose content a rewritten copy would discard; a
+    copy the run never rewrote holds nothing that source needs and is
+    recorded as unchanged.
+
+    The returned mapping carries no part of the credential.
+    """
+    if not credential.path.is_file():
+        return write_back_record(WRITE_BACK_ABSENT, f"the credential copy {credential.path} is absent after the run, so nothing is written back", credential.source)
+    copy_bytes = credential.path.read_bytes()
+    source_bytes = credential.source.read_bytes()
+    if copy_bytes == source_bytes:
+        return write_back_record(WRITE_BACK_UNCHANGED, f"the credential copy {credential.path} holds what {credential.source} holds, so nothing is written back", credential.source)
+    if content_digest(source_bytes) != credential.source_digest:
+        if content_digest(copy_bytes) == credential.source_digest:
+            # The copy still holds what it was given, so the run refreshed
+            # nothing and the source another process wrote stands.
+            return write_back_record(
+                WRITE_BACK_UNCHANGED,
+                f"the credential copy {credential.path} holds what {credential.source} held when the copy was made, and another process wrote {credential.source} while the run held the copy, so nothing is written back",
+                credential.source,
+            )
+        return write_back_record(
+            WRITE_BACK_REFUSED,
+            f"the credential source {credential.source} changed while the run held the copy {credential.path}, so the rewritten copy is not written back; another process holds the same credential",
+            credential.source,
+        )
+    values: dict[str, Any] = {}
+    for name, path, data in (("source", credential.source, source_bytes), ("copy", credential.path, copy_bytes)):
+        try:
+            values[name] = json.loads(data.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            # The message of a decoding error names the byte it stopped on,
+            # which is one byte of the credential, so the reason states the
+            # offset alone.
+            return write_back_record(
+                WRITE_BACK_REFUSED,
+                f"the credential {name} {path} is not valid UTF-8 at byte offset {exc.start}, so the copy is not written back",
+                credential.source,
+            )
+        except ValueError as exc:
+            # The message of a JSON error states a position and names no
+            # content, so the reason carries no part of the file.
+            return write_back_record(WRITE_BACK_REFUSED, f"the credential {name} {path} does not parse as JSON ({exc}), so the copy is not written back", credential.source)
+        if not isinstance(values[name], dict):
+            return write_back_record(
+                WRITE_BACK_REFUSED,
+                f"the credential {name} {path} is a {type(values[name]).__name__} rather than a JSON object, so the copy is not written back",
+                credential.source,
+            )
+    missing = sorted(key_paths(values["source"]) - key_paths(values["copy"]))
+    if missing:
+        return write_back_record(
+            WRITE_BACK_REFUSED,
+            f"the credential copy {credential.path} lacks the keys {', '.join(missing)} that {credential.source} holds, so the copy is not written back",
+            credential.source,
+        )
+    descriptor, temporary_name = tempfile.mkstemp(dir=credential.source.parent, prefix=f".{credential.source.name}.", suffix=".write-back")
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(copy_bytes)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, credential.source)
+    except BaseException:
+        # The temporary holds the refreshed credential at mode 0600, so it
+        # is removed before any failure continues, an interrupt included.
+        temporary.unlink(missing_ok=True)
+        raise
+    # The rename reaches the disk with the directory, so a host that loses
+    # power after the run still holds the refreshed credential. A directory
+    # that refuses the flush leaves the rename in place.
+    try:
+        directory = os.open(credential.source.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except OSError:
+        pass
+    return write_back_record(WRITE_BACK_WRITTEN, f"the credential copy {credential.path} differs from {credential.source} and was written back to it", credential.source)
+
+
+def settle_credential(credential: CredentialCopy, keep_credential: bool) -> dict[str, Any]:
+    """Write a rewritten credential copy back to the source, remove the copy unless the caller keeps it, and state what the write-back did.
+
+    Every failure of the write-back is recorded and the attempt continues:
+    an attempt whose refreshed credential stayed behind costs one attempt,
+    and a run whose credential source is dead costs every attempt after the
+    first, so the reader sees the failure in the record rather than in a
+    raised error. A removal that fails is recorded the same way, under
+    `copy_removal_failure`, so that a source the write-back just refreshed
+    is still reported.
+
+    The removal runs on every path out of the write-back, an interrupt
+    included, so no path leaves the copy under the artifacts.
+    """
+    removal_failure: str | None = None
+    try:
+        try:
+            state = write_back(credential)
+        except Exception as exc:  # noqa: BLE001
+            state = write_back_record(WRITE_BACK_FAILED, f"the credential copy {credential.path} could not be written back to {credential.source}: {exc}", credential.source)
+    finally:
+        if not keep_credential:
+            try:
+                remove_credential(credential.path.parent)
+            except OSError as exc:
+                removal_failure = str(exc)
+    return {**state, "copy_removal_failure": removal_failure}
 
 
 def config_canary_text(sentence: str) -> str:
@@ -371,11 +580,13 @@ def config_canary_text(sentence: str) -> str:
 def remove_credential(home: Path) -> Path:
     """Remove the credential copy from `CODEX_HOME` and return its path.
 
-    A copy Codex rewrote during the run, as a token refresh does, is
-    removed the same way; a copy already absent leaves nothing to remove.
+    A copy Codex rewrote during the run, as a token refresh does, reaches
+    this function after `write_back` has returned it to the source and is
+    removed like any other; a copy already absent leaves nothing to remove.
     A copy that cannot be removed is an error naming the path, because a
     credential left under the artifacts stays readable by whoever reads
-    them.
+    them; `settle_credential` records that error in the attempt rather than
+    losing the attempt to it.
     """
     path = home / CREDENTIAL_NAME
     try:
@@ -402,27 +613,29 @@ def run(spec: CodexSpec) -> ArmResult:
     if not Path(spec.workspace).is_dir():
         raise FileNotFoundError(f"workspace {spec.workspace} is not a directory")
     spec.artifacts.mkdir(parents=True, exist_ok=True)
-    home = prepare_home(spec)
-    schema = spec.artifacts / SCHEMA_NAME
-    schema.write_text(json.dumps(spec.schema, indent=2) + "\n", encoding="utf-8")
-    last = spec.artifacts / LAST_NAME
-    # A last message from an earlier run in the same artifacts directory
-    # would otherwise be read as this run's outcome when this run writes none.
-    last.unlink(missing_ok=True)
-    command = command_line(spec, schema, last)
-    # The child receives the arm's environment unchanged except for
-    # CODEX_HOME; the arm reads none of its values.
-    environment = dict(os.environ if spec.environment is None else spec.environment)
-    environment["CODEX_HOME"] = str(home)
-
-    started_ms = now_ms()
+    home, credential = prepare_home(spec)
+    # The credential copy is on disk from here on, so everything that
+    # follows runs under the write-back and the removal.
     try:
+        schema = spec.artifacts / SCHEMA_NAME
+        schema.write_text(json.dumps(spec.schema, indent=2) + "\n", encoding="utf-8")
+        last = spec.artifacts / LAST_NAME
+        # A last message from an earlier run in the same artifacts directory
+        # would otherwise be read as this run's outcome when this run writes none.
+        last.unlink(missing_ok=True)
+        command = command_line(spec, schema, last)
+        # The child receives the arm's environment unchanged except for
+        # CODEX_HOME; the arm reads none of its values.
+        environment = dict(os.environ if spec.environment is None else spec.environment)
+        environment["CODEX_HOME"] = str(home)
+
+        started_ms = now_ms()
         exit_status, stop, out, err = codex_budget_watcher.run_with_watcher(command, home, spec.limits, cwd=spec.workspace, env=environment)
     finally:
-        # The process has exited, or the watcher failed and terminated it;
-        # either way the credential copy is removed before anything else.
-        if not spec.keep_credential:
-            remove_credential(home)
+        # The process has exited, the watcher failed and terminated it, or
+        # the run never started; either way a credential Codex refreshed
+        # returns to the source and the copy is removed before anything else.
+        settled = settle_credential(credential, spec.keep_credential)
     ended_ms = now_ms()
 
     stdout, stderr = out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
@@ -437,8 +650,10 @@ def run(spec: CodexSpec) -> ArmResult:
         "cwd": str(spec.workspace),
         "codex_home": str(home),
         "credential_source": str(spec.credential_source),
-        "credential_copy": str(home / CREDENTIAL_NAME),
-        "credential_removed": not spec.keep_credential,
+        "credential_copy": str(credential.path),
+        "credential_removed": not credential.path.exists(),
+        "credential_written_back": settled["written"],
+        "credential_write_back": settled,
         "config_canary_file": None if spec.config_canary is None else str(home / CONFIG_CANARY_NAME),
         "schema": str(schema),
         "last_message": str(last),

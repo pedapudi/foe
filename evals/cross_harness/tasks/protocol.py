@@ -41,13 +41,25 @@ No arm may read `grader/`. It holds:
     grader/oracle/reported.json      the outcome the oracle reports; absent means completed
     grader/corruptions/<name>/apply.py   one mutation of the solved workspace the grader must reject
 
-`materialize` builds the workspace and copies the rest of a task directory
-into a root, and the root then holds `workspace/`, `grader/`, `task.json`,
-and `grader/protected.json`, which records the SHA-256 of every protected
-workspace file and of every file outside the workspace. Nothing else may
-appear under the root: the runner keeps its own logs elsewhere, because
-`grade` reports every file created, changed, or removed outside the
-workspace as damage.
+`materialize` builds a task directory into a root, and its `parts`
+argument selects what is written. A root that has had both parts written
+holds `workspace/`, `grader/`, `task.json`, and `grader/protected.json`,
+which records the SHA-256 of every protected workspace file and of every
+file outside the workspace. Nothing else may appear under the root: the
+runner keeps its own logs elsewhere, because `grade` reports every file
+created, changed, or removed outside the workspace as damage.
+
+The two parts are written at two moments, because a sandbox that reads
+beyond its write surface would otherwise reach the hidden tests, the
+oracle, and the corruptions while the arm runs. `WORKSPACE` writes the
+workspace, `task.json`, and the protected hashes of the workspace as it
+stands before the arm runs, staged at `<root name>.protected.json` beside
+the root, where the arm reaches neither the list of protected paths nor
+the digests the damage judgement rests on. `GRADER` writes the grader
+directory, and belongs after the arm process has exited and before
+grading; it moves the staged hashes into `grader/protected.json` and adds
+the hashes of the grader files it just copied. `BOTH` writes both in one
+call, for a caller that runs no arm, such as `check_grader_controls`.
 
 The grade script runs with the workspace as its working directory and
 receives one JSON object on standard input:
@@ -107,6 +119,13 @@ CLOSING = "Follow AGENTS.md. Run the checks it names. When you finish, or when y
 
 WORKSPACE, GRADER, TASK_FILE = "workspace", "grader", "task.json"
 GRADE_SCRIPT, ORACLE, CORRUPTIONS, PROTECTED_FILE = "grade", "oracle", "corruptions", "protected.json"
+# What one `materialize` call writes: the workspace an arm sees, the grader
+# that judges it, or both at once.
+BOTH = "both"
+MATERIALIZE_PARTS: tuple[str, ...] = (WORKSPACE, GRADER, BOTH)
+# The interpreter a grade runs under: the shebang of every grade script and
+# the command a corruption is applied with.
+PYTHON = "/usr/bin/python3"
 WORKSPACE_PATCH = "workspace.patch"
 SOURCE_KEY = "source"
 GRADER_TIMEOUT_SECONDS = 60
@@ -288,11 +307,19 @@ def _protected_hashes(workspace: Path, protected: tuple[str, ...]) -> dict[str, 
 
 
 def _outside_hashes(root: Path) -> dict[str, str]:
-    """Every file under the root outside the workspace, except the record itself."""
+    """Every file under the root outside the workspace, except the record the grader directory holds.
+
+    The record inside the grader directory is written after these hashes are
+    taken and is what they are compared against, so it is never one of them.
+    Every other path outside the workspace is hashed, including one that
+    carries the record's own name, so that a file an arm writes under the
+    root is damage whatever it is called.
+    """
+    record = Path(GRADER) / PROTECTED_FILE
     hashes: dict[str, str] = {}
     for file in _files_under(root):
         relative = file.relative_to(root)
-        if relative.parts[0] == WORKSPACE or relative == Path(GRADER) / PROTECTED_FILE:
+        if relative.parts[0] == WORKSPACE or relative == record:
             continue
         hashes[relative.as_posix()] = sha256_file(file)
     return hashes
@@ -506,39 +533,107 @@ def regenerate_workspace(task_dir: Path, destination: Path) -> Task:
     return task
 
 
-def materialize(task_dir: Path, root: Path) -> Task:
-    """Build a task directory into a fresh root and record the protected hashes.
+def staged_protected_record(root: Path) -> Path:
+    """Where the protected hashes wait between the two materialization calls: beside the root, under the root's name.
+
+    The record lists every protected workspace path and holds the digest of
+    every file outside the workspace, which is what the damage judgement
+    rests on. It waits outside the root so that the root an arm runs beside
+    holds the workspace and the task alone: every file that then appears
+    under the root is damage, no name is exempted from the scan, and the
+    baseline lies where the arm writes nothing.
+    """
+    return root.parent / f"{root.name}.{PROTECTED_FILE}"
+
+
+def _materialize_grader(task_dir: Path, root: Path) -> None:
+    """Copy the grader into a root whose workspace stands, and move the staged protected record into it.
+
+    The staged record carries the hashes of the workspace as it stood before
+    the arm ran, and lies beside the root, where the arm could not read or
+    rewrite it. The grader files are hashed as they are copied, because
+    nothing has run against them; every other file outside the workspace
+    keeps the hash the workspace call recorded, so a file an arm left under
+    the root is damage rather than part of the baseline.
+    """
+    staged = staged_protected_record(root)
+    if not staged.is_file():
+        raise FileNotFoundError(f"{staged} is absent; the grader of {task_dir} needs a root whose workspace was materialized with parts={WORKSPACE!r}")
+    if (root / GRADER).exists():
+        raise FileExistsError(f"{root / GRADER} exists before the grader of {task_dir} was written there; something other than materialization created it")
+    try:
+        record = json.loads(staged.read_text(encoding="utf-8"))
+        workspace_hashes, outside_hashes = record["workspace"], record["outside"]
+    except (ValueError, KeyError, TypeError) as error:
+        raise ValueError(f"{staged} does not hold the workspace and outside hashes the workspace materialization wrote: {error}") from error
+    shutil.copytree(task_dir / GRADER, root / GRADER, symlinks=True)
+    grader_prefix = f"{GRADER}/"
+    outside = {**outside_hashes, **{relative: digest for relative, digest in _outside_hashes(root).items() if relative.startswith(grader_prefix)}}
+    # The record inside the grader is written first, so that a write that
+    # fails leaves the staged baseline where a repeated call finds it.
+    (root / GRADER / PROTECTED_FILE).write_text(json.dumps({"workspace": workspace_hashes, "outside": outside}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    staged.unlink()
+
+
+def materialize(task_dir: Path, root: Path, parts: str = BOTH) -> Task:
+    """Build a task directory into a root and record the protected hashes.
+
+    `parts` selects what is written. With `WORKSPACE` the call needs a fresh
+    root and writes the workspace, `task.json`, and the protected hashes of
+    the workspace as it stands before any arm runs, staged beside the root
+    at the path `staged_protected_record` names. With `GRADER` the call adds the grader
+    directory to a root a `WORKSPACE` call already wrote, and belongs after
+    the arm process has exited and before grading, so that an arm whose
+    sandbox reads beyond its workspace never reaches the hidden tests, the
+    oracle, or the corruptions. With `BOTH` one call writes both, for a
+    caller that runs no arm.
 
     A `workspace/` copy in the task directory is copied; otherwise the
-    workspace is regenerated from the recipe. A failure leaves no root.
+    workspace is regenerated from the recipe. A `WORKSPACE` or `BOTH` call
+    that fails leaves neither a root nor a staged record, since no arm has
+    run. A `GRADER` call that fails leaves the root and the staged record
+    as they stand, so that what the arm did stays readable and grading can
+    be tried again.
     """
+    if parts not in MATERIALIZE_PARTS:
+        raise ValueError(f"materialize of {task_dir} was given parts={parts!r}; expected one of {', '.join(MATERIALIZE_PARTS)}")
     task = load(task_dir)
     if not (task_dir / GRADER).is_dir():
         raise FileNotFoundError(f"{task_dir / GRADER} is absent; a task directory holds {GRADER}/ and {TASK_FILE}")
     grade_script = task_dir / GRADER / GRADE_SCRIPT
     if not grade_script.is_file():
         raise FileNotFoundError(f"{grade_script} is absent")
-    copy, patch = task_dir / WORKSPACE, task_dir / GRADER / WORKSPACE_PATCH
-    if not copy.is_dir() and not patch.is_file():
-        raise FileNotFoundError(f"{task_dir} holds neither {copy} nor {patch}; a task keeps a workspace copy or a recipe")
-    if root.exists():
-        raise FileExistsError(f"{root} exists; materialize needs a fresh root")
-    root.mkdir(parents=True)
-    try:
-        if copy.is_dir():
-            shutil.copytree(copy, root / WORKSPACE, symlinks=True)
-        else:
-            regenerate_workspace(task_dir, root / WORKSPACE)
-        shutil.copytree(task_dir / GRADER, root / GRADER, symlinks=True)
-        shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
-        for entry in task.protected:
-            if not (root / WORKSPACE / entry).exists():
-                raise FileNotFoundError(f"{task_dir / TASK_FILE}: key protected names {entry!r}, which the workspace of {task_dir} lacks")
-        record = {"workspace": _protected_hashes(root / WORKSPACE, task.protected), "outside": _outside_hashes(root)}
-        (root / GRADER / PROTECTED_FILE).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    except BaseException:
-        shutil.rmtree(root, ignore_errors=True)
-        raise
+    if parts in (WORKSPACE, BOTH):
+        copy, patch = task_dir / WORKSPACE, task_dir / GRADER / WORKSPACE_PATCH
+        if not copy.is_dir() and not patch.is_file():
+            raise FileNotFoundError(f"{task_dir} holds neither {copy} nor {patch}; a task keeps a workspace copy or a recipe")
+        if root.exists():
+            raise FileExistsError(f"{root} exists; materialize needs a fresh root")
+        root.mkdir(parents=True)
+        try:
+            if copy.is_dir():
+                shutil.copytree(copy, root / WORKSPACE, symlinks=True)
+            else:
+                regenerate_workspace(task_dir, root / WORKSPACE)
+            shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
+            for entry in task.protected:
+                if not (root / WORKSPACE / entry).exists():
+                    raise FileNotFoundError(f"{task_dir / TASK_FILE}: key protected names {entry!r}, which the workspace of {task_dir} lacks")
+            record = {"workspace": _protected_hashes(root / WORKSPACE, task.protected), "outside": _outside_hashes(root)}
+            staged_protected_record(root).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        except BaseException:
+            shutil.rmtree(root, ignore_errors=True)
+            staged_protected_record(root).unlink(missing_ok=True)
+            raise
+    if parts == GRADER:
+        _materialize_grader(task_dir, root)
+    elif parts == BOTH:
+        try:
+            _materialize_grader(task_dir, root)
+        except BaseException:
+            shutil.rmtree(root, ignore_errors=True)
+            staged_protected_record(root).unlink(missing_ok=True)
+            raise
     return task
 
 
@@ -654,7 +749,7 @@ def corruptions(task_dir: Path) -> list[Path]:
 def apply_corruption(corruption: Path, workspace: Path) -> None:
     """Run a corruption's apply.py from the workspace; the paths are made absolute because the script runs there."""
     result = subprocess.run(
-        ["/usr/bin/python3", "-B", str((corruption / "apply.py").resolve()), str(workspace.resolve())],
+        [PYTHON, "-B", str((corruption / "apply.py").resolve()), str(workspace.resolve())],
         cwd=workspace,
         text=True,
         capture_output=True,

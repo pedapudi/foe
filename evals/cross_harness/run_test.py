@@ -9,6 +9,8 @@ import json
 import os
 import re
 import shutil
+import shlex
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -81,6 +83,11 @@ FAKE_FOE = textwrap.dedent(
                             "runtime": {"version": "0.0", "build": "sha256:fake"}, "sandbox": {"mode": "off", "landlock_abi": 0}})
     event("model/request", {"request_id": "rq_1", "step": 1})
     command = "python3 fix.py src/greeting.py"
+    grader_dir = os.path.join(os.path.dirname(workspace), "grader")
+    if behaviour == "peek-at-grader":
+        command = "cat ../grader/grade " + os.path.join(grader_dir, "oracle", "candidate.json")
+        with open(os.path.join(workspace, "peek.txt"), "w", encoding="utf-8") as handle:
+            handle.write(str(os.path.exists(grader_dir)) + "\\n" + " ".join(sorted(os.listdir(os.path.dirname(workspace)))))
     tool_calls = [{"id": "call-1", "name": "bash", "args": {"command": command}}]
     if check_exec:
         tool_calls.append({"id": "call-2", "name": "check", "args": {}})
@@ -102,6 +109,11 @@ FAKE_FOE = textwrap.dedent(
     if behaviour == "completed":
         outcome = {"kind": "completed", "value": {"summary": "done", "learned": [{"seq": 3, "claim": "The tests pass."}]}}
         status = 0
+    elif behaviour in ("provider-outage", "recovery-bound"):
+        message = ("provider unavailable through 5 attempts at step 1; the remaining seconds budget cannot fund another"
+                   if behaviour == "provider-outage" else "node `assess` would fire again beyond its max_fires of 3")
+        outcome = {"kind": "blocked", "code": "recovery-exhausted", "message": message}
+        status = 2
     else:
         outcome = {"kind": "blocked", "code": "goal-unreachable", "message": "The requirements conflict."}
         status = 2
@@ -171,6 +183,9 @@ FAKE_CODEX = textwrap.dedent(
     print(json.dumps({"type": "turn.started"}), flush=True)
     if behaviour == "exhaust":
         time.sleep(60)
+    if behaviour == "provider-error":
+        print("codex: stream error: 429 Too Many Requests", file=sys.stderr)
+        sys.exit(1)
     if behaviour == "completed":
         message = {"status": "completed", "code": None, "evidence": ["The visible test passes."]}
     else:
@@ -282,6 +297,7 @@ class Planning(Harness):
         self.assertResolved(out, "selected", f"{TASK} (every task under tasks)")
         self.assertResolved(out, "arms", "foe-configured, codex-default")
         self.assertResolved(out, "attempts", "2")
+        self.assertResolved(out, "resume", "an existing record or attempt directory is refused")
         self.assertResolved(out, "foe", str(self.foe))
         self.assertResolved(out, "codex", str(self.codex))
         self.assertResolved(out, "credential", str(self.credential))
@@ -296,13 +312,21 @@ class Planning(Harness):
         self.assertNotIn("placeholder", out)
         self.assertFalse(self.out.exists())
 
-    def test_the_arms_rotate_across_attempts(self) -> None:
+    def test_the_arms_rotate_across_attempts_and_across_tasks(self) -> None:
         arms = list(run.ARMS["autonomy"])
-        self.assertEqual([arm.name for arm in run.rotated(arms, 1)], [arm.name for arm in arms])
-        self.assertEqual(run.rotated(arms, 2)[0].name, arms[1].name)
-        self.assertEqual(run.rotated(arms, len(arms) + 1)[0].name, arms[0].name)
-        triples = run.planned([run.Selected(EXAMPLES / TASK, run.protocol.load(EXAMPLES / TASK))], arms[:2], 2)
+        self.assertEqual([arm.name for arm in run.rotated(arms, 1, 0)], [arm.name for arm in arms])
+        self.assertEqual(run.rotated(arms, 2, 0)[0].name, arms[1].name)
+        self.assertEqual(run.rotated(arms, len(arms) + 1, 0)[0].name, arms[0].name)
+        # The second task of an attempt starts one arm later than the first.
+        self.assertEqual(run.rotated(arms, 1, 1)[0].name, arms[1].name)
+        self.assertEqual(run.rotated(arms, 2, 1)[0].name, arms[2].name)
+        self.assertEqual(run.rotated(arms, 1, len(arms))[0].name, arms[0].name)
+        selected = run.Selected(EXAMPLES / TASK, run.protocol.load(EXAMPLES / TASK))
+        triples = run.planned([selected], arms[:2], 2)
         self.assertEqual([(attempt, arm.name) for attempt, _, arm in triples], [(1, arms[0].name), (1, arms[1].name), (2, arms[1].name), (2, arms[0].name)])
+        # With one attempt of two tasks, the two tasks start under different arms.
+        triples = run.planned([selected, selected], arms[:2], 1)
+        self.assertEqual([arm.name for _, _, arm in triples], [arms[0].name, arms[1].name, arms[1].name, arms[0].name])
 
     def test_bad_values_are_refused_by_key(self) -> None:
         status, _, err = self.main(self.argv(arms=["foe-configured", "codex-multi"]))
@@ -600,6 +624,45 @@ class Planning(Harness):
             self.assertEqual(status, run.NOTHING_LAUNCHED)
             self.assertIn(f"task '{TASK}': metadata.presumes_absent is {bad!r}; expected the bare name of a program", err)
 
+    def test_a_task_presuming_a_module_unimportable_is_refused_when_the_grading_interpreter_imports_it(self) -> None:
+        tasks = self.tasks_with_metadata({"presumes_unimportable": "json"})
+        status, out, err = self.main(self.argv(tasks=str(tasks)))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertEqual(out, "")
+        self.assertIn(f"task '{TASK}' presumes json unimportable under metadata.presumes_unimportable, and {run.protocol.PYTHON} imports it from ", err)
+        self.assertIn("which is an interpreter the attempt reaches; the task's premise does not hold on this host", err)
+        # A module no host holds leaves the plan as it is.
+        tasks = self.tasks_with_metadata({"presumes_unimportable": "cross_harness_absent_module"})
+        status, out, err = self.main(self.argv(tasks=str(tasks)))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertIn("No attempt was launched.", out)
+        # A value that is not a module name is refused by key, and a keyword is not a module name: `import None` is a syntax error, which no import states.
+        for bad in ("", "tomli-w", "os.path", 3, "None", "class", "lambda", "True"):
+            tasks = self.tasks_with_metadata({"presumes_unimportable": bad})
+            status, _, err = self.main(self.argv(tasks=str(tasks)))
+            self.assertEqual(status, run.NOTHING_LAUNCHED)
+            self.assertIn(f"task '{TASK}': metadata.presumes_unimportable is {bad!r}; expected a module name", err)
+
+    def test_the_unimportable_check_reads_neither_the_runner_directory_nor_the_interpreter_of_another_path(self) -> None:
+        # A module beside the runner's working directory is importable only from there, and no grade and no arm command runs there.
+        planted = self.root / "cwd"
+        planted.mkdir()
+        (planted / "cross_harness_planted.py").write_text("value = 1\n", encoding="utf-8")
+        tasks = self.tasks_with_metadata({"presumes_unimportable": "cross_harness_planted"})
+        argv = self.argv(tasks=str(tasks))
+        entered = os.getcwd()
+        os.chdir(planted)
+        try:
+            status, out, err = self.main(argv)
+        finally:
+            os.chdir(entered)
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertIn("No attempt was launched.", out)
+        # Both the interpreter every grade names and the python3 an arm command resolves are asked.
+        self.assertEqual(run.import_interpreters()[0], run.protocol.PYTHON)
+        for interpreter in run.import_interpreters():
+            self.assertTrue(Path(interpreter).is_file(), interpreter)
+
     def test_the_plan_states_the_tool_roots_of_the_document_arms(self) -> None:
         tools = self.root / "tools"
         tools.mkdir()
@@ -716,6 +779,83 @@ class Pieces(unittest.TestCase):
             (workspace / "src" / "__pycache__").mkdir()
             (workspace / "src" / "__pycache__" / "lib.pyc").write_text("", encoding="utf-8")
             self.assertEqual([Path(path).relative_to(workspace).as_posix() for path in run.snapshot(workspace)], ["src/lib.rs"])
+
+    def test_the_grader_paths_a_trajectory_names_are_collected_from_every_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "root"
+            workspace, grader = root / run.protocol.WORKSPACE, root / run.protocol.GRADER
+            workspace.mkdir(parents=True)
+            grader.mkdir()
+            agent = {
+                "commands": [
+                    {"paths_named": ["src/greeting.py", "../grader/tests", str(grader / "oracle")]},
+                    {"paths_named": [str(root) + "/grader-notes"]},
+                ],
+                "file_changes": [{"path": str(grader / "grade")}, {"path": str(workspace / "src" / "greeting.py")}],
+                "tool_calls": [{"name": "read", "summary": "../grader/corruptions"}, {"name": "block", "summary": "goal-unreachable"}],
+            }
+            self.assertEqual(
+                run.grader_paths_named({"agents": [agent]}, root),
+                ["../grader/tests", str(grader / "oracle"), str(grader / "grade"), "../grader/corruptions"],
+            )
+            # A record written before the tool-call stream existed carries none, and no trajectory names nothing.
+            self.assertEqual(run.grader_paths_named({"agents": [{"commands": [{"paths_named": ["README.md"]}]}]}, root), [])
+            self.assertEqual(run.grader_paths_named(None, root), [])
+            # A relative path is named however deep in the workspace the command ran, since the directory it ran in is not recorded.
+            deep = {"agents": [{"commands": [{"paths_named": ["../../grader/grade", "../grader"]}]}]}
+            self.assertEqual(run.grader_paths_named(deep, root), ["../../grader/grade", "../grader"])
+            # An absolute path matches through a symbolic link in the output path, which resolves on one side only.
+            link = Path(tmp) / "link"
+            os.symlink(root.parent, link)
+            self.assertEqual(run.grader_paths_named({"agents": [{"commands": [{"paths_named": [str(grader / "grade")]}]}]}, link / root.name), [str(grader / "grade")])
+
+    def test_a_provider_condition_is_told_from_a_harness_stop(self) -> None:
+        temporary = tempfile.TemporaryDirectory(prefix="provider-outage-")
+        self.addCleanup(temporary.cleanup)
+        directory = Path(temporary.name)
+        # The Codex arm names its last message in every record: absent means the arm wrote the evidence itself.
+        unwritten = directory / "last.json"
+
+        def result(harness: str, reported: dict, errors: list[str] | None = None, last: Path | None = None) -> run.ArmResult:
+            record = {"errors": errors or [], "last_message": str(last or unwritten)}
+            return run.ArmResult("arm", harness, 0, 1, 2, reported, None, Path("."), record)
+
+        outage = result("foe", {"status": "blocked", "code": "recovery-exhausted", "evidence": ["provider unavailable through 5 attempts at step 2"]})
+        self.assertIn("the provider ended the attempt: foe reported blocked with the code recovery-exhausted", run.provider_outage(outage))
+        bound = result("foe", {"status": "blocked", "code": "recovery-exhausted", "evidence": ["node `assess` would fire again beyond its max_fires of 3"]})
+        self.assertIsNone(run.provider_outage(bound))
+        self.assertIsNone(run.provider_outage(result("foe", {"status": "blocked", "code": "goal-unreachable", "evidence": []})))
+        self.assertIsNone(run.provider_outage(result("foe", {"status": "completed", "code": None, "evidence": []})))
+        for evidence, condition in (
+            ("exit status 1: 429 Too Many Requests", "a rate limit"),
+            ("the stream ended: 503 Service Unavailable", "a server fault"),
+            ("unauthorized: the credential was refused", "an authentication failure"),
+        ):
+            failed = result("codex", {"status": "failed", "code": None, "evidence": [evidence]})
+            self.assertIn(f"the provider ended the attempt with {condition}", run.provider_outage(failed), evidence)
+        # The stream errors the arm recorded carry the condition when the evidence does not.
+        recorded = result("codex", {"status": "failed", "code": None, "evidence": ["exit status 1"]}, ["stream error: rate limit reached"])
+        self.assertIn("a rate limit", run.provider_outage(recorded))
+        self.assertIsNone(run.provider_outage(result("codex", {"status": "failed", "code": None, "evidence": ["exit status 1: the workspace is not a directory"]})))
+        self.assertIsNone(run.provider_outage(result("codex", {"status": "blocked", "code": "goal-unreachable", "evidence": ["429"]})))
+        # A report the model wrote is the model's own words, whatever status word the arm had to replace, so its
+        # sentences about the task are read as a stop and stay in the rates. Only the stream's errors are the arm's.
+        written = directory / "written.json"
+        written.write_text(json.dumps({"status": "done", "code": None, "evidence": ["placeholder"]}), encoding="utf-8")
+        for sentence in (
+            "the workspace is read-only: writing crates/code/inventory.toml is forbidden by the sandbox",
+            "no authentication is configured for the registry, so the crate cannot be fetched",
+            "the check suite reported 502 failing assertions",
+            "the request quota for the tool was reached",
+        ):
+            reported = {"status": "failed", "code": None, "evidence": [sentence]}
+            self.assertIsNone(run.provider_outage(result("codex", reported, last=written)), sentence)
+            # The same sentence in the arm's own evidence, where the run wrote no report, is the condition it names.
+            self.assertIsNotNone(run.provider_outage(result("codex", reported)), sentence)
+        # A record that names no last message says nothing about who wrote the evidence, and its stream errors alone are read.
+        silent = run.ArmResult("arm", "codex", 0, 1, 2, {"status": "failed", "code": None, "evidence": ["429 Too Many Requests"]}, None, Path("."), {"errors": []})
+        self.assertIsNone(run.provider_outage(silent))
+        self.assertIn("a rate limit", run.provider_outage(result("codex", {"status": "failed", "code": None, "evidence": ["nothing to see"]}, ["429 Too Many Requests"], last=written)))
 
     def test_the_check_suite_fault_is_read_from_the_root_or_a_child_log(self) -> None:
         def log(directory: Path, stdout: str | None) -> None:
@@ -1105,6 +1245,140 @@ class Running(Harness):
         self.assertIsNone(record["trajectory"])
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 1)
 
+    def test_the_grader_is_absent_while_the_arm_runs_and_is_recorded_when_the_arm_names_it(self) -> None:
+        self.behave("peek-at-grader")
+        status, _, err = self.main(self.argv("--confirm-spend"))
+        self.assertEqual(status, run.EVALUATED, err)
+        record = self.record("foe-configured")
+        root = Path(record["paths"]["root"])
+        # The arm looked for the grader beside its workspace and found nothing there, and the root beside it
+        # held the workspace and the task alone: no baseline of what the damage judgement protects.
+        peeked = (Path(record["paths"]["workspace"]) / "peek.txt").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(peeked, ["False", f"{run.protocol.TASK_FILE} {run.protocol.WORKSPACE}"])
+        # The grade then ran against a grader materialized after the arm had exited.
+        self.assertTrue((root / run.protocol.GRADER / run.protocol.GRADE_SCRIPT).is_file())
+        self.assertFalse((root / run.protocol.PROTECTED_FILE).exists())
+        self.assertEqual(record["grade"]["damage"], [])
+        self.assertFalse(record["grade"]["passed"])
+        self.assertEqual(record["classification"], "wrong-stop")
+        # Every grader path the trajectory names is recorded as the evidence a reader checks.
+        self.assertEqual(
+            record["grader_paths_named"],
+            ["../grader/grade", str(root / run.protocol.GRADER / "oracle" / "candidate.json")],
+        )
+        # An attempt that names none records none.
+        self.behave("completed")
+        second = self.root / "second"
+        status, _, err = self.main(self.argv("--confirm-spend", name="second", out=str(second)))
+        self.assertEqual(status, run.EVALUATED, err)
+        plain = json.loads(run.record_path(second, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
+        self.assertEqual(plain["grader_paths_named"], [])
+
+    def test_a_provider_outage_is_an_infrastructure_fault_rather_than_a_stop(self) -> None:
+        self.behave("provider-outage")
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-configured"]))
+        self.assertEqual(status, run.DEPLOYMENT_FAULT)
+        self.assertIn("did not evaluate the harness", err)
+        record = self.record("foe-configured")
+        self.assertIsNone(record["classification"])
+        self.assertIn("the provider ended the attempt: foe reported blocked with the code recovery-exhausted", record["infrastructure_error"])
+        self.assertIn("provider unavailable through 5 attempts", record["infrastructure_error"])
+        # The arm result, the trajectory, and the grade stay in the record, so the attempt is auditable.
+        self.assertEqual(record["reported"]["code"], "recovery-exhausted")
+        self.assertEqual(record["trajectory"]["outcome"]["code"], "recovery-exhausted")
+        self.assertFalse(record["grade"]["passed"])
+        self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 1)
+        # A Codex run the provider failed is the same fault, named by its condition.
+        self.behave("provider-error")
+        codex_out = self.root / "codex-out"
+        status, _, err = self.main(self.argv("--confirm-spend", name="codex", arms=["codex-default"], out=str(codex_out)))
+        self.assertEqual(status, run.DEPLOYMENT_FAULT, err)
+        record = json.loads(run.record_path(codex_out, TASK, "codex-default", 1).read_text(encoding="utf-8"))
+        self.assertIsNone(record["classification"])
+        self.assertIn("the provider ended the attempt with a rate limit", record["infrastructure_error"])
+        self.assertIn("429", record["infrastructure_error"])
+        self.assertEqual(record["reported"]["status"], "failed")
+        self.assertIsNotNone(record["trajectory"])
+
+    def test_a_workflow_recovery_bound_stays_a_classified_stop(self) -> None:
+        self.behave("recovery-bound")
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        record = self.record("foe-configured")
+        self.assertIsNone(record["infrastructure_error"])
+        self.assertEqual(record["classification"], "wrong-stop")
+        self.assertEqual(record["reported"]["code"], "recovery-exhausted")
+
+    def test_a_watcher_failure_during_the_run_is_a_fault_of_the_attempt(self) -> None:
+        failure = run.WatcherFailure("the arm ran and its budget watcher then failed, so the attempt spent credit and reported nothing: the budget watcher for codex failed after 12 ms and terminated the run")
+        with mock.patch.object(run, "run_arm", side_effect=failure):
+            status, _, err = self.main(self.argv("--confirm-spend"))
+        self.assertEqual(status, run.DEPLOYMENT_FAULT, err)
+        record = self.record("foe-configured")
+        self.assertIsNone(record["classification"])
+        self.assertIn("the budget watcher for codex failed", record["infrastructure_error"])
+        # The watcher raises once the child has ended, so the record says the arm ran rather than that it never started.
+        self.assertTrue(record["infrastructure_error"].startswith("the arm ran and its budget watcher then failed"), record["infrastructure_error"])
+        self.assertNotIn("could not launch", record["infrastructure_error"])
+        # The grade still ran, so the attempt records what the workspace held when the arm ended.
+        self.assertFalse(record["grade"]["passed"])
+
+    def test_a_runner_fault_ends_the_run_rather_than_spending_the_remaining_attempts(self) -> None:
+        # A RuntimeError that is not the watcher's comes from the runner itself, and every later attempt would carry it too.
+        with mock.patch.object(run, "run_arm", side_effect=RuntimeError("the graph could not be built")):
+            with self.assertRaises(RuntimeError):
+                self.main(self.argv("--confirm-spend", attempts=2))
+        self.assertFalse(run.record_path(self.out, TASK, "foe-configured", 1).exists())
+
+    def test_resume_skips_a_recorded_attempt_and_removes_a_leftover_attempt_directory(self) -> None:
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "foe-as-shipped"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        self.assertEqual(json.loads(out.strip().splitlines()[-1])["skipped"], 0)
+        first = self.record("foe-configured")["started_ms"]
+        # The record of the shipped arm is gone and its attempt directory is not, which is what an interrupted run leaves.
+        run.record_path(self.out, TASK, "foe-as-shipped", 1).unlink()
+        leftover = run.attempt_path(self.out, TASK, "foe-as-shipped", 1)
+        self.assertTrue(leftover.is_dir())
+        (leftover / "log" / "kept.txt").parent.mkdir(parents=True, exist_ok=True)
+        (leftover / "log" / "kept.txt").write_text("the transcript of an attempt that spent credit", encoding="utf-8")
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "foe-as-shipped"], resume=True))
+        self.assertEqual(status, run.EVALUATED, err)
+        summary = json.loads(out.strip().splitlines()[-1])
+        # One attempt was launched of the two planned, and the other is counted as skipped.
+        self.assertEqual((summary["attempts"], summary["planned"], summary["skipped"]), (1, 2, 1))
+        self.assertIn(f"is already recorded and is skipped: {run.record_path(self.out, TASK, 'foe-configured', 1)}", err)
+        aside = leftover.parent / f"{leftover.name}{run.INTERRUPTED_SUFFIX}01"
+        self.assertIn(f"the attempt directory {leftover} holds no record and is set aside at {aside}", err)
+        # The transcript of the interrupted attempt is kept, and the attempt ran again into a fresh directory.
+        self.assertEqual((aside / "log" / "kept.txt").read_text(encoding="utf-8"), "the transcript of an attempt that spent credit")
+        self.assertFalse((leftover / "log" / "kept.txt").exists())
+        # The attempt that had a record kept it, and the one that had none ran and wrote one.
+        self.assertEqual(self.record("foe-configured")["started_ms"], first)
+        self.assertEqual(self.record("foe-as-shipped")["classification"], "correct-completion")
+        # A second interruption of the same attempt is set aside beside the first rather than over it.
+        run.record_path(self.out, TASK, "foe-as-shipped", 1).unlink()
+        status, out, err = self.main(self.argv("--confirm-spend", arms=["foe-as-shipped"], resume=True))
+        self.assertEqual(status, run.EVALUATED, err)
+        self.assertTrue((leftover.parent / f"{leftover.name}{run.INTERRUPTED_SUFFIX}02").is_dir())
+        self.assertTrue((aside / "log" / "kept.txt").is_file())
+
+    def test_the_plan_leaves_out_the_spend_of_the_attempts_resume_will_skip(self) -> None:
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "foe-as-shipped"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        status, out, err = self.main(self.argv(arms=["foe-configured", "foe-as-shipped"], resume=True))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertIn("Already recorded under key resume and never launched again:", out)
+        for arm in ("foe-configured", "foe-as-shipped"):
+            self.assertIn(f"{TASK} / {arm} / 1: {run.record_path(self.out, TASK, arm, 1)}", out)
+        # Every planned attempt is already recorded, so the spend the plan states is nothing.
+        self.assertRegex(out, r"\n\s+0\s+0\s+0\s+0\s+every attempt this run launches")
+        self.assertNotIn("every planned attempt", out)
+
+    def test_resume_is_refused_when_it_is_not_a_boolean(self) -> None:
+        status, _, err = self.main(self.argv(resume="yes"))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn("key resume is 'yes'; expected true or false", err)
+
     def test_an_existing_record_is_refused_before_anything_runs(self) -> None:
         status, _, err = self.main(self.argv("--confirm-spend"))
         self.assertEqual(status, run.EVALUATED, err)
@@ -1235,6 +1509,23 @@ class Running(Harness):
         self.assertIsNone(shipped["arm_result"])
         self.assertFalse(run.attempt_path(self.out, TASK, "foe-as-shipped", 1).exists())
         self.assertEqual(self.record("foe-configured")["classification"], "correct-completion")
+
+    def test_the_check_wrapper_exports_the_same_home_a_bash_command_receives(self) -> None:
+        """A suite whose tests read HOME must see the same value under either
+        arm. A Codex arm runs the suite as a shell command and inherits the
+        runner's environment, so a foe arm whose wrapper left HOME unset
+        would run a different check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            workspace.mkdir()
+            script = run.write_check_script(Path(tmp) / "check", workspace, ["./checks/run.sh"])
+            text = script.read_text(encoding="utf-8")
+            self.assertIn(f"HOME={shlex.quote(str(workspace))}", text)
+            self.assertIn("export PATH LANG HOME TMPDIR", text)
+            printed = subprocess.run(
+                ["/bin/sh", "-c", f"{shlex.quote(str(script))} >/dev/null 2>&1; :"], capture_output=True, text=True, check=False
+            )
+            self.assertEqual(printed.returncode, 0)
 
     def test_a_check_suite_that_cannot_run_is_a_fault_until_its_tool_is_granted(self) -> None:
         tool_name = "cross-harness-fixture-checker"

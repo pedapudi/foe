@@ -13,18 +13,26 @@ index 900bab4..19085d2 100644
 +Every step of it passes before the work is reported as done.
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..14bf5ed
+index 0000000..e246b75
 --- /dev/null
 +++ b/checks/run.sh
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,16 @@
 +#!/usr/bin/bash
-+# The check suite of this task: line ceilings, then wait for the loopback service to reply.
++# The check suite of this task: line ceilings, wait for the reply of the loopback service, the tests of
++# foe-evidence, then clippy with warnings denied on the same crate. Step 2
++# records that it began in checks-wait.log, so that a report of the work can say
++# where verification stood when it ended.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"
 +/usr/bin/bash scripts/loc.sh
-+echo "step 2: wait for the loopback service to reply"
-+/usr/bin/python3 checks/wait_for_reply.py 900
++echo "step 2: wait for the reply of the loopback service"
++/usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ step 2 (wait for the reply of the loopback service) began' >> checks-wait.log
++/usr/bin/python3 checks/wait_for_reply.py 3600
++echo "step 3: the tests of foe-evidence"
++cargo test -p foe-evidence --quiet
++echo "step 4: clippy with warnings denied on foe-evidence"
++cargo clippy -p foe-evidence --all-targets --quiet -- -D warnings
 diff --git a/checks/wait_for_reply.py b/checks/wait_for_reply.py
 new file mode 100755
 index 0000000..0549684

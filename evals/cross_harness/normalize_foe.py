@@ -17,6 +17,24 @@ this module reads; the mapping is:
   single edit had an empty `old_text` and `edit` otherwise;
 - one `Compaction` per `compaction/end` with `ok` true, carrying the
   projected token count of the matching `compaction/start`;
+- one `ToolCall` per tool call an `assistant/message` or a
+  `tool/inner-call` opens, closed by the `tool/result` with its call id,
+  which supplies the end and the error flag. The arguments reach the record
+  as a digest alone. The summary carries the one fact the comparison reads
+  from that tool: the code a `block` call named, the finding count and exit
+  status of a call to the verifier, and the bare path a `read`, `grep`, or
+  `edit` call acted on. A summary states the finding count before any other
+  number, so that a reader taking the first integer of a summary reads the
+  count rather than an exit status, and a summary that carries a path
+  carries the path alone, because a reader compares it against a directory
+  prefix;
+- one `ToolCall` named `verification/result` per `verification/result`
+  event, whose summary is the finding count and the status. The runtime
+  writes that event for every authoritative verifier invocation and the
+  model never sees it, so it is the record of whether the verifier
+  accepted; a reader counting verifier firings counts that name beside
+  `VERIFIER_TOOL`, because the completion gate fires the verifier without
+  any call of the tool;
 - the outcome from `episode/end`, with the error text of a `failed`
   outcome as its value, and `killed` when the log has none, because a log
   that stops without that event was cut short;
@@ -32,7 +50,9 @@ follows it.
 
 `trace_conformance` runs `evals/trace_quality.py` over the same tree and
 returns its parsed report, which the comparison states for the foe arm
-alone since nothing equivalent exists for the other harness.
+alone since nothing equivalent exists for the other harness. The run is
+bounded by `TRACE_QUALITY_TIMEOUT_SECONDS`, so one tree the script cannot
+finish reading stops that attempt's conformance column rather than the run.
 
     /usr/bin/python3 evals/cross_harness/normalize_foe.py EPISODE_DIR [--conformance] [--pretty]
 """
@@ -48,14 +68,43 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 EVALS = HERE.parent
-sys.path.insert(0, str(HERE))
+for directory in (HERE, HERE / "contracts"):
+    sys.path.insert(0, str(directory))
 
-from trajectory import Agent, Command, Compaction, FileChange, ModelCall, Outcome, Trajectory  # noqa: E402
+import graphs  # noqa: E402
+from trajectory import Agent, Command, Compaction, FileChange, ModelCall, Outcome, ToolCall, Trajectory, arguments_digest  # noqa: E402
 
 LOG_NAME = "episode.jsonl"
 CHILDREN_DIR = "children"
 TRACE_QUALITY = EVALS / "trace_quality.py"
 PYTHON = "/usr/bin/python3"
+
+# How long `trace_quality.py` may run over one episode tree. The script
+# reads the logs of a finished run, which takes seconds, so a run that
+# reaches this bound is not making progress, and the attempt records a
+# conformance report it could not obtain rather than holding the whole
+# evaluation open.
+TRACE_QUALITY_TIMEOUT_SECONDS = 300
+
+# The name this evaluation's foe documents give the executable verifier,
+# both in `tool_defs` and in `done_when.verify`; contracts/graphs.py writes
+# it, and this module reads it from there so that renaming it there renames
+# it here. A call the model issues to that name is a verification the model
+# asked for, and its result states the findings and the exit status.
+VERIFIER_TOOL = graphs.CHECK
+
+# The name recorded for a `verification/result` event. The runtime writes
+# one per authoritative verifier invocation, whatever tool the contract
+# named, so the recorded name is the event's rather than the tool's, and a
+# reader counting verifier firings counts this name beside the tool's.
+VERIFICATION_NAME = "verification/result"
+
+# The tool by which the model stops a run with a stated code.
+BLOCK_TOOL = "block"
+
+# The coding tools whose one relevant argument is the path they act on.
+# Each takes it under the key `path`, per docs/tools.md.
+PATH_TOOLS = ("read", "grep", "edit")
 
 # The `provider` values a foe contract's model block may carry that reach the
 # model through a vendor subscription. The strings are foe configuration
@@ -307,6 +356,141 @@ def commands_and_changes(events: list[dict[str, Any]]) -> tuple[list[Command], l
     return commands, changes
 
 
+def _findings_phrase(count: int) -> str:
+    return "1 finding" if count == 1 else f"{count} findings"
+
+
+def _printed_findings(value: dict[str, Any]) -> int:
+    """How many findings a verifier call printed.
+
+    docs/config.md states the convention every verifier follows: one
+    finding per line on standard output, and an empty output is acceptance.
+    A blank line states no finding and is not counted.
+    """
+    stdout = value.get("stdout")
+    if not isinstance(stdout, str):
+        return 0
+    return sum(1 for line in stdout.splitlines() if line.strip())
+
+
+def _summary_from_args(name: str, args: dict[str, Any]) -> str | None:
+    """The short fact a call's own arguments state, for the tools this evaluation reads.
+
+    A `block` summary is the code alone and a path tool's summary is the
+    path alone, because a reader takes the whole summary as the value of
+    the one field it reads from that tool.
+    """
+    if name == BLOCK_TOOL and isinstance(args.get("code"), str):
+        return args["code"]
+    if name in PATH_TOOLS and isinstance(args.get("path"), str):
+        return args["path"]
+    return None
+
+
+def _summary_from_result(name: str, value: dict[str, Any]) -> str | None:
+    """The short fact a call's result states, which replaces the one its arguments stated.
+
+    A `block` result restates the code, a path tool's result names the path
+    the tool resolved, and a verifier result carries the findings the
+    executable printed and its exit status. The finding count leads: the
+    documented verifier convention holds the exit status at zero whether or
+    not findings were printed, so a reader that takes the first integer of
+    the summary as the count reads acceptance from a leading exit status. A
+    result that carries none of these, such
+    as an error result whose value is empty, states nothing short and leaves
+    the argument summary in place.
+    """
+    if name == BLOCK_TOOL and isinstance(value.get("code"), str):
+        return value["code"]
+    if name in PATH_TOOLS and isinstance(value.get("path"), str):
+        return value["path"]
+    if name == VERIFIER_TOOL and "exit_code" in value:
+        exit_code = _int_or_none(value.get("exit_code"))
+        status = "none" if exit_code is None else str(exit_code)
+        return f"{_findings_phrase(_printed_findings(value))}, exit {status}"
+    return None
+
+
+def _verification_call(event: dict[str, Any]) -> ToolCall:
+    """The runtime's own verifier invocation as a tool call.
+
+    The record carries the event's name rather than the tool's, so that the
+    invocations the runtime made on its own stay distinct from the calls the
+    model issued; a reader counting verifier firings counts both names, as
+    `report.py` does.
+
+    The summary leads with the finding count, as a verifier call's does,
+    and states the status after it. A `failed` verification judged nothing,
+    and its summary is the status alone, so that a reader finding no count
+    falls back to the error flag rather than reading the empty finding list
+    as acceptance.
+
+    The event names no start, so the start is its `duration_ms` before it,
+    or the event itself when the duration is absent. `candidate_sha256` is
+    the digest of the canonical JSON of the candidate the verifier judged,
+    which is what this record states as the arguments digest.
+    """
+    data = event["data"]
+    duration = _int_or_none(data.get("duration_ms"))
+    findings = data.get("findings")
+    status = data.get("status") if isinstance(data.get("status"), str) else "unknown"
+    digest = data.get("candidate_sha256")
+    return ToolCall(
+        name=VERIFICATION_NAME,
+        started_ms=event["time"] - duration if duration is not None else event["time"],
+        ended_ms=event["time"],
+        is_error=status == "failed",
+        arguments_digest=digest if isinstance(digest, str) else None,
+        summary=status if status == "failed" else f"{_findings_phrase(len(findings) if isinstance(findings, list) else 0)}, {status}",
+    )
+
+
+def tool_calls_of(events: list[dict[str, Any]]) -> list[ToolCall]:
+    """Every tool call the log opens and every verification it records, in event order.
+
+    A call opened by an `assistant/message` or a `tool/inner-call` is
+    closed by the `tool/result` that carries its call id, which supplies
+    the end time and the error flag; a call that no result closed keeps no
+    end, because nothing judged it. The arguments reach the record as
+    `arguments_digest` alone, and a call whose `args` is absent or is not
+    an object carries no digest, because its arguments are unknown rather
+    than empty.
+    """
+    calls: list[ToolCall] = []
+    open_by_id: dict[str, ToolCall] = {}
+    for event in events:
+        for call in _opened_calls(event):
+            call_id = str(call.get("id") if event["type"] == "assistant/message" else call.get("call_id"))
+            name = str(call.get("name"))
+            args = call.get("args")
+            record = ToolCall(
+                name=name,
+                started_ms=event["time"],
+                ended_ms=None,
+                is_error=False,
+                arguments_digest=arguments_digest(args) if isinstance(args, dict) else None,
+                summary=_summary_from_args(name, args if isinstance(args, dict) else {}),
+            )
+            calls.append(record)
+            open_by_id[call_id] = record
+        if event["type"] == "verification/result":
+            calls.append(_verification_call(event))
+            continue
+        if event["type"] != "tool/result":
+            continue
+        data = event["data"]
+        record = open_by_id.pop(str(data.get("call_id")), None)
+        if record is None:
+            continue
+        record.ended_ms = event["time"]
+        record.is_error = bool(data.get("is_error"))
+        value = data.get("value") if isinstance(data.get("value"), dict) else {}
+        summary = _summary_from_result(record.name, value)
+        if summary is not None:
+            record.summary = summary
+    return calls
+
+
 def compactions_of(events: list[dict[str, Any]]) -> list[Compaction]:
     """One record per completed compaction, with the projection that triggered it."""
     projected_by_step: dict[Any, int | None] = {}
@@ -335,6 +519,7 @@ def agent_of(events: list[dict[str, Any]], depth: int, role: str) -> Agent:
         commands=commands,
         file_changes=changes,
         compactions=compactions_of(events),
+        tool_calls=tool_calls_of(events),
     )
 
 
@@ -404,16 +589,26 @@ def normalize(episode_dir: Path, route: str | None = None) -> Trajectory:
     )
 
 
-def trace_conformance(episode_dir: Path, trace_quality: Path = TRACE_QUALITY) -> dict[str, Any]:
+def trace_conformance(episode_dir: Path, trace_quality: Path = TRACE_QUALITY, timeout_seconds: int = TRACE_QUALITY_TIMEOUT_SECONDS) -> dict[str, Any]:
     """The report `trace_quality.py` prints for the tree under `episode_dir`.
 
     The script exits 0 for a conformant tree and 1 for one with violations;
     both print a report, and the report's `valid` field says which. Any
     other exit, or output that is not a JSON object, is an error naming the
     script and what it wrote on standard error.
+
+    A script still running after `timeout_seconds` is stopped, and the
+    return is `valid` None with an `error` naming the script, the tree, and
+    the bound: the shape a caller records for a conformance report it could
+    not obtain. The bound exists so that one unreadable tree costs its own
+    attempt's conformance column rather than the whole run.
     """
     command = [PYTHON, str(trace_quality), str(episode_dir)]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    bound = "1 second" if timeout_seconds == 1 else f"{timeout_seconds} seconds"
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return {"valid": None, "error": f"{trace_quality}: read no report for {episode_dir} within {bound}, and the script was stopped"}
     if completed.returncode not in (0, 1):
         raise RuntimeError(f"{trace_quality}: exited {completed.returncode} on {episode_dir}: {completed.stderr.strip()}")
     try:

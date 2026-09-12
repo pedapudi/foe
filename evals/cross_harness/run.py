@@ -24,18 +24,29 @@ final message is a typed report with a status, a blocked code, and evidence,
 which is what a foe outcome carries.
 
 Every run of one task under one arm is an attempt. The runner materializes
-the task into a fresh root and runs the arm. It reads the workspace's
-modification times before and after the run, so that a file a shell command
-wrote is attributed to the agent that ran the command. It then reduces the
-harness's own records to the shared trajectory schema, grades the workspace
-with the task's hidden grader, and classifies the graded outcome into one
-confusion cell of `tasks/protocol.py`. One JSON record per attempt is
-written under `<out>/records/<task>/<arm>/`. `report.py` reads those
-records. The record's `grade` carries the grader's verdict, its findings,
-and the damage judged beside it; for a fan-out task of the teams family
-it also carries `units`, each unit's verdict as `{name: passed}`, read
-from the `units.json` the grade script of `tasks/teams.py` leaves in the
-materialized root's grader directory, and null when no grade left one.
+the task's workspace into a fresh root, runs the arm, and materializes the
+task's grader into the same root once the arm process has exited. The
+grader is absent while the arm runs because a Codex arm's sandbox reads the
+whole filesystem, as the containment matrix records, so a grader beside the
+workspace would give one harness the hidden tests, the oracle, and the
+corruptions that the other harness's read grant keeps out of reach. The
+protected-path hashes are recorded from the workspace as it stood before
+the arm ran. Each record also carries `grader_paths_named`, every path
+under the root's grader directory that the normalized trajectory names, so
+that a reader can check the containment held even for a harness that
+reached outside its sandbox by some other route. The runner reads the
+workspace's modification times before and after the run, so that a file a
+shell command wrote is attributed to the agent that ran the command. It
+then reduces the harness's own records to the shared trajectory schema,
+grades the workspace with the task's hidden grader, and classifies the
+graded outcome into one confusion cell of `tasks/protocol.py`. One JSON
+record per attempt is written under `<out>/records/<task>/<arm>/`, and
+`report.py` reads them. The record's `grade` carries the grader's
+verdict, its findings, and the damage judged beside it; for a fan-out
+task of the teams family it also carries `units`, each unit's verdict as
+`{name: passed}`, read from the `units.json` the grade script of
+`tasks/teams.py` leaves in the materialized root's grader directory, and
+null when no grade left one.
 For every other task `units` is null.
 
 The runner takes one run document, a JSON file, and launches nothing
@@ -51,6 +62,14 @@ document is in, and a leading `~` expands to the home directory.
     select          the task names to run; every task under `tasks` when absent
     arms            the arm names to run; every arm of the family when absent
     attempts        independent attempts per task and arm; default 1
+    resume          continue a run into an output directory that already holds
+                    records; default false. With it true, an attempt whose record
+                    exists is skipped, counted, and left out of the plan's spend,
+                    and an attempt directory without a record, which an
+                    interrupted run leaves, is renamed aside and named on standard
+                    error before that attempt runs again, since it holds the only
+                    transcript of an attempt that spent credit.
+                    With it false both are refused by path and nothing is launched
     model           an object: `route` (subscription or compatible), `name`,
                     `effort` (default medium); on the compatible route
                     `base_url` (required there and refused on the subscription
@@ -97,10 +116,25 @@ cannot run under foe; the runner reads that from the episode log and
 records the attempt as a fault.
 
 An attempt whose run never measured the harness is marked rather than
-scored: the arm could not launch, the harness wrote no log, no model
-response reached the run, the harness's records could not be read, or the
-check suite could not run. Such a record carries `infrastructure_error` and
-no classification, following `evals/run_micro_evals.py`.
+scored: the arm could not launch, the arm ran and its budget watcher then
+failed, the harness wrote no log, no model response reached the run, the
+harness's records could not be read, the check suite could not run, or the
+provider failed the attempt. Such a
+record carries `infrastructure_error` and no classification, following
+`evals/run_micro_evals.py`; the arm result, the trajectory, and the grade
+stay in the record, so the attempt is auditable.
+
+A provider outage is a condition of the model service and says nothing
+about a harness, so the runner records it as an infrastructure fault
+before any classification. A foe episode reports it as blocked with the
+code `recovery-exhausted`, which the model loop of
+`crates/core/src/loop_.rs` reaches when a rate limit or a provider error
+outlasts the retries the seconds budget can fund; the same code from a
+workflow bound, which the evidence names as `max_fires` or
+`recovery.max_interventions`, is the graph ending the episode and stays a
+classified stop. A Codex run reports it as a failed status whose evidence
+or whose recorded stream errors name a rate limit, a server fault, or an
+authentication failure.
 
 The built-in documents of the foe-as-shipped arm carry their own grants,
 so that arm cannot take tool roots from the run document or from a task. A
@@ -121,6 +155,16 @@ holds the premise: before the plan it resolves the program against the
 system search path and the tool roots the foe arms execute, and against
 the PATH a Codex child inherits when a Codex arm is selected, and refuses
 the run by name when the program is found.
+
+A task whose metadata names `presumes_unimportable`, as the
+inventory-regeneration tasks do, presumes that module absent from the
+interpreter a grade runs under, since the artifact the task asks for can
+be regenerated only by a program that imports it. The runner holds that
+premise the same way: before the plan it imports the module with
+`protocol.PYTHON` and refuses the run by name, stating where the module
+was found, when the import succeeds. A host that can import it grades the
+task against a premise that does not hold, and a silent mis-grade is worse
+than a refusal.
 
 Every attempt runs under the task's budget: `model_calls`, `input_tokens`,
 `output_tokens`, and `seconds`. Each key of the document's `budget`
@@ -179,12 +223,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import keyword
 import os
+import re
 import shlex
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -228,7 +275,7 @@ DEFAULT_EFFORT = "medium"
 DEFAULT_GRADER_TIMEOUT_SECONDS = feature_removal.GRADE_TIMEOUT_SECONDS
 
 # The keys of a run document, of its `model` object, and of its `harnesses` object; the module docstring states each one.
-DOCUMENT_KEYS: tuple[str, ...] = ("tasks", "select", "arms", "attempts", "model", "budget", "tool_roots", "harnesses", "out", "grader_timeout", "source_root", "foe_config_dir")
+DOCUMENT_KEYS: tuple[str, ...] = ("tasks", "select", "arms", "attempts", "resume", "model", "budget", "tool_roots", "harnesses", "out", "grader_timeout", "source_root", "foe_config_dir")
 MODEL_KEYS: tuple[str, ...] = ("route", "name", "effort", "base_url", "codex_wire_api")
 HARNESS_KEYS: tuple[str, ...] = ("foe", "codex", "credential")
 # The foe binary a document without `harnesses.foe` runs, under the git checkout the document or the current directory is in.
@@ -248,6 +295,9 @@ DEFAULT_CODEX_WIRE_API = "chat"
 GIT_ENTRY = ".git"
 
 RECORDS_DIR, ATTEMPTS_DIR, RUN_FILE = "records", "attempts", "run.json"
+# What is appended, with a number, to the directory of an attempt that
+# was interrupted, when key resume sets that directory aside.
+INTERRUPTED_SUFFIX = "-interrupted-"
 # The two canaries of a run, by name: the sentence the Codex arm writes into
 # each attempt's CODEX_HOME configuration file, and the sentence the runner
 # writes into foe's configuration directory as a file foe never reads.
@@ -264,11 +314,31 @@ TESTS_DIR = "tests"
 METADATA_CHECK, METADATA_WRITE_ROOTS, METADATA_TOOL_ROOTS = "check", "write_roots", "tool_roots"
 # The task metadata key naming the one program a missing-capability task presumes absent from every arm's search path.
 METADATA_PRESUMES_ABSENT = "presumes_absent"
+# The task metadata key naming the one module a missing-capability task presumes the grading interpreter cannot import.
+METADATA_PRESUMES_UNIMPORTABLE = "presumes_unimportable"
 # The search path the runtime gives a bash command, from docs/tools.md "bash";
 # the check script starts from it because a configured executable receives no environment.
 SYSTEM_SEARCH_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 # The exit status a shell gives a command it cannot find.
 COMMAND_NOT_FOUND_STATUS = 127
+# The foe blocked code a spent retry, an outage the seconds budget cannot
+# outwait, and a workflow recovery bound all end an episode with, from
+# crates/core/src/loop_.rs and crates/workflow/src/run.rs.
+RECOVERY_EXHAUSTED = "recovery-exhausted"
+# The two workflow bounds that reach that code; their messages name the
+# bound, and a graph ending its own episode is harness behavior.
+WORKFLOW_RECOVERY_BOUNDS: tuple[str, ...] = ("max_fires", "recovery.max_interventions")
+# The provider conditions a failed Codex run names, each with the pattern
+# its evidence or its recorded stream errors match, case folded.
+PROVIDER_FAULT_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("a rate limit", r"rate[ _-]?limit|\b429\b|too many requests|usage limit|quota"),
+    ("a server fault", r"\b5(?:00|02|03|04)\b|server[ _-]?error|service unavailable|bad gateway|gateway timeout|overloaded"),
+    ("an authentication failure", r"\b401\b|\b403\b|unauthorized|forbidden|authentication|invalid[ _-]?api[ _-]?key|not logged in"),
+)
+# A relative path that leaves its own directory and enters a directory
+# named like the grader: a command may run in any subdirectory of the
+# workspace, so such a path names the grader wherever the command ran.
+PARENT_STEPS_TO_GRADER = re.compile(r"^(?:\.\./)+" + re.escape(protocol.GRADER) + r"(?:/|$)")
 # The line the check script prints when the check suite exited with that status.
 CHECK_SUITE_UNAVAILABLE = "the check suite could not run"
 # A directory holding this file is a cache under the Cache Directory Tagging
@@ -477,6 +547,12 @@ class Keyed:
             raise self.error(key, f"is {value!r}; expected one of {', '.join(choices)}")
         return value
 
+    def boolean(self, key: str, default: bool) -> bool:
+        value = self.data.get(key, default)
+        if not isinstance(value, bool):
+            raise self.error(key, f"is {value!r}; expected true or false")
+        return value
+
     def positive_integer(self, key: str, default: int) -> int:
         value = self.data.get(key, default)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
@@ -560,6 +636,7 @@ class Document:
     select: tuple[str, ...] | None
     arms: tuple[str, ...] | None
     attempts: int
+    resume: bool
     route: str
     model: str
     effort: str
@@ -596,6 +673,7 @@ class Document:
             "select": None if self.select is None else list(self.select),
             "arms": None if self.arms is None else list(self.arms),
             "attempts": self.attempts,
+            "resume": self.resume,
             "model": {"route": self.route, "name": self.model, "effort": self.effort, "base_url": self.base_url, "codex_wire_api": self.codex_wire_api},
             "budget": dict(self.budget),
             "tool_roots": list(self.tool_roots),
@@ -626,6 +704,7 @@ def load_document(path: Path) -> Document:
         raise keyed.error("select", "is []; expected at least one task name, or no select key to run every task")
     arms = keyed.strings("arms")
     attempts = keyed.positive_integer("attempts", 1)
+    resume = keyed.boolean("resume", False)
     model = keyed.obj("model", MODEL_KEYS, required=True)
     route = model.string("route", choices=ROUTES, required=True)
     name = model.string("name", required=True)
@@ -673,6 +752,7 @@ def load_document(path: Path) -> Document:
         select=None if select is None else tuple(select),
         arms=None if arms is None else tuple(arms),
         attempts=attempts,
+        resume=resume,
         route=route,
         model=name,
         effort=effort or DEFAULT_EFFORT,
@@ -790,6 +870,59 @@ def presumed_absent_fault(settings: Settings, task: protocol.Task, arms: Sequenc
     return None
 
 
+def import_interpreters() -> list[str]:
+    """The interpreters an attempt of a task that presumes a module unimportable reaches, in the order they are asked.
+
+    `protocol.PYTHON` is the interpreter every grade script names in its
+    shebang. The `python3` of SYSTEM_SEARCH_PATH is the one an arm's own
+    command resolves, and is asked as well when it is another file, since
+    a host whose two interpreters hold different modules breaks the premise
+    for the arm or for the grade.
+    """
+    interpreters = [protocol.PYTHON]
+    reached = shutil.which("python3", path=SYSTEM_SEARCH_PATH)
+    if reached is not None and os.path.realpath(reached) != os.path.realpath(protocol.PYTHON):
+        interpreters.append(reached)
+    return interpreters
+
+
+def presumed_unimportable_fault(task: protocol.Task) -> str | None:
+    """Where the module `metadata.presumes_unimportable` names is found by an interpreter the attempt reaches, or None.
+
+    A task that asks for a derived artifact only one generator can produce
+    presumes the module that generator imports absent, and its grader reads
+    no site directory, so the runner is what holds the premise. Every
+    interpreter of `import_interpreters` is asked, each from an empty
+    directory of its own, since the directory the runner was started in is
+    one no grade and no arm command runs from and its files would otherwise
+    be importable here alone. The interpreter inherits the runner's
+    environment, as a grade script does, so a module a variable such as
+    PYTHONPATH puts on the path is found; that inheritance is the one
+    environment read this check makes. A host where
+    the module imports would grade the task against a premise that does not
+    hold, and the run is refused by name before the plan.
+    """
+    named = task.metadata.get(METADATA_PRESUMES_UNIMPORTABLE)
+    if named is None:
+        return None
+    if not isinstance(named, str) or not named.isidentifier() or keyword.iskeyword(named):
+        raise ValueError(f"task {task.name!r}: metadata.{METADATA_PRESUMES_UNIMPORTABLE} is {named!r}; expected a module name")
+    program = f"import {named}; print(getattr({named}, '__file__', None) or 'a module the interpreter builds in')"
+    for interpreter in import_interpreters():
+        with tempfile.TemporaryDirectory(prefix="presumes-unimportable-") as elsewhere:
+            try:
+                completed = subprocess.run([interpreter, "-c", program], cwd=elsewhere, capture_output=True, text=True, timeout=60, check=False)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise ValueError(f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and {interpreter} could not be asked whether it imports: {exc}") from exc
+        if completed.returncode == 0:
+            return (
+                f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and {interpreter} "
+                f"imports it from {completed.stdout.strip() or 'an unnamed location'}, which is an interpreter the attempt reaches; "
+                "the task's premise does not hold on this host; leave the task out with select, or run it on a host without the module"
+            )
+    return None
+
+
 def not_applicable(settings: Settings, arm: Arm, task: protocol.Task) -> str | None:
     """The reason the arm cannot run the task, or None when it can.
 
@@ -815,15 +948,22 @@ def not_applicable(settings: Settings, arm: Arm, task: protocol.Task) -> str | N
     )
 
 
-def rotated(arms: list[Arm], attempt: int) -> list[Arm]:
-    """The arms in the order attempt number `attempt` runs them: each attempt starts one arm later than the previous."""
-    offset = (attempt - 1) % len(arms)
+def rotated(arms: list[Arm], attempt: int, task_index: int) -> list[Arm]:
+    """The arms in the order attempt number `attempt` of the task at `task_index` runs them.
+
+    The order starts one arm later for each attempt and one arm later for
+    each task, so that the arm that goes first varies across tasks as well
+    as across attempts. A run of one attempt per task would otherwise give
+    every task to the same arm first, and an effect of running first, such
+    as a shared cache the first arm fills, would land on that arm alone.
+    """
+    offset = (attempt - 1 + task_index) % len(arms)
     return arms[offset:] + arms[:offset]
 
 
 def planned(tasks: list[Selected], arms: list[Arm], attempts: int) -> list[tuple[int, Selected, Arm]]:
-    """Every (attempt, task, arm) triple in launch order."""
-    return [(attempt, entry, arm) for attempt in range(1, attempts + 1) for entry in tasks for arm in rotated(arms, attempt)]
+    """Every (attempt, task, arm) triple in launch order, with the arm order rotated by attempt number and task position."""
+    return [(attempt, entry, arm) for attempt in range(1, attempts + 1) for index, entry in enumerate(tasks) for arm in rotated(arms, attempt, index)]
 
 
 def header(document: Document, settings: Settings, tasks: list[Selected], arms: list[Arm]) -> list[str]:
@@ -842,6 +982,7 @@ def header(document: Document, settings: Settings, tasks: list[Selected], arms: 
         ("selected", ", ".join(entry.task.name for entry in tasks) + ("" if document.select is not None else " (every task under tasks)")),
         ("arms", ", ".join(arm.name for arm in arms) + ("" if document.arms is not None else f" (every arm of the {settings.family} family)")),
         ("attempts", str(settings.attempts)),
+        ("resume", "an attempt already recorded is skipped" if document.resume else "an existing record or attempt directory is refused"),
         ("foe", str(settings.foe)),
         ("codex", codex),
         ("credential", credential),
@@ -856,13 +997,18 @@ def header(document: Document, settings: Settings, tasks: list[Selected], arms: 
         ("foe config dir", str(document.foe_config_dir)),
     ]
     if settings.route == "compatible":
-        rows[9:9] = [("base URL", str(settings.base_url)), ("codex wire API", settings.codex_wire_api)]
+        rows[10:10] = [("base URL", str(settings.base_url)), ("codex wire API", settings.codex_wire_api)]
     width = max(len(label) for label, _ in rows)
     return [f"Run document {document.path} resolved to:", *[f"  {label:<{width}}  {value}" for label, value in rows], ""]
 
 
 def plan(settings: Settings, tasks: list[Selected], arms: list[Arm], document: Document) -> str:
-    """State every resolved value, every attempt, and the largest spend the run can incur, before any model is called."""
+    """State every resolved value, every attempt this run launches, and the largest spend it can incur, before any model is called.
+
+    Under key resume an attempt whose record is already under `out` is
+    listed apart and its ceilings are left out of the total, so that the
+    spend a reader authorizes is the spend the run can incur.
+    """
     triples = planned(tasks, arms, settings.attempts)
     attempt_word = "attempt" if settings.attempts == 1 else "attempts"
     task_word = "task" if len(tasks) == 1 else "tasks"
@@ -876,7 +1022,12 @@ def plan(settings: Settings, tasks: list[Selected], arms: list[Arm], document: D
     ]
     totals = {key: 0 for key in protocol.BUDGET_KEYS}
     skipped: list[str] = []
+    recorded: list[str] = []
     for attempt, entry, arm in triples:
+        already = record_path(settings.out, entry.task.name, arm.name, attempt)
+        if document.resume and already.exists():
+            recorded.append(f"  {entry.task.name} / {arm.name} / {attempt}: {already}")
+            continue
         reason = not_applicable(settings, arm, entry.task)
         if reason is not None:
             skipped.append(f"  {entry.task.name} / {arm.name} / {attempt}: {reason}")
@@ -888,7 +1039,12 @@ def plan(settings: Settings, tasks: list[Selected], arms: list[Arm], document: D
             f"  {budget['model_calls']:>11}  {budget['input_tokens']:>9,}  {budget['output_tokens']:>8,}  {budget['seconds']:>7}  "
             f"{entry.task.name} / {arm.name} / {attempt}"
         )
-    lines.append(f"  {totals['model_calls']:>11}  {totals['input_tokens']:>9,}  {totals['output_tokens']:>8,}  {totals['seconds']:>7}  every planned attempt")
+    total_label = "every attempt this run launches" if recorded else "every planned attempt"
+    lines.append(f"  {totals['model_calls']:>11}  {totals['input_tokens']:>9,}  {totals['output_tokens']:>8,}  {totals['seconds']:>7}  {total_label}")
+    if recorded:
+        lines.append("")
+        lines.append("Already recorded under key resume and never launched again:")
+        lines.extend(recorded)
     if settings.budget_overrides:
         lines.append("")
         lines.append("The ceilings above are the effective ones: the document's budget replaces " + ", ".join(f"{key}={value}" for key, value in settings.budget_overrides.items()) + " in every task's budget.")
@@ -953,9 +1109,15 @@ def write_check_script(path: Path, workspace: Path, command: list[str], search_p
     starts a configured executable with an empty environment, so the script
     sets its own. The search path is the system directories of docs/tools.md
     "bash" followed by every directory of `search_path`, and the language is
-    the one a bash command receives. TMPDIR is CHECK_SCRATCH_DIR under the
-    workspace, created with a cache tag so that the workspace snapshot
-    leaves it out. A command the shell cannot find ends the suite with
+    the one a bash command receives. HOME is the workspace, which is the
+    value a bash command of the same episode receives, because a suite whose
+    tests read the variable would otherwise see it unset under a foe arm and
+    set under a Codex arm, which inherits the runner's environment; the two
+    arms would then run different checks. TMPDIR is CHECK_SCRATCH_DIR under
+    the workspace, created with a cache tag so that the workspace snapshot
+    leaves it out. It is not /tmp, which foe denies by design, so a suite
+    whose tests require the shared temporary directory cannot run under a
+    foe arm and its task belongs outside this evaluation. A command the shell cannot find ends the suite with
     status 127, and the script then prints a line starting with
     CHECK_SUITE_UNAVAILABLE, which the runner reads back from the episode
     log.
@@ -970,8 +1132,9 @@ def write_check_script(path: Path, workspace: Path, command: list[str], search_p
             "# The check tool of a cross-harness foe document: the task's check suite, run from the workspace.",
             f"PATH={shlex.quote(':'.join([SYSTEM_SEARCH_PATH, *directories]))}",
             "LANG=C.UTF-8",
+            f"HOME={shlex.quote(str(workspace))}",
             f"TMPDIR={scratch}",
-            "export PATH LANG TMPDIR",
+            "export PATH LANG HOME TMPDIR",
             f"cd {shlex.quote(str(workspace))} || {{ echo {shlex.quote(f'the workspace {workspace} cannot be entered')}; exit 0; }}",
             f"mkdir -p {scratch} && printf '%s\\n' {shlex.quote(CACHE_TAG_SIGNATURE)} > {scratch}/{CACHE_TAG_FILE} || {{ echo {shlex.quote(f'the scratch directory {workspace / CHECK_SCRATCH_DIR} cannot be created')}; exit 0; }}",
             f"output=$({joined} 2>&1)",
@@ -1227,6 +1390,17 @@ def run_builtin(arm: Arm, binary: Path, task: protocol.Task, workspace: Path, lo
     return ArmResult(arm.name, foe_arm.HARNESS, started_ms, ended_ms, exit_status, result, candidate, artifacts, record)
 
 
+class WatcherFailure(RuntimeError):
+    """The budget watcher of a Codex attempt failed and ended the process tree.
+
+    `codex_budget_watcher.run_with_watcher` raises only once the child has
+    exited or been terminated, so the attempt launched and spent credit.
+    The attempt carries this as its infrastructure fault and the run goes on
+    to the next attempt; every other RuntimeError is a fault of the runner
+    itself and ends the run.
+    """
+
+
 def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, attempt_dir: Path) -> ArmResult:
     """Run one arm over a materialized workspace; the artifacts, logs, and check script live under `attempt_dir`."""
     artifacts = attempt_dir / "artifacts"
@@ -1258,7 +1432,10 @@ def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, 
         model_providers=codex_providers(settings),
         config_canary=settings.canaries.get(CODEX_CONFIG_CANARY),
     )
-    return codex_arm.run(spec)
+    try:
+        return codex_arm.run(spec)
+    except RuntimeError as exc:
+        raise WatcherFailure(f"the arm ran and its budget watcher then failed, so the attempt spent credit and reported nothing: {exc}") from exc
 
 
 def protocol_reported(reported: dict[str, Any]) -> protocol.Reported:
@@ -1352,6 +1529,105 @@ def check_suite_fault(episode: Path) -> str | None:
     return None
 
 
+def grader_paths_named(trajectory_: dict[str, Any] | None, root: Path) -> list[str]:
+    """Every path under the root's grader directory that the normalized trajectory names, in order.
+
+    The paths a command named, the path of every recorded file change, and
+    the summary of every tool call are read. A tool call records the digest
+    of its arguments rather than their content, so its summary is the one
+    place a path of a tool call can appear, and an older record that carries
+    no tool calls reads as carrying none. An absolute path is compared with
+    the symbolic links of both sides resolved, so that a link in the output
+    path matches. A relative path is compared against the workspace, and is
+    also named when it steps out of its directory into a grader directory,
+    since the directory a shell command ran in is not recorded.
+
+    The grader directory does not exist while the arm runs, so every path
+    listed is an attempt to look rather than a file that was read. An empty
+    list therefore says the arm named no such path, and a listed path says
+    where a reader looks in the arm's own records for what it did next.
+    """
+    if trajectory_ is None:
+        return []
+    grader = os.path.realpath(root / protocol.GRADER)
+    workspace = os.path.realpath(root / protocol.WORKSPACE)
+    named: list[str] = []
+    for agent in trajectory_.get("agents", []):
+        candidates = [path for command in agent.get("commands", []) for path in command.get("paths_named", [])]
+        candidates.extend(change.get("path") for change in agent.get("file_changes", []))
+        candidates.extend(call.get("summary") for call in agent.get("tool_calls", []))
+        for candidate in candidates:
+            if not isinstance(candidate, str) or not candidate or candidate in named:
+                continue
+            if not os.path.isabs(candidate) and PARENT_STEPS_TO_GRADER.match(candidate):
+                named.append(candidate)
+                continue
+            resolved = os.path.realpath(candidate if os.path.isabs(candidate) else os.path.join(workspace, candidate))
+            if (resolved + os.sep).startswith(grader + os.sep):
+                named.append(candidate)
+    return named
+
+
+def model_authored_evidence(result: ArmResult) -> bool:
+    """Whether the evidence a Codex arm reported carries the model's own sentences rather than the arm's.
+
+    The arm reports the status `failed` in two shapes. When the run wrote a
+    last message that is a JSON object, the arm keeps that message's
+    evidence even where it replaces a status word the schema does not
+    allow, so the sentences are the model's own: a sentence about a
+    sandbox, a registry, or an HTTP status is then part of a report about
+    the task. When no such message was written, the evidence is the arm's
+    own record of how the run ended, which is where a provider condition
+    appears. A record that names no last message settles neither case, and
+    its evidence is read as the model's, so that a record which says
+    nothing about who wrote it leaves the attempt scored.
+    """
+    path = result.record.get("last_message")
+    if not isinstance(path, str) or not path:
+        return True
+    try:
+        return isinstance(json.loads(Path(path).read_text(encoding="utf-8")), dict)
+    except (OSError, ValueError):
+        return False
+
+
+def provider_outage(result: ArmResult) -> str | None:
+    """The provider condition that ended the arm, or None when the harness ended it.
+
+    An outage of the model service measures the service, so the attempt
+    carries it as an infrastructure fault and no classification. A foe
+    episode reports one as blocked with RECOVERY_EXHAUSTED, which the model
+    loop reaches when a rate limit or a provider error outlasts the retries
+    the seconds budget can fund; the same code carrying a workflow bound of
+    WORKFLOW_RECOVERY_BOUNDS is the graph ending its own episode and stays a
+    stop the runner classifies. A Codex run reports one as a failed status
+    whose recorded stream errors, or whose evidence where the arm rather
+    than the model wrote it, name a provider condition of
+    PROVIDER_FAULT_PATTERNS. The model's own sentences are left out of that
+    scan, since a report about a sandbox, a registry, or an HTTP status the
+    task involves would otherwise take a wrong stop or a false completion
+    out of every rate.
+    """
+    reported = result.reported
+    status, code = str(reported.get("status")), reported.get("code")
+    evidence = [str(line) for line in reported.get("evidence") or []]
+    if result.harness == foe_arm.HARNESS:
+        if status != protocol.BLOCKED or code != RECOVERY_EXHAUSTED:
+            return None
+        message = " ".join(evidence).strip() or "the run reported no evidence"
+        if any(bound in message for bound in WORKFLOW_RECOVERY_BOUNDS):
+            return None
+        return f"the provider ended the attempt: foe reported {protocol.BLOCKED} with the code {RECOVERY_EXHAUSTED}: {message}"
+    if status != protocol.FAILED:
+        return None
+    lines = [] if model_authored_evidence(result) else evidence
+    for line in [*lines, *[str(item) for item in result.record.get("errors") or []]]:
+        for condition, pattern in PROVIDER_FAULT_PATTERNS:
+            if re.search(pattern, line, re.IGNORECASE):
+                return f"the provider ended the attempt with {condition}: {line.strip()}"
+    return None
+
+
 def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected, arm: Arm, attempt: int) -> dict[str, Any]:
     """Materialize, run, normalize, grade, and classify one attempt, and return its record."""
     task = entry.task
@@ -1380,6 +1656,7 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         "outcomes": None,
         "totals": None,
         "shell_writes_attributed": 0,
+        "grader_paths_named": [],
         "conformance": None,
         "grade": None,
         "classification": None,
@@ -1391,7 +1668,8 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         return record
     try:
         attempt_dir.mkdir(parents=True)
-        protocol.materialize(entry.directory, root)
+        # The grader is written after the arm has exited, so that no arm can read the hidden tests, the oracle, or the corruptions while it runs.
+        protocol.materialize(entry.directory, root, protocol.WORKSPACE)
     except (OSError, ValueError) as exc:
         record["infrastructure_error"] = f"the task did not materialize: {exc}"
         record["ended_ms"] = foe_arm.now_ms()
@@ -1399,6 +1677,9 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
     before = snapshot(workspace)
     try:
         result = run_arm(settings, arm, task, workspace, attempt_dir)
+    except WatcherFailure as exc:
+        # The child had already run, so the record says what was spent rather than that nothing started.
+        record["infrastructure_error"] = str(exc)
     except (OSError, ValueError) as exc:
         record["infrastructure_error"] = f"the arm could not launch: {exc}"
     else:
@@ -1416,6 +1697,15 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
             record["shell_writes_attributed"] = trajectory.attribute_shell_writes(trajectory_, before, after)
             record["trajectory"] = trajectory_.to_dict()
             record["totals"] = trajectory_.totals()
+        record["grader_paths_named"] = grader_paths_named(record["trajectory"], root)
+        # A provider outage measures the model service, so it replaces the classification of an attempt that would otherwise be read as a stop.
+        record["infrastructure_error"] = record["infrastructure_error"] or provider_outage(result)
+    try:
+        protocol.materialize(entry.directory, root, protocol.GRADER)
+    except (OSError, ValueError) as exc:
+        record["infrastructure_error"] = record["infrastructure_error"] or f"the task's grader did not materialize after the arm ran: {exc}"
+        record["ended_ms"] = foe_arm.now_ms()
+        return record
     reported = protocol_reported(record["reported"]) if record["reported"] else protocol.Reported(protocol.FAILED, None, record["infrastructure_error"] or "")
     graded = feature_removal.grade_with_timeout(root, reported, record["candidate"], arm.name, settings.grader_timeout)
     record["grade"] = {"passed": graded.passed, "findings": list(graded.findings), "damage": list(graded.damage), "units": None}
@@ -1429,6 +1719,24 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         record["classification"] = protocol.classify(task, reported, graded)
     record["ended_ms"] = foe_arm.now_ms()
     return record
+
+
+def set_aside(directory: Path) -> Path:
+    """Rename an interrupted attempt's directory to a free name beside itself, and return the new path.
+
+    The directory holds the episode log, the Codex event stream and standard
+    error, and the fresh CODEX_HOME of an attempt that spent real credit,
+    and after a kill that skipped the write-back that home holds the only
+    copy of a credential Codex refreshed. It is therefore kept where an
+    operator finds it, and the attempt runs again into a fresh directory.
+    """
+    number = 1
+    while True:
+        aside = directory.parent / f"{directory.name}{INTERRUPTED_SUFFIX}{number:02d}"
+        if not aside.exists():
+            directory.rename(aside)
+            return aside
+        number += 1
 
 
 def record_path(out: Path, task_name: str, arm_name: str, attempt: int) -> Path:
@@ -1569,6 +1877,9 @@ def main(argv: list[str] | None = None) -> int:
             fault = presumed_absent_fault(settings, entry.task, arms)
             if fault is not None:
                 raise ValueError(fault)
+            fault = presumed_unimportable_fault(entry.task)
+            if fault is not None:
+                raise ValueError(fault)
             # The document builders refuse some budgets, such as a seconds
             # ceiling with no room for the check timeout; the refusal
             # belongs before the plan and before any attempt spends credit.
@@ -1583,14 +1894,31 @@ def main(argv: list[str] | None = None) -> int:
         return NOTHING_LAUNCHED
 
     triples = planned(tasks, arms, settings.attempts)
-    # An attempt directory without a record is what an interrupted run leaves; it is refused by name, since removing it is the user's decision.
+    # An attempt directory without a record is what an interrupted run leaves.
+    # Under key resume an attempt already recorded is skipped and such a
+    # directory is set aside and named before that attempt runs again, since
+    # it is the only record of what an attempt that spent credit did; without
+    # the key both are refused, since moving a directory is the user's decision.
+    pending: list[tuple[int, Selected, Arm]] = []
+    skipped = 0
     for attempt, entry, arm in triples:
         record = record_path(settings.out, entry.task.name, arm.name, attempt)
-        if record.exists():
-            return refuse(f"a record already exists: {record}")
         leftover = attempt_path(settings.out, entry.task.name, arm.name, attempt)
+        if record.exists():
+            if not document.resume:
+                return refuse(f"a record already exists: {record}")
+            skipped += 1
+            print(f"cross harness: attempt {attempt}, {entry.task.name}, {arm.name} is already recorded and is skipped: {record}", file=sys.stderr, flush=True)
+            continue
         if leftover.exists():
-            return refuse(f"an attempt directory already exists without a record: {leftover}; remove it or choose another out")
+            if not document.resume:
+                return refuse(f"an attempt directory already exists without a record: {leftover}; remove it or choose another out")
+            try:
+                aside = set_aside(leftover)
+            except OSError as exc:
+                return refuse(f"the attempt directory {leftover} could not be set aside: {exc}")
+            print(f"cross harness: the attempt directory {leftover} holds no record and is set aside at {aside} before the attempt runs again", file=sys.stderr, flush=True)
+        pending.append((attempt, entry, arm))
     settings.out.mkdir(parents=True, exist_ok=True)
     try:
         provenance = provenance_of(settings, needs_codex)
@@ -1622,7 +1950,7 @@ def main(argv: list[str] | None = None) -> int:
 
     faults = 0
     try:
-        for attempt, entry, arm in triples:
+        for attempt, entry, arm in pending:
             print(f"cross harness: attempt {attempt}, {entry.task.name}, {arm.name}", file=sys.stderr, flush=True)
             record = run_attempt(settings, provenance, entry, arm, attempt)
             write_json(record_path(settings.out, entry.task.name, arm.name, attempt), record)
@@ -1636,7 +1964,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         # The canary lies in the user's configuration directory, so it is removed however the attempts ended.
         remove_foe_canary(foe_canary, settings.canaries[FOE_CONFIG_CANARY])
-    print(json.dumps({"records": str(settings.out / RECORDS_DIR), "run": str(run_file), "attempts": len(triples), "infrastructure_failures": faults}))
+    # `attempts` counts what this run launched, so that a rerun over a full
+    # output directory does not read as a run that measured something.
+    print(json.dumps({"records": str(settings.out / RECORDS_DIR), "run": str(run_file), "attempts": len(pending), "planned": len(triples), "skipped": skipped, "infrastructure_failures": faults}))
     return DEPLOYMENT_FAULT if faults else EVALUATED
 
 

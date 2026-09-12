@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,12 @@ def events_of(name: str, relative: str = "episode.jsonl") -> list[dict[str, Any]
 
 def event(seq: int, time: int, kind: str, data: dict[str, Any]) -> dict[str, Any]:
     return {"seq": seq, "time": time, "type": kind, "data": data}
+
+
+def _first_integer(text: str | None) -> int | None:
+    """The first integer of a summary, which is how a reader of the report takes a finding count."""
+    found = re.search(r"\d+", text or "")
+    return int(found.group(0)) if found else None
 
 
 def start(episode_id: str, parent_id: str | None = None, name: str = "synthetic", time: int = 1000) -> dict[str, Any]:
@@ -152,6 +160,153 @@ class RecordedFixtures(unittest.TestCase):
         self.assertEqual(compaction.tokens_before, 5224)
         self.assertEqual(len(agent.model_calls), 4, "the summarization request counts as a model call")
         self.assertEqual(normalized.totals()["compactions"], 1)
+
+
+class ToolCalls(unittest.TestCase):
+    def test_a_block_call_carries_its_code_and_a_digest_of_its_arguments(self) -> None:
+        normalized = fixture("blocked")
+        [agent] = normalized.agents
+        [call] = agent.tool_calls
+        opened = next(e for e in events_of("blocked") if e["type"] == "assistant/message")
+        result = next(e for e in events_of("blocked") if e["type"] == "tool/result")
+        self.assertEqual((call.name, call.started_ms, call.ended_ms, call.is_error), ("block", opened["time"], result["time"], False))
+        self.assertEqual(call.summary, "missing-capability", "the summary is the code alone, which is what a reader takes it for")
+        self.assertEqual(call.arguments_digest, trajectory.arguments_digest(opened["data"]["tool_calls"][0]["args"]))
+        self.assertNotIn("required grant", json.dumps(call.to_dict()), "the arguments reach the record as a digest alone")
+        self.assertEqual(normalized.totals()["tool_calls_by_name"], {"block": 1})
+
+    def test_every_call_of_a_recorded_run_becomes_one_record_in_call_order(self) -> None:
+        [agent] = fixture("edit-and-bash").agents
+        opened = [call["name"] for e in events_of("edit-and-bash") if e["type"] == "assistant/message" for call in e["data"]["tool_calls"]]
+        self.assertEqual([call.name for call in agent.tool_calls], opened)
+        self.assertEqual(fixture("edit-and-bash").totals()["tool_calls_by_name"], {"bash": 3, "edit": 2})
+        edits = [call for call in agent.tool_calls if call.name == "edit"]
+        self.assertEqual([call.summary for call in edits], [change.path for change in agent.file_changes], "the summary of a path tool is the bare path")
+        for call in agent.tool_calls:
+            self.assertIsNotNone(call.ended_ms)
+            self.assertLessEqual(call.started_ms, call.ended_ms)
+            self.assertTrue(call.arguments_digest.startswith("sha256:"))
+        self.assertEqual(len({call.arguments_digest for call in agent.tool_calls}), 5, "five distinct argument sets carry five digests")
+
+    def test_a_check_call_states_its_exit_status_and_its_findings(self) -> None:
+        events = [
+            start("ep_check"),
+            event(1, 1001, "assistant/message", {"request_id": "rq_1", "tool_calls": [
+                {"id": "k1", "name": "check", "args": {"args": []}},
+                {"id": "k2", "name": "check", "args": {"args": ["--fast"]}},
+                {"id": "k3", "name": "check", "args": {"args": ["--all"]}},
+            ]}),
+            event(2, 1400, "tool/result", {"call_id": "k1", "name": "check", "value": {"exit_code": 0, "stdout": "tests/parser_test.py fails\nsrc/a.py names no owner\n\n", "stderr": "", "timed_out": False}, "is_error": False, "duration_ms": 399}),
+            event(3, 1500, "tool/result", {"call_id": "k2", "name": "check", "value": {"exit_code": 0, "stdout": "", "stderr": "", "timed_out": False}, "is_error": False}),
+            event(4, 1600, "tool/result", {"call_id": "k3", "name": "check", "value": {"exit_code": None, "stdout": "one finding\n", "stderr": "", "timed_out": True}, "is_error": False}),
+            event(5, 1700, "episode/end", {"outcome": {"kind": "completed", "value": "done"}}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_log(Path(tmp), events)
+            normalized = normalize_foe.normalize(Path(tmp))
+        [agent] = normalized.agents
+        self.assertEqual([call.summary for call in agent.tool_calls], ["2 findings, exit 0", "0 findings, exit 0", "1 finding, exit none"])
+        self.assertEqual([_first_integer(call.summary) for call in agent.tool_calls], [2, 0, 1], "the finding count leads, because a reader takes the first integer for it")
+        self.assertEqual([call.is_error for call in agent.tool_calls], [False, False, False], "a nonzero or absent exit status is a result rather than a tool error")
+        self.assertEqual(agent.tool_calls[0].ended_ms - agent.tool_calls[0].started_ms, 399)
+        self.assertEqual(normalized.totals()["tool_calls"], 3)
+
+    def test_a_verification_result_is_recorded_with_its_status_and_finding_count(self) -> None:
+        events = [
+            start("ep_verify"),
+            event(1, 1001, "verification/result", {"step": 2, "tool": "check", "verifier_fingerprint": "sha256:f", "status": "findings", "findings": ["tests/parser_test.py fails"], "candidate_sha256": "sha256:c1", "duration_ms": 12}),
+            event(2, 1100, "verification/result", {"step": 3, "tool": "check", "verifier_fingerprint": "sha256:f", "status": "accepted", "findings": [], "candidate_sha256": "sha256:c2", "duration_ms": 8}),
+            event(3, 1200, "verification/result", {"step": 4, "tool": "check", "verifier_fingerprint": "sha256:f", "status": "failed", "error": "the verifier exited 2", "findings": []}),
+            event(4, 1300, "episode/end", {"outcome": {"kind": "failed", "error": "the verifier exited 2"}}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_log(Path(tmp), events)
+            normalized = normalize_foe.normalize(Path(tmp))
+        [agent] = normalized.agents
+        self.assertEqual([call.name for call in agent.tool_calls], [normalize_foe.VERIFICATION_NAME] * 3)
+        self.assertEqual([call.summary for call in agent.tool_calls], ["1 finding, findings", "0 findings, accepted", "failed"])
+        self.assertEqual([_first_integer(call.summary) for call in agent.tool_calls], [1, 0, None], "a verification that judged nothing states no count")
+        self.assertEqual([call.is_error for call in agent.tool_calls], [False, False, True])
+        self.assertEqual([(call.started_ms, call.ended_ms) for call in agent.tool_calls], [(989, 1001), (1092, 1100), (1200, 1200)])
+        self.assertEqual([call.arguments_digest for call in agent.tool_calls], ["sha256:c1", "sha256:c2", None])
+        self.assertEqual(normalized.totals()["tool_calls_by_name"], {normalize_foe.VERIFICATION_NAME: 3})
+
+    def test_an_inner_call_is_recorded_and_a_call_without_a_result_stays_open(self) -> None:
+        events = [
+            start("ep_open"),
+            event(1, 1001, "assistant/message", {"request_id": "rq_1", "tool_calls": [{"id": "outer", "name": "compose_tools", "args": {"calls": []}}, {"id": "r1", "name": "read", "args": {"path": "src/a.py"}}]}),
+            event(2, 1002, "tool/inner-call", {"outer_call_id": "outer", "call_id": "outer_0", "index": 0, "name": "read", "args": {"path": "src/a.py"}}),
+            event(3, 1003, "tool/result", {"call_id": "outer_0", "name": "read", "value": {}, "is_error": False}),
+            event(4, 1004, "tool/result", {"call_id": "r1", "name": "read", "value": {}, "is_error": True, "failure": {"code": "capability-denied", "message": "refused"}}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_log(Path(tmp), events)
+            normalized = normalize_foe.normalize(Path(tmp))
+        [agent] = normalized.agents
+        outer, refused, inner = agent.tool_calls
+        self.assertEqual((outer.name, outer.ended_ms, outer.is_error), ("compose_tools", None, False), "the settlement wrote no result for the outer call")
+        self.assertEqual((refused.name, refused.ended_ms, refused.is_error), ("read", 1004, True))
+        self.assertEqual((inner.name, inner.started_ms, inner.ended_ms), ("read", 1002, 1003))
+        self.assertEqual(inner.arguments_digest, refused.arguments_digest, "the inner call and the refused call carry the same arguments")
+        self.assertEqual(normalized.totals()["tool_calls"], 3)
+
+    def test_a_path_tool_summarizes_the_bare_path_it_acted_on(self) -> None:
+        target = "/tmp/root/grader/oracle/reported.json"
+        events = [
+            start("ep_paths"),
+            event(1, 1001, "assistant/message", {"request_id": "rq_1", "tool_calls": [
+                {"id": "e1", "name": "edit", "args": {"path": target, "edits": [{"old_text": "a", "new_text": "b"}]}},
+                {"id": "r1", "name": "read", "args": {"path": target}},
+                {"id": "g1", "name": "grep", "args": {"pattern": "oracle", "path": "src"}},
+                {"id": "g2", "name": "grep", "args": {"pattern": "oracle"}},
+            ]}),
+            event(2, 1100, "tool/result", {"call_id": "e1", "name": "edit", "value": {}, "is_error": True, "failure": {"code": "capability-denied", "message": "refused"}}),
+            event(3, 1200, "tool/result", {"call_id": "r1", "name": "read", "value": {}, "is_error": True}),
+            event(4, 1300, "tool/result", {"call_id": "g1", "name": "grep", "value": {"complete": True}, "is_error": False}),
+            event(5, 1400, "tool/result", {"call_id": "g2", "name": "grep", "value": {"complete": True}, "is_error": False}),
+            event(6, 1500, "episode/end", {"outcome": {"kind": "completed", "value": "done"}}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_log(Path(tmp), events)
+            normalized = normalize_foe.normalize(Path(tmp))
+        [agent] = normalized.agents
+        self.assertEqual([call.summary for call in agent.tool_calls], [target, target, "src", None])
+        self.assertEqual(agent.file_changes, [], "the refused edit wrote nothing, so the path appears in the summary alone")
+        for call in agent.tool_calls[:2]:
+            self.assertTrue(os.path.isabs(call.summary), "a reader compares an absolute summary as written")
+
+    def test_a_call_whose_arguments_are_absent_or_are_not_an_object_carries_no_digest(self) -> None:
+        events = [
+            start("ep_args"),
+            event(1, 1001, "assistant/message", {"request_id": "rq_1", "tool_calls": [
+                {"id": "a1", "name": "read"},
+                {"id": "a2", "name": "read", "args": "src/a.py"},
+                {"id": "a3", "name": "read", "args": {}},
+            ]}),
+            event(2, 1100, "episode/end", {"outcome": {"kind": "completed", "value": "done"}}),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            write_log(Path(tmp), events)
+            normalized = normalize_foe.normalize(Path(tmp))
+        [agent] = normalized.agents
+        self.assertEqual([call.arguments_digest for call in agent.tool_calls], [None, None, trajectory.arguments_digest({})])
+        self.assertEqual([call.summary for call in agent.tool_calls], [None, None, None])
+
+    def test_the_verifier_tool_is_the_one_the_documents_declare(self) -> None:
+        self.assertEqual(normalize_foe.VERIFIER_TOOL, normalize_foe.graphs.CHECK)
+
+    def test_a_run_that_called_no_tool_records_none(self) -> None:
+        [agent] = fixture("failed").agents
+        self.assertEqual(agent.tool_calls, [])
+        self.assertEqual(fixture("failed").totals()["tool_calls_by_name"], {})
+
+    def test_the_recorded_fixtures_round_trip_with_their_tool_calls(self) -> None:
+        for name in FIXTURE_NAMES:
+            with self.subTest(name=name):
+                normalized = fixture(name)
+                again = trajectory.Trajectory.from_dict(json.loads(json.dumps(normalized.to_dict())))
+                self.assertEqual(again.to_dict(), normalized.to_dict())
+                self.assertEqual(normalized.totals()["tool_calls"], sum(len(agent.tool_calls) for agent in normalized.agents))
 
 
 class Route(unittest.TestCase):
@@ -503,6 +658,24 @@ class Conformance(unittest.TestCase):
             report = normalize_foe.trace_conformance(Path(tmp))
         self.assertFalse(report["valid"])
         self.assertTrue(report["violations"])
+
+    def test_a_script_that_does_not_finish_returns_a_report_naming_the_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            hanging = Path(tmp) / "hanging.py"
+            hanging.write_text("import time\ntime.sleep(120)\n", encoding="utf-8")
+            started = time.monotonic()
+            report = normalize_foe.trace_conformance(FIXTURES / "blocked", hanging, timeout_seconds=1)
+            self.assertLess(time.monotonic() - started, 30, "the script is stopped at the bound")
+        self.assertIsNone(report["valid"])
+        self.assertIn(str(hanging), report["error"])
+        self.assertIn(str(FIXTURES / "blocked"), report["error"])
+        self.assertIn("within 1 second,", report["error"])
+
+    def test_the_bound_is_a_named_constant_the_caller_may_replace(self) -> None:
+        self.assertIsInstance(normalize_foe.TRACE_QUALITY_TIMEOUT_SECONDS, int)
+        self.assertGreater(normalize_foe.TRACE_QUALITY_TIMEOUT_SECONDS, 0)
+        report = normalize_foe.trace_conformance(FIXTURES / "spawn-child", timeout_seconds=normalize_foe.TRACE_QUALITY_TIMEOUT_SECONDS)
+        self.assertTrue(report["valid"])
 
     def test_a_script_that_fails_or_prints_no_report_is_an_error_naming_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

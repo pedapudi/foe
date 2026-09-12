@@ -13,18 +13,26 @@ index 900bab4..19085d2 100644
 +Every step of it passes before the work is reported as done.
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..2d5235d
+index 0000000..810cf59
 --- /dev/null
 +++ b/checks/run.sh
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,16 @@
 +#!/usr/bin/bash
-+# The check suite of this task: line ceilings, then wait for the first line on the workflow test reporter's pipe.
++# The check suite of this task: line ceilings, wait for the first line on the workflow test reporter's pipe, the tests of
++# foe-workflow, then clippy with warnings denied on the same crate. Step 2
++# records that it began in checks-wait.log, so that a report of the work can say
++# where verification stood when it ended.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"
 +/usr/bin/bash scripts/loc.sh
 +echo "step 2: wait for the first line on the workflow test reporter's pipe"
-+/usr/bin/python3 checks/wait_for_pipe.py 900
++/usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ step 2 (wait for the first line on the workflow test reporter's pipe) began' >> checks-wait.log
++/usr/bin/python3 checks/wait_for_pipe.py 3600
++echo "step 3: the tests of foe-workflow"
++cargo test -p foe-workflow --quiet
++echo "step 4: clippy with warnings denied on foe-workflow"
++cargo clippy -p foe-workflow --all-targets --quiet -- -D warnings
 diff --git a/checks/wait_for_pipe.py b/checks/wait_for_pipe.py
 new file mode 100755
 index 0000000..ad7939c

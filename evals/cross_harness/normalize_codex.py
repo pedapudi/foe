@@ -16,8 +16,23 @@ model call is one `token_usage_record`; its end is the record's timestamp
 and its start is the previous call's end, or the session start for the
 first call. A shell command is one completed `CommandExecution` item, with
 the interval the item event records. A file change is one entry of a
-completed `FileChange` item. A compaction is one `compacted` record. The
-event stream supplies the root thread id and any `turn.failed` reason.
+completed `FileChange` item. A compaction is one `compacted` record. A tool
+call is one completed `CommandExecution`, `McpToolCall`, or `CollabToolCall`
+item: the shell, a tool reached over the Model Context Protocol, and a tool
+of the collaboration mode. Codex records a file edit as a `FileChange` item
+and reading and searching as parts of a turn, so those actions reach the
+trajectory as file changes or not at all and never as tool calls. The
+tool-call count of this arm therefore covers a narrower population than the
+foe arm's, which records every call the model issued, and a comparison of
+the two counts reads `tool_calls_by_name` to say which calls each count
+holds. The event stream supplies the root thread id and any `turn.failed`
+reason.
+
+Codex has no verifier tool and no tool by which the model reports a
+blocking condition. The foe evidence those produce, which is whether a
+runtime-run verifier fired and accepted and which code a block call named,
+therefore has no counterpart here, and a cross-harness comparison of
+verification rests on the shell commands each run chose to execute.
 
 The runner may stop a run before Codex exits, for a token or wall-clock
 limit. A session file that stop cut in the middle of a record keeps every
@@ -65,6 +80,12 @@ DENIAL = re.compile(r"Permission denied|Operation not permitted|Read-only file s
 
 # The change types a `FileChange` item uses, mapped to the schema's kinds.
 CHANGE_KINDS = {"add": "create", "update": "edit", "delete": "delete"}
+
+# The completed item types that record one call to a tool, mapped to the
+# name the schema records when the item names no tool of its own. A command
+# execution is always recorded under the one name, so that a report counts
+# every shell command of a run together.
+TOOL_CALL_ITEMS = {"CommandExecution": "command_execution", "McpToolCall": "mcp_tool_call", "CollabToolCall": "collab_tool_call"}
 
 
 def timestamp_ms(text: Any, where: str) -> int:
@@ -298,14 +319,14 @@ def model_calls(session: Session) -> list[trajectory.ModelCall]:
     return calls
 
 
-def _completed_items(session: Session, item_type: str) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+def _completed_items(session: Session, item_types: tuple[str, ...]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     out = []
     for record in session.records:
         payload = record.get("payload") or {}
         if record.get("type") != "event_msg" or payload.get("type") != "item_completed":
             continue
         item = payload.get("item") or {}
-        if item.get("type") == item_type:
+        if item.get("type") in item_types:
             out.append((payload, item))
     return out
 
@@ -325,7 +346,7 @@ def commands(session: Session) -> list[trajectory.Command]:
     the output; a command that exited 0 succeeded whatever its output says.
     """
     out = []
-    for payload, item in _completed_items(session, "CommandExecution"):
+    for payload, item in _completed_items(session, ("CommandExecution",)):
         started, ended = _interval(payload, f"{session.path} item {item.get('id')}")
         output = item.get("aggregated_output")
         if not isinstance(output, str):
@@ -350,7 +371,7 @@ def file_changes(session: Session) -> list[trajectory.FileChange]:
     An item whose status is `failed` applied nothing, so it records no change.
     """
     out = []
-    for payload, item in _completed_items(session, "FileChange"):
+    for payload, item in _completed_items(session, ("FileChange",)):
         if item.get("status") != "completed":
             continue
         started, ended = _interval(payload, f"{session.path} item {item.get('id')}")
@@ -360,6 +381,76 @@ def file_changes(session: Session) -> list[trajectory.FileChange]:
         for path, change in changes.items():
             kind = CHANGE_KINDS.get((change or {}).get("type") if isinstance(change, dict) else None, "unknown")
             out.append(trajectory.FileChange(path=path, kind=kind, at_ms=ended if ended is not None else started, via="tool"))
+    return out
+
+
+def _call_name(item: dict[str, Any]) -> str:
+    """The name a call item is recorded under.
+
+    An MCP call is named by its server and its tool, and a collaboration
+    call by its tool. An item that names no tool, and every command
+    execution, is recorded under the name `TOOL_CALL_ITEMS` gives its item
+    type, so that a report counts the shell commands of a run together.
+    """
+    default = TOOL_CALL_ITEMS[item["type"]]
+    if item["type"] == "CommandExecution":
+        return default
+    tool = item.get("tool") if isinstance(item.get("tool"), str) else item.get("name")
+    if not isinstance(tool, str) or not tool:
+        return default
+    server = item.get("server")
+    return f"{server}/{tool}" if isinstance(server, str) and server else tool
+
+
+def _call_arguments(item: dict[str, Any]) -> Any:
+    """What the item records as the call's arguments: the command vector and the working directory of a command execution, and the `arguments` of any other call."""
+    if item["type"] == "CommandExecution":
+        return {"command": item.get("command"), "cwd": item.get("cwd")}
+    return item.get("arguments")
+
+
+def _exit_code(item: dict[str, Any]) -> int | None:
+    code = item.get("exit_code")
+    return code if isinstance(code, int) and not isinstance(code, bool) else None
+
+
+def tool_calls(session: Session) -> list[trajectory.ToolCall]:
+    """One call per completed command execution, MCP tool call, and collaboration tool call, in record order.
+
+    A call is an error when the harness reports that the call itself did
+    not run to completion: a status of `failed` for a call that is not a
+    command execution, and for a command execution a status of `failed`
+    with no exit status, which is a process that never ran. Codex marks a
+    command that exited nonzero as failed, and that exit is a result, so
+    it reaches the summary and leaves the error flag false; that is the
+    meaning `trajectory.ToolCall` states and the meaning the foe arm
+    records, so the flag compares across the two arms. The summary of a
+    command execution is its exit status and of any other call the status
+    the item states. The arguments reach the record as a digest alone, and
+    an item that records no arguments carries no digest.
+    """
+    out = []
+    for payload, item in _completed_items(session, tuple(TOOL_CALL_ITEMS)):
+        started, ended = _interval(payload, f"{session.path} item {item.get('id')}")
+        status = item.get("status")
+        exit_code = _exit_code(item)
+        if item["type"] == "CommandExecution":
+            summary = f"exit {exit_code if exit_code is not None else 'none'}"
+            is_error = status == "failed" and exit_code is None
+        else:
+            summary = f"status {status}" if isinstance(status, str) else None
+            is_error = status == "failed"
+        arguments = _call_arguments(item)
+        out.append(
+            trajectory.ToolCall(
+                name=_call_name(item),
+                started_ms=started,
+                ended_ms=ended,
+                is_error=is_error,
+                arguments_digest=trajectory.arguments_digest(arguments) if arguments is not None else None,
+                summary=summary,
+            )
+        )
     return out
 
 
@@ -400,6 +491,7 @@ def agent_from_session(session: Session) -> trajectory.Agent:
         commands=commands(session),
         file_changes=file_changes(session),
         compactions=compactions(session),
+        tool_calls=tool_calls(session),
     )
 
 

@@ -136,7 +136,7 @@ class RealFixture(unittest.TestCase):
         self.assertEqual((call.seq, call.input_tokens, call.output_tokens, call.cache_read_tokens, call.reasoning_tokens), (12, 14660, 5, 11136, 0))
         self.assertEqual(call.started_ms, root.started_ms)
         self.assertEqual(call.ended_ms, normalizer.timestamp_ms("2026-09-11T16:13:13.276Z", "test"))
-        self.assertEqual((root.commands, root.file_changes, root.compactions), ([], [], []))
+        self.assertEqual((root.commands, root.file_changes, root.compactions, root.tool_calls), ([], [], [], []))
         self.assertEqual(result.outcome, trajectory.Outcome("completed", value="ok", ended_ms=root.ended_ms))
 
     def test_the_identity_names_the_version_model_effort_and_sandbox(self) -> None:
@@ -162,6 +162,7 @@ class RealFixture(unittest.TestCase):
         self.assertEqual((totals["model_calls"], totals["responses_with_usage"], totals["input_tokens"], totals["output_tokens"]), (1, 1, 14660, 5))
         self.assertEqual(totals["wall_ms"], 4131)
         self.assertEqual((totals["agents"], totals["max_depth"], totals["commands"], totals["denials"]), (1, 0, 0, 0))
+        self.assertEqual((totals["tool_calls"], totals["tool_calls_by_name"]), (0, {}), "the recorded run called no tool")
 
     def test_the_fixture_carries_no_credential_or_account_detail(self) -> None:
         # A plugin locator of the form `name@marketplace` has no dotted domain
@@ -354,6 +355,74 @@ class SyntheticRuns(unittest.TestCase):
         self.single_run([record(BASE_MS + 200, 1, "compacted", {"message": "", "latest_token_usage_record": None, "replacement_history": []})])
         root = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE).agent("root")
         self.assertEqual(root.compactions, [trajectory.Compaction(at_ms=BASE_MS + 200, tokens_before=None)])
+
+    def test_a_command_execution_is_also_a_tool_call_with_its_exit_status(self) -> None:
+        self.team_run()
+        result = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE)
+        [denied] = result.agent("root").tool_calls
+        self.assertEqual(
+            (denied.name, denied.started_ms, denied.ended_ms, denied.is_error),
+            ("command_execution", BASE_MS + 2100, BASE_MS + 2600, False),
+            "a command that ran and exited nonzero is a result, which is what the foe arm records for the same failure",
+        )
+        self.assertEqual(denied.summary, "exit 1")
+        self.assertEqual(denied.arguments_digest, trajectory.arguments_digest({"command": ["/bin/bash", "-lc", "cat /w/src/a.py && echo x > /outside/f"], "cwd": "file:///w"}))
+        self.assertNotIn("/outside/f", json.dumps(denied.to_dict()), "the command reaches the tool call as a digest alone")
+        [built] = result.agent("child").tool_calls
+        self.assertEqual((built.name, built.summary, built.is_error), ("command_execution", "exit 0", False))
+        self.assertEqual(result.totals()["tool_calls_by_name"], {"command_execution": 2})
+        self.assertEqual(result.agent("grandchild").tool_calls, [])
+
+    def test_a_command_that_never_ran_is_an_error_and_one_that_exited_nonzero_is_not(self) -> None:
+        ran = command_item(["/bin/bash", "-lc", "pytest"], 1, "1 failed\n", "exec-ran")
+        never = command_item(["/bin/bash", "-lc", "missing-binary"], 1, "", "exec-never")
+        del never["exit_code"]
+        self.single_run([item_completed(BASE_MS + 100, BASE_MS + 200, 1, ran), item_completed(BASE_MS + 300, BASE_MS + 400, 2, never)])
+        failed_suite, unstarted = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE).agent("root").tool_calls
+        self.assertEqual((failed_suite.summary, failed_suite.is_error), ("exit 1", False))
+        self.assertEqual((unstarted.summary, unstarted.is_error), ("exit none", True), "an item that states failed and no exit status names a process that never ran")
+
+    def test_an_exit_status_on_an_item_that_is_no_command_leaves_the_error_flag_to_the_status(self) -> None:
+        self.single_run([item_completed(BASE_MS + 100, BASE_MS + 200, 1, {"type": "McpToolCall", "id": "m", "tool": "t", "status": "completed", "exit_code": 2})])
+        [call] = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE).agent("root").tool_calls
+        self.assertEqual((call.name, call.summary, call.is_error), ("t", "status completed", False))
+
+    def test_a_command_without_an_exit_code_states_that_it_has_none(self) -> None:
+        item = command_item(["/bin/bash", "-lc", "sleep 1"], 0, "")
+        del item["exit_code"]
+        self.single_run([item_completed(BASE_MS + 100, BASE_MS + 200, 1, item)])
+        [call] = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE).agent("root").tool_calls
+        self.assertEqual((call.summary, call.is_error), ("exit none", False))
+
+    def test_an_mcp_and_a_collaboration_call_are_recorded_under_the_tool_they_name(self) -> None:
+        self.single_run(
+            [
+                item_completed(BASE_MS + 100, BASE_MS + 200, 1, {"type": "McpToolCall", "id": "mcp-1", "server": "docs", "tool": "search", "arguments": {"query": "sandbox"}, "status": "completed"}),
+                item_completed(BASE_MS + 300, BASE_MS + 400, 2, {"type": "CollabToolCall", "id": "cb-1", "tool": "request_review", "arguments": {"summary": "ready"}, "status": "failed"}),
+                item_completed(BASE_MS + 500, BASE_MS + 600, 3, {"type": "McpToolCall", "id": "mcp-2", "status": "completed"}),
+            ]
+        )
+        result = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE)
+        search, review, unnamed = result.agent("root").tool_calls
+        self.assertEqual((search.name, search.summary, search.is_error), ("docs/search", "status completed", False))
+        self.assertEqual(search.arguments_digest, trajectory.arguments_digest({"query": "sandbox"}))
+        self.assertNotIn("sandbox", json.dumps(search.to_dict()))
+        self.assertEqual((review.name, review.summary, review.is_error), ("request_review", "status failed", True))
+        self.assertEqual((review.started_ms, review.ended_ms), (BASE_MS + 300, BASE_MS + 400))
+        self.assertEqual((unnamed.name, unnamed.arguments_digest), ("mcp_tool_call", None), "an item that records no arguments carries no digest")
+        self.assertEqual(result.totals()["tool_calls_by_name"], {"docs/search": 1, "mcp_tool_call": 1, "request_review": 1})
+        self.assertEqual(result.totals()["tool_calls"], 3)
+
+    def test_an_item_that_records_no_tool_call_is_left_out(self) -> None:
+        self.single_run(
+            [
+                item_completed(BASE_MS + 100, BASE_MS + 200, 1, {"type": "FileChange", "id": "fc-1", "status": "completed", "changes": {"/w/a.py": {"type": "add"}}}),
+                item_completed(BASE_MS + 300, BASE_MS + 400, 2, {"type": "AgentMessage", "id": "am-1", "text": "done"}),
+            ]
+        )
+        result = normalizer.normalize(self.home, self.events, self.last, 0, ROUTE)
+        self.assertEqual(result.agent("root").tool_calls, [])
+        self.assertEqual(result.agent("root").file_changes[0].path, "/w/a.py")
 
     def test_the_outcome_ends_when_the_last_agent_record_does(self) -> None:
         self.team_run()

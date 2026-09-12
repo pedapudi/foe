@@ -1,9 +1,10 @@
 #!/usr/bin/python3
-"""Unit tests for the Codex arm: a fake codex script stands in for the binary, and no login or network is used."""
+"""Unit tests for the Codex arm: a fake codex script stands in for the binary, every credential is a placeholder file the test writes, and no login or network is used."""
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import textwrap
@@ -18,7 +19,11 @@ import codex_budget_watcher  # noqa: E402
 # A stand-in for `codex exec --json`. It reads the options the arm passes,
 # prints the documented event lines, writes the last message the prompt
 # directs, and writes one session file of the documented shape under the
-# CODEX_HOME it received.
+# CODEX_HOME it received. Four words in the prompt direct what it does to
+# the credential copy: `refresh` rewrites it as a token refresh does,
+# `truncate` writes the prefix that a process killed during a write leaves
+# behind, `shorten` writes an object without the refresh token, and
+# `discard` removes the copy.
 FAKE_CODEX = textwrap.dedent(
     """\
     #!/usr/bin/python3
@@ -30,7 +35,19 @@ FAKE_CODEX = textwrap.dedent(
     schema = json.loads(open(args[args.index("--output-schema") + 1], encoding="utf-8").read())
     workspace = args[args.index("-C") + 1]
     home = os.environ["CODEX_HOME"]
-    assert os.path.isfile(os.path.join(home, "auth.json")), "the credential file is absent"
+    credential = os.path.join(home, "auth.json")
+    assert os.path.isfile(credential), "the credential file is absent"
+    def rewrite_credential(text):
+        with open(credential, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    if "refresh" in prompt:
+        rewrite_credential(json.dumps({"auth_mode": "fixture", "tokens": {"access_token": "refreshed-placeholder", "refresh_token": "rotated-placeholder"}, "last_refresh": "2026-09-12T00:00:00Z"}))
+    if "truncate" in prompt:
+        rewrite_credential('{"auth_mode": "fixture", "tokens": {"access_to')
+    if "shorten" in prompt:
+        rewrite_credential(json.dumps({"auth_mode": "fixture", "tokens": {"access_token": "refreshed-placeholder"}, "last_refresh": "2026-09-12T00:00:00Z"}))
+    if "discard" in prompt:
+        os.unlink(credential)
     thread = "01a0913e-868c-7903-bd92-5813cb46712c"
     usage = {"input_tokens": 5000, "cached_input_tokens": 100, "cache_write_input_tokens": 0, "output_tokens": 40, "reasoning_output_tokens": 10}
     sessions = os.path.join(home, "sessions", "2026", "09", "11")
@@ -260,7 +277,9 @@ class Running(unittest.TestCase):
         self.workspace = self.root / "workspace"
         self.workspace.mkdir()
         self.credential = self.root / "source-auth.json"
-        self.credential.write_text('{"tokens": {"access_token": "placeholder"}}\n', encoding="utf-8")
+        self.source_credential = {"auth_mode": "fixture", "tokens": {"access_token": "placeholder", "refresh_token": "placeholder-refresh"}, "last_refresh": "2026-09-04T00:00:00Z"}
+        self.credential.write_text(json.dumps(self.source_credential) + "\n", encoding="utf-8")
+        self.credential.chmod(0o600)
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
@@ -329,7 +348,9 @@ class Running(unittest.TestCase):
 
         kept = codex_arm.run(self.spec("complete the task", artifacts="kept", keep_credential=True))
         self.assertFalse(kept.record["credential_removed"])
-        self.assertEqual((self.root / "kept" / "codex-home" / "auth.json").read_text(encoding="utf-8"), self.credential.read_text(encoding="utf-8"))
+        kept_copy = self.root / "kept" / "codex-home" / "auth.json"
+        self.assertEqual(kept_copy.read_text(encoding="utf-8"), self.credential.read_text(encoding="utf-8"))
+        self.assertEqual(kept_copy.stat().st_mode & 0o777, 0o600)
 
         # A copy the run itself removed leaves nothing to remove; a copy that cannot be removed is an error naming it.
         self.assertEqual(codex_arm.remove_credential(home), home / "auth.json")
@@ -339,6 +360,231 @@ class Running(unittest.TestCase):
         with self.assertRaises(OSError) as caught:
             codex_arm.remove_credential(locked)
         self.assertIn(str(locked / "auth.json"), str(caught.exception))
+
+    def test_a_credential_the_run_refreshed_is_written_back_to_the_source(self) -> None:
+        before = self.credential.read_bytes()
+        result = codex_arm.run(self.spec("complete the task and refresh the credential"))
+        state = result.record["credential_write_back"]
+        self.assertTrue(result.record["credential_written_back"])
+        self.assertEqual(state["state"], "written")
+        self.assertEqual(state["source"], str(self.credential.resolve()))
+        self.assertIn(str(self.credential), state["reason"])
+        after = self.credential.read_bytes()
+        self.assertNotEqual(after, before)
+        self.assertEqual(json.loads(after)["tokens"]["access_token"], "refreshed-placeholder")
+        self.assertEqual(self.credential.stat().st_mode & 0o777, 0o600)
+        # The write leaves no temporary file beside the source, and the
+        # record carries the paths and none of the credential.
+        self.assertEqual([path.name for path in self.root.iterdir() if path.name.startswith(".source-auth")], [])
+        self.assertNotIn("refreshed-placeholder", json.dumps(result.to_dict()))
+        self.assertNotIn("rotated-placeholder", json.dumps(result.to_dict()))
+        # The copy is removed once the source holds its content.
+        self.assertTrue(result.record["credential_removed"])
+        self.assertFalse((self.root / "artifacts" / "codex-home" / "auth.json").exists())
+
+    def test_a_credential_the_run_left_alone_is_not_written_back(self) -> None:
+        before, written_at = self.credential.read_bytes(), self.credential.stat().st_mtime_ns
+        result = codex_arm.run(self.spec("complete the task"))
+        self.assertFalse(result.record["credential_written_back"])
+        self.assertEqual(result.record["credential_write_back"]["state"], "unchanged")
+        self.assertEqual(self.credential.read_bytes(), before)
+        self.assertEqual(self.credential.stat().st_mtime_ns, written_at)
+        self.assertFalse((self.root / "artifacts" / "codex-home" / "auth.json").exists())
+
+    def test_a_copy_that_is_truncated_or_lacks_a_key_is_refused_by_path_and_the_source_stands(self) -> None:
+        before = self.credential.read_bytes()
+        truncated = codex_arm.run(self.spec("complete the task and truncate the credential"))
+        state = truncated.record["credential_write_back"]
+        self.assertFalse(truncated.record["credential_written_back"])
+        self.assertEqual(state["state"], "refused")
+        self.assertIn(str(self.root / "artifacts" / "codex-home" / "auth.json"), state["reason"])
+        self.assertIn("does not parse as JSON", state["reason"])
+        self.assertEqual(self.credential.read_bytes(), before)
+        self.assertFalse((self.root / "artifacts" / "codex-home" / "auth.json").exists())
+
+        short = codex_arm.run(self.spec("complete the task and shorten the credential", artifacts="short"))
+        state = short.record["credential_write_back"]
+        self.assertFalse(short.record["credential_written_back"])
+        self.assertEqual(state["state"], "refused")
+        self.assertIn("tokens.refresh_token", state["reason"])
+        self.assertIn(str(self.root / "short" / "codex-home" / "auth.json"), state["reason"])
+        self.assertEqual(self.credential.read_bytes(), before)
+        self.assertFalse((self.root / "short" / "codex-home" / "auth.json").exists())
+
+    def test_a_copy_the_run_removed_and_a_source_another_process_wrote_are_not_written_back(self) -> None:
+        discarded = codex_arm.run(self.spec("complete the task and discard the credential"))
+        self.assertFalse(discarded.record["credential_written_back"])
+        self.assertEqual(discarded.record["credential_write_back"]["state"], "absent")
+        self.assertIn(str(self.root / "artifacts" / "codex-home" / "auth.json"), discarded.record["credential_write_back"]["reason"])
+
+        # A source whose bytes changed while the run held the copy belongs
+        # to another process, and writing the copy back would discard what
+        # that process wrote.
+        home = self.root / "other-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        copy.write_text(json.dumps({**self.source_credential, "last_refresh": "2026-09-12T00:00:00Z"}), encoding="utf-8")
+        stale = codex_arm.CredentialCopy(self.credential, copy, codex_arm.content_digest(b"what the source held when the copy was made"))
+        state = codex_arm.write_back(stale)
+        self.assertEqual(state["state"], "refused")
+        self.assertFalse(state["written"])
+        self.assertIn(str(self.credential), state["reason"])
+        self.assertIn(str(copy), state["reason"])
+        self.assertEqual(json.loads(self.credential.read_text(encoding="utf-8")), self.source_credential)
+
+    def test_a_source_that_is_a_symbolic_link_keeps_the_link_and_the_file_it_names_receives_the_write_back(self) -> None:
+        target = self.root / "store" / "auth.json"
+        target.parent.mkdir()
+        target.write_bytes(self.credential.read_bytes())
+        # A target that starts wider than the credential mode ends at 0600,
+        # because the write-back sets the mode of the file it renames.
+        target.chmod(0o644)
+        link = self.root / "linked-auth.json"
+        link.symlink_to(target)
+        spec = codex_arm.CodexSpec(**{**self.spec("complete the task and refresh the credential").__dict__, "credential_source": link})
+        result = codex_arm.run(spec)
+        self.assertTrue(result.record["credential_written_back"])
+        # The record names the spec's path and the file the write reached.
+        self.assertEqual(result.record["credential_source"], str(link))
+        self.assertEqual(result.record["credential_write_back"]["source"], str(target.resolve()))
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), target)
+        self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["tokens"]["access_token"], "refreshed-placeholder")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
+    def test_a_write_back_that_fails_is_recorded_by_path_and_the_copy_is_still_removed(self) -> None:
+        home = self.root / "failing-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        copy.write_text(json.dumps({**self.source_credential, "last_refresh": "2026-09-12T00:00:00Z"}), encoding="utf-8")
+        absent = self.root / "removed" / "auth.json"
+        state = codex_arm.settle_credential(codex_arm.CredentialCopy(absent, copy, codex_arm.content_digest(b"")), keep_credential=False)
+        self.assertEqual(state["state"], "failed")
+        self.assertFalse(state["written"])
+        self.assertIn(str(absent), state["reason"])
+        self.assertIn(str(copy), state["reason"])
+        # The attempt keeps its result and the copy leaves no credential behind.
+        self.assertFalse(copy.exists())
+
+    def test_the_credential_copy_is_created_at_mode_0600_and_never_widens(self) -> None:
+        # A source another user may read must not hand that mode to the copy,
+        # not even for the moment between the creation and a chmod.
+        self.credential.chmod(0o644)
+        expected = self.root / "artifacts" / "codex-home" / "auth.json"
+        modes: list[int] = []
+        real_open = codex_arm.os.open
+
+        def recording_open(path, flags, mode=0o777, **named):
+            descriptor = real_open(path, flags, mode, **named)
+            if str(path) == str(expected):
+                modes.append(os.fstat(descriptor).st_mode & 0o777)
+            return descriptor
+
+        codex_arm.os.open = recording_open
+        try:
+            result = codex_arm.run(self.spec("complete the task", keep_credential=True))
+        finally:
+            codex_arm.os.open = real_open
+        self.assertEqual(modes, [0o600])
+        self.assertEqual(expected.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(result.record["credential_removed"])
+
+    def test_a_failure_after_the_home_is_prepared_removes_the_credential_copy(self) -> None:
+        # A provider option that is not a scalar is refused while the command
+        # line is built, after the copy is on disk.
+        spec = codex_arm.CodexSpec(**{**self.spec("complete the task").__dict__, "model_providers": {"local": {"base_url": ["not", "a", "scalar"]}}})
+        with self.assertRaises(ValueError) as caught:
+            codex_arm.run(spec)
+        self.assertIn("model_providers.local.base_url", str(caught.exception))
+        self.assertFalse((self.root / "artifacts" / "codex-home" / "auth.json").exists())
+
+    def test_an_interrupt_during_the_write_back_leaves_no_temporary_and_no_copy(self) -> None:
+        home = self.root / "interrupted-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        copy.write_text(json.dumps({**self.source_credential, "tokens": {"access_token": "refreshed-placeholder", "refresh_token": "rotated-placeholder"}}), encoding="utf-8")
+        credential = codex_arm.CredentialCopy(self.credential.resolve(), copy, codex_arm.content_digest(self.credential.read_bytes()))
+        real_replace = codex_arm.os.replace
+
+        def interrupting_replace(source, destination):
+            raise KeyboardInterrupt("the operator stopped the run")
+
+        codex_arm.os.replace = interrupting_replace
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                codex_arm.settle_credential(credential, keep_credential=False)
+        finally:
+            codex_arm.os.replace = real_replace
+        # Neither the temporary beside the source nor the copy under the
+        # artifacts holds the refreshed credential afterwards.
+        self.assertEqual([path.name for path in self.root.iterdir() if path.name.startswith(".source-auth")], [])
+        self.assertFalse(copy.exists())
+        self.assertEqual(json.loads(self.credential.read_text(encoding="utf-8")), self.source_credential)
+
+    def test_a_removal_that_fails_after_a_write_back_is_recorded_rather_than_raised(self) -> None:
+        home = self.root / "unremovable-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        copy.write_text(json.dumps({**self.source_credential, "tokens": {"access_token": "refreshed-placeholder", "refresh_token": "rotated-placeholder"}}), encoding="utf-8")
+        credential = codex_arm.CredentialCopy(self.credential.resolve(), copy, codex_arm.content_digest(self.credential.read_bytes()))
+        real_remove = codex_arm.remove_credential
+
+        def failing_remove(directory: Path) -> Path:
+            raise OSError(f"the credential copy {directory / codex_arm.CREDENTIAL_NAME} could not be removed: the file is busy")
+
+        codex_arm.remove_credential = failing_remove
+        try:
+            state = codex_arm.settle_credential(credential, keep_credential=False)
+        finally:
+            codex_arm.remove_credential = real_remove
+        # The source holds the refreshed credential and the record says so
+        # alongside the removal that failed.
+        self.assertEqual(state["state"], "written")
+        self.assertTrue(state["written"])
+        self.assertIn(str(copy), state["copy_removal_failure"])
+        self.assertEqual(json.loads(self.credential.read_text(encoding="utf-8"))["tokens"]["access_token"], "refreshed-placeholder")
+
+    def test_the_record_reads_whether_a_copy_remains_from_the_file(self) -> None:
+        real_remove = codex_arm.remove_credential
+
+        def remove_nothing(directory: Path) -> Path:
+            return directory / codex_arm.CREDENTIAL_NAME
+
+        codex_arm.remove_credential = remove_nothing
+        try:
+            result = codex_arm.run(self.spec("complete the task"))
+        finally:
+            codex_arm.remove_credential = real_remove
+        self.assertFalse(result.record["credential_removed"])
+        self.assertTrue((self.root / "artifacts" / "codex-home" / "auth.json").is_file())
+
+    def test_a_copy_the_run_never_rewrote_is_unchanged_even_against_a_source_another_process_wrote(self) -> None:
+        home = self.root / "untouched-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        data = self.credential.read_bytes()
+        copy.write_bytes(data)
+        credential = codex_arm.CredentialCopy(self.credential.resolve(), copy, codex_arm.content_digest(data))
+        rotated = {**self.source_credential, "tokens": {"access_token": "other-placeholder", "refresh_token": "other-placeholder-refresh"}}
+        self.credential.write_text(json.dumps(rotated), encoding="utf-8")
+        state = codex_arm.write_back(credential)
+        self.assertEqual(state["state"], "unchanged")
+        self.assertFalse(state["written"])
+        self.assertIn(str(copy), state["reason"])
+        # What the other process wrote stands.
+        self.assertEqual(json.loads(self.credential.read_text(encoding="utf-8")), rotated)
+
+    def test_a_copy_that_is_not_valid_utf_8_is_refused_by_offset_and_carries_no_byte_of_the_file(self) -> None:
+        home = self.root / "binary-home"
+        home.mkdir()
+        copy = home / "auth.json"
+        copy.write_bytes(b'{"auth_mode": "fixture", "tokens": {"access_token": "\xff\xfe')
+        state = codex_arm.write_back(codex_arm.CredentialCopy(self.credential.resolve(), copy, codex_arm.content_digest(self.credential.read_bytes())))
+        self.assertEqual(state["state"], "refused")
+        self.assertIn("is not valid UTF-8 at byte offset 53", state["reason"])
+        # The offset stands alone; the byte the decoder stopped on is one
+        # byte of the credential and stays out of the record.
+        self.assertNotIn("0xff", state["reason"])
 
     def test_a_blocked_run_reports_the_code(self) -> None:
         result = codex_arm.run(self.spec("block the task"))
