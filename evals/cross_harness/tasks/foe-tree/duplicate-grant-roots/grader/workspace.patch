@@ -1,0 +1,34 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..61bde71
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The visible subset of the checks this task is judged on.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-contract
++cargo clippy -p foe-contract -- -D warnings
++scripts/loc.sh
+diff --git a/crates/contract/src/document_test.rs b/crates/contract/src/document_test.rs
+index 695b0d9..fb817ee 100644
+--- a/crates/contract/src/document_test.rs
++++ b/crates/contract/src/document_test.rs
+@@ -23,14 +23,14 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
+     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
+     std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+     let contract = contract_with(&root, |v| {
+-        v["grants"]["read"] = json!([root.join("link")]);
++        v["grants"]["read"] = json!([root.join("link"), root.join("sub")]);
+         v["grants"]["execute"] = json!([root.join("link")]);
+         v["tools"] = json!(["block", "lint"]);
+         v["tool_defs"] = json!({ "lint": { "exec": exec, "description": "lints" } });
+     })
+     .unwrap();
+     let canonical = std::fs::canonicalize(root.join("sub")).unwrap();
+-    assert_eq!(contract.grants.read, vec![canonical.clone()]);
++    assert_eq!(contract.grants.read, vec![canonical.clone()], "two roots naming one canonical path are one grant");
+     assert_eq!(contract.grants.execute, vec![canonical.clone()]);
+     let lint = &contract.tool_defs["lint"];
+     assert_eq!(lint.cwd.as_deref(), Some(canonical.as_path()), "cwd defaults to the first read root");

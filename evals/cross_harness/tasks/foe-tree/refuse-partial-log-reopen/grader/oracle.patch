@@ -1,0 +1,63 @@
+diff --git a/crates/log/src/append.rs b/crates/log/src/append.rs
+index 49b5a3f3..0b8ccef5 100644
+--- a/crates/log/src/append.rs
++++ b/crates/log/src/append.rs
+@@ -30,7 +30,13 @@ impl Writer {
+     /// Opens an existing log for continued appending, for example after
+     /// seeding. Reads the current length to resume the sequence.
+     pub fn open(dir: &Path, mirror: Option<Box<dyn Write + Send>>) -> Result<Self, LogError> {
+-        let events = fold::read_all(dir)?;
++        let (events, consumed) = fold::read_from(dir, 0)?;
++        if std::fs::metadata(dir.join(LOG_FILE))?.len() != consumed {
++            return Err(LogError::Invalid {
++                seq: events.len() as u64,
++                rule: "reopening requires a complete final log line",
++            });
++        }
+         if events.is_empty() {
+             return Err(LogError::Empty);
+         }
+diff --git a/crates/log/src/append_test.rs b/crates/log/src/append_test.rs
+index 51261375..4e8b5783 100644
+--- a/crates/log/src/append_test.rs
++++ b/crates/log/src/append_test.rs
+@@ -102,6 +102,24 @@ fn create_refuses_an_existing_log_and_open_resumes_it() {
+     assert_eq!(read_all(&dir).unwrap().len(), 2);
+ }
+ 
++/// docs/log-format.md "Writers": reopening refuses an incomplete final line without changing its bytes.
++#[test]
++fn reopening_refuses_a_partial_final_line() {
++    use std::io::Write;
++    for suffix in [b"{".as_slice(), b"{\"seq\":1}"] {
++        let dir = tmp("partial-reopen");
++        let mut writer = Writer::create(&dir, None).unwrap();
++        writer.append(EventData::EpisodeStart(fx::start("ep"))).unwrap();
++        drop(writer);
++        let path = dir.join("episode.jsonl");
++        std::fs::OpenOptions::new().append(true).open(&path).unwrap().write_all(suffix).unwrap();
++        let before = std::fs::read(&path).unwrap();
++        let error = Writer::open(&dir, None).err().expect("an incomplete final line must prevent appending");
++        assert!(error.to_string().contains("complete final log line"), "{error}");
++        assert_eq!(std::fs::read(&path).unwrap(), before);
++    }
++}
++
+ #[test]
+ fn writer_rejects_events_that_break_the_structural_rules() {
+     let dir = tmp("rules");
+diff --git a/docs/log-format.md b/docs/log-format.md
+index 77bb24a5..e2ca36fe 100644
+--- a/docs/log-format.md
++++ b/docs/log-format.md
+@@ -52,6 +52,10 @@ failure and cleans up running children and sessions before returning the error.
+ A task-lifetime session whose release cannot be recorded is stopped.
+ The interrupted log receives no terminal outcome after recording fails.
+ 
++Reopening requires a complete final line. An incomplete trailing line makes
++the writer refuse to append, and its bytes remain available for inspection.
++Forking at a complete event boundary can retain the readable prefix.
++
+ ## Envelope
+ 
+ One JSON object per line.

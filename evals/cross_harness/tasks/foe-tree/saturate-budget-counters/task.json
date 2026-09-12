@@ -1,0 +1,45 @@
+{
+  "name": "saturate-budget-counters",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "`crates/core/src/budget.rs` holds the budget pool of an episode: the counters of model requests, input tokens, and output tokens the episode has spent, the amounts its settled children spent, and the reservations its live children hold. `remaining` subtracts the used amounts from the limits with saturation. Usage reaches the pool from outside it, from a model reply's usage record or from a settled child's spent amount, as unsigned 64-bit integers the pool does not bound. Every addition the pool performs on these counters saturates at the maximum value of the type, so no addition overflows. The additions are noting a request, noting usage, summing the reservations, adding a settled child's spend to the children's total, and summing an episode's own use, its children's use, and the held reservations inside `remaining`. A pool given a usage of `u64::MAX` input tokens and `u64::MAX` output tokens, then a usage of one token of each, reports zero remaining input tokens and zero remaining output tokens. A pool whose settled children report `u64::MAX` of a dimension, or whose folded reservations hold `u64::MAX` of it, reports zero remaining on that dimension as well.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-core, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "cb5a27733e91e6cbdf921c9d7dce10e8e8a8d6fd",
+      "parent": "dd490708e06ef9a206f0d7a3d9804195ffc38680",
+      "subject": "Saturate budget counters on external usage"
+    },
+    "crates": [
+      "crates/core"
+    ],
+    "packages": [
+      "foe-core"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/core/src/budget_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/core/src/budget_test.rs"
+    ],
+    "review": "read by the authoring agent on 2026-09-11; awaits a person"
+  }
+}

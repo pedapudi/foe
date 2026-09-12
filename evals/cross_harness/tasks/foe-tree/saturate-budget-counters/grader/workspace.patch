@@ -1,0 +1,33 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..835418d
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The visible subset of the checks this task is judged on.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-core
++cargo clippy -p foe-core -- -D warnings
++scripts/loc.sh
+diff --git a/crates/core/src/budget_test.rs b/crates/core/src/budget_test.rs
+index d4c9f6f..ab2bb9e 100644
+--- a/crates/core/src/budget_test.rs
++++ b/crates/core/src/budget_test.rs
+@@ -34,6 +34,15 @@ fn input_and_output_tokens_have_independent_remainders() {
+     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::OutputTokens));
+ }
+ 
++#[test]
++fn external_usage_saturates_instead_of_overflowing_the_account() {
++    let mut pool = Pool::new(budget());
++    pool.note_usage(Usage { input: u64::MAX, output: u64::MAX, cache_read: 0 });
++    pool.note_usage(Usage { input: 1, output: 1, cache_read: 0 });
++    assert_eq!(pool.remaining().input_tokens, Some(0));
++    assert_eq!(pool.remaining().output_tokens, Some(0));
++}
++
+ #[test]
+ fn seconds_elapse_on_the_wall_clock() {
+     let pool = Pool::new(Budget { seconds: Some(1), ..budget() });

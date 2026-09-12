@@ -1,0 +1,7 @@
+{
+  "crate": "crates/contract",
+  "restore": [
+    "crates/contract/src/document.rs"
+  ],
+  "remove": []
+}

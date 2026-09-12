@@ -1,0 +1,56 @@
+{
+  "name": "question-delivery-deadline",
+  "family": "teams",
+  "class_name": "coherent",
+  "text": "A team member asks its lead a question with the `ask` tool in `crates/team/src/lib.rs`, giving `deadline_ms`, how long the question stays open, and `default`, the answer that stands when that time passes with no reply. The deadline starts when the call is admitted and covers forwarding the question to the parent process as well as waiting for the answer. When the parent has not acknowledged delivery before the deadline, the call returns a `timed-out` tool failure whose message carries the default, and the runtime records no synthetic reply. When the parent acknowledges delivery with a result carrying a `message_id`, the default-answer timer runs for the time remaining after the acknowledgement, so the synthetic reply carrying the default arrives at the deadline measured from admission. The reply's text reads `no answer before the deadline; this default answer stands: ` followed by the default.\n\nIn `crates/core/src/protocol.rs`, a host tool call registers a pending answer slot for its call identifier while it waits. The registration is released when the wait finishes for any reason, including when an outer deadline drops the future, and an answer that arrives afterwards follows the unknown-identifier rule. In `crates/core/src/inbox.rs`, the duplicate check that lets a member drop a redelivered item compares the source together with the `message_id`, so a question and its answer, which share the identifier and differ in source, are both kept, including when an episode addresses itself.\n\nContinuation in `crates/cli/src/run.rs` refuses a log whose live events, those after the last `seed/end`, hold a successful and non-synthetic `ask` result whose `message_id` no `response` inbox item answers, because the deadline the asking process held cannot be restored. The error reads `<dir>: cannot continue with unanswered ask <id>; use --from DIR@SEQ to start a separate episode from an explicit prefix`, and the log's bytes are left unchanged. A log seeded from that prefix with an explicit `--from DIR@SEQ` starts a separate episode and treats the questions in the prefix as history, so it continues; a recorded response to the question, synthetic or from the lead, also lets the log continue. `docs/design.md`, `docs/protocol.md`, `docs/log-format.md`, and `docs/tools.md` state the rules.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/design.md: the question deadline starts when ask is admitted and covers forwarding as well as waiting for an answer.\n- docs/design.md: a parent that does not acknowledge delivery before that deadline produces a timed-out tool failure carrying the default in its message.\n- docs/design.md: without an acknowledged message identifier, the runtime records no synthetic reply.\n- docs/design.md: acknowledgement uses the remaining question time for the default answer.\n- docs/design.md: a log containing a successful ask without a recorded response is refused because its process-owned deadline cannot be restored.\n- docs/design.md: an explicit --from dir@seq starts a separate episode from the selected conversation prefix; questions in that prefix are historical.\n- docs/log-format.md: a question and its answer have different sources, including when an episode addresses itself.\n- docs/protocol.md: a host tool wait releases its pending answer registration when it finishes, including when its future is cancelled.\n- docs/protocol.md: an ask deadline includes the wait for its parent to acknowledge delivery.\n- docs/protocol.md: an unacknowledged question returns timed-out; an acknowledged question uses the remaining time for its default answer.\n- docs/tools.md: an ask deadline includes forwarding and waiting for delivery acknowledgement.\n- docs/tools.md: an unacknowledged call returns timed-out with the default in its error text.\n- docs/tools.md: an acknowledged question uses the remaining time before delivering its default as a synthetic response.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe, foe-core, foe-team, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 180000,
+    "seconds": 4500
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "4fe6a83262708b322e6690ab3f6722307c8edea5",
+      "parent": "6207dd0c241ad723e6b393855cc1a7ebe5ba536f",
+      "subject": "Bound question delivery and reject continuation with lost deadlines"
+    },
+    "crates": [
+      "crates/cli",
+      "crates/core",
+      "crates/team"
+    ],
+    "packages": [
+      "foe",
+      "foe-core",
+      "foe-team"
+    ],
+    "crate_count": 3,
+    "coupling": 0,
+    "identifiers": [
+      "PendingCall"
+    ],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/cli/src/run_test.rs",
+      "crates/core/src/inbox_test.rs",
+      "crates/team/src/lib_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/cli/src/run_test.rs",
+      "crates/core/src/inbox_test.rs",
+      "crates/core/src/protocol_test.rs",
+      "crates/team/src/lib_test.rs"
+    ],
+    "review": "read by the authoring agent on 2026-09-11; awaits a person. The commit adds no identifier that two crates use: the only other added name is the method of the standard-library Drop trait the core crate implements."
+  }
+}

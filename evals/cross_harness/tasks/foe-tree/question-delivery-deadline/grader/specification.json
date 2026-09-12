@@ -1,0 +1,106 @@
+{
+  "task": "question-delivery-deadline",
+  "packages": [
+    "foe",
+    "foe-core",
+    "foe-team"
+  ],
+  "hidden_test_names": {
+    "crates/cli/src/run_test.rs": [
+      "continuation_refuses_unanswered_questions_and_preserves_explicit_seeding",
+      "builtin_coding_preserves_explicit_reasoning_and_other_models",
+      "builtin_coding_carries_the_credential_options_of_its_model_block",
+      "builtin_coding_runs_implementation_then_conditional_repair",
+      "builtin_coding_with_verify_gates_both_assessment_branches",
+      "builtin_oneshot_runs_the_implementation_episode_alone",
+      "builtin_oneshot_takes_the_verifier_and_the_sandbox_mode",
+      "every_built_in_document_hashes_to_its_recorded_fingerprint",
+      "builtin_coding_selects_an_explicit_sandbox_mode",
+      "builtin_coding_selects_an_explicit_service_tier",
+      "explicit_config_owns_its_sandbox_mode",
+      "permitting_everything_grants_the_whole_filesystem_with_no_confinement",
+      "a_document_without_a_model_block_takes_the_command_line_model",
+      "explicit_config_owns_its_model_options",
+      "config_takes_a_built_in_name_beside_a_file_path",
+      "a_built_in_name_without_a_task_is_refused",
+      "the_built_in_name_and_the_omitted_option_select_one_document",
+      "the_run_options_of_the_built_in_workflow_apply_under_its_name",
+      "builtin_environment_reports_fixed_path_observations_and_their_scope",
+      "builtin_coding_declares_its_general_shell_command_surface",
+      "builtin_coding_can_retrieve_shortened_tool_results",
+      "invalid_host_verifier_schema_starts_no_episode",
+      "conversation_composes_with_every_viewer_value",
+      "protocol_descriptors_are_read_as_a_pair",
+      "a_fork_appends_every_task_except_the_one_the_source_recorded",
+      "a_subordinate_episode_refuses_a_task_from_the_command_line",
+      "independently_resumed_child_rejects_a_changed_executable",
+      "child_resume_uses_recorded_allowance_and_fingerprint",
+      "ordinary_prepared_fork_retains_source_fingerprint_exemption",
+      "resume_refuses_an_incomplete_seed_without_changing_its_log"
+    ],
+    "crates/core/src/inbox_test.rs": [
+      "absorb_tracks_items_written_by_others_and_consume_marks_them",
+      "a_peer_message_with_a_recorded_id_is_a_duplicate",
+      "a_second_answer_to_one_question_is_a_duplicate"
+    ],
+    "crates/core/src/protocol_test.rs": [
+      "dropping_a_host_call_releases_its_pending_answer_slot",
+      "protocol_input_starts_after_the_episode_prefix",
+      "model_chunks_reach_the_transport_even_when_they_arrive_before_it_listens",
+      "a_chunk_for_an_unknown_or_settled_request_is_a_protocol_error",
+      "host_tool_calls_emit_an_event_and_wait_for_the_answer",
+      "end_of_input_fails_outstanding_waits_instead_of_hanging",
+      "inbox_items_are_appended_on_receipt_and_cancel_stops_the_episode",
+      "a_task_source_from_the_host_and_unknown_line_types_are_protocol_errors",
+      "lines_tagged_for_a_descendant_go_down_unchanged"
+    ],
+    "crates/team/src/lib_test.rs": [
+      "question_deadlines_cover_forwarding_and_default_delivery",
+      "maintained_team_projection_matches_replay_at_every_prefix",
+      "recording_failure_prevents_message_delivery_and_scheduling",
+      "episode_lifecycle_is_the_singleton_team",
+      "fold_keeps_latest_task_revisions_in_creation_order",
+      "fold_tracks_phases_queue_and_deliveries",
+      "fold_skips_team_events_copied_by_seeding",
+      "a_question_without_a_deadline_and_a_default_is_refused",
+      "two_episodes_waiting_on_each_other_both_return_at_their_deadlines",
+      "message_identity_comes_from_the_recorded_queue_and_lead_episode",
+      "concurrent_senders_record_distinct_messages",
+      "notify_from_a_member_becomes_an_inbox_item",
+      "send_queues_a_message_and_peer_receipt_records_delivery",
+      "the_reserved_name_addresses_the_lead_whatever_its_contract_named_it",
+      "send_and_ask_take_the_scope_that_selects_which_team_they_address",
+      "a_question_is_answered_by_identity_and_wakes_only_its_asker",
+      "a_root_serves_send_and_team_from_its_own_roster",
+      "bare_wait_keeps_its_all_children_meaning",
+      "wait_until_matches_unconsumed_arrivals_by_source_child_and_session",
+      "every_team_tool_schema_stays_inside_the_implemented_subset",
+      "cancel_names_a_member_and_is_quiet_about_one_no_longer_running",
+      "a_write_root_may_not_overlap_one_a_live_task_holds",
+      "waiting_reads_state_without_scanning_or_copying_events"
+    ]
+  },
+  "sentences": {
+    "docs/design.md": [
+      "the question deadline starts when ask is admitted and covers forwarding as well as waiting for an answer.",
+      "a parent that does not acknowledge delivery before that deadline produces a timed-out tool failure carrying the default in its message.",
+      "without an acknowledged message identifier, the runtime records no synthetic reply.",
+      "acknowledgement uses the remaining question time for the default answer.",
+      "a log containing a successful ask without a recorded response is refused because its process-owned deadline cannot be restored.",
+      "an explicit --from dir@seq starts a separate episode from the selected conversation prefix; questions in that prefix are historical."
+    ],
+    "docs/log-format.md": [
+      "a question and its answer have different sources, including when an episode addresses itself."
+    ],
+    "docs/protocol.md": [
+      "a host tool wait releases its pending answer registration when it finishes, including when its future is cancelled.",
+      "an ask deadline includes the wait for its parent to acknowledge delivery.",
+      "an unacknowledged question returns timed-out; an acknowledged question uses the remaining time for its default answer."
+    ],
+    "docs/tools.md": [
+      "an ask deadline includes forwarding and waiting for delivery acknowledgement.",
+      "an unacknowledged call returns timed-out with the default in its error text.",
+      "an acknowledged question uses the remaining time before delivering its default as a synthetic response."
+    ]
+  }
+}

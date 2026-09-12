@@ -1,0 +1,7 @@
+{
+  "crate": "crates/log",
+  "restore": [
+    "crates/log/src/append.rs"
+  ],
+  "remove": []
+}

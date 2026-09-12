@@ -1,0 +1,9 @@
+{
+  "crate": "crates/core",
+  "restore": [
+    "crates/core/src/lib.rs",
+    "crates/core/src/loop_.rs",
+    "crates/core/src/wiring.rs"
+  ],
+  "remove": []
+}

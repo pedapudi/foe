@@ -2,7 +2,7 @@
   "name": "carry-home-to-child",
   "family": "autonomy",
   "class_name": "solvable",
-  "text": "Carry HOME to a child, which starts with a cleared environment.\n\nThe home directory is the one the passwd database records, and where the\ndatabase holds no entry for the user the runtime reads `HOME` instead. A\nchild episode is started with `env_clear`, so a child has no `HOME` to read\nand no entry to find. On a host that keeps accounts in a directory service\nthe root episode therefore runs, on the fallback, and every child it starts\ndies while it constructs itself.\n\nThe parent passes `HOME` across. A passwd entry still decides wherever there\nis one, in a child as in its parent, so a host that has one sees no change.\nThe cleared environment is otherwise untouched: one variable crosses, and it\nis the one the answer can rest on.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/models.md: a child episode starts with a cleared environment, so its parent carries home across to it; otherwise a child would find neither a database entry nor a fallback on a host where the root episode ran on one.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-core, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "text": "A child episode receives the `HOME` variable its parent holds.\n\nThe home directory is the one the passwd database records for the user; where\nthe database holds no entry, the runtime reads `HOME` instead\n(`crates/transport/src/paths.rs`). A child episode is started with a cleared\nenvironment (`crates/core/src/spawn.rs`), so on a host that keeps accounts in a\ndirectory service the root episode resolves its home directory from `HOME`, and\nevery child it starts fails during construction with neither a database entry\nnor a variable to read.\n\nThe parent passes `HOME` to each child it starts, with the value the parent\nholds. Where the database holds an entry, that entry decides the home directory\nin a child as in its parent. The cleared environment carries no other variable.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/models.md: a child episode starts with a cleared environment, so its parent carries home across to it; otherwise a child would find neither a database entry nor a fallback on a host where the root episode ran on one.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-core, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
   "correct_statuses": [
     "completed"
   ],
@@ -40,6 +40,6 @@
     "hidden_tests": [
       "crates/core/src/spawn_test.rs"
     ],
-    "review": "revised: the drafted text was rewritten in present-state specification voice after authoring; the sentence list and the checks paragraph are the tool's"
+    "review": "revised for leakage and voice on 2026-09-11 by the reviewing agent; awaits a person"
   }
 }

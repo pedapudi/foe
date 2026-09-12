@@ -1,0 +1,51 @@
+{
+  "name": "child-message-in-failure",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "A parent episode starts each child as a process and reads the child's events from a pipe. `crates/core/src/spawn.rs` holds the spawner, the thread that relays the child's standard error, and the reader that settles the child's outcome. The relay prints each line of the child's standard error to the parent's own standard error, prefixed with the child's identifier, and never parses it. The relay also keeps the last 2,000 bytes of that stream, whole lines only, so a child that writes a great deal cannot fill the parent's log; a constant `DIAGNOSTIC_TAIL` in `spawn.rs` holds the bound, and the tests read it. When a child exits without writing `episode/end`, the failure the reader records reads `child <id> exited without episode/end and said: <text>`, where the text is the kept tail with leading and trailing whitespace removed. When the child wrote nothing to standard error, the message ends after `episode/end`. The reader waits at most two seconds for the tail once the child's events have ended, because a process the child left running can hold the child's standard error open. A child that dies while it constructs itself, such as one given a write root that names a file, therefore states its reason on its board task and in the inbox item its lead receives. The section of `docs/protocol.md` on children states the rule.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/protocol.md: a child writes its own diagnostics to standard error, which the parent relays line by line prefixed with the child's identifier and never parses.\n- docs/protocol.md: a child that exits without episode/end has told the parent nothing else about why, so the failure the parent records for it carries the last part of that stream, bounded so that a child which wrote a great deal cannot fill the parent's log with it.\n- docs/protocol.md: a child that dies while it constructs itself, such as one given a write root that names a file, therefore states its reason on its board task and in the inbox item its lead receives.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-core, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "b2e1fa70343a8c331d38bf59a4d51fe6065aebdc",
+      "parent": "881a5c69cef969569f32554a6e70173d4d718f53",
+      "subject": "Carry a child's own message into a construction failure"
+    },
+    "crates": [
+      "crates/core"
+    ],
+    "packages": [
+      "foe-core"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [
+      "DIAGNOSTIC_TAIL",
+      "DIAGNOSTIC_WAIT",
+      "episode/end"
+    ],
+    "allowed_traces": [
+      "episode/end"
+    ],
+    "visible_tests": [
+      "crates/core/src/spawn_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/core/src/spawn_test.rs"
+    ],
+    "review": "read by the authoring agent on 2026-09-11; awaits a person"
+  }
+}

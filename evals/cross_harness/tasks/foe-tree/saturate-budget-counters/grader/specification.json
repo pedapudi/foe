@@ -1,0 +1,26 @@
+{
+  "task": "saturate-budget-counters",
+  "packages": [
+    "foe-core"
+  ],
+  "hidden_test_names": {
+    "crates/core/src/budget_test.rs": [
+      "model_calls_count_every_request_including_retries",
+      "input_and_output_tokens_have_independent_remainders",
+      "external_usage_saturates_instead_of_overflowing_the_account",
+      "settled_child_totals_saturate_instead_of_overflowing_the_account",
+      "own_use_children_and_reservations_saturate_inside_remaining",
+      "seconds_elapse_on_the_wall_clock",
+      "reservation_debits_the_remainder_until_release",
+      "reservation_beyond_the_remainder_names_the_limit",
+      "a_grant_of_zero_on_any_dimension_names_that_limit",
+      "structural_caps_refuse_a_spawn",
+      "the_episode_allowance_is_shared_out_and_reported_back",
+      "folding_reserve_and_release_events_matches_live_calls",
+      "request_output_is_clamped_to_the_remaining_allowance",
+      "reported_input_can_cross_the_allowance_before_the_next_request",
+      "compaction_end_does_not_charge_summary_usage_twice"
+    ]
+  },
+  "sentences": {}
+}

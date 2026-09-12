@@ -1,0 +1,39 @@
+diff --git a/crates/core/src/budget.rs b/crates/core/src/budget.rs
+index 146aa82d..cf9781e8 100644
+--- a/crates/core/src/budget.rs
++++ b/crates/core/src/budget.rs
+@@ -49,6 +49,7 @@ impl Pool {
+             if let Some(start) = events.first() {
+                 let elapsed = now_millis.saturating_sub(start.time).max(0) as u64 / 1000;
+                 self.limits.seconds = self.limits.seconds.map(|s| s.saturating_sub(elapsed));
++                self.started = Instant::now();
+             }
+         }
+     }
+diff --git a/crates/core/src/budget_test.rs b/crates/core/src/budget_test.rs
+index 66191b7b..bdb947cb 100644
+--- a/crates/core/src/budget_test.rs
++++ b/crates/core/src/budget_test.rs
+@@ -281,6 +281,7 @@ async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging
+         max_episodes: 4,
+         ..budget()
+     });
++    pool.started = std::time::Instant::now() - std::time::Duration::from_secs(5);
+     pool.restore(&events, 6_000);
+     assert_eq!(
+         pool.remaining(),
+diff --git a/docs/config.md b/docs/config.md
+index bd11159a..3befb19c 100644
+--- a/docs/config.md
++++ b/docs/config.md
+@@ -373,7 +373,9 @@ On resume, recorded model usage and child reservations are restored before
+ any queued team task or workflow node starts. Restoration occurs once per
+ pool, so executor startup cannot charge the same events twice. The seconds
+ allowance includes whole seconds elapsed since the recorded episode start,
+-including downtime. A fresh fork starts its own wall-clock allowance.
++including downtime. Restoration starts the remaining timer after subtracting
++that elapsed time, so setup time is charged once. A fresh fork starts its own
++wall-clock allowance.
+ 
+ `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
+ `max_episodes` apply to the whole tree below this episode. A child's budget

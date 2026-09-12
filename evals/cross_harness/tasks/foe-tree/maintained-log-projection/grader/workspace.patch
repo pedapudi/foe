@@ -1,0 +1,134 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..60ceccc
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The visible subset of the checks this task is judged on.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-core -p foe-log -p foe-team
++cargo clippy -p foe-core -p foe-log -p foe-team -- -D warnings
++scripts/loc.sh
+diff --git a/crates/core/src/loop_test.rs b/crates/core/src/loop_test.rs
+index d1e59a6..c59cec1 100644
+--- a/crates/core/src/loop_test.rs
++++ b/crates/core/src/loop_test.rs
+@@ -922,11 +922,21 @@ fn a_board_task_is_accounted_for_by_its_identifier_and_not_by_its_member_name()
+         recorded(1, "task_01", "unit", 1, foe_log::TaskStatus::Failed),
+         recorded(2, "task_02", "survey", 0, foe_log::TaskStatus::Completed),
+     ];
+-    let named = |value: serde_json::Value| unaccounted(&board, &value);
++    let mut state = foe_log::State::default();
++    board.iter().for_each(|event| foe_log::fold::apply(&mut state, event));
++    let named = |value: serde_json::Value| unaccounted(&state.tasks, &value);
+     assert_eq!(named(json!("every unit is covered")), ["task_01 (unit) failed"], "the member name is not an account");
+     assert!(named(json!({ "units": [{ "finding": "task_01 failed: no root" }] })).is_empty(), "any depth counts");
+     assert!(named(json!({ "summary": "task_01 stalled" })).is_empty(), "any field counts");
+     assert!(named(json!(["task_02"])).len() == 1, "a completed task needs no account");
++    for value in ["task_010 completed", "prefix_task_01", "task_01_suffix", "étask_01"] {
++        assert_eq!(named(json!(value)).len(), 1, "{value} names a different identifier");
++    }
++    assert!(named(json!("(task_01): failed")).is_empty());
++    foe_log::fold::apply(&mut state, &recorded(3, "task_01", "unit", 0, foe_log::TaskStatus::Completed));
++    assert_eq!(state.tasks[0].status, foe_log::TaskStatus::Failed, "a stale revision cannot overwrite a task");
++    foe_log::fold::apply(&mut state, &foe_log::Event { seq: 4, time: 0, version: None, data: EventData::SeedEnd {} });
++    assert!(state.tasks.is_empty(), "seed/end discards the source board");
+ }
+ 
+ /// docs/config.md `done_when`: what activates the citation rule is the shape
+diff --git a/crates/team/src/lib_test.rs b/crates/team/src/lib_test.rs
+index 9456fce..82fd9b9 100644
+--- a/crates/team/src/lib_test.rs
++++ b/crates/team/src/lib_test.rs
+@@ -34,6 +34,11 @@ impl LeadLog for MemLog {
+     fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+         read(&self.0.lock().unwrap());
+     }
++    fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
++        let mut state = foe_log::State::default();
++        self.with_events(&mut |events| events.iter().for_each(|event| foe_log::fold::apply(&mut state, event)));
++        read(&state);
++    }
+ }
+ 
+ impl MemLog {
+@@ -60,6 +65,9 @@ fn recording_failure_prevents_message_delivery_and_scheduling() {
+         fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+             read(&[event(0, start())]);
+         }
++        fn with_state(&self, _: &mut dyn FnMut(&foe_log::State)) {
++            panic!("recording failure precedes a state read");
++        }
+     }
+     struct NoLaunch;
+     impl Spawner for NoLaunch {
+@@ -600,13 +608,13 @@ fn ctx_deadline(deadline: std::time::Instant) -> CallCtx {
+ }
+ 
+ fn soon() -> std::time::Instant {
+-    std::time::Instant::now() + Duration::from_millis(60)
++    (tokio::time::Instant::now() + Duration::from_millis(60)).into_std()
+ }
+ 
+ /// A seconds budget no test in this file spends, for a wait that must state a
+ /// bound and is meant to return on its condition.
+ fn far() -> std::time::Instant {
+-    std::time::Instant::now() + Duration::from_secs(30)
++    (tokio::time::Instant::now() + Duration::from_secs(30)).into_std()
+ }
+ 
+ fn inbox_event(source: InboxSource, from: Option<&str>) -> EventData {
+@@ -780,14 +788,13 @@ fn a_write_root_may_not_overlap_one_a_live_task_holds() {
+     add("d", roots(&["/p/crates/log-other"])).unwrap();
+ }
+ 
+-/// The reading a wait does must not copy the log. `wait` folds the events
+-/// fifty times a second for as long as it waits, and the fold keeps nothing
+-/// of the copy; a run's log grows, so a copy per tick grows with it.
+-#[tokio::test]
+-async fn waiting_reads_the_log_in_place_and_never_copies_it() {
++/// docs/design.md "Agent teams": waits read the maintained projection.
++#[tokio::test(start_paused = true)]
++async fn waiting_reads_state_without_scanning_or_copying_events() {
+     #[derive(Default)]
+     struct Counted {
+         events: Mutex<Vec<Event>>,
++        state: Mutex<foe_log::State>,
+         copies: AtomicUsize,
+         reads: AtomicUsize,
+     }
+@@ -796,6 +803,7 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
+             let mut events = self.events.lock().unwrap();
+             let seq = events.len() as u64;
+             events.push(Event { seq, time: 0, version: None, data });
++            foe_log::fold::apply(&mut self.state.lock().unwrap(), events.last().unwrap());
+             Ok(())
+         }
+         fn check(&self) -> Result<(), CapError> {
+@@ -806,9 +814,13 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
+             self.events.lock().unwrap().clone()
+         }
+         fn with_events(&self, read: &mut dyn FnMut(&[Event])) {
+-            self.reads.fetch_add(1, Ordering::SeqCst);
++            self.copies.fetch_add(1, Ordering::SeqCst);
+             read(&self.events.lock().unwrap());
+         }
++        fn with_state(&self, read: &mut dyn FnMut(&foe_log::State)) {
++            self.reads.fetch_add(1, Ordering::SeqCst);
++            read(&self.state.lock().unwrap());
++        }
+     }
+ 
+     let log = Arc::new(Counted::default());
+@@ -820,9 +832,6 @@ async fn waiting_reads_the_log_in_place_and_never_copies_it() {
+         Arc::new(Router::new()),
+         Arc::new(Mutex::new(Pool::new(budget()))),
+     ));
+-    let _ = team.state();
+-    // Both wait forms: the bare one folds the board, the `until` one reads
+-    // the arrivals. Each spins until its deadline, so each ticks many times.
+     let bare = wait_tool(team.clone()).call(serde_json::json!({}), &ctx_deadline(soon())).await;
+     assert!(!bare.is_error || bare.rendered.is_some());
+     let until = serde_json::json!({ "until": [{ "inbox": "child" }] });

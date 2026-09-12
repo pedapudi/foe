@@ -1,0 +1,26 @@
+{
+  "task": "refuse-partial-log-reopen",
+  "packages": [
+    "foe-log"
+  ],
+  "hidden_test_names": {
+    "crates/log/src/append_test.rs": [
+      "mirror_failures_leave_a_reopenable_prefix_and_disable_the_writer",
+      "file_failures_preserve_the_original_recording_error",
+      "writer_assigns_contiguous_seq_and_mirrors_identical_bytes",
+      "create_refuses_an_existing_log_and_open_resumes_it",
+      "reopening_refuses_a_partial_final_line",
+      "writer_rejects_events_that_break_the_structural_rules",
+      "writer_rejects_a_duplicate_or_orphan_tool_result",
+      "writer_enforces_the_rendering_archive_pair",
+      "writer_states_the_format_version_on_the_first_event_only"
+    ]
+  },
+  "sentences": {
+    "docs/log-format.md": [
+      "reopening requires a complete final line.",
+      "an incomplete trailing line makes the writer refuse to append, and its bytes remain available for inspection.",
+      "forking at a complete event boundary can retain the readable prefix."
+    ]
+  }
+}

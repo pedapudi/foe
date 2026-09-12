@@ -1,0 +1,1440 @@
+# Design
+
+foe is a runtime for autonomous coding agents. One invocation of foe runs
+one bounded unit of work, called an episode, with no human in the loop. The
+runtime owns the agent loop, an append-only log, capability grants, process
+isolation, subagents, and a viewer. Every capability the agent can use is
+granted explicitly in configuration; nothing is available by default.
+
+This document states the problem foe solves, the properties it guarantees,
+and the structure that delivers them. Companion documents specify each
+piece.
+
+| document | specifies |
+|---|---|
+| [log-format.md](log-format.md) | every event type, the request snapshot, and the replay guarantee |
+| [protocol.md](protocol.md) | the line protocol between foe and a host process |
+| [config.md](config.md) | every configuration key and the domain of its values |
+| [models.md](models.md) | model endpoints, their credentials, and `foe login` |
+| [sdk.md](sdk.md) | the Python package |
+| [tools.md](tools.md) | built-in tools, configured executables, and host tools |
+| [sandbox.md](sandbox.md) | how grants compile into kernel restrictions |
+| [viewer.md](viewer.md) | the trajectory viewer |
+| [landscape.md](landscape.md) | the surrounding field of agent runtimes |
+| [evaluation.md](evaluation.md) | runtime conformance checks and the model-backed benchmark protocol |
+| [deferred.md](deferred.md) | features with reserved event types and no implementation |
+| [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
+| [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |
+| [design-language.md](design-language.md) | the visual language the viewer follows |
+| [viewer-study.md](viewer-study.md) | a historical record of the layouts weighed before the viewer's outline |
+
+## The problem
+
+Coding agents built for interactive use assume a person is present. The
+person supplies the objective, approves consequential actions, notices when
+the agent is stuck, and decides when the work is done. Remove the person and
+each of those four jobs is unfilled. An interactive harness run with
+approvals disabled does not become an autonomous agent; it becomes an
+unsupervised one.
+
+A runtime for hands-off execution has to fill each job mechanically.
+
+| job the person did | what fills it without a person |
+|---|---|
+| supplies the objective | a task, fixed at launch, with a declared completion condition |
+| approves consequential actions | an allow list of directories, executables, and child contracts, enforced by the kernel |
+| notices when the agent is stuck | runtime detection of repeated calls and repeated reasoning, plus a vocabulary of blocking conditions the agent can report |
+| decides when the work is done | a budget that ends the episode, a verifier that accepts the result, or a typed return |
+
+Three further problems follow from running without supervision.
+
+**Nobody watched, so the record must be complete.** An interactive transcript
+is read by the person who was there. An autonomous run is read later by
+someone who was not, or by software. The record therefore has to contain
+every input the model received and every output it produced, in a form that
+reconstructs the run without the process that made it.
+
+**Nobody corrects course, so the cost must be bounded.** A person notices
+when an agent spends an hour in a loop. A runtime has to enforce limits on
+model calls, input tokens, output tokens, wall-clock time, recursion depth,
+and the number of processes an agent may start. It has to hold those limits
+as one pool across every subagent the run creates.
+
+**Nobody reviews each action, so permission must be structural.** A per-action
+prompt is how interactive harnesses contain risk. Without a person to answer
+it, containment has to be declared once, before the run, as a list of what is
+reachable, with everything else unreachable by construction.
+
+foe is built to fill those jobs and meet those three requirements. A
+conventional interactive harness, or a person, hands foe a task and a
+configuration and receives a log and an outcome.
+
+## Properties
+
+Four properties determine every structural decision.
+
+**Autonomous.** No step of an episode waits for a person. Termination is
+mechanical: a budget is spent, a verification passes, a blocking condition is
+recognized, or the model finishes. Steering input exists, and its producers
+are other episodes.
+
+**Token efficient.** What the model reads is a projection of what the log
+stores. Tool results have a canonical value, which the log keeps in full, and
+a rendered form, which the model sees. A failed result carries a typed code,
+retry rule, and structured details beside its explanatory message. Request
+prefixes are byte-stable across steps and across sibling episodes so that
+provider caches hit.
+
+**Auditable and replayable.** Every input to every model request is
+reconstructable from the log, and every response is recorded in it. A contract
+fingerprint hashes the stable inputs that shape model-visible behavior.
+Computing it starts no process, opens no network connection, and reads no
+credential.
+
+**Governable.** Permission is an allow list. A configuration names the
+directories an episode may read and write, the executables it may run, and the
+child contracts it may spawn. Everything unnamed is unreachable. Where the
+kernel supports it, the same list is enforced by the kernel for every process
+the episode starts.
+
+## Architecture
+
+A running foe is a tree of processes sharing one directory tree of logs.
+
+```
+                         host process
+                (Python package, orchestrator, or CLI shell)
+          holds host tools, and credentials when it calls the model
+                              │
+              READ: answers   │   WRITE: the log, line by line
+                              ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │  foe episode  (root)                      Landlock ruleset A │
+   │                                                              │
+   │   config ──► registry ──► loop ──► log  ──► episode.jsonl    │
+   │                 │           │                                │
+   │           built-in tools    │  spawn                         │
+   │           exec tools ───────┼──────────┐                     │
+   │                             │          │                     │
+   └─────────────────────────────┼──────────┼─────────────────────┘
+                                 │          │
+              ruleset B ⊂ A      │          │   ruleset C ⊂ A
+                  ▼              │          ▼
+        ┌──────────────┐         │   ┌──────────────────────────┐
+        │ /usr/bin/ruff│         │   │ foe episode (child)      │
+        │ argv, stdout │         │   │ children/ep_9c21/        │
+        └──────────────┘         │   │   episode.jsonl          │
+                                 │   └──────────────────────────┘
+                                 ▼
+                        <episode-dir>/
+                          episode.jsonl
+                          spill/
+                          children/ep_9c21/episode.jsonl
+```
+
+Three facts about this picture carry the design.
+
+A host that supplies the model backend holds every model credential. The
+episode process then has no key and no network. A model call is a request the
+episode writes to its log and the host answers. When a `model` block is
+present, the host answers no model request. The episode process holds the
+credential that block names and calls the configured endpoint.
+
+Restrictions only narrow downward. The root episode runs under a ruleset
+compiled from its grants. Every process it starts runs under a subset of
+that ruleset. Nothing a child or a tool does can reach further than its
+parent could.
+
+What narrows is reach: read roots, write roots, and the depth still
+available below. A child's tool list is its own and need not be a subset of
+its parent's, so a child may be offered `edit` where its parent has only
+`spawn`. Every such tool is still bounded by the child's grants, which lie
+inside the parent's, and by the ruleset the child inherits. One document
+declares every level, so the tool list of each level is the author's
+choice rather than something the runtime derives.
+
+The log directory is the whole state. Copying it copies the run. The viewer,
+replay, forking, budget accounting, and team coordination all read it and
+nothing else.
+
+## The episode
+
+An episode is one run of one contract against one task. It has a log, a
+budget, a set of grants, and exactly one outcome.
+
+```
+Outcome =
+  | Completed { value }             the contract's termination condition was met
+  | Blocked   { code, message }     the agent recognized that it cannot proceed
+  | Exhausted { limit }             a budget limit was reached
+  | Failed    { error }             the runtime could not continue
+```
+
+`Blocked` carries a stable lower-kebab-case code chosen from a closed
+vocabulary so that a supervising episode can route on it. The vocabulary is
+listed in [log-format.md](log-format.md#blocked-codes).
+
+A finished episode is never extended. An interrupted episode without a workflow can
+continue under the rules in "The command line" below. A workflow launch
+refuses a log containing recorded workflow execution because scheduler state
+is not restored. A later episode can retain a log prefix through seeding;
+execution of that prefix remains subject to these launch rules.
+
+The model's context is a projection of the log, and the projection is
+bounded. When a configuration enables compaction and the next request is
+projected to outgrow the model's window, the runtime summarizes the oldest
+steps through one recorded model call. From then on the projection opens
+with the task verbatim, the runtime's record of what the model must still
+honor, and the summary, followed by the kept recent steps. The log keeps
+every event the summary replaced. [compaction.md](compaction.md) specifies
+the trigger, the cut, and what travels across it.
+
+### One step
+
+A step is one model request and the tool calls it produces.
+
+```
+  ┌─────────────────────────────────────────────────────────────────┐
+  │ 1. assemble                                                     │
+  │    if one request remains, enqueue the final-request warning    │
+  │    header  = instructions + tool instructions + tool schemas    │
+  │    messages = derived from the log + unconsumed inbox items     │
+  │    write request/header if changed; write model/request         │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ 2. stream                                                       │
+  │    each chunk ──► assistant/chunk                               │
+  │    on done    ──► assistant/message                             │
+  │    on failure ──► request/retry, or interrupted message         │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ 3. execute                                                      │
+  │    stop == length ──► every call fails, none runs               │
+  │    preflight each call in issue order: resolve, validate,       │
+  │      check effect against grants                                │
+  │    run pure/reads calls concurrently; others one at a time      │
+  │    append tool/result in issue order                            │
+  ├─────────────────────────────────────────────────────────────────┤
+  │ 4. settle                                                       │
+  │    block called?  ──► Blocked                                   │
+  │    looping?       ──► Blocked                                   │
+  │    done_when met? ──► Completed                                 │
+  │    budget spent?  ──► Exhausted                                 │
+  │    else           ──► next step                                 │
+  └─────────────────────────────────────────────────────────────────┘
+```
+
+The settle order checks the budget last, so a turn that completes the task
+on the last permitted model call completes the episode. The budget ends the
+episode only when work remains. The last available ordinary request contains
+a recorded system inbox item that directs the model toward the
+highest-priority unfinished work. The item preserves the configured
+completion rule and the finite allowance.
+
+Three rules hold in every step. Each exists because its absence loses data.
+
+- A response that ended because it hit the provider's output length limit has
+  every tool call rejected. Streamed tool-call arguments are recovered by a
+  tolerant parser, so a truncated call can parse and validate while missing
+  its tail. The model receives one error per call and reissues them.
+- Every pairing the log opens is closed before `episode/end`. A tool call
+  owes a result, a reservation owes a release, a spawn owes an end, a
+  compaction owes an end, and a retry owes the attempt it announces.
+  [log-format.md](log-format.md#open-obligations) lists them and states the
+  rule; the episode's teardown writes whatever the episode itself did not,
+  and seeding applies the same repair to a copied prefix.
+- Tool calls are preflighted one at a time in the order the model issued
+  them. Calls whose declared effect is `pure` or `reads` run concurrently.
+  Calls that write, execute, or spawn run one at a time in issue order. Results
+  are appended in issue order regardless of completion order.
+
+### The event model
+
+Everything that happens to an episode from outside its own turns reaches
+the model one way: as an `inbox/item` in the log. The inbox is the single
+event queue and its `source` is the event's type — the task, a parent's
+steer, a child's report or ending, a peer message, verifier findings,
+runtime notices, and session exits. Items are appended the moment they
+arrive and delivered only at request boundaries: the next `model/request`
+names every newly delivered item in `consumed`, so nothing interrupts a
+request in flight, and the `consumed` lists are a reconstructable account
+of the event loop: what the model saw, and when, is derivable from the
+log alone.
+
+The cost model behind the loop is that model turns are the expensive
+resource and wall-clock time the cheap one. `wait` is the sanctioned
+trade between them: it spends wall-clock time so that no model turn is
+spent polling. Bare, it blocks until every added board task has settled and
+no child reservation remains. With `until`, it blocks until an arrival
+matches one of the named conditions, each in
+outcome vocabulary: a child (by id, or `any`) reaching any outcome or a
+named outcome kind, a session (by id, or `any`) exiting, or an inbox
+arrival by source; `timeout_seconds` returns the call after that long
+even if nothing matched. The result names only the condition met, or
+`timeout`. The arrival itself reaches the model through the ordinary
+inbox drain of the next request, so the `consumed` lists remain the
+complete record. Blocking counts against the `seconds` budget like any
+elapsed time, and `wait` is itself a tool call, so all blocking happens
+where blocking already happens.
+
+The same pieces form the verified-future pattern foe implements: `spawn`
+returns the durable task state, `done_when.returns` is the future's type,
+`done_when.verify` is the resolution predicate, and `wait` is the join.
+The predicate self-repairs: findings return to the model for another
+attempt, and retries spent reject the future into a typed `Blocked`. A
+parent that spawns, continues its own work, and then waits is composing
+futures whose resolution the log evidences end to end.
+
+### Termination
+
+An episode ends by writing `episode/end`, and before that it closes every
+obligation its log still holds. A child still running is asked to end, and
+the `spawn/end` and `budget/release` its reservation owes are awaited. A
+tool call left without a result receives a synthetic error result. The
+record of a completed run is therefore never mistakable for the record of
+one killed mid-flight.
+
+A process session normally ends at episode settlement. A contract with the
+`task_session` grant may request task lifetime when it starts a session.
+Settlement then records the process and process-group identifiers and
+transfers cleanup responsibility to the environment that owns the foe
+invocation. Every remaining group member retains its sandbox restrictions
+after foe exits.
+
+Ending a child that a model meant to keep is a poor answer, so a parent
+that means to wait says so: the `wait` tool returns once every child it
+started has ended, bounded by the episode's `seconds` budget. When it
+returns because that budget ran out, it returns an error naming how many
+children are still running, and the episode ends as exhausted at its next
+step. A contract that declares no `seconds` gives `wait` no bound of its
+own; the wait then lasts as long as the children do. A model that means to
+abandon its children ends its turn as usual, and the teardown settles them.
+With `until` conditions or `timeout_seconds`, `wait` returns as "The
+event model" above specifies.
+
+`seconds` is the one bound that every episode in the tree shares as a
+single deadline rather than dividing between children. A child's
+reservation caps its `seconds` at what the parent has left, so one deadline
+ends every episode below it.
+
+A contract need not declare `seconds`. An episode that declares none still
+reaches an outcome, and two rules stand in place of the deadline.
+
+The first is that every wait the runtime performs is cancellable. The stop
+signal, which a host raises by sending `cancel` and a terminal raises by
+interrupting, ends the wait and the episode holding it, at whatever depth
+of the tree that episode sits.
+
+The second is that a wait for an answer no process can give is never
+entered. A host tool call that reaches a process with no host is answered
+there with an error naming the tool, which
+[protocol.md](protocol.md#children) states, so no episode waits on a line
+that nothing above it would read.
+
+What an episode without `seconds` gives up is the bound on an answer that
+could still arrive: one owed by a live host, or one owed by a child that is
+still working. An operator who wants that bound declares `seconds`. A
+contract whose work legitimately outlasts any deadline its author could name
+declares none, and ends when its host cancels it.
+
+A contract's `done_when` field chooses how an episode completes.
+
+| `done_when` | the episode completes when |
+|---|---|
+| absent | the model produces a turn containing no tool calls; the value is that turn's text |
+| `{ "verify": TOOL, "retries": N }` | the model produces a turn with no tool calls or a non-error call to TOOL, then TOOL returns no findings as a verifier |
+| `{ "returns": SCHEMA }` | the model calls a synthesized tool named `return` with a value conforming to SCHEMA |
+
+The `verify` and `returns` forms combine: a returned value may be verified.
+A contract author declares a schema only when the output has a known shape.
+A verifier is a tool, so an author who can check a result without being able
+to describe its shape declares the verifier alone.
+
+In an agent-loop episode, a return schema that requires an array of objects
+carrying `seq` also requires evidence citations. Each item cites the sequence
+of a successful tool result in the same episode. The rule is the shape rather
+than the member's name, so the coding documents' `learned` and the team
+document's `units` are checked alike. The runtime checks that the result
+exists and that its canonical value remains reconstructable. A citation naming
+a child requires a recorded spawn by this episode and a structurally valid
+child log whose start names that child and this parent. A copied unrelated
+log, a directory alias, or a spawn copied through seeding supplies no such
+provenance. A configured verifier
+then judges semantic correctness. Without a verifier, semantic judgment
+remains with the contract's model or a successor such as an independent
+audit.
+
+For a verifier without a return schema, a non-error ordinary call to the
+declared verifier also signals completion. The runtime invokes the verifier
+again after every tool effect in the turn has settled. Acceptance completes
+the episode without a separate model request. Findings enter the inbox under
+the same retry limit as findings after a turn with no tool calls.
+
+### Failure of a model request
+
+A request that fails before any byte arrives is retried with bounded backoff.
+A request that fails after text arrived and before any tool call started is
+discarded and retried. A request that fails after a tool call started is
+recorded as an interrupted assistant message; its tool calls receive synthetic
+error results, and the next step continues from there. Retries consume the
+episode's request budget. There is no unbounded retry.
+
+The bound depends on the cause. A provider-reported outage — a retryable
+provider error or rate limit — is waited out with backoff rising to a
+minute per delay, for as long as the seconds budget funds the next delay
+and the model-call budget funds the next attempt; when the remaining
+budget cannot fund another attempt, the step ends blocked with a message
+naming the budget. Waiting costs only what the budget already meters, so
+the budget, not an attempt count, is its bound. Every other cause —
+transport loss, an interrupted stream — has a fixed attempt ceiling,
+because repeating does not fix what it names.
+
+The attempt ceiling is tested before the delay is computed, and the
+`request/retry` event is written immediately before the attempt it
+announces. A step whose last permitted attempt fails therefore ends at
+once, with no delay waited and no retry recorded for a request that is
+never made.
+
+### Blocking conditions the runtime detects
+
+The runtime recognizes two forms of lack of progress without model judgment.
+
+- The same tool call, with identical arguments and an identical result,
+  issued in three consecutive steps ends the episode with `looping-tool-call`.
+- Three consecutive assistant turns with identical text end the episode with
+  `looping-reasoning`.
+
+Both thresholds are configurable in `budget`. The model reports the
+conditions it can recognize and the runtime cannot, such as an ambiguous task
+or a missing capability, by calling the built-in `block` tool with a code
+from the closed vocabulary. A contract that lists `spawn` and has a non-empty
+`grants.spawn` may also report `child-blocked` when its children prevent
+further progress. The tool schema omits that code from other contracts.
+
+## Execution contracts and fingerprints
+
+An execution contract is the validated configuration Foe runs for one
+episode: instructions, tools, permissions, budgets, completion rules, model
+selection, child contracts, and workflow. Rust names the resolved object
+`ResolvedContract`, and schemas use `contract_*` fields. The task is a
+separate invocation input.
+
+The `grants` object declares configured permissions. Contract construction
+resolves those declarations with the exact tools, captured executables,
+interpreters, loaders, credentials, and runtime paths needed for execution.
+`foe plan` opens with a readiness summary — one line each for the model,
+the granted read, write, and execute roots, the completion mechanism, the
+limits, the sandbox mode, the workflow size when one is declared, and the
+static warnings — then reports the resulting reachable tools and resolved
+permissions. Each summary line projects the same resolved objects the
+detailed report prints, so the two cannot disagree.
+The episode log records the resolved permissions with the sandbox mode,
+Landlock ABI, and process boundary that state what the host enforced.
+
+Construction resolves the root contract, every `child_contracts` entry, and
+every workflow model node into one immutable contract tree. It canonicalizes
+paths, inherits model and sandbox settings, and validates descendant ceilings.
+Planning, fingerprinting, budget reservation, sandbox construction, and
+spawning all read this tree.
+
+During execution-contract construction, Foe captures each configured
+executable's bytes, digest, source path, and invocation name. Every later
+invocation uses the captured executable. Replacing, modifying, or deleting the
+source cannot change the run.
+
+`fingerprint(contract)` is a SHA-256 over a canonical serialization of:
+
+- the instruction sections, by key and text;
+- each tool's name, description, instruction, and parameter schema, in the
+  order listed; a configured tool also contributes its executable digest and
+  invocation name;
+- the permission shape, meaning the kinds and counts of grants;
+- the budget and termination condition;
+- every child contract's fingerprint;
+- every model-visible string the runtime itself contributes, such as the
+  description of the synthesized `return` tool and the text that frames
+  verification findings;
+- the runtime's version and build hash.
+
+The runtime reads and hashes its executable once per process. Contract
+fingerprinting and child launch checks reuse that immutable identity.
+
+The task, model route, sandbox mode, and paths in the resolved permission set
+are excluded.
+Two executions may use different values for those fields while retaining one
+contract fingerprint. Runtime-contributed strings are included, so an upgrade
+changes the fingerprint when it changes model-visible text.
+
+Construction stores captured executables outside every declared write root.
+References with the same digest and invocation name share one held inode. A
+child checks each inherited descriptor against its sealed manifest. The digest
+in the fingerprint and the bytes that run therefore come from one construction
+observation.
+
+`episode/start` records the composite contract fingerprint rather than every
+executable digest. `foe plan --json` exposes the fingerprint document that
+contains the individual digests and invocation names.
+
+## Tools
+
+A tool has a specification and an implementation. The specification is what
+fingerprint hashes and what the model sees.
+
+```
+ToolSpec {
+  name            unique within the contract
+  description     shown to the model in the tool schema
+  instruction     optional; appended to the system prompt after the instructions
+  params          JSON Schema for the arguments, in the subset config.md lists
+  effect          pure | reads | writes | execs | spawns
+}
+```
+
+The effect is the tool's declared interaction with the world. The registry
+refuses a tool whose effect the grants do not cover, at contract construction.
+Dispatch checks a call's arguments against the tool's parameter schema before
+the tool receives any handle, so a tool implementation never sees arguments
+its own schema rejects. [config.md](config.md#json-schema-subset) lists the
+assertions the runtime implements; a schema asking for more is a construction
+error rather than a constraint the runtime silently drops.
+At dispatch, the runtime passes the tool only the capability handles its
+effect entitles it to. The handles are a filesystem reader holding the read
+roots open, a writer holding the write roots open, an executor bounded to the
+configured executable and explicit execute grants, and a spawner bounded to
+the declared child contracts.
+A tool that declares `reads` receives no writer. The reader and the writer
+hold their roots open for the episode's lifetime, so containment holds when
+an operation runs rather than when a pathname was last checked.
+
+```
+   grants                    registry (construction)          dispatch (per call)
+   ──────                    ───────────────────────          ───────────────────
+   read:  [/src]     ──►     read   effect=reads   ok    ──►  Reader(/src)
+   write: [/scratch] ──►     edit   effect=writes  ok    ──►  Reader(/src) + Writer(/scratch)
+   execute: [/tools] ──►     bash   effect=execs   ok    ──►  Executor(bash, env, cwd, /tools)
+   spawn: []         ──►     spawn  effect=spawns  REFUSED
+```
+
+A `bind` grant appears in neither column: it names TCP ports rather than a
+tool's effect, no tool requires it, and it reaches every process of the
+episode through the compiled sandbox alone ([sandbox.md](sandbox.md)).
+The `task_session` grant also appears in neither column. The session
+capability checks it only when a `start` call requests task lifetime.
+
+Tools come from three sources, resolved in this order at construction.
+A name that resolves in two sources is an error.
+
+1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
+   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
+2. Configured executables, declared in `tool_defs` with a path and a
+   description. The runtime passes the model's `args` array as argv, captures
+   stdout and stderr, and reports the exit code as data. A non-zero exit is a
+   result rather than an error. Any executable that accepts arguments is a tool
+   without modification.
+3. Host tools, implemented by the process that launched foe and called over
+   the [protocol](protocol.md).
+
+Every tool returns a canonical value, which is JSON. A tool may also return a
+rendered string. The log stores the canonical value. The model receives the
+rendered string when present and a compact rendering of the value otherwise.
+The separation is the runtime's main token lever: a search over a large tree
+can record every match and show the model a count and the first twenty.
+
+The runtime applies that lever to every tool through one budget. A tool
+result is re-sent in every request after the step that produced it, so the
+cost of a rendering is its size multiplied by the number of later requests.
+The renderings of one model turn therefore share one character budget, which
+the calls of that turn divide between them. A rendering over its part ends
+with a notice stating what was removed. The runtime archives the complete
+rendering as immutable episode evidence before it appends the shortened
+result. A contract that declares `retrieve` receives an opaque cursor in the
+notice and can read the archive in bounded segments. Its schema enters the
+request header after the first archive is recorded. An episode that never
+shortens a result does not carry that schema. Other execution contracts receive the
+existing instruction to narrow and repeat the original call. The canonical
+value is untouched. The cut is applied before the result is appended, so no
+earlier turn is rewritten and a provider can reuse its key-value cache of the
+prefix.
+[tools.md](tools.md#the-turn-budget) specifies the division and the
+notice.
+
+## Agent teams
+
+Every episode leads a team. The team initially contains the lead episode and
+the invocation task assigned to it. The lifecycle events already identify
+that member, task, inbox, and outcome. The runtime writes no team event and
+starts no child for this one-agent case.
+
+The `spawn` capability expands the team. One call adds a durable task to the
+lead's board. The runtime starts a child episode for that task when its
+dependencies have completed and the episode has capacity. The child receives
+the task as its first inbox item. Each child is a member of its parent's team
+and the lead of its own team, which permits the same mechanism at every depth.
+
+A child is a separate process with its own log, grants, and reserved budget.
+The child's log header names its parent and team lead. The child may select a
+model or inherit the nearest ancestor's selection.
+
+The parent writes the declared child contract unchanged. It writes the
+effective runtime allowance and the expected declared-contract fingerprint in
+the child's launch metadata. The child resolves that document and compares
+its fingerprint before writing `episode/start` or executing a tool. A mismatch
+fails the launch. The successful `episode/start` records the expected fingerprint
+and the effective allowance. Different reservations for one declared child
+therefore change its runtime allowance while preserving its contract fingerprint.
+For forked context, the launch metadata also names the source log and boundary.
+The child validates its fingerprint before it seeds that prefix under its own
+contract evidence.
+
+Before launch, the parent passes the captured executables from the selected
+child's full declared contract tree. A sealed manifest maps every configuration
+key to a deduplicated descriptor, digest, and invocation name. The child
+constructs its contract from those retained bytes and checks the expected
+fingerprint before writing an event. Sandbox permissions include only
+executables reachable through the child's spawn grants and workflow nodes.
+Source-path replacement, in-place modification, and deletion therefore cannot
+change child fingerprint or execution.
+
+Child creation separates identifier allocation from launch. Allocating an
+identifier reserves no budget and starts no process. A workflow records
+`workflow/node-start` before its spawner records `budget/reserve` and
+`spawn/start`.
+
+```
+   root   budget: 40 calls, 320k input, 80k output
+    │
+    ├── reserve 10 calls ──► child A   (spent 7, returned 3)
+    │
+    └── reserve 10 calls ──► child B
+                              │
+                              └── reserve 4 calls ──► grandchild B.1
+```
+
+Budget is a pool held by the root. Every spawn reserves from the parent's
+remainder, and unspent reservation returns when the child settles. Model
+calls, input tokens, and output tokens are separate dimensions. Structural
+caps on depth, lifetime episode count, and concurrency sit beside them.
+
+After each completed response, the runtime charges the provider-reported
+input to the tree. It starts another request only while some input allowance
+remains. Foe does not send a per-request input cap, so one response can cross
+its remaining input allowance. Concurrent descendants can each cross their
+reserved allowances. The runtime clamps a supported provider's output cap to
+the remaining output allowance.
+
+A lead stops one running member with `cancel`, addressed by roster name. The
+runtime sends the same `cancel` line the teardown sends to every child when an
+episode settles, so the child ends its own episode, writes its own
+`episode/end`, and settles its board task and returns its reservation through
+the path every settlement takes. The outcome is `blocked` with `cancelled`
+rather than `failed`, because a lead that course-corrects has not found a
+child that broke. What the child wrote before it stopped stands. A member that
+has already settled is not an error: the lead asked for a state that holds.
+
+A task remains queued while `max_concurrent` prevents a launch. The scheduler
+starts it after a running child returns capacity. Another exhausted limit
+settles the task as exhausted with the limit recorded in its outcome.
+A clean resume also schedules tasks whose queued revision was durable before
+the prior process stopped.
+The child outcome writes the terminal task revision before its reservation
+returns. A parent observes a completed wait only after `spawn/end` and
+`budget/release` have closed the child account.
+
+The board contains the root task followed by added tasks in creation order.
+An added task records its identifier, revision, child contract, description,
+status, owner, dependencies, and granted write roots. Each revision is a
+complete snapshot. Only the lead process appends revisions. This single
+writer assigns each ready task to one new child, which removes agent-side
+claim races and makes assignment deterministic.
+
+The log writer maintains task revisions, child outcomes, and inbox consumption
+as events are appended. Completion accounting and both forms of `wait` read
+that projection. Waiting therefore does not rescan the event history on each
+poll. Reopening the log reconstructs the projection from the same events.
+The coordinator updates its roster and message queue from the appended event
+suffix and uses the writer's task revisions. Both projections are read under
+the append lock, so one board response describes one committed log prefix.
+
+A dependency names an earlier task on the same board. This ordering makes a
+cycle unrepresentable. A dependent task starts after every dependency
+completes. A dependency with another terminal status settles the dependent
+task as blocked.
+
+A spawn may grant the child narrower write roots than its contract declares,
+which is how a lead partitions a tree between workers. The grant travels in
+the child's launch metadata beside its effective budget, and the child applies
+it before it confines itself, so the kernel holds the partition rather than a
+convention. A granted root must lie within what the child contract declares,
+which `resolve` has already held within what the granting episode holds, so
+the rule is the one rule: nothing exceeds what started it. Paths are excluded
+from a contract fingerprint, so two children of one contract writing in
+different places are still that contract, exactly as two children with
+different reservations are.
+
+Before board admission, requested write directories are canonicalized against
+the selected child contract. Relative paths use its first declared write root.
+Directory aliases and `..` are resolved before containment and overlap checks.
+The board stores the resolved directories and refuses a root that overlaps
+one held by a task that has not settled, except for tasks it awaits.
+The parent repeats grant validation at launch, and the child validates the
+effective grant against its declared contract before applying it.
+
+Communication is an inbox append with a typed source. A parent steers a
+running child by appending to the child's inbox. A child notifies its parent
+the same way. A steer arrives in the child's next request. A request in
+flight continues uninterrupted. A parent calls `wait` after delegation. The
+call consumes no model request while tasks are queued or running, and returns
+after every task has settled.
+
+A member addresses another member by roster name and its own lead by the
+fixed name `lead`. A member that may ask a question holds `ask` without
+necessarily holding `team`, and nothing it reads states the lead's roster
+name, which is its contract's `name`, so a lead it had to look up would be a
+lead it could not address. The board never gives a member the fixed name, so
+it names one episode. It names the lead of whichever team the call's `scope`
+selects, which is what lets an episode in the middle of a tree reach its own
+lead and answer to the same name from its own children.
+
+A message between members carries an identity, and an answer carries the
+identity of the question it answers. `ask` sends a question and returns that
+identity; `send` with `reply_to` answers the question that identity names.
+The question reaches the other member as a `request` item and the answer as a
+`response` item, so `wait` on `{reply: the identity}` returns for that answer
+and not for any other arrival. A model receives the rendered result of its own
+call and the content of an item that reaches it, and no other field of either,
+so the result of `ask` names the identity in its text and the question carries
+that identity in its own content. A member that must have one decision from one
+teammate therefore blocks on that decision without spending a request on each
+unrelated message. Without correlation the asker would wake on every arrival
+and would have to decide, at model cost, whether the arrival was the answer.
+
+Waiting on another episode is what makes deadlock possible, and two rules
+rule it out. The first is that every question carries a deadline and a default
+answer. `ask` requires both and refuses a call that omits either. The asking
+process keeps the deadline, and when it passes with no answer that process
+delivers the default to its own inbox as a `response` item under the
+question's identity, marked `synthetic`. The wait on that answer then returns
+and the asker takes its next step. Because the deadline stays in the asking
+process, the rule applies whatever answers the question, including a host
+application that runs no episode.
+The question deadline starts when `ask` is admitted and covers forwarding as
+well as waiting for an answer. A parent that does not acknowledge delivery
+before that deadline produces a `timed-out` tool failure carrying the default
+in its message. Without an acknowledged message identifier, the runtime records
+no synthetic reply. Acknowledgement uses the remaining question time for the
+default answer.
+
+The second rule is that an `until` wait states how long it will block, because
+it returns for an arrival that only another episode produces. Such a call is
+refused unless `timeout_seconds` or the episode's `seconds` budget bounds it.
+The deadline and `timeout_seconds` answer separate questions: the deadline
+says how long the question stays open, and `timeout_seconds` says how long
+this call blocks. The bare `wait` needs no bound of its own, because it waits
+on tasks this episode created, and each of those is bounded by its own budget
+and by these two rules in its turn.
+
+The lead's log also holds the roster and the queue of messages between
+members.
+
+```
+   lead log                                   member log
+   ────────                                   ──────────
+   team/task      {task, revision, status, owner}
+   team/roster    {member, name, phase}
+   team/message   {id, from, to, content}  ──►  inbox/item {source, message_id}
+   team/delivered {id, to}                 ◄──  (after the member's append, or at once
+                                               when the lead is the target)
+```
+
+Eight built-in tools serve teams. `spawn`, `wait`, `steer`, and `cancel` act
+on the team an episode leads. `notify` acts on the episode that started this
+one. `send`, `ask`, and `team` take a `scope`: `member`, the default, is the
+team the episode belongs to, and `led` is the team it leads. An episode in
+the middle of a tree is a member of one team and the lead of another, so it
+asks its own lead a question at member scope and answers its own child's
+question at led scope. A root's parent-led and led
+team are the same team. The [protocol](protocol.md#children) carries member
+calls to the lead process.
+
+A message is durable in the lead's log before delivery is attempted. The
+member's receipt is recorded after the member has written the message to its
+own log. Messages queued and never delivered are redelivered when a member
+restarts, and the member drops duplicates by `message_id`. The roster, the
+queue, and the delivery records are folded from the lead's log; no other team
+state exists. A newly assigned member learns about its board task through the
+task inbox item that starts its episode. Other coordination uses the board
+projection and durable peer messages, so no idle worker or broadcast poll is
+required.
+
+An episode that leads a team completes only once what it returns accounts
+for every task on the board it leads that did not complete. The account is
+the complete task identifier in a string value of the returned value.
+An identifier consists of letters, digits, and underscores: `task_10` in
+`task_100` does not account for `task_10`. This check establishes that the
+report mentions the task; it does not validate the explanation of its outcome.
+A lead may
+complete after a unit it delegated failed, provided it says so, and naming
+the task is the part of saying so that the runtime can check without judging
+the work; a report that names nothing is indistinguishable from a report of
+a team that never ran. The identifier rather than the member's name is what
+counts, because a member's name is an ordinary word that a report can use by
+accident: a member named `unit` would be named by any sentence about units.
+
+A completion the account does not satisfy is withheld exactly as a verifier
+finding is. The runtime appends a `verify` inbox item naming each unnamed
+task, its member, and the status it reached, and the episode takes another
+turn. `done_when.retries` bounds those turns, and an episode that spends
+them ends blocked with `verification-unsatisfiable`. The check runs where
+every episode settles, so it covers a lead that is itself a member of
+another team; that lead's own log carries its own withheld completion.
+
+## Workspace notes
+
+A workspace's durable notes live at `.foe/notes.md` under the first read
+root. This is a convention over an ordinary file rather than a mechanism:
+no runtime behavior attaches to the path. An entry carries one claim and
+one citation, the episode id and the log sequence number of the event that
+evidences the claim, so a later reader can weigh the note against the
+record that produced it.
+
+A contract whose instructions direct it reads the file when the file is
+present. Whether the notes enter an episode's context is the launching
+parent's judgment or the contract's declared instructions; the runtime never
+injects them.
+
+## Isolation
+
+An episode runs as its own process. Children and configured executables run
+as further processes. Restrictions only narrow at each spawn.
+
+```
+   host            no restriction applied by foe, ever
+     │
+     └─ episode    Landlock: read roots, write roots, execute roots, own log dir
+          │        network: open for a configured model endpoint; closed when the host supplies the model backend
+          │
+          ├─ tool  Landlock: subset of the episode's; network closed
+          │
+          └─ child Landlock: compiled from the child's own grants, which the
+                   parent's registry already verified are a subset of its own
+```
+
+On Linux with Landlock available, the runtime compiles the grants into a
+ruleset. Read roots become read rules, write roots become write rules, and
+execute roots become read-and-execute rules. Each configured executable
+becomes an execute rule on that exact file. The episode's log directory
+becomes a write rule. When the kernel supports it, TCP access is removed from
+executables. Denied accesses are captured from the audit log and written to
+the episode log as `sandbox/denied` events. A blocked attempt therefore
+becomes evidence in the record.
+
+`sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
+the default, applies what the kernel supports and records which version it
+got. `required` refuses to start. `off` applies nothing.
+
+The process that launched foe is never restricted. Host tools and a host
+model backend run in that process.
+
+## The host protocol
+
+foe writes its log to a file and echoes every event to a descriptor the
+host named as it is written. A host process that launched foe reads that
+channel and answers two kinds of request on a second descriptor: model
+requests and host tool calls.
+
+```
+   host                                          foe
+   ────                                          ───
+                                      ◄──  episode/start
+                                      ◄──  inbox/item (task)
+                                      ◄──  request/header
+                                      ◄──  model/request {messages}
+   model/chunk {text "I will"}        ──►
+   model/chunk {tool_call_start}      ──►
+   model/chunk {done}                 ──►
+                                      ◄──  assistant/chunk ×n
+                                      ◄──  assistant/message
+                                      ◄──  host/tool-call {mutation_usage}
+   tool/result {value, rendered, failure?} ──►
+                                      ◄──  tool/result
+                                      ◄──  model/request …
+                                      ◄──  episode/end {outcome}
+```
+
+The answers are recorded as log events when foe receives them. The log is
+therefore complete by construction, because every exchange with the host
+passed through it. A host that supplies the model backend keeps model
+credentials in its own process. The episode process then has no network
+access of its own.
+
+## The command line
+
+The binary has one running form and five forms that run nothing.
+
+```
+foe "task" [--config FILE] [--log-dir DIR]               run; serve the viewer; print the outcome; --log-dir holds the created episode directory
+foe "task" [--model PROVIDER/MODEL] [--service-tier TIER] [--verify PATH] [--sandbox MODE]   run the built-in coding workflow
+foe "task" --viewer open|serve|off                       run; open a browser on the viewer, serve it alone, or serve none
+foe "task" --conversation                                run; serve the viewer; show conversation and execution tree on standard output
+foe [TASK] --from DIR[@SEQ]                              continue the episode logged in DIR, or fork it at SEQ into a new episode
+foe --config FILE --protocol-fds READ,WRITE [--log-dir DIR]   run with a host answering on those two descriptors (protocol.md)
+foe login [PROVIDER [--model MODEL] [--key-file PATH]] [--status]   configure a provider's credential and the default model
+foe init --repository PATH                               write a starting execution contract and a placeholder verifier into PATH/.foe
+foe view DIR [--serve [--port N]]                        write a self-contained HTML file, or serve it
+foe plan [--config FILE] [--json]                        print a readiness summary, then the resolved contract, its fingerprint, model endpoint, reachable tools, resolved permissions, and static warnings; --config takes a file or a built-in name; without --config, list the built-in tools
+foe plan --schema                                        print the JSON Schema for the configuration
+foe telemetry LOG... [--json]                            print what telemetry emission writes for finished logs
+```
+
+One declarative table in `crates/cli/src/main.rs` names every form, its
+positional shape, and each option it accepts with that option's value
+placeholder, its default, its meaning, and the heading its help lists it
+under. The parser and both help screens read that table and nothing else, so
+an option the parser accepts is documented and an option the table omits is
+refused. The running form's help lists its options under four headings, each
+saying what the options beneath it decide: what runs, holding `--config`,
+`--log-dir`, and `--from`; built-in documents only, holding `--verify`,
+`--sandbox`, and `--dangerously-permit-everything-no-sandbox`; the model when the document names none, holding `--model` and
+`--service-tier`; and how you watch it, holding `--viewer` and
+`--conversation`. `--protocol-fds` is listed above all four, because it
+names the channel to a host process rather than adjusting a run. Every other
+form names no heading on any row, so its help prints one list. `foe --help`,
+which `foe help` repeats, prints the running form's options and every other
+command word; `foe <command> --help`, which `foe help <command>` repeats,
+prints one command's options; both exit 0. An unrecognised option names
+itself and the help that lists what its command takes, rather than
+reprinting every form.
+
+By default, a run writes one JSON outcome line to standard output when the
+episode ends. This also applies to interactive terminals. A shell reads it
+with one `read`; another process parses it with one `json.loads`.
+`--conversation` selects a readable conversation and execution tree on
+standard output, including returned branch results and the final outcome.
+The browser viewer serves as usual.
+[viewer.md](viewer.md#terminal-conversation) specifies the terminal display.
+`--protocol-fds READ,WRITE` runs the log protocol of
+[protocol.md](protocol.md) on those two descriptors, which leaves standard
+output to the person whether or not a host answers the model requests.
+The exit code is 0 for `completed`, 2 for `blocked`, 3 for `exhausted`, and 1
+for `failed`. Diagnostics go to standard error. The log goes to the file.
+
+Every run creates a directory of its own for the log, named by the episode
+id, under `--log-dir` when the command line gives one and under `.foe` in
+the current directory otherwise. Two runs given the same directory therefore
+keep separate logs. The run prints the directory it created on standard
+error as `foe: log PATH`, and a caller reads the directory from that line
+rather than assembling it. A spawned child prints no such line: it writes
+into the directory its parent created and gave it, and its standard error is
+relayed a line at a time, prefixed with the child's id. On a terminal each
+relayed line first returns to column one and clears the row, so it starts a
+row of its own rather than landing on the unterminated progress line a
+conversation display holds there. A run that prints its outcome as JSON ends with
+`foe: view the episode with foe view PATH` on standard error, because the
+live viewer leaves with the process and the command outlives it. `foe view DIR` renders a directory of episodes
+side by side, so the directory a series of runs shares is also what the
+viewer takes. A directory holding `child-launch.json`, which a parent
+process writes for a child, is the child's own directory rather than a
+parent of one, because the parent chose the directory and the episode id
+together. A workflow launch over a directory with
+recorded `workflow/*` events is refused before queued tasks or nodes start.
+The restriction also applies to forks containing those events. Execution without a workflow
+can continue under the log's episode id. A log ending at `seed/end`
+— a prepared fork — or at an event boundary with every binding obligation
+closed continues in place. A log containing a successful `ask` without a
+recorded response is refused because its process-owned deadline cannot be
+restored. An explicit `--from DIR@SEQ` starts a separate episode from the
+selected conversation prefix; questions in that prefix are historical.
+An interrupted log, cut short mid-line or with
+an obligation open, is repaired by seeding a copy at its last clean
+boundary into a fresh directory beside it, which the run then continues and
+names on standard error. Resuming requires the execution contract that ran.
+A configuration whose fingerprint differs from the log's
+`episode/start.contract_fingerprint` is refused with both fingerprints
+named. A log ending at `seed/end` is
+exempt from the resume comparison. An ordinary seeded `episode/start`
+records its source's contract. A spawned child instead checks the expected
+fingerprint in its launch metadata before reaching resume. A `child-launch.json`
+beside the log, which a parent writes for a child, supplies the child's
+id, its parent, its team lead, its expected contract fingerprint, and its
+effective runtime allowance.
+
+On resume, the `episode/start.contract_fingerprint` value and effective allowance take
+precedence over launch metadata. A prepared spawned fork records its child
+contract in that event, so resume compares the recorded child fingerprint before
+continuing it. An ordinary command-line fork preserves its source contract in
+the start event and remains exempt from that comparison at `seed/end`.
+
+`--from DIR[@SEQ]` continues or forks the episode whose log is in DIR. DIR
+is one episode's own directory, the one a run names as `foe: log PATH`; a
+directory holding no `episode.jsonl`, such as the one `--log-dir` names, is
+refused with the missing file named. What the run does is a function of the
+source log's state and of whether the command line gives a task of its own.
+
+| command | source log | result |
+|---|---|---|
+| `foe --from DIR` | has not ended | continues that episode: same id, same task, same contract required, recorded allowance restored |
+| `foe --from DIR` | ended | refused: the episode ended, so a task to continue from its whole conversation or `@SEQ` to fork earlier |
+| `foe "task" --from DIR` | has not ended | refused: a continued episode keeps its task, so `@SEQ` to fork with a new one |
+| `foe "task" --from DIR` | ended | forks at the end of the conversation: the whole conversation as context, the new task as the directive |
+| `foe "task" --from DIR@SEQ` | either | forks at SEQ: the events below SEQ as context, the new task as the directive |
+| `foe --from DIR@SEQ` | either | forks at SEQ under the task the source recorded, a rerun from that point |
+
+Without `@SEQ` the run continues one episode and refuses anything that would
+change it. With `@SEQ` the run always makes a new episode. Which of the
+three the run chose is printed on standard error under the log directory.
+
+A fork is seeded from the source log's events below SEQ under the seeding
+rules of [log-format.md](log-format.md): the new episode draws a fresh id,
+its `episode/start.fork_origin` names the source episode and the boundary,
+and the task the launch carries is appended as a `system` inbox item after
+`seed/end`, since the one `task` item per log is the copied one. The task
+the source recorded is the exception, because the copied prefix already
+carries it; such a run reruns the conversation from the boundary and appends
+nothing. The boundary's validity is the seeding API's rule, surfaced as the
+seeding error states it. A fork restores the conversation up to the boundary
+and nothing else: the filesystem is whatever it is when the fork runs, so a
+fork over changed files sees the changed files. The fork's directory is a
+fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
+several forks from one prefix — is a caller-side loop over this form;
+[deferred.md](deferred.md) states what first-class support would add and
+the evidence that would justify it.
+
+A built-in document carries no task of its own, so `foe --from DIR` and
+`foe --from DIR@SEQ` without one take the task the source log recorded.
+A document in a file carries its own task, which directs the fork.
+
+What runs is the document `--config` names, else `.foe/contract.json` in the
+working directory, else the built-in coding workflow. `--config` takes a
+file path or the name of a document the binary carries, written
+`builtin:NAME`. The binary carries three documents. `builtin:coding` is the
+coding workflow this section describes, and it is the default because the
+failure it prevents is a task reported complete on a wrong result.
+`builtin:oneshot` is the plain form: that workflow's implementation episode
+alone, under the same instructions, tools, return schema, grants, and
+sandbox mode, with no assessment episode and no repair episode. It suits a
+task whose result a person reads directly.
+
+`builtin:team` answers a task that divides rather than one that deepens. The
+lead surveys with its own tools, writes the shared surfaces itself, adds one
+board task per unit with the paths that unit writes, waits, and integrates
+what the workers return. A worker does its one unit inside the paths it was
+granted, reports a change it needs outside them rather than making it, and
+returns its findings with the log sequences that carry them. The worker
+contract's declared write grant is the ceiling a spawn narrows and never
+what one worker gets: the tool states the roots on every call, so two
+workers of that contract take disjoint parts of the tree. They therefore
+cannot touch one file, and there is no merge and no lock.
+
+A unit that answers rather than changes goes to a surveyor, the second
+delegate kind. A surveyor reads, searches, and runs commands, declares no
+tool that could change a file, and is granted no write root. The two kinds
+exist because a grant is a narrowing and not a subtraction of tools: a write
+grant of no roots would leave a worker's `edit` with nothing it may write,
+and the spawn is refused rather than the child left to die at construction.
+A worker holds the same two kinds the lead holds, so a unit that turns out
+to divide again is divided by the worker that owns it rather than handed
+back. The document cannot say this by naming itself, because
+`child_contracts` is a tree, so the level that divides is built from the
+level that does not: the same contract with the delegating tools, the spawn
+grant, and those two kinds under it. The kinds under it hold neither, which
+is what ends the tree at a depth of two. A surveyor delegates nothing at any
+level: it answers one question, and a question that divides is a unit for a
+worker.
+
+Six workers run under the lead at once and three under each of those, so
+twelve workers and their sub-workers may open over the run, which is a
+second round at each level after the first. The lead's ceiling is 3,420
+model calls: sixty for its own survey and integration, and the subtree
+allowance of every worker it may open. A worker's is 280, its own forty and
+its sub-workers' over two rounds. A ceiling is what a run may not exceed and
+not what it spends. `--verify` gates the lead and every worker, so a unit that broke its
+own ground does not reach the integration. A worker is not a coding workflow:
+breadth and verification are separate questions, and a document that answered
+both would multiply the episode count of the one it is the default instead
+of. Every other name is refused with
+the names the binary carries. A command line naming no document examines the
+working directory alone and searches no ancestor directory. A run that reads
+`.foe/contract.json` prints `foe: using .foe/contract.json, workflow NAME` on
+standard error, where NAME is the document's `name`. A task given on the
+command line replaces the document's own `task`. An episode whose parent
+process wrote its launch metadata takes the task of its run from the
+document that parent wrote, so a task on the command line, and a built-in
+document name, which carries no task of its own, are both refused there.
+
+`--verify`, `--sandbox` and `--dangerously-permit-everything-no-sandbox`
+configure either built-in document. A document in a file states that behavior
+in its own keys, so pairing any of the three with a file document, the
+discovered one included, is refused. The log records the
+full contract and its fingerprint, so a run is reproducible from its log
+whether or not the command line named the document.
+
+An implementation episode changes the current directory. A fresh assessment
+episode independently checks the task and implementation claim. It either
+accepts the artifacts or activates a fresh repair episode with its typed
+findings.
+
+The static workflow document is `crates/cli/src/builtin-coding.json`. The CLI
+fills its task, model, current-directory grants, executable inventory, sandbox
+mode, credential path, and optional verifier before resolving it as an ordinary
+contract document.
+
+The one-shot document is built from that same file. The implementation node's
+contract becomes the whole document, under the name `oneshot`, and the CLI
+fills the same values around it. The document declares no workflow, so the
+run is one episode of the direct loop, its lifetime episode count is one, and
+its allowance is that episode's 60-call backstop. With `--verify` the episode
+completes on the verifier's acceptance under the same twelve retries the
+coding workflow receives; a finding re-fires inside the episode, so the
+episode count stays at one. The two documents state the implementation once
+between them and fingerprint apart, so a log names which of them ran.
+
+The implementation and repair episodes have `read`, `grep`, `edit`, and
+`bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
+tool. All three episodes may read and write the current directory because
+builds and checks can create outputs. Each episode has a 60-call backstop. The
+root holds their additive 180-call allowance. A run without a verifier has a
+four-episode lifetime cap, including the root.
+
+`--verify PATH` names an executable verifier for the built-in workflow.
+The path is canonicalized and becomes a `tool_defs` entry named `check`
+with execute permission on that file. All three episodes may call `check`
+while working. The root declares
+`done_when: {"verify": "check", "retries": 12}`.
+The verifier therefore governs both an accepted assessment and a completed
+repair. It runs in the working directory and receives the workflow completion
+value as JSON on standard input. It prints one finding per line; exit 0 with
+empty output is acceptance. Findings re-fire the nearest model episode. An
+assessment can respond by activating repair, and a repair can correct its
+artifacts. Without `--verify`, the assessment's typed branch governs
+completion. With `--verify`, both corrective nodes may fire thirteen times.
+The root lifetime cap grows to sixteen episodes so all twelve retries can run.
+
+`--sandbox MODE` selects `best-effort`, `required`, or `off` for the built-in
+workflow. The default is `best-effort`. A contract document in a file
+declares its own `sandbox.mode`, so `--sandbox` accompanies a built-in
+document alone.
+
+`--dangerously-permit-everything-no-sandbox` grants read, write and execute
+over `/` and sets the sandbox mode to `off`. Two things bound a run and the
+option removes both: the kernel confinement, which `--sandbox off` removes on
+its own, and the grants, which the runtime enforces whatever the kernel is
+doing, so `--sandbox off` alone still holds a tool to the working directory.
+The name states what it does because a reader who has not seen it before has
+no other way to know. `--yolo` is a second spelling of it, accepted and left
+out of the help: the deterrent is meant to be the reading of the long name,
+which a reader meets once here, and not the typing of it every time. What it grants is recorded in `episode/start` like any
+other contract, so a run made this way reads afterwards as exactly what it
+was rather than as an ordinary one.
+
+Before confinement, the CLI checks fixed standard paths for common compilers,
+interpreters, and repository tools. All three episodes receive the recorded
+result and its limited scope. The result does not claim that unexamined paths
+lack an executable.
+
+The implementation returns a typed handoff with its summary, changed paths,
+validation observations, and unresolved risks. The assessment receives that
+value and the original task in a fresh context. A repair receives both prior
+values and the original task. The shared directory carries the artifacts.
+
+Rendered predecessor sections entering one model node share the same
+50,000-character bound as one model turn's tool results. The runtime rejects an
+oversized handoff before starting the child and records `limit-exceeded` for
+workflow recovery. The producer's complete value and rendering remain in the
+workflow log. Tool nodes continue to bind complete canonical predecessor
+values because that binding does not enter model context.
+
+The task text and repository-defined checks govern all three stages. Their
+allowed mutation scope is current filesystem state unless the task authorizes
+changes to history, prior versions, archives, encoded representations, or
+hidden implementation details. A task that requires live state must leave that
+state operational after validation.
+
+Assessment and repair validate observable behavior through the strongest
+task-authorized interface available. For black-box or broadly parameterized
+behavior, assessment tests materially different valid inputs through the same
+public interface. The stages preserve task-required final state after their
+checks finish.
+
+All three completion schemas require one to eight `learned` observations. Each
+observation is a one-sentence claim and the sequence of a successful tool
+result in that episode's log. The runtime checks the citation and preserves
+the completed value as the typed handoff. The assessment receives the
+implementation observations and independently reproduces or challenges the
+claims that bear on completion. Its value also contains findings and an
+`accept` or `repair` branch. A repair must return no unresolved risk.
+Each stage covers every completion-critical requirement with a `learned`
+claim that cites a successful tool result. The runtime verifies the citation's
+episode membership, success, and reconstructability. A configured verifier
+judges semantic correctness.
+[config.md](config.md#done_when) specifies the contract for any contract.
+
+The model is the one named by `--model`, or the default model when `--model`
+is absent. The default model is the `model` block in
+`~/.config/foe/default-model.json`, which `foe login` writes. When that block
+omits reasoning effort, GPT-5.6 Sol uses low effort for implementation and
+xhigh effort for assessment and repair. An explicit reasoning effort applies
+to all three episodes. Other models carry the root model options into every
+stage.
+
+`--service-tier TIER` asks the provider to process the model requests of all
+three episodes in the named tier. A tier is one provider's vocabulary, so the
+command line accepts any value and the provider table judges it: each row
+names the request field the tier travels in and every value that provider
+accepts, and a provider whose row carries no tier refuses the option.
+[models.md](models.md) lists the values per provider. When the option is
+absent, the default model file's value remains in effect. Otherwise the
+provider applies its own default.
+
+A credential file is named where a model is configured rather than on the
+running command line. `foe login PROVIDER --key-file PATH` records the file
+for later runs, and a document's `model` block names one for a single
+contract, through the credential option its provider defines: an API key
+file, OAuth token state, or a managed-cloud credential, according to the
+provider. Where no option names a file, a required convention file under
+`~/.config/foe/credentials/` is read. A compatible HTTP endpoint reads only
+an explicitly named file and sends no authentication header when none is
+named. The home directory comes from the passwd database, never from the
+environment.
+
+`--model` and `--service-tier` describe one `model` block between them, and
+the document under `--config` decides whether they apply. A document that
+declares a `model` block owns its model, so both are refused. A document
+that declares no `model` block has stated that it names no model, so the two
+supply one exactly as they do for the built-in document; without either such
+a document runs under a host. The block they supply changes no fingerprint,
+which covers what a model can observe rather than the transport that reaches
+it. `--verify`, `--sandbox` and
+`--dangerously-permit-everything-no-sandbox` are refused with a document in a
+file whatever it declares, because a document carries its own completion
+gate, sandbox mode and grants.
+
+`foe login` configures one provider. It asks for the endpoint-specific values
+and writes any supplied credential under `~/.config/foe/credentials/` with
+mode 0600. It sets the default model when none is set.
+`foe login PROVIDER --key-file PATH` asks nothing and records PATH as the
+file that provider's credential is read from, by naming it in the default
+model block through the provider's credential option. That command needs a
+model of the provider: `--model MODEL` names one, and a recorded default of
+the same provider supplies one otherwise. [models.md](models.md)
+specifies the providers, validation, and flows.
+
+`foe init --repository PATH` writes a starting execution contract to
+`PATH/.foe/contract.json` and a placeholder verifier to `PATH/.foe/verify`,
+and refuses to run when either file exists. Each file lands by renaming a
+completed temporary in the same directory. The document is the built-in
+coding workflow over the canonicalized repository root, with the default
+model `foe login` recorded when one exists — without one the document omits
+`model` and runs under a host. The read and write grants cover the whole
+root, `.git` included, because grants are additive allow lists with no
+exclusion syntax and excluding `.git` would exclude root files. The execute
+grants are the standard command directories and the root: directory
+breadth, a usable starting point to narrow later. The budget carries
+backstops in model calls, seconds, and episodes — safety floors, not
+targets — with token allowances unlimited and the loop threshold at its
+default. The placeholder verifier rejects every completion candidate with
+one finding naming the file a person must replace, so a run against the
+untouched document ends blocked rather than completed, and the verifier's
+capture at contract construction keeps the active episode judging by the
+captured bytes while a future run reads the file as it then exists. The file
+this command writes is the file a later run in that repository root uses
+when its command line names no document, under the rule "The command line"
+states. The report the command prints states every one of these decisions.
+
+Under `--viewer open` or `--viewer serve`, the binary serves the viewer on
+a loopback port chosen before the process restricts itself, opens it with
+`/usr/bin/xdg-open` under `--viewer open`, and keeps serving for
+three seconds after the outcome is written so that an open page receives
+the final events. `foe view DIR --serve` serves a finished directory for as
+long as the process runs.
+
+## The viewer
+
+The viewer renders a log directory. It shows parent, child, and fork episodes, the
+conversation derived from each log, each tool call with its rendered and
+canonical forms, budget consumption, sandbox status, and the outcome.
+
+```
+   ┌─ episodes ──────────┬─ conversation ─────────────────────────────────┐
+   │ ▾ root   completed  │  system   charter, 2 sections – 4 tools        │
+   │   ├ A    completed  │  user     Fix the failing parser test.         │
+   │   └ B    blocked    │  tool     read tests/parser_test.py  → 212 ln  │
+   │         looping-    │  tool     grep "def parse"           → 3 hits  │
+   │         tool-call   │  asst     The failure is in …                  │
+   │                     │  tool     edit src/parser.py         → +4 −1   │
+   │ budget  31/40 calls │  tool     bash pytest tests/         → exit 0  │
+   │ sandbox landlock 7  │  asst     Done. The test passes.               │
+   └─────────────────────┴────────────────────────────────────────────────┘
+```
+
+A running episode serves the viewer over HTTP on the loopback interface with
+a per-run token sent as a request header, and streams new events over
+server-sent events. A finished episode is rendered to a single self-contained
+HTML file. Both paths use one renderer: the live page is a replay that has
+not finished.
+
+## Structure
+
+```
+   crates/log ◄─── crates/contract ◄─── crates/core ◄──┬── crates/code
+    every event      the document,      loop,        │    read grep edit bash
+    type,            resolution,        registry,    ├── crates/transport
+    serde,           tool specs,        grants,      │    model clients, credentials
+    serde_json       schema subset,     budget,      │
+                     harness text,      spawn,       ├── crates/team
+                     fingerprint,       result       │    roster, messages, coordination tools
+                     inspection         budget,      ├── crates/workflow
+                                        exec,        ├── crates/context
+                                        landlock,    │    projection, cut, summarization prompt
+                                        protocol,    │
+                                        context seam └── crates/view ◄── view/ (browser bundle)
+                                                          projection, HTTP, SSE, export
+
+                     crates/evidence ◄── contract fingerprints and proposal logs
+
+                                          crates/cli ◄── all of the above; plan reports
+
+   python/foe    a thin host: builds config, runs the binary, serves the protocol
+   examples/     one runnable example per job, each checking its own result
+```
+
+Two foundational specifications are implemented as crates that the rest of the
+repository reads. `crates/log` defines what happened. It defines every
+event type, including the reserved ones. It depends on serde, serde_json, and
+thiserror, and on no crate of this repository.
+
+`crates/contract` defines what was to run: the
+contract document, the validation and resolution that turn it into the
+contract `episode/start.contract` records, the specification of every tool the
+model will see, and the fingerprint that hashes them. It runs nothing: no
+process starts there, no grant is exercised, and no log is written. It sits
+above `crates/log` rather than beside it, and states part of itself in the
+log's vocabulary. The two specifications share two facts.
+
+- The sandbox mode. `sandbox.mode` in the document and the mode in the
+  `episode/start` sandbox record are one word over one closed set. A
+  configured confinement and an observed confinement are the same fact, read
+  before the run and after it.
+- The continuation a compaction writes. The contract fingerprint hashes its shape: the
+  fields of the carried state, the labels its rendered lines take, and the
+  templates that render them. A contract is defined in part by how its
+  conversation survives a compaction, because two contracts that differ only
+  there put different text in front of the model.
+
+`crates/contract` therefore depends on `crates/log`, and on no other crate of
+this repository.
+
+`crates/core` is the machine that applies both specifications, and depends on
+both crates.
+The line between it and `crates/contract` is resolution against execution: what
+a name means and what a contract would be belong to the configuration, and
+running it, guarding it, and charging it belong to the kernel. Tools depend
+on `crates/core` for the tool trait and capability handles and on
+`crates/contract` for what a tool declares. `crates/workflow` depends on
+`crates/contract` for the graph type and the contract each model node runs, and
+on `crates/core` for the log, the registry, the budget pool, and the spawner,
+and runs an episode whose configuration declares a `workflow` in place of the
+loop. `crates/context` depends on `crates/core` for the context policy trait
+and implements it: the loop consults the policy before each request and lends
+it one recorded model call. Nothing depends on `crates/view` except the
+binary.
+
+`crates/transport` owns each provider's authentication protocol whole: the
+provider registry, the credential sources that turn a stored credential into
+request headers, and — in `auth::login` — the acquisition that produces those
+files in the first place. Verifying a key, the authorization-code flow with
+PKCE and the loopback listener its browser half returns to, the
+credential-file formats, and the default model file are all there, beside the
+code that reads them back. What `foe login` adds is the conversation: which
+questions each source needs, in what order, and how the answers are read from
+a terminal.
+
+`crates/telemetry` likewise owns what the enablement file means, the walk over
+an episode tree that emission covers, and the preview of what emission would
+write. The binary supplies only the path that file is found at, which is a
+convention `crates/transport` owns, so the telemetry crate still depends on
+`crates/log` alone.
+
+`crates/evidence` verifies portable evidence for accepting a proposed
+execution contract. It checks the bundle manifest, the candidate fingerprint
+document, artifact evidence, the proposal episode tree, and the accepted
+verification result. It depends on `crates/contract` for canonical hashing
+and on `crates/log` for the episode record. Nothing in the runtime depends on
+it.
+
+## Size
+
+The kernel is `log` and `core` — the log format, the loop, budgets, the
+sandbox, and spawning — and its Rust source stays under 6,450 lines,
+excluding tests and generated code. Its smallness is the product claim, so
+it carries the tightest budget relative to its size. The number measures the
+machine alone: what a contract is lives in `crates/contract`, which is budgeted
+apart under 1,575 lines. The two are separate because a contract
+document that gains a key must not buy room in the loop, and because the
+claim the kernel's number supports is about the machine that runs a contract
+rather than about the data model it runs.
+
+The coding tools in `crates/code` stay under 1,900 lines. Team coordination
+in `crates/team` stays under 940 lines. Coding tools and team coordination
+together stay under 2,765 lines. The separate limits keep coordination
+independent of filesystem and process tools. The combined limit prevents a
+crate boundary from increasing the total implementation allowance. The
+workflow executor in `crates/workflow`
+stays under 1,050 lines. It schedules the graph, bounds text entering model
+nodes, and routes failures through recovery. Inspection of a configured
+contract tree remains in `foe_contract::inspect`, beside the model it analyses.
+Both crates implement one shared rule: firing a model node starts that node's
+episode. The executor realizes the rule as an ordinary spawn. Inspection reads
+the same rule as reachability. The compaction policy in `crates/context` stays
+under 500.
+
+The viewer is budgeted apart from the runtime: `crates/view` under 900 lines,
+and the browser bundle it serves under 150 KB compressed. It is separate
+because it delivers a record of a run rather than running one, so a viewer
+that grows must not force the runtime to shrink. The browser viewer's HTML,
+TypeScript, and CSS count toward that compressed size and toward no line
+budget at all.
+
+The execution-contract crate reads each reachable configured executable
+during construction.
+The kernel materializes, confines, invokes, checks, and transfers those
+snapshots across child process boundaries. The command line constructs the
+root captured-executable tree before confinement. This mechanism adds no contract-document
+key or log event.
+
+The command line is budgeted apart from the runtime as well: `crates/cli`
+under 2,025 lines. It is separate because it serves a person at a terminal
+rather than an episode. What it holds is what belongs to a process rather
+than to a run: argument parsing and the help derived from the command table,
+the plan reports, the login conversation, the browser, the outcome line, and
+the exit codes.
+
+Telemetry is budgeted apart too: `crates/telemetry` under 1,000 lines. It is
+separate because it reads a finished log rather than producing one. It holds
+the enablement file's meaning, emission over a finished run's episode tree,
+and the preview `foe telemetry` prints. Nothing in the runtime depends on it,
+the crate depends on `log` alone, and an installation that never enables
+telemetry carries none of its behavior.
+See [docs/telemetry.md](telemetry.md).
+
+Evidence is budgeted apart on the same terms: `crates/evidence` stays under
+500 lines. It reads finished evidence and produces no runtime event. A bundle
+check that gains a rule must not buy room in the runtime or execution-contract
+crates. See [evidence.md](evidence.md).
+
+The model clients in `crates/transport` stay under 2,700 lines. They own the
+HTTP formats, credential sources, endpoint table, and request loop.
+Continuous integration enforces every budget as a test. `scripts/loc.sh`
+holds each ceiling once and fails when this document, `AGENTS.md`, or
+`README.md` quotes a different number.
+
+The budget is a design constraint rather than an aspiration. A runtime that
+other systems embed and audit earns trust in proportion to how little of it
+there is to read. A ceiling moves in either direction only in a commit of
+its own that states the reason, under the rule in `AGENTS.md`; a commit
+that adds behavior fits inside the ceilings as they stand. A raise says why the
+behavior is worth the room and where the room was looked for first, because
+the reason a surface stays small is that a reader holds it at once, and that
+is what a raise spends.
+
+## Status
+
+The runtime, the binary, the viewer, and the Python package are
+implemented. No interface is stable.

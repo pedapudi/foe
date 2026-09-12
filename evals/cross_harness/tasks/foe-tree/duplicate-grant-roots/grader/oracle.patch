@@ -1,0 +1,58 @@
+diff --git a/crates/contract/src/document.rs b/crates/contract/src/document.rs
+index 680ef723..7702134a 100644
+--- a/crates/contract/src/document.rs
++++ b/crates/contract/src/document.rs
+@@ -317,8 +317,16 @@ fn resolve_section(
+     let canonical = |k: String, path: &Path| -> Result<PathBuf, ContractError> {
+         std::fs::canonicalize(path).map_err(|e| invalid(k, format!("names an existing path: {}: {e}", path.display())))
+     };
++    // A grant list is a set: two declared roots naming one canonical path
++    // (such as /bin and /usr/bin on a merged-usr host) resolve to one grant.
+     let roots = |k: &str, paths: &[PathBuf]| -> Result<Vec<PathBuf>, ContractError> {
+-        paths.iter().enumerate().map(|(i, p)| canonical(key(&format!("{k}[{i}]")), p)).collect()
++        paths.iter().enumerate().try_fold(Vec::new(), |mut resolved, (i, p)| {
++            let path = canonical(key(&format!("{k}[{i}]")), p)?;
++            if !resolved.contains(&path) {
++                resolved.push(path);
++            }
++            Ok(resolved)
++        })
+     };
+     let grants = Grants {
+         read: roots("grants.read", &s.grants.read)?,
+diff --git a/crates/contract/src/document_test.rs b/crates/contract/src/document_test.rs
+index 695b0d92..fb817ee3 100644
+--- a/crates/contract/src/document_test.rs
++++ b/crates/contract/src/document_test.rs
+@@ -23,14 +23,14 @@ fn a_valid_document_resolves_with_canonical_paths_and_defaults() {
+     std::fs::write(&exec, "#!/bin/sh\n").unwrap();
+     std::fs::set_permissions(&exec, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+     let contract = contract_with(&root, |v| {
+-        v["grants"]["read"] = json!([root.join("link")]);
++        v["grants"]["read"] = json!([root.join("link"), root.join("sub")]);
+         v["grants"]["execute"] = json!([root.join("link")]);
+         v["tools"] = json!(["block", "lint"]);
+         v["tool_defs"] = json!({ "lint": { "exec": exec, "description": "lints" } });
+     })
+     .unwrap();
+     let canonical = std::fs::canonicalize(root.join("sub")).unwrap();
+-    assert_eq!(contract.grants.read, vec![canonical.clone()]);
++    assert_eq!(contract.grants.read, vec![canonical.clone()], "two roots naming one canonical path are one grant");
+     assert_eq!(contract.grants.execute, vec![canonical.clone()]);
+     let lint = &contract.tool_defs["lint"];
+     assert_eq!(lint.cwd.as_deref(), Some(canonical.as_path()), "cwd defaults to the first read root");
+diff --git a/docs/config.md b/docs/config.md
+index 2f7e7298..004d6aff 100644
+--- a/docs/config.md
++++ b/docs/config.md
+@@ -39,7 +39,9 @@ execution-contract construction, Foe captures each configured executable's
+ bytes, digest, source path, and invocation name. Every later invocation uses
+ the captured executable, so replacing, modifying, or deleting the source
+ cannot change the run. The tree also contains every nested contract and every
+-workflow model node with inherited settings and canonical paths. Planning,
++workflow model node with inherited settings and canonical paths. A grant
++list is a set: two declared roots naming one canonical path, such as
++`/bin` and `/usr/bin` on a merged-usr host, resolve to one grant. Planning,
+ fingerprinting, sandbox construction, reservation, and spawning use that same
+ tree.
+ 

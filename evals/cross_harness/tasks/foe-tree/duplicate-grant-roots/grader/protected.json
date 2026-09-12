@@ -1,0 +1,22 @@
+{
+  "outside": {
+    "grader/corruptions/revert-one-crate/apply.py": "26bd26ebf744955cc6d07bc3d309d74eba0983947d031409f10a54bab4c16256",
+    "grader/corruptions/revert-one-crate/parent/crates/contract/src/document.rs": "c4123cca6ca8a77ec558e644e9496c5d69eb40bc47a86b45a8f363b8e6bf88c2",
+    "grader/corruptions/revert-one-crate/revert.json": "2ebb952a04509568933632bc5bdf654a5f2a7d7273357383f06cd11ede638067",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "baeb5356054bac09f214e169712c35f4c24678bf6479806329880bb548253041",
+    "grader/oracle.patch": "c806677aabc1e5d46b415c97020014e1f916be6f10ef06cb2ec556be2a3a4217",
+    "grader/oracle/workspace/crates/contract/src/document.rs": "ba4003df263ef6205cb9e2dbfb358595ce456dddff7576d562c059c92e331a97",
+    "grader/oracle/workspace/crates/contract/src/document_test.rs": "ee9bdabee49ad7cc72c7c15d7be1c07eaa8548d15c336bc6e9e3980de8b8528d",
+    "grader/oracle/workspace/docs/config.md": "bb648d063fdbf0155b97b306f2ef92d9a32e7591bb48770366b95a97b0a52153",
+    "grader/specification.json": "0feda8e068f12db81ebaec0e5d00fc8a9a152a2d67f6afbc8c708d9d1efbc1d3",
+    "grader/tests/crates/contract/src/document_test.rs": "ee9bdabee49ad7cc72c7c15d7be1c07eaa8548d15c336bc6e9e3980de8b8528d",
+    "grader/workspace.patch": "c7b97debe754b1cb18b8126cbd6ad774d039c45035336f73f7e9f07a0fcc9249",
+    "task.json": "fdb97f51b2032e61daa6eadbd7cdf5829492ec1c75b841ef555b50068c3f0a11"
+  },
+  "workspace": {
+    "AGENTS.md": "393d26c5415ea53ae1cb18e0bc5c8c41caae399cfb4f887b164f99c5f57787dd",
+    "checks/run.sh": "eeb0c4903428c347fb158a69551c4693d93c5152bef0e88e3f87ed021b9bf7f2",
+    "scripts/loc.sh": "b56a47c3d8df2760490635a6020213ab8f43bd0bbdced1d6fd76215155c121e9"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "refuse-partial-log-reopen",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "An episode log is a directory holding `episode.jsonl`, one JSON event per line, and the writer in `crates/log/src/append.rs` opens an existing log for continued appending, for example after seeding, by reading the events already there and resuming the sequence. Opening requires that the final line of the file be complete. When the file ends in a partial line, such as a lone `{` or a JSON object with no terminating newline, opening fails with an error whose text names a complete final log line. The bytes of the file stay as they were, so the incomplete line remains available for inspection. The writers section of `docs/log-format.md` states the rule.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/log-format.md: reopening requires a complete final line.\n- docs/log-format.md: an incomplete trailing line makes the writer refuse to append, and its bytes remain available for inspection.\n- docs/log-format.md: forking at a complete event boundary can retain the readable prefix.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-log, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "57538cfd7ee6a9bd2d66e5fc728011473ddaeae5",
+      "parent": "f39c8c586bb18334924acb18d3af418346d18fef",
+      "subject": "Refuse to append after an incomplete log line"
+    },
+    "crates": [
+      "crates/log"
+    ],
+    "packages": [
+      "foe-log"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/log/src/append_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/log/src/append_test.rs"
+    ],
+    "review": "read by the authoring agent on 2026-09-11; awaits a person"
+  }
+}

@@ -1,0 +1,25 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..835418d
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The visible subset of the checks this task is judged on.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-core
++cargo clippy -p foe-core -- -D warnings
++scripts/loc.sh
+diff --git a/crates/core/src/budget_test.rs b/crates/core/src/budget_test.rs
+index 66191b7..bdb947c 100644
+--- a/crates/core/src/budget_test.rs
++++ b/crates/core/src/budget_test.rs
+@@ -281,6 +281,7 @@ async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging
+         max_episodes: 4,
+         ..budget()
+     });
++    pool.started = std::time::Instant::now() - std::time::Duration::from_secs(5);
+     pool.restore(&events, 6_000);
+     assert_eq!(
+         pool.remaining(),

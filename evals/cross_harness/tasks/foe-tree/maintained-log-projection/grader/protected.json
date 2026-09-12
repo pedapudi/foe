@@ -1,0 +1,31 @@
+{
+  "outside": {
+    "grader/corruptions/revert-one-crate/apply.py": "26bd26ebf744955cc6d07bc3d309d74eba0983947d031409f10a54bab4c16256",
+    "grader/corruptions/revert-one-crate/parent/crates/core/src/lib.rs": "0e14fb137f45044f1d76f3b79cf05d8ca4119c75e77ca6933f3d777ebba87ba8",
+    "grader/corruptions/revert-one-crate/parent/crates/core/src/loop_.rs": "e9377246100c74b5befb60084b71adadc7ecb4498ec1683ee7a648a9d20a5b87",
+    "grader/corruptions/revert-one-crate/parent/crates/core/src/wiring.rs": "4661f2ed015ce07954e8f923cfd23fc8ff346f07b9c693f0590c7234edd2633f",
+    "grader/corruptions/revert-one-crate/revert.json": "954dee2aae085d20a9c1af9e009da632e7af79d2ded70e09352e46cdb76827aa",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "baeb5356054bac09f214e169712c35f4c24678bf6479806329880bb548253041",
+    "grader/oracle.patch": "23448b2e5f2d20cc36276cb4aa34f3eb27901d358992444c202536fa3c037cc9",
+    "grader/oracle/workspace/crates/core/src/lib.rs": "6655b742fac14eefde8c5e066a497ef7e10c63881c53dad11befc7ec6abce1b4",
+    "grader/oracle/workspace/crates/core/src/loop_.rs": "75a0d38ef4b0d04841d1d8bbc7ce185cb31cf20d4b528a7bba09829fc2989c66",
+    "grader/oracle/workspace/crates/core/src/loop_test.rs": "f6d764f8b3c09a557a5f681ad23302dbaac19a598077556724705fb15a010b5e",
+    "grader/oracle/workspace/crates/core/src/wiring.rs": "deb6d1b8aeef32a9b3e0870796d539c1d16b669b24a071096b083c48a17c8741",
+    "grader/oracle/workspace/crates/log/src/fold.rs": "b58d1c36b14426dd2909f285fe5e75283f08db162f6471a5745ab7acb199e47f",
+    "grader/oracle/workspace/crates/log/src/lib.rs": "ff891acc18fa522b83fb7b5124f802b5e2affd9b26194db1b3da80c02c2cc013",
+    "grader/oracle/workspace/crates/team/src/lib.rs": "1a69a5f41b0a481735ce5c74b169fc67b8917ea2e09d3c427ba9b9c543167f00",
+    "grader/oracle/workspace/crates/team/src/lib_test.rs": "3e5413c81efd456fa43af29e1705b97e8a08c34e58676c58038fd8e6240ca545",
+    "grader/oracle/workspace/docs/design.md": "0b271f03e9282e122d842cb679f2c2a54df9c52c5cd2de3afcdd2205171cd7af",
+    "grader/specification.json": "13cf49d14b9ca20f52221f9b05841cc78e8295125fd82ed59a47b8cf1ac5062e",
+    "grader/tests/crates/core/src/loop_test.rs": "f6d764f8b3c09a557a5f681ad23302dbaac19a598077556724705fb15a010b5e",
+    "grader/tests/crates/team/src/lib_test.rs": "3e5413c81efd456fa43af29e1705b97e8a08c34e58676c58038fd8e6240ca545",
+    "grader/workspace.patch": "2690674f79491e5b81eb69c711837483ee715018d44e3ea8f6aefad0ef69c693",
+    "task.json": "a8dc1158653e87914b0b8502a980c64c854039666e30879bb105b528a390a82b"
+  },
+  "workspace": {
+    "AGENTS.md": "95b4c43f4675ddc6d1c3205f63b9efa969185970833969492cb2e61f6aa3cf4e",
+    "checks/run.sh": "90bd52dd90e18e7c7697e597275f21911b518ea2a6f11dad3312a0951a86264f",
+    "scripts/loc.sh": "42ed3f4fb3565d2e7b3387fb2e20fb47fc82a7f57029369133ef10b7c9566a13"
+  }
+}
