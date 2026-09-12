@@ -215,6 +215,16 @@ pub trait Writer: Send + Sync {
 /// Never invokes a shell on the caller's behalf.
 pub trait Executor: Send + Sync {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError>;
+
+    /// Directories holding the executables the contract grants, for a
+    /// caller that builds a search path. A grant makes a command runnable;
+    /// without its directory on the path the command is runnable only by
+    /// absolute path, and a script that names it plainly fails as though it
+    /// were not installed. This reports what is already granted and widens
+    /// nothing. Empty when the contract grants no executable.
+    fn granted_command_directories(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Clone)]

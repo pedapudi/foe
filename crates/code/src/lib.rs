@@ -9,7 +9,7 @@
 
 #![forbid(unsafe_code)]
 
-use foe_core::Tool;
+use foe_core::{CallCtx, Tool};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -95,14 +95,34 @@ pub fn required_executables(_tools: &[String]) -> Vec<(&'static str, &'static st
 #[cfg(feature = "exec")]
 pub(crate) const SHELL_COMMAND_NUL_ERROR: &str = "command contains U+0000; process arguments cannot contain NUL. Use shell syntax such as printf '\\0' to create a NUL byte in a process stream.";
 
+/// The system directories a shell searches before any the contract grants.
+#[cfg(feature = "exec")]
+pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
 /// nothing, so the shell needs a search path to find commands; `HOME` is
 /// the working directory, since the tools have no other writable location.
+///
+/// The search path is the system directories followed by the directories
+/// holding the executables the contract grants, so that a granted toolchain
+/// outside them is runnable by name and not only by absolute path. The
+/// grants come last, so a name a system directory already resolves keeps
+/// resolving there. Nothing here widens a grant: a directory reaches the
+/// path only because the contract already permits executing what is in it.
 #[cfg(feature = "exec")]
-pub(crate) fn shell_environment(cwd: &Path) -> std::collections::BTreeMap<String, String> {
+pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::BTreeMap<String, String> {
+    let mut path = SYSTEM_SEARCH_PATH.to_owned();
+    let granted = ctx.executor.as_ref().map(|e| e.granted_command_directories()).unwrap_or_default();
+    for directory in granted {
+        let directory = directory.display().to_string();
+        if !path.split(':').any(|present| present == directory) {
+            path.push(':');
+            path.push_str(&directory);
+        }
+    }
     std::collections::BTreeMap::from([
-        ("PATH".to_owned(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
+        ("PATH".to_owned(), path),
         ("HOME".to_owned(), cwd.display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
     ])
