@@ -315,8 +315,10 @@ system prompt, the last tool definition, and the last block of the last turn.
 The first two cover the head that is fixed for the episode; the third covers
 the conversation, which is what grows, so each step reads the prefix the step
 before it wrote. The Responses format names the cache rather than marking it:
-every request carries `prompt_cache_key`, a digest over the system prompt and
-the tool names, which is the head every request of one episode repeats. The
+every request carries `prompt_cache_key`, a digest over the episode
+identifier. The name routes the whole prefix, and the prefix is the
+conversation one episode grows, so each episode reaches a cache of its own
+and no two of them evict one another. The
 other two formats send neither, so a server that caches a repeated prefix
 there decides to on its own; `usage.cache_read` reports whether it did.
 

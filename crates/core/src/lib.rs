@@ -413,10 +413,13 @@ pub trait Tool: Send + Sync {
 
 // ---- transport ---------------------------------------------------------------
 
-/// One model request as the transport sees it.
+/// One model request as the transport sees it. `episode_id` names the
+/// conversation the request extends, which a format that names a prompt
+/// cache uses to keep one episode's prefix apart from another's.
 #[derive(Debug, Clone)]
 pub struct ModelRequestBody {
     pub request_id: String,
+    pub episode_id: String,
     pub system: String,
     pub tools: Vec<ToolSchema>,
     pub messages: Vec<Message>,

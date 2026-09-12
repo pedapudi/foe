@@ -103,6 +103,9 @@ struct Fixture {
     contract: ResolvedContract,
     tools: Vec<Box<dyn Tool>>,
     transport: Arc<dyn Transport>,
+    /// The same object as `transport`, kept typed so that a test can read
+    /// the request bodies the loop sent.
+    scripted: Arc<ScriptedTransport>,
     context: Option<Arc<dyn ContextPolicy>>,
     stop: watch::Sender<Option<String>>,
     stop_rx: watch::Receiver<Option<String>>,
@@ -118,13 +121,15 @@ impl Fixture {
         let contract = contract_with(&root, edit).unwrap();
         let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
         let (stop, stop_rx) = watch::channel(None);
+        let scripted = Arc::new(ScriptedTransport::new(responses));
         Self {
             scratch: Some(root),
             dir,
             log,
             contract,
             tools: vec![],
-            transport: Arc::new(ScriptedTransport::new(responses)),
+            transport: scripted.clone(),
+            scripted,
             context: None,
             stop,
             stop_rx,
@@ -214,6 +219,21 @@ fn results(events: &[Event]) -> Vec<&foe_log::ToolResult> {
             _ => None,
         })
         .collect()
+}
+
+/// Every request the loop sends names the episode it belongs to. A format
+/// that names a prompt cache routes on that name, so an episode reaches a
+/// cache of its own however alike two contracts are.
+#[tokio::test]
+async fn every_request_names_the_episode_it_belongs_to() {
+    let fx = Fixture::new("loop-episode-name", |_| {}, vec![turn("all done", vec![])]);
+    let scripted = fx.scripted.clone();
+    fx.run().await;
+    let sent = scripted.requests.lock().unwrap();
+    assert!(!sent.is_empty(), "the loop sent at least one request");
+    for request in sent.iter() {
+        assert_eq!(request.episode_id, "ep_test", "{} names its episode", request.request_id);
+    }
 }
 
 #[tokio::test]
