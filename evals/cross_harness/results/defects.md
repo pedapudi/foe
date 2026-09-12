@@ -46,7 +46,8 @@ Reproduction: run any two foe episodes of one contract back to back and read
 
 Repair: name the cache after the conversation rather than the contract. The
 episode identifier is stable for the life of an episode and distinct between
-episodes, which is what the key's routing wants.
+episodes, which is what the key routes on. Carried in
+https://github.com/pedapudi/foe/pull/246.
 
 Bearing on the result: hypothesis H2 predicted foe would spend more input
 than the other harness because its graph gives each node a fresh episode that
@@ -80,7 +81,7 @@ directories and run a bash command naming an executable in it.
 Repair: extend the `bash` and `session` search path with the execute roots
 the contract grants. The grant already names them, so this adds no
 configuration and no environment variable, and it makes the search path agree
-with the permission.
+with the permission. Carried in https://github.com/pedapudi/foe/pull/246.
 
 Bearing on the result: one holdout attempt is affected, recorded rather than
 re-run. The affected cell is named in the results document.
