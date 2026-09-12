@@ -1,0 +1,36 @@
+{
+  "tasks": "../tasks/foe-tree",
+  "select": [
+    "duplicate-grant-roots",
+    "correlation-as-inbox-source",
+    "ceiling-bound-feature-telemetry",
+    "frozen-interface-budget",
+    "inventory-regeneration-code",
+    "inventory-regeneration-context"
+  ],
+  "arms": [
+    "foe-configured",
+    "foe-ablated",
+    "codex-equivalent",
+    "codex-default"
+  ],
+  "attempts": 1,
+  "resume": true,
+  "model": {
+    "route": "subscription",
+    "name": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "budget": {
+    "input_tokens": 4000000,
+    "output_tokens": 400000,
+    "seconds": 1800
+  },
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ],
+  "out": "~/.local/state/foe/cross-harness/holdout"
+}

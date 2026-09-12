@@ -1,0 +1,45 @@
+{
+  "name": "correlation-as-inbox-source",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "`crates/team/src/lib.rs` runs a team. Recording and delivering one message\nthrough `Team::send` rests on two facts about the message: the inbox source it\narrives under, and, when it answers a question, the identity of the question it\nanswers. A pair of an `InboxSource` and an optional message identifier carries\nboth facts under the public name `Correlate`, and that pair is the last\nargument of `Team::send`. A message that is neither a question nor an answer\narrives as `peer` with no identity. A question arrives as `request` under an\nidentity of its own. An answer arrives as `response` carrying the identity of\nits question, so the asker waits for that answer alone.\n\nThe function that reads the arguments of a `send` or an `ask` call builds the\npair: `ask` gives `request` with no identity, `send` with a `reply_to` argument\ngives `response` with the identifier that argument names, and `send` without\none gives `peer` with no identity. `Team::send` reads the source and the\nidentity out of the pair directly. It reuses a named identity as the message\nidentifier and otherwise allocates one from the lead episode and the recorded\nqueue length. It appends the text block naming the identifier when the source\nis `request`, and it builds the inbox item under that source.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-team, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "a920d48d12344f7d5370221c02ecd5e661b96a9f",
+      "parent": "bdd0a9815a95afe1c70199d10f50c5a28bf16388",
+      "subject": "Carry a message's correlation as its inbox source and question identity"
+    },
+    "crates": [
+      "crates/team"
+    ],
+    "packages": [
+      "foe-team"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/team/src/lib_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/team/src/lib_test.rs"
+    ],
+    "review": "written on 2026-09-12; a person has not read it"
+  }
+}

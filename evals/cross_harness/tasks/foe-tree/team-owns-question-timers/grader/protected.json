@@ -1,0 +1,23 @@
+{
+  "outside": {
+    "grader/corruptions/revert-one-crate/apply.py": "26bd26ebf744955cc6d07bc3d309d74eba0983947d031409f10a54bab4c16256",
+    "grader/corruptions/revert-one-crate/parent/crates/team/src/lib.rs": "bbed351d54b704af940df68c107f97c39c07f75ebe13946adcac0d4448e78f80",
+    "grader/corruptions/revert-one-crate/revert.json": "4349a44a5fd3cbf9aba07481cf690b22e41bdcf78518ee81ee51f935a8063d7f",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "baeb5356054bac09f214e169712c35f4c24678bf6479806329880bb548253041",
+    "grader/oracle.patch": "0ced6d2e140ab9cb3361816b85cc8b3c0eeb32aa7f2b4eb3d06a4e4b12ec6abf",
+    "grader/oracle/workspace/crates/team/src/lib.rs": "1a78eeae8777735a8a06b77e78e4f163d71ea1259558e0b53335f77e72080efc",
+    "grader/oracle/workspace/crates/team/src/lib_test.rs": "a44ec3f94ef4702f2331dd589a34956bbaad502d9644c9112a86abf5c1637f7e",
+    "grader/oracle/workspace/docs/design.md": "0cb4cc3e7c5b55c92cf54883e9b8feb28d2019a9057acead0f085d8de9216dcf",
+    "grader/oracle/workspace/docs/tools.md": "83adf0e3388d05e78ecc445d581512436fb214e67573b8d14454d185bba859d8",
+    "grader/specification.json": "d06e710a0538b5ebdec57cb4699e75da2c2de81e764497f293162952d28aef55",
+    "grader/tests/crates/team/src/lib_test.rs": "a44ec3f94ef4702f2331dd589a34956bbaad502d9644c9112a86abf5c1637f7e",
+    "grader/workspace.patch": "3d84b12eb8d00866d70ae8bdae73656677d90cd3cf1efef7df0ee64b4c5e79d9",
+    "task.json": "005f1e87d53b9178ef7e999fdea986c14d4042a275b71ca1b37418290778101c"
+  },
+  "workspace": {
+    "AGENTS.md": "af7fc9244877954fa8dfac379d17b4b23a779d00b4ea0c2feed6102decf4f6de",
+    "checks/run.sh": "5132caa4a207b83a5d0304d374124ba46a88ec6d7b83d626667801a6b9a409a3",
+    "scripts/loc.sh": "317761a767bb2e3860e5f206a2d73b82ffd74a0e79e2ef54cf83af34ea2d6e46"
+  }
+}

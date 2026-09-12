@@ -1,0 +1,47 @@
+{
+  "name": "team-owns-question-timers",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "The team runtime is `crates/team/src/lib.rs`.\n\nA question sent with a deadline and a default answer arms a timer that records\nthe default as a synthetic reply in the asking team's inbox once the deadline\npasses. The team that asked holds those timers itself: it discards the ones\nthat have already finished each time it arms another, and dropping the team\ncancels the ones still outstanding, which releases the inbox references they\nhold.\n\nThe `spawn` tool decodes its arguments once, into a typed structure. The\n`contract` and `task` fields are required strings; `context` is optional and\nselects a fresh or a forked child, and an omitted field selects a fresh one;\n`name` is optional; `blocked_by` and `write` are optional arrays that default\nto empty. Arguments that do not decode produce an invalid-argument failure\nnaming the decoding error, and such a call admits no task to the board.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/design.md: built in, sixteen of them: read, grep, edit, bash, retrieve, session, compose_tools, block, spawn, wait, steer, cancel, notify, send, ask, and team.\n- docs/design.md: the asking team owns its default-answer timers.\n- docs/design.md: dropping the team cancels outstanding timers and releases their inbox references.\n\nchecks/run.sh runs the checks this task is judged on: the tests of foe-team, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 60,
+    "input_tokens": 2000000,
+    "output_tokens": 100000,
+    "seconds": 2700
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "0743aa273ce78e1056f54f0bc41bd2dd03449467",
+      "parent": "cd1513c3ddbe833462ed9ff7e0b944fe3b4db274",
+      "subject": "Own question timers and decode spawn arguments once"
+    },
+    "crates": [
+      "crates/team"
+    ],
+    "packages": [
+      "foe-team"
+    ],
+    "crate_count": 1,
+    "coupling": 0,
+    "identifiers": [
+      "SpawnArgs"
+    ],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/team/src/lib_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/team/src/lib_test.rs"
+    ],
+    "review": "written on 2026-09-12; a person has not read it"
+  }
+}

@@ -1,0 +1,31 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..4d4d537
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The visible subset of the checks this task is judged on.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-team
++cargo clippy -p foe-team -- -D warnings
++scripts/loc.sh
+diff --git a/crates/team/src/lib_test.rs b/crates/team/src/lib_test.rs
+index 1fb1f1f..04cb225 100644
+--- a/crates/team/src/lib_test.rs
++++ b/crates/team/src/lib_test.rs
+@@ -367,6 +367,13 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
+     let asked = ask.call(serde_json::json!({ "to": "tester", "content": "which crate?" }), &ctx(None)).await;
+     assert!(!asked.is_error, "{:?}", asked.rendered);
+     let question = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
++    // docs/tools.md `ask`: a model receives a tool result's rendered text and
++    // an inbox item's content, and no other field of either, so the asker
++    // reads the identifier from the result text and the member answering
++    // reads it from the question.
++    assert!(asked.rendered.as_deref().unwrap_or_default().contains(&question), "{:?}", asked.rendered);
++    let delivered = format!("{:?}", team.state().queue[0].content);
++    assert!(delivered.contains(&question), "the question names the identifier its answer carries: {delivered}");
+     let wait = |c: serde_json::Value, deadline: Option<std::time::Instant>| {
+         let team = team.clone();
+         async move {

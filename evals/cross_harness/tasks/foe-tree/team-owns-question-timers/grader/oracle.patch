@@ -1,0 +1,238 @@
+diff --git a/crates/team/src/lib.rs b/crates/team/src/lib.rs
+index 8b94bc50..15ad3f29 100644
+--- a/crates/team/src/lib.rs
++++ b/crates/team/src/lib.rs
+@@ -204,6 +204,7 @@ pub struct Team {
+     /// Serializes task creation, assignment, roster changes, and message allocation.
+     operations: Mutex<()>,
+     projection: Mutex<(usize, TeamState)>,
++    questions: Mutex<tokio::task::JoinSet<()>>,
+ }
+ 
+ impl Team {
+@@ -214,7 +215,16 @@ impl Team {
+         router: Arc<Router>,
+         pool: Arc<Mutex<Pool>>,
+     ) -> Self {
+-        Team { lead_id, log, inbox, router, pool, operations: Mutex::new(()), projection: Mutex::default() }
++        Team {
++            lead_id,
++            log,
++            inbox,
++            router,
++            pool,
++            operations: Mutex::new(()),
++            projection: Mutex::default(),
++            questions: Mutex::default(),
++        }
+     }
+ 
+     pub fn state(&self) -> TeamState {
+@@ -554,7 +564,9 @@ impl Team {
+     /// does not.
+     fn default_answer(&self, message_id: String, after: Duration, default: String) {
+         let inbox = self.inbox.clone();
+-        tokio::spawn(async move {
++        let mut questions = self.questions.lock().unwrap();
++        while questions.try_join_next().is_some() {}
++        questions.spawn(async move {
+             tokio::time::sleep(after).await;
+             let text = format!("no answer before the deadline; this default answer stands: {default}");
+             let item = InboxItem::new(InboxSource::Response, text_content(&text), None, Some(message_id));
+@@ -680,23 +692,21 @@ fn arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, ToolValue>
+     args.get(key).and_then(|v| v.as_str()).ok_or_else(|| ToolValue::invalid(format!("{key}: a string is required")))
+ }
+ 
+-fn string_list(args: &serde_json::Value, key: &str) -> Result<Vec<String>, ToolValue> {
+-    let Some(value) = args.get(key) else { return Ok(Vec::new()) };
+-    let Some(values) = value.as_array() else { return Err(ToolValue::invalid(format!("{key}: an array is required"))) };
+-    values
+-        .iter()
+-        .map(|value| {
+-            value
+-                .as_str()
+-                .map(str::to_string)
+-                .ok_or_else(|| ToolValue::invalid(format!("{key}: every item must be a string")))
+-        })
+-        .collect()
++#[derive(serde::Deserialize)]
++struct SpawnArgs {
++    contract: String,
++    task: String,
++    context: Option<SpawnContext>,
++    name: Option<String>,
++    #[serde(default)]
++    blocked_by: Vec<String>,
++    #[serde(default)]
++    write: Vec<PathBuf>,
+ }
+ 
+ // ---- tools --------------------------------------------------------------------
+ 
+-/// The six team tools; the serialized name is the tool name.
++/// The eight team tools; the serialized name is the tool name.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+ #[serde(rename_all = "lowercase")]
+ enum Kind {
+@@ -967,38 +977,24 @@ impl Tool for TeamTool {
+                         serde_json::json!({ "capability": "spawn" }),
+                     );
+                 };
+-                let (contract, task) = match (arg(&args, "contract"), arg(&args, "task")) {
+-                    (Ok(p), Ok(t)) => (p.to_string(), t.to_string()),
+-                    (Err(e), _) | (_, Err(e)) => return e,
+-                };
+-                let context = match args.get("context").and_then(|v| v.as_str()) {
+-                    None | Some("fresh") => SpawnContext::Fresh,
+-                    Some("fork") => SpawnContext::Fork,
+-                    Some(other) => return ToolValue::invalid(format!("context: {other} is neither fresh nor fork")),
+-                };
+-                let name = args.get("name").and_then(|v| v.as_str()).unwrap_or(&contract).to_string();
+-                let blocked_by = match string_list(&args, "blocked_by") {
+-                    Ok(values) => values,
+-                    Err(error) => return error,
+-                };
+-                let write = match string_list(&args, "write") {
+-                    Ok(values) => values,
+-                    Err(error) => return error,
++                let parsed: SpawnArgs = match serde_json::from_value(args) {
++                    Ok(parsed) => parsed,
++                    Err(error) => return ToolValue::invalid(format!("spawn arguments: {error}")),
+                 };
+                 // The spawner reserves the child's whole share and records what it granted.
+                 let req = SpawnRequest {
+-                    contract: contract.clone(),
+-                    task,
+-                    context,
++                    contract: parsed.contract,
++                    task: parsed.task,
++                    context: parsed.context.unwrap_or(SpawnContext::Fresh),
+                     reserve: BudgetAmount::default(),
+                     // The tool always states the grant, so a worker writes
+                     // where its lead named and nowhere else. A declared grant
+                     // is the ceiling, never the default: an omitted `write`
+                     // is a worker that writes nothing.
+-                    write: Some(write.iter().map(PathBuf::from).collect()),
++                    write: Some(parsed.write),
+                     call_id: ctx.call_id.clone(),
+                 };
+-                match self.team.delegate(spawner.clone(), req, Some(&name), blocked_by) {
++                match self.team.delegate(spawner.clone(), req, parsed.name.as_deref(), parsed.blocked_by) {
+                     Ok(task) => {
+                         let owner = task.owner.as_deref().unwrap_or("unassigned");
+                         ToolValue::ok(
+diff --git a/crates/team/src/lib_test.rs b/crates/team/src/lib_test.rs
+index 618d25ba..95b4a8ee 100644
+--- a/crates/team/src/lib_test.rs
++++ b/crates/team/src/lib_test.rs
+@@ -2,6 +2,68 @@ use super::*;
+ use foe_contract::Budget;
+ use std::sync::atomic::{AtomicUsize, Ordering};
+ 
++/// docs/design.md "Agent teams": question timers belong to the asking team.
++#[tokio::test(start_paused = true)]
++async fn dropping_the_asking_team_cancels_defaults_and_releases_its_inbox() {
++    let (team, log) = asking_team();
++    let inbox = Arc::downgrade(&team.inbox);
++    let ask = tools(team.clone(), None).into_iter().find(|tool| tool.spec().name == "ask").unwrap();
++    let answer = ask
++        .call(
++            serde_json::json!({"to": "peer", "content": "Which directory?",
++        "deadline_ms": 1000, "default": "Use the assigned directory."}),
++            &ctx(None),
++        )
++        .await;
++    assert!(!answer.is_error);
++    tokio::task::yield_now().await;
++    drop(ask);
++    drop(team);
++    tokio::time::advance(Duration::from_secs(2)).await;
++    tokio::task::yield_now().await;
++    assert!(inbox.upgrade().is_none());
++    assert!(!log.events().iter().any(|event| matches!(&event.data, EventData::InboxItem(item) if item.synthetic)));
++}
++
++/// docs/tools.md "Built-in team tools": omitted write roots grant no writes; malformed
++/// arguments cannot create a board task.
++#[tokio::test]
++async fn spawn_parsing_keeps_defaults_and_refuses_malformed_fields_before_admission() {
++    struct AtCapacity;
++    impl Spawner for AtCapacity {
++        fn allocate_id(&self) -> String {
++            "ep_child".into()
++        }
++        fn launch(&self, _: String, _: SpawnRequest) -> Result<foe_core::SpawnHandle, CapError> {
++            Err(CapError::Budget { limit: ExhaustedLimit::Concurrency, name: "max_concurrent".into() })
++        }
++    }
++    let (team, log, _, _) = team();
++    log.append(start());
++    let spawn = tools(team.clone(), None).into_iter().find(|tool| tool.spec().name == "spawn").unwrap();
++    let context = ctx(Some(Arc::new(AtCapacity)));
++    for (key, invalid) in [
++        ("write", serde_json::json!([1])),
++        ("blocked_by", serde_json::json!(null)),
++        ("context", serde_json::json!("invalid")),
++        ("name", serde_json::json!(3)),
++    ] {
++        let mut args = serde_json::json!({"contract": "worker", "task": "Review"});
++        args[key] = invalid;
++        let refused = spawn.call(args, &context).await;
++        assert!(refused.is_error, "{key}");
++        assert_eq!(team.state().tasks.len(), 1, "{key}: only the root task exists");
++    }
++    let accepted = spawn.call(serde_json::json!({"contract": "worker", "task": "Review"}), &context).await;
++    assert!(!accepted.is_error, "{:?}", accepted.rendered);
++    let state = team.state();
++    let task = &state.tasks[1];
++    assert_eq!(task.name, "worker");
++    assert_eq!(task.context, SpawnContext::Fresh);
++    assert!(task.write.is_empty());
++    assert!(task.blocked_by.is_empty());
++}
++
+ fn fold(events: &[Event]) -> TeamState {
+     let mut folded = foe_log::State::default();
+     events.iter().for_each(|event| foe_log::fold::apply(&mut folded, event));
+diff --git a/docs/design.md b/docs/design.md
+index d6877c6a..32431c35 100644
+--- a/docs/design.md
++++ b/docs/design.md
+@@ -522,8 +522,8 @@ capability checks it only when a `start` call requests task lifetime.
+ Tools come from three sources, resolved in this order at construction.
+ A name that resolves in two sources is an error.
+ 
+-1. Built in, fourteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
+-   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `notify`, `send`, and `team`.
++1. Built in, sixteen of them: `read`, `grep`, `edit`, `bash`, `retrieve`, `session`,
++   `compose_tools`, `block`, `spawn`, `wait`, `steer`, `cancel`, `notify`, `send`, `ask`, and `team`.
+ 2. Configured executables, declared in `tool_defs` with a path and a
+    description. The runtime passes the model's `args` array as argv, captures
+    stdout and stderr, and reports the exit code as data. A non-zero exit is a
+@@ -721,6 +721,8 @@ before that deadline produces a `timed-out` tool failure carrying the default
+ in its message. Without an acknowledged message identifier, the runtime records
+ no synthetic reply. Acknowledgement uses the remaining question time for the
+ default answer.
++The asking team owns its default-answer timers. Dropping the team cancels
++outstanding timers and releases their inbox references.
+ 
+ The second rule is that an `until` wait states how long it will block, because
+ it returns for an arrival that only another episode produces. Such a call is
+diff --git a/docs/tools.md b/docs/tools.md
+index ab1638bc..d951af57 100644
+--- a/docs/tools.md
++++ b/docs/tools.md
+@@ -15,11 +15,11 @@ model turn's results show.
+ The `tools` list in the configuration names every tool the model may call.
+ Each name resolves against three sources, checked in this order.
+ 
+-1. **Built-in tools.** Implemented in the runtime. There are fourteen: the
++1. **Built-in tools.** Implemented in the runtime. There are sixteen: the
+    six coding tools `read`, `grep`, `edit`, `bash`, `session`, and
+    `compose_tools` specified below;
+    `retrieve`, which reads a bounded segment of a prior tool rendering;
+-   `block`, by which the model reports a blocking condition; and the six
++   `block`, by which the model reports a blocking condition; and the eight
+    team tools specified below. [design.md](design.md) and
+    [log-format.md](log-format.md) specify `block`, spawning, waiting, and
+    teams. One further tool, `return`, is synthesized rather than named in
