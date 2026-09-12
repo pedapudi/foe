@@ -1,0 +1,68 @@
+[
+  {
+    "path": "crates/cli/src/init_test.rs",
+    "line": 67,
+    "old": "/// docs/config.md `done_when`: a verifier reports findings by exiting zero",
+    "new": "/// the contract document `done_when`: a verifier reports findings by exiting zero"
+  },
+  {
+    "path": "crates/cli/src/run_test.rs",
+    "line": 658,
+    "old": "/// docs/config.md `done_when`: an invalid host verifier is rejected before",
+    "new": "/// the contract document `done_when`: an invalid host verifier is rejected before"
+  },
+  {
+    "path": "crates/contract/src/document_test.rs",
+    "line": 89,
+    "old": "/// docs/config.md `done_when`: a required array whose items carry `seq` is a",
+    "new": "/// the contract document `done_when`: a required array whose items carry `seq` is a"
+  },
+  {
+    "path": "crates/core/src/loop_test.rs",
+    "line": 844,
+    "old": "/// docs/config.md `done_when`: requiring `learned` makes completion cite",
+    "new": "/// the contract document `done_when`: requiring `learned` makes completion cite"
+  },
+  {
+    "path": "crates/core/src/loop_test.rs",
+    "line": 958,
+    "old": "/// docs/config.md `done_when`: what activates the citation rule is the shape",
+    "new": "/// the contract document `done_when`: what activates the citation rule is the shape"
+  },
+  {
+    "path": "crates/core/src/loop_test.rs",
+    "line": 999,
+    "old": "/// docs/config.md `done_when`: a cited spilled result remains evidence only",
+    "new": "/// the contract document `done_when`: a cited spilled result remains evidence only"
+  },
+  {
+    "path": "crates/core/src/loop_test.rs",
+    "line": 1027,
+    "old": "/// docs/config.md `done_when`: spilling a result preserves whether the",
+    "new": "/// the contract document `done_when`: spilling a result preserves whether the"
+  },
+  {
+    "path": "crates/core/src/loop_test.rs",
+    "line": 1050,
+    "old": "/// docs/config.md `done_when`: a sequence is a position in one log, so a",
+    "new": "/// the contract document `done_when`: a sequence is a position in one log, so a"
+  },
+  {
+    "path": "crates/core/src/registry_test.rs",
+    "line": 356,
+    "old": "/// docs/config.md `done_when`: an executable verifier accepts by exiting 0",
+    "new": "/// the contract document `done_when`: an executable verifier accepts by exiting 0"
+  },
+  {
+    "path": "crates/core/src/registry_test.rs",
+    "line": 438,
+    "old": "/// docs/config.md `done_when`: a tool verifier receives the complete",
+    "new": "/// the contract document `done_when`: a tool verifier receives the complete"
+  },
+  {
+    "path": "crates/core/src/registry_test.rs",
+    "line": 461,
+    "old": "/// docs/config.md `done_when`: each non-executable verifier declares one",
+    "new": "/// the contract document `done_when`: each non-executable verifier declares one"
+  }
+]

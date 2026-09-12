@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "name": "survey-then-fix",
+  "instructions": {
+    "10-role": "You are a coding agent working in a Python repository.",
+    "20-delegation": "Before editing, spawn one survey child per module named in the task. Each child reports the places in its module that the task touches. A report arrives as a message, and a further message arrives when the child ends. Call `wait` after spawning, which returns once every child has ended, then make the change yourself."
+  },
+  "tools": ["read", "grep", "edit", "spawn", "wait"],
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"],
+    "spawn": ["survey"]
+  },
+  "budget": {
+    "model_calls": 40,
+    "input_tokens": 320000,
+    "output_tokens": 80000,
+    "seconds": 1800,
+    "max_depth": 1,
+    "max_episodes": 4,
+    "max_concurrent": 2
+  },
+  "programs": {
+    "survey": {
+      "name": "survey",
+      "instructions": {
+        "role": "You are a read-only surveyor. Answer the question in the task by reading and searching the repository. Report what you found to the episode that started you with notify, naming the file and the lines."
+      },
+      "tools": ["read", "grep", "notify"],
+      "grants": {
+        "read": ["/home/user/project"]
+      },
+      "budget": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000 }
+    }
+  },
+  "model": {
+    "provider": "exec",
+    "model": "subagents-demo",
+    "exec": "/home/user/project/tools/transport.py"
+  },
+  "task": "Rename the configuration key `timeout` to `timeout_seconds` everywhere it is read in src/config.py and src/client.py, and update the callers."
+}

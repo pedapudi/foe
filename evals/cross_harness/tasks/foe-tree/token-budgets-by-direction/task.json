@@ -1,0 +1,312 @@
+{
+  "name": "token-budgets-by-direction",
+  "family": "teams",
+  "class_name": "fan-out",
+  "text": "The model token budget has two directions. The budget keys `input_tokens` and `output_tokens` replace `tokens` in the contract document, whose format version is 2 (`CONFIG_VERSION` is 2 and the schema's `version` const is 2), and in the log format, whose version is 2: `BudgetAmount` holds `model_calls`, `input_tokens`, `output_tokens`, `seconds`, and `episodes`; `ExhaustedLimit` has `InputTokens` and `OutputTokens` in place of `Tokens`; and `ModelRequest` carries the per-request output cap `max_output_tokens`. The same split reaches the budget pool of crates/core, the workflow runner, compaction, the command line's schema and plan output, the Python package, the evaluations, the examples, the viewer's statistics, and the documents.\n\nThe pool of crates/core tracks the two directions apart. `Pool::request_max_output(estimated_input, configured)` returns `Err(ExhaustedLimit::InputTokens)` when the estimated input exceeds the remaining input allowance, `Err(ExhaustedLimit::OutputTokens)` when no output allowance remains, and otherwise `Ok` with the per-request output cap: the smaller of the configured `model.max_output_tokens` and the remaining output allowance, or the configured value alone when the allowance is unlimited. `estimate_request_input(system, tools, messages)` estimates the input at one token per four serialized bytes. Every request path, the agent loop, the workflow's model nodes and recovery decisions, and compaction, computes the estimate and the cap before sending, and an exhausted direction ends the episode with that limit. Compaction's `max_output` is the smaller of `model.max_output_tokens` and the remaining output allowance, and a context that exceeds the window after compaction ends the episode as exhausted with limit `input_tokens`. A child reservation and a child's reported spend carry both dimensions, and the viewer's statistics show input and output against their limits.\n\nThe change applies to 12 units: README.md, crates/cli, crates/context, crates/core, crates/log, crates/transport, crates/workflow, docs, evals, examples, python, view. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: cargo test --workspace, cargo clippy --workspace -- -D warnings, and scripts/loc.sh.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/compaction.md: max_output is the smaller of model.max_output_tokens and the remaining episode-wide output allowance.\n- docs/compaction.md: when only one exists, it supplies the value.\n- docs/compaction.md: when neither exists, the value is 0.\n- docs/compaction.md: the episode's remaining model calls, input tokens, output tokens, and seconds when the compaction began\n- docs/compaction.md: it counts as one model call.\n- docs/compaction.md: its reported input and output count against their respective episode-wide allowances.\n- docs/compaction.md: the runtime clamps its output cap before sending it.\n- docs/config.md: maximum provider-reported input tokens across all requests, including cache-read input\n- docs/config.md: maximum provider-reported output tokens across all requests, including reasoning when the provider includes it\n- docs/config.md: model_calls, input_tokens, output_tokens, seconds, max_depth, and max_episodes apply to the whole tree below this episode.\n- docs/config.md: the child reports what its whole subtree used.\n- docs/config.md: a child program that declares a larger limit runs under its reserved share.\n- docs/config.md: before each request, the runtime estimates the model-visible input at one token per four serialized bytes.\n- docs/config.md: it refuses a request whose estimate exceeds the remaining input allowance.\n- docs/config.md: provider-reported usage is authoritative and can exceed the allowance because the runtime has no provider tokenizer.\n- docs/config.md: cached input remains part of input_tokens.\n- docs/config.md: the runtime clamps each request's output cap to the remaining output_tokens.\n- docs/config.md: this applies to ordinary requests, retries, workflow recovery decisions, and compaction summaries.\n- docs/config.md: a configured model.max_output_tokens can make the per-request cap smaller.\n- docs/design.md: model calls, input tokens, and output tokens are separate dimensions.\n- docs/design.md: structural caps on depth, lifetime episode count, and concurrency sit beside them.\n- docs/design.md: before each request, the runtime refuses an estimated input that does not fit and clamps the provider's output cap to the remaining output allowance.\n- docs/design.md: the input estimate uses one token per four serialized bytes because foe has no provider tokenizer.\n- docs/design.md: a request can therefore cross its remaining input allowance.\n- docs/design.md: concurrent descendants can each cross their reserved allowances.\n- docs/design.md: provider-reported usage becomes the account of what the tree spent.\n- docs/evaluation.md: each attempt declares limits totaling 44,800 input tokens, 11,200 output tokens, and 40 model calls.\n- docs/evaluation.md: the report gives provider-reported usage for both token dimensions.\n- docs/evaluation.md: it then exits 2 without contacting the provider.\n- docs/evaluation.md: the default single attempt declares 44,800 input tokens and 11,200 output tokens across its five tasks.\n- docs/evaluation.md: two attempts declare 89,600 input tokens, 22,400 output tokens, and 80 model calls.\n- docs/log-format.md: max_output_tokens is the per-request cap after the runtime applies the remaining episode-wide output allowance.\n- docs/log-format.md: it is omitted when neither the configuration nor the budget supplies a cap.\n- docs/log-format.md: usage.input includes cache-read input.\n- docs/log-format.md: usage.output includes reasoning when the provider reports reasoning inside its output count.\n- docs/log-format.md: an amount holds five optional fields: model_calls, input_tokens, output_tokens, seconds, and episodes.\n- docs/log-format.md: it is the child's budget.max_episodes after the parent's share is applied.\n- docs/log-format.md: this is how one max_episodes bounds a whole tree.\n- docs/log-format.md: the limit of an exhausted outcome is one of model_calls, input_tokens, output_tokens, seconds, depth, episodes, concurrency.\n- docs/protocol.md: the host applies max_output_tokens as a provider output cap.\n- docs/protocol.md: a host-specific cap may make it smaller.\n- docs/protocol.md: input includes cache_read.\n- docs/protocol.md: output includes reasoning when the provider counts reasoning as output.\n- docs/protocol.md: an error chunk carries no usage.\n- docs/protocol.md: provider work that ends in an error is therefore outside the runtime's token account.\n- docs/protocol.md: each retry still recomputes its input preflight and output cap from the allowance that remains.\n- docs/sdk.md: a budget limit was reached; one of model_calls, input_tokens, output_tokens, seconds, depth, episodes, concurrency\n- docs/viewer.md: the details region states the outcome, the model calls, input tokens, and output tokens consumed against the limits in episode/start.program.budget.\n- docs/viewer.md: it also states the sandbox mode and landlock abi, the program identity, the lineage, the event count, the start time, the duration, and the task.\n- docs/viewer.md: usage.input over every assistant/message\n- docs/viewer.md: the declared input-token limit is a dashed envelope across the plot, and the top of the plot is the larger of that limit and the highest point.\n- docs/viewer.md: the curve shows how provider-reported request input approaches the declared limit.\n- docs/viewer.md: a compaction's own call is left out because its input is the summarization prompt rather than the context.\n- docs/workflow.md: model_calls, input_tokens, output_tokens, seconds, max_depth, and loop_threshold are each at most the containing program's value.\n- docs/workflow.md: an omitted optional spend limit draws from the containing budget.\n- docs/workflow.md: the recovery request draws from the workflow episode's input and output allowances.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 210,
+    "input_tokens": 7000000,
+    "output_tokens": 300000,
+    "seconds": 7200
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "ec9ff733d4f2091aaa76a01de77b9e7d4ceb3cf0",
+      "parent": "c0f9acd50eae0343c44ccc20d912a298b94fd184",
+      "subject": "Split model token budgets by direction"
+    },
+    "crates": [
+      "crates/cli",
+      "crates/context",
+      "crates/core",
+      "crates/log",
+      "crates/transport",
+      "crates/view",
+      "crates/workflow"
+    ],
+    "packages": [
+      "foe",
+      "foe-context",
+      "foe-core",
+      "foe-log",
+      "foe-transport",
+      "foe-view",
+      "foe-workflow"
+    ],
+    "crate_count": 7,
+    "coupling": 2,
+    "identifiers": [
+      "estimate_request_input",
+      "request_max_output"
+    ],
+    "allowed_traces": [],
+    "visible_tests": [
+      "crates/cli/src/main_test.rs",
+      "crates/context/src/lib_test.rs",
+      "crates/core/src/budget_test.rs",
+      "crates/log/src/fold_test.rs",
+      "crates/view/tests/fixtures/run/episode.jsonl",
+      "crates/workflow/src/lib_test.rs"
+    ],
+    "hidden_tests": [
+      "crates/cli/src/main_test.rs",
+      "crates/cli/tests/integration.rs",
+      "crates/context/src/lib_test.rs",
+      "crates/core/src/budget_test.rs",
+      "crates/core/src/config_test.rs",
+      "crates/core/src/fixtures_test.rs",
+      "crates/core/src/loop_test.rs",
+      "crates/core/src/protocol_test.rs",
+      "crates/core/src/sandbox_test.rs",
+      "crates/core/src/spawn_test.rs",
+      "crates/core/src/wiring_test.rs",
+      "crates/log/src/fold_test.rs",
+      "crates/view/tests/fixtures/run/episode.jsonl",
+      "crates/workflow/src/lib_test.rs",
+      "crates/workflow/src/run_test.rs",
+      "evals/micro_tasks_test.py",
+      "evals/trace_quality_test.py",
+      "python/tests/fake_foe.py",
+      "python/tests/test_config.py",
+      "python/tests/test_run.py"
+    ],
+    "review": "revised: the drafted text was rewritten in present-state specification voice after authoring; the sentence list and the checks paragraph are the tool's",
+    "units": {
+      "README.md": [
+        "README.md"
+      ],
+      "crates/cli": [
+        "crates/cli"
+      ],
+      "crates/context": [
+        "crates/context"
+      ],
+      "crates/core": [
+        "crates/core"
+      ],
+      "crates/log": [
+        "crates/log"
+      ],
+      "crates/transport": [
+        "crates/transport"
+      ],
+      "crates/workflow": [
+        "crates/workflow"
+      ],
+      "docs": [
+        "docs"
+      ],
+      "evals": [
+        "evals"
+      ],
+      "examples": [
+        "examples"
+      ],
+      "python": [
+        "python"
+      ],
+      "view": [
+        "view"
+      ]
+    },
+    "n": 12,
+    "unit_files": {
+      "README.md": [
+        "README.md"
+      ],
+      "crates/cli": [
+        "crates/cli/src/main_test.rs",
+        "crates/cli/src/run.rs",
+        "crates/cli/src/schema.json",
+        "crates/cli/tests/integration.rs"
+      ],
+      "crates/context": [
+        "crates/context/src/lib.rs",
+        "crates/context/src/lib_test.rs"
+      ],
+      "crates/core": [
+        "crates/core/src/budget.rs",
+        "crates/core/src/budget_test.rs",
+        "crates/core/src/config.rs",
+        "crates/core/src/config_test.rs",
+        "crates/core/src/fixtures_test.rs",
+        "crates/core/src/lib.rs",
+        "crates/core/src/loop_.rs",
+        "crates/core/src/loop_test.rs",
+        "crates/core/src/protocol_test.rs",
+        "crates/core/src/sandbox_test.rs",
+        "crates/core/src/spawn.rs",
+        "crates/core/src/spawn_test.rs",
+        "crates/core/src/wiring_test.rs"
+      ],
+      "crates/log": [
+        "crates/log/src/fold.rs",
+        "crates/log/src/fold_test.rs",
+        "crates/log/src/lib.rs"
+      ],
+      "crates/transport": [
+        "crates/transport/src/format/messages.rs"
+      ],
+      "crates/workflow": [
+        "crates/workflow/src/lib_test.rs",
+        "crates/workflow/src/run.rs",
+        "crates/workflow/src/run_test.rs"
+      ],
+      "docs": [
+        "docs/compaction.md",
+        "docs/config.md",
+        "docs/deferred.md",
+        "docs/design.md",
+        "docs/evaluation.md",
+        "docs/log-format.md",
+        "docs/protocol.md",
+        "docs/sdk.md",
+        "docs/viewer.md",
+        "docs/workflow.md"
+      ],
+      "evals": [
+        "evals/micro_tasks.py",
+        "evals/micro_tasks_test.py",
+        "evals/run_micro_evals.py",
+        "evals/run_runtime_evals.py",
+        "evals/trace_quality.py",
+        "evals/trace_quality_test.py"
+      ],
+      "examples": [
+        "examples/budget-exhausted/README.md",
+        "examples/budget-exhausted/config.json",
+        "examples/exec-transport/config.json",
+        "examples/host-transport/config.json",
+        "examples/minimal/config.json",
+        "examples/recovery-exhausted/config.json",
+        "examples/sandbox/config.json",
+        "examples/self-extension/README.md",
+        "examples/self-extension/config.json",
+        "examples/self-extension/run-model.sh",
+        "examples/subagents/README.md",
+        "examples/subagents/config.json",
+        "examples/team/config.json",
+        "examples/verification-unsatisfiable/config.json",
+        "examples/workflow/config.json",
+        "examples/wrap-a-binary/config.json"
+      ],
+      "python": [
+        "python/foe/_host.py",
+        "python/foe/_outcome.py",
+        "python/foe/_program.py",
+        "python/tests/fake_foe.py",
+        "python/tests/test_config.py",
+        "python/tests/test_run.py"
+      ],
+      "view": [
+        "view/dist/viewer.js",
+        "view/fixtures/child.jsonl",
+        "view/fixtures/compact.jsonl",
+        "view/fixtures/fork.jsonl",
+        "view/fixtures/generate.mjs",
+        "view/fixtures/overlap-child.jsonl",
+        "view/fixtures/overlap-parent.jsonl",
+        "view/fixtures/rich.jsonl",
+        "view/fixtures/root.jsonl",
+        "view/fixtures/workflow-apply-1.jsonl",
+        "view/fixtures/workflow-propose-1.jsonl",
+        "view/fixtures/workflow-propose-2.jsonl",
+        "view/fixtures/workflow.jsonl",
+        "view/src/fold.ts",
+        "view/src/messages.ts",
+        "view/src/render/statistics.ts",
+        "view/src/render/tree.ts",
+        "view/src/statistics.ts",
+        "view/src/types.ts",
+        "view/test/fold.test.ts",
+        "view/test/statistics.test.ts"
+      ]
+    },
+    "unit_tests": {
+      "README.md": [],
+      "crates/cli": [
+        "crates/cli/src/main_test.rs",
+        "crates/cli/tests/integration.rs"
+      ],
+      "crates/context": [
+        "crates/context/src/lib_test.rs"
+      ],
+      "crates/core": [
+        "crates/core/src/budget_test.rs",
+        "crates/core/src/config_test.rs",
+        "crates/core/src/fixtures_test.rs",
+        "crates/core/src/loop_test.rs",
+        "crates/core/src/protocol_test.rs",
+        "crates/core/src/sandbox_test.rs",
+        "crates/core/src/spawn_test.rs",
+        "crates/core/src/wiring_test.rs"
+      ],
+      "crates/log": [
+        "crates/log/src/fold_test.rs"
+      ],
+      "crates/transport": [],
+      "crates/workflow": [
+        "crates/workflow/src/lib_test.rs",
+        "crates/workflow/src/run_test.rs"
+      ],
+      "docs": [],
+      "evals": [
+        "evals/micro_tasks_test.py",
+        "evals/trace_quality_test.py"
+      ],
+      "examples": [],
+      "python": [
+        "python/tests/fake_foe.py",
+        "python/tests/test_config.py",
+        "python/tests/test_run.py"
+      ],
+      "view": []
+    },
+    "unit_packages": {
+      "README.md": null,
+      "crates/cli": "foe",
+      "crates/context": "foe-context",
+      "crates/core": "foe-core",
+      "crates/log": "foe-log",
+      "crates/transport": "foe-transport",
+      "crates/workflow": "foe-workflow",
+      "docs": null,
+      "evals": null,
+      "examples": null,
+      "python": null,
+      "view": null
+    },
+    "checked_units": [
+      "crates/cli",
+      "crates/context",
+      "crates/core",
+      "crates/log",
+      "crates/workflow",
+      "evals"
+    ],
+    "interface_paths": [
+      "crates/context/src/lib.rs",
+      "crates/core/src/budget.rs",
+      "crates/core/src/config.rs",
+      "crates/core/src/lib.rs",
+      "crates/core/src/loop_.rs",
+      "crates/core/src/spawn.rs",
+      "crates/log/src/fold.rs",
+      "crates/log/src/lib.rs",
+      "crates/transport/src/format/messages.rs",
+      "crates/workflow/src/run.rs"
+    ],
+    "revert_unit": "crates/cli",
+    "shared_element": null,
+    "shared_element_absent": "no public item defined in a touched implementation file is used by a crate outside the dependency closure of the checked units (crates/cli, crates/code, crates/context, crates/core, crates/log, crates/transport, crates/view, crates/workflow, evals) and by nothing inside it"
+  }
+}

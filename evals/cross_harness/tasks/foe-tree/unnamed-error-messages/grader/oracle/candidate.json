@@ -1,0 +1,124 @@
+{
+  "items": [
+    {
+      "path": "crates/contract/src/lib.rs",
+      "line": 291,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/contract/src/lib.rs",
+      "line": 293,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 389,
+      "message": "{path}: outside every granted root"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 391,
+      "message": "capability denied: {0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 393,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 397,
+      "message": "the {name} budget limit leaves no room for a child"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 399,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 401,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 457,
+      "message": "protocol: {0}"
+    },
+    {
+      "path": "crates/core/src/lib.rs",
+      "line": 459,
+      "message": "sandbox: {0}"
+    },
+    {
+      "path": "crates/evidence/src/lib.rs",
+      "line": 22,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/evidence/src/lib.rs",
+      "line": 24,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1007,
+      "message": "{0}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1009,
+      "message": "io: {0}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1011,
+      "message": "line {line}: {source}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1013,
+      "message": "event {seq}: {rule}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1015,
+      "message": "log is empty"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1017,
+      "message": "log states format version {found}; this reader reads version {supported}"
+    },
+    {
+      "path": "crates/log/src/lib.rs",
+      "line": 1019,
+      "message": "rendering archive event {seq} at {path}: {rule}"
+    },
+    {
+      "path": "crates/transport/src/auth/mod.rs",
+      "line": 37,
+      "message": "{path}: {reason}"
+    },
+    {
+      "path": "crates/transport/src/auth/mod.rs",
+      "line": 40,
+      "message": "{endpoint}: {reason}"
+    },
+    {
+      "path": "crates/transport/src/lib.rs",
+      "line": 72,
+      "message": "home directory: {0}; name the credential file in the model block instead"
+    },
+    {
+      "path": "crates/view/src/lib.rs",
+      "line": 48,
+      "message": "{0}: {1}"
+    },
+    {
+      "path": "crates/view/src/lib.rs",
+      "line": 51,
+      "message": "{0}: {1}"
+    }
+  ]
+}

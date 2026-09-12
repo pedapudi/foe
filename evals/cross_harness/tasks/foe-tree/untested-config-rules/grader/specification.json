@@ -1,0 +1,14 @@
+{
+  "task": "untested-config-rules",
+  "threshold": 0.9,
+  "identity": [
+    {
+      "key": "key",
+      "kind": "text"
+    },
+    {
+      "key": "sentence",
+      "kind": "text"
+    }
+  ]
+}

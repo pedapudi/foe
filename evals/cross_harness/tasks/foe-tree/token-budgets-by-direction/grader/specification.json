@@ -1,0 +1,272 @@
+{
+  "task": "token-budgets-by-direction",
+  "units": [
+    {
+      "name": "crates/cli",
+      "package": "foe",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/cli/src/main_test.rs": [
+          "every_form_parses_and_foreign_options_are_refused",
+          "the_schema_is_json_and_names_every_key_of_the_document"
+        ],
+        "crates/cli/tests/integration.rs": [
+          "a_hosted_episode_with_a_host_tool_completes",
+          "a_verifier_feeds_findings_back_until_it_prints_nothing",
+          "a_spent_model_call_budget_exhausts_the_episode",
+          "a_host_tool_call_no_host_can_answer_ends_every_episode_in_the_tree",
+          "a_workflow_fires_tool_model_and_tool_nodes_and_completes",
+          "a_spawned_child_can_run_its_workflow_model_node",
+          "a_failed_tool_node_is_retried_through_recovery",
+          "a_cycle_that_reaches_max_fires_ends_as_recovery_exhausted",
+          "a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call",
+          "a_failed_summarization_leaves_the_context_as_it_was",
+          "plan_reports_effective_authority_across_nested_descendants",
+          "plan_reports_write_overlap_for_every_kind_of_writer",
+          "plan_reports_an_identity_that_ignores_task_and_paths",
+          "every_example_conforms_to_the_schema_and_parses"
+        ]
+      }
+    },
+    {
+      "name": "crates/context",
+      "package": "foe-context",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/context/src/lib_test.rs": [
+          "the_projection_follows_the_last_ordinary_response",
+          "the_cut_falls_on_a_step_boundary_and_always_makes_progress",
+          "file_lists_are_extracted_structurally_and_accumulate_across_summaries",
+          "the_prompt_is_labeled_plain_text_with_the_earlier_summary_first",
+          "the_completion_condition_renders_in_one_line",
+          "summarize_builds_the_state_from_events_and_the_narrative_from_the_model",
+          "an_empty_or_failed_summary_is_reported_without_a_cut",
+          "a_second_compaction_iterates_on_the_first"
+        ]
+      }
+    },
+    {
+      "name": "crates/core",
+      "package": "foe-core",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/core/src/budget_test.rs": [
+          "model_calls_count_every_request_including_retries",
+          "input_and_output_tokens_have_independent_remainders",
+          "seconds_elapse_on_the_wall_clock",
+          "reservation_debits_the_remainder_until_release",
+          "reservation_beyond_the_remainder_names_the_limit",
+          "a_grant_of_zero_on_any_dimension_names_that_limit",
+          "structural_caps_refuse_a_spawn",
+          "the_episode_allowance_is_shared_out_and_reported_back",
+          "folding_reserve_and_release_events_matches_live_calls",
+          "request_output_is_clamped_to_the_remaining_allowance",
+          "estimated_input_that_exceeds_the_remainder_refuses_the_request",
+          "compaction_end_does_not_charge_summary_usage_twice"
+        ],
+        "crates/core/src/config_test.rs": [
+          "a_valid_document_resolves_with_canonical_paths_and_defaults",
+          "unknown_keys_and_wrong_types_are_parse_errors",
+          "every_rule_names_its_key",
+          "a_workflow_model_node_schema_is_checked_at_its_dotted_key",
+          "children_inherit_model_and_sandbox_and_validate_recursively",
+          "a_workflow_model_node_stays_within_its_ceiling",
+          "a_model_node_may_declare_its_own_episode_and_concurrency_counts",
+          "an_ordinary_child_may_hold_tools_the_parent_does_not_use"
+        ],
+        "crates/core/src/fixtures_test.rs": [],
+        "crates/core/src/loop_test.rs": [
+          "a_turn_without_tool_calls_completes_with_its_text",
+          "concurrent_effects_overlap_serial_effects_wait_and_results_keep_issue_order",
+          "a_length_stop_rejects_every_call_without_running_any",
+          "a_failure_after_a_tool_call_started_is_recorded_as_interrupted_and_the_next_step_continues",
+          "failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_consume_budget",
+          "the_last_permitted_attempt_records_no_retry",
+          "a_non_retryable_failure_fails_the_episode",
+          "the_model_call_budget_ends_the_episode_as_exhausted",
+          "the_same_call_with_the_same_result_in_threshold_consecutive_steps_is_looping",
+          "identical_assistant_text_in_threshold_consecutive_steps_is_looping",
+          "block_ends_the_episode_with_the_reported_code",
+          "verifier_findings_return_as_inbox_items_until_accepted_or_retries_are_spent",
+          "a_returns_program_completes_only_through_the_return_tool",
+          "a_large_result_is_spilled_and_replaced_by_a_locator",
+          "the_stop_signal_ends_the_episode_as_failed_with_its_reason",
+          "a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only_on_change",
+          "tolerant_parsing_closes_what_a_truncated_stream_left_open"
+        ],
+        "crates/core/src/protocol_test.rs": [
+          "model_chunks_reach_the_transport_even_when_they_arrive_before_it_listens",
+          "a_chunk_for_an_unknown_or_settled_request_is_a_protocol_error",
+          "host_tool_calls_emit_an_event_and_wait_for_the_answer",
+          "end_of_input_fails_outstanding_waits_instead_of_hanging",
+          "inbox_items_are_appended_on_receipt_and_cancel_stops_the_episode",
+          "a_task_source_from_the_host_and_unknown_line_types_are_protocol_errors",
+          "lines_tagged_for_a_descendant_go_down_unchanged"
+        ],
+        "crates/core/src/sandbox_test.rs": [
+          "off_records_zero_and_required_needs_landlock",
+          "best_effort_records_the_abi_obtained",
+          "read_roots_are_readable_and_other_paths_are_not",
+          "write_roots_allow_create_and_remove",
+          "executable_policy_keeps_only_its_own_file",
+          "tcp_connect_is_denied_from_abi_4",
+          "network_policy_can_read_resolver_configuration",
+          "tcp_bind_is_limited_to_listed_ports_from_abi_4",
+          "episode_policy_follows_grants_and_tool_defs",
+          "an_episode_reserves_the_configured_executables_of_every_program_below_it",
+          "a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved"
+        ],
+        "crates/core/src/spawn_test.rs": [
+          "a_child_asks_for_the_episodes_its_subtree_can_hold",
+          "a_workflow_bearing_child_asks_for_its_subtree_episodes",
+          "child_requests_are_forwarded_and_answers_routed",
+          "spawn_refuses_programs_outside_the_grant",
+          "a_host_call_no_host_can_answer_is_refused_at_once",
+          "routing_to_an_unknown_episode_is_an_error"
+        ],
+        "crates/core/src/wiring_test.rs": [
+          "a_spawn_reserves_records_and_releases_budget",
+          "a_spawn_without_an_amount_reserves_what_the_program_declares",
+          "a_grandchild_counts_against_the_root_episode_allowance",
+          "ending_an_episode_settles_a_child_that_is_still_running"
+        ]
+      }
+    },
+    {
+      "name": "crates/log",
+      "package": "foe-log",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/log/src/fold_test.rs": [
+          "derivation_after_one_compaction_opens_with_task_and_continuation",
+          "derivation_after_two_compactions_uses_the_latest_summary",
+          "the_summarization_request_and_its_response_are_excluded",
+          "derived_messages_follow_the_rule_against_the_fixture",
+          "unconsumed_inbox_items_are_excluded",
+          "consumed_names_earlier_unconsumed_items_only",
+          "fold_requires_seq_contiguous_from_zero",
+          "fold_fills_state",
+          "episode_start_is_first_and_only_at_seq_zero",
+          "episode_end_is_last",
+          "every_obligation_the_log_opened_is_closed_before_episode_end",
+          "an_obligation_is_closed_once_and_only_after_it_was_opened",
+          "a_team_message_may_stand_undelivered_at_episode_end",
+          "tool_result_needs_a_call_and_only_one",
+          "request_must_name_current_header_and_fresh_inbox",
+          "read_from_tails_complete_lines_only",
+          "missing_log_is_not_found",
+          "every_event_variant_round_trips"
+        ]
+      }
+    },
+    {
+      "name": "crates/workflow",
+      "package": "foe-workflow",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/workflow/src/lib_test.rs": [
+          "branch_is_added_to_the_returns_schema",
+          "the_spawner_configuration_lists_model_nodes_as_programs"
+        ],
+        "crates/workflow/src/run_test.rs": [
+          "a_branching_cycle_fires_listed_successors_and_completes_at_the_terminal",
+          "a_node_that_follows_task_receives_it_first",
+          "independent_nodes_fire_concurrently",
+          "effectful_tool_nodes_run_one_at_a_time",
+          "a_tool_error_is_recovered_by_retry",
+          "recovery_reaches_ancestors_only_and_skip_needs_empty",
+          "settled_failures_end_the_episode_without_a_decision",
+          "bounds_end_the_episode_as_recovery_exhausted",
+          "verify_retries_then_recovers_and_nested_workflows_produce_their_terminal_value",
+          "a_firing_still_running_when_the_seconds_budget_elapses_is_abandoned",
+          "a_firing_still_running_when_the_episode_stops_is_abandoned"
+        ]
+      }
+    },
+    {
+      "name": "evals",
+      "package": null,
+      "python_tests": [
+        "evals/micro_tasks_test.py",
+        "evals/trace_quality_test.py"
+      ],
+      "hidden_test_names": {}
+    }
+  ],
+  "sentences": {
+    "docs/compaction.md": [
+      "max_output is the smaller of model.max_output_tokens and the remaining episode-wide output allowance.",
+      "when only one exists, it supplies the value.",
+      "when neither exists, the value is 0.",
+      "the episode's remaining model calls, input tokens, output tokens, and seconds when the compaction began",
+      "it counts as one model call.",
+      "its reported input and output count against their respective episode-wide allowances.",
+      "the runtime clamps its output cap before sending it."
+    ],
+    "docs/config.md": [
+      "maximum provider-reported input tokens across all requests, including cache-read input",
+      "maximum provider-reported output tokens across all requests, including reasoning when the provider includes it",
+      "model_calls, input_tokens, output_tokens, seconds, max_depth, and max_episodes apply to the whole tree below this episode.",
+      "the child reports what its whole subtree used.",
+      "a child program that declares a larger limit runs under its reserved share.",
+      "before each request, the runtime estimates the model-visible input at one token per four serialized bytes.",
+      "it refuses a request whose estimate exceeds the remaining input allowance.",
+      "provider-reported usage is authoritative and can exceed the allowance because the runtime has no provider tokenizer.",
+      "cached input remains part of input_tokens.",
+      "the runtime clamps each request's output cap to the remaining output_tokens.",
+      "this applies to ordinary requests, retries, workflow recovery decisions, and compaction summaries.",
+      "a configured model.max_output_tokens can make the per-request cap smaller."
+    ],
+    "docs/design.md": [
+      "model calls, input tokens, and output tokens are separate dimensions.",
+      "structural caps on depth, lifetime episode count, and concurrency sit beside them.",
+      "before each request, the runtime refuses an estimated input that does not fit and clamps the provider's output cap to the remaining output allowance.",
+      "the input estimate uses one token per four serialized bytes because foe has no provider tokenizer.",
+      "a request can therefore cross its remaining input allowance.",
+      "concurrent descendants can each cross their reserved allowances.",
+      "provider-reported usage becomes the account of what the tree spent."
+    ],
+    "docs/evaluation.md": [
+      "each attempt declares limits totaling 44,800 input tokens, 11,200 output tokens, and 40 model calls.",
+      "the report gives provider-reported usage for both token dimensions.",
+      "it then exits 2 without contacting the provider.",
+      "the default single attempt declares 44,800 input tokens and 11,200 output tokens across its five tasks.",
+      "two attempts declare 89,600 input tokens, 22,400 output tokens, and 80 model calls."
+    ],
+    "docs/log-format.md": [
+      "max_output_tokens is the per-request cap after the runtime applies the remaining episode-wide output allowance.",
+      "it is omitted when neither the configuration nor the budget supplies a cap.",
+      "usage.input includes cache-read input.",
+      "usage.output includes reasoning when the provider reports reasoning inside its output count.",
+      "an amount holds five optional fields: model_calls, input_tokens, output_tokens, seconds, and episodes.",
+      "it is the child's budget.max_episodes after the parent's share is applied.",
+      "this is how one max_episodes bounds a whole tree.",
+      "the limit of an exhausted outcome is one of model_calls, input_tokens, output_tokens, seconds, depth, episodes, concurrency."
+    ],
+    "docs/protocol.md": [
+      "the host applies max_output_tokens as a provider output cap.",
+      "a host-specific cap may make it smaller.",
+      "input includes cache_read.",
+      "output includes reasoning when the provider counts reasoning as output.",
+      "an error chunk carries no usage.",
+      "provider work that ends in an error is therefore outside the runtime's token account.",
+      "each retry still recomputes its input preflight and output cap from the allowance that remains."
+    ],
+    "docs/sdk.md": [
+      "a budget limit was reached; one of model_calls, input_tokens, output_tokens, seconds, depth, episodes, concurrency"
+    ],
+    "docs/viewer.md": [
+      "the details region states the outcome, the model calls, input tokens, and output tokens consumed against the limits in episode/start.program.budget.",
+      "it also states the sandbox mode and landlock abi, the program identity, the lineage, the event count, the start time, the duration, and the task.",
+      "usage.input over every assistant/message",
+      "the declared input-token limit is a dashed envelope across the plot, and the top of the plot is the larger of that limit and the highest point.",
+      "the curve shows how provider-reported request input approaches the declared limit.",
+      "a compaction's own call is left out because its input is the summarization prompt rather than the context."
+    ],
+    "docs/workflow.md": [
+      "model_calls, input_tokens, output_tokens, seconds, max_depth, and loop_threshold are each at most the containing program's value.",
+      "an omitted optional spend limit draws from the containing budget.",
+      "the recovery request draws from the workflow episode's input and output allowances."
+    ]
+  }
+}

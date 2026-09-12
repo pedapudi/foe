@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "name": "survey-propose-apply",
+  "instructions": {
+    "role": "The ceiling of a declared workflow. Each model node carries its own instructions."
+  },
+  "tools": ["read", "grep", "edit", "check"],
+  "tool_defs": {
+    "check": {
+      "exec": "/home/user/foe/examples/workflow/check",
+      "description": "Checks that src/calculator.py implements add and contains no TODO comment. Prints one finding per line and prints nothing when the file passes."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project/src"]
+  },
+  "budget": { "model_calls": 30, "input_tokens": 240000, "output_tokens": 60000, "max_episodes": 6 },
+  "workflow": {
+    "nodes": {
+      "survey": {
+        "tool": "grep",
+        "args": { "pattern": "TODO", "glob": "*.py" }
+      },
+      "propose": {
+        "model": {
+          "name": "propose",
+          "instructions": {
+            "role": "You receive the task and the TODO comments found in a Python package. Choose the TODO that fits the task and return the file, the TODO text, and the change to make. Return the branch `nothing` when no TODO is safe to resolve."
+          },
+          "tools": ["read", "grep"],
+          "grants": { "read": ["/home/user/project"] },
+          "budget": { "model_calls": 8 },
+          "done_when": {
+            "returns": {
+              "type": "object",
+              "properties": {
+                "file": { "type": "string" },
+                "todo": { "type": "string" },
+                "change": { "type": "string" }
+              },
+              "required": ["file", "todo", "change"]
+            }
+          }
+        },
+        "follows": ["task", "survey"],
+        "branches": { "apply": ["apply"], "nothing": [] }
+      },
+      "apply": {
+        "model": {
+          "name": "apply",
+          "instructions": {
+            "role": "You receive a plan naming a file, a TODO comment, and the change that resolves it. Make the change, remove the comment, and finish with one sentence stating what changed."
+          },
+          "tools": ["read", "edit"],
+          "grants": { "read": ["/home/user/project"], "write": ["/home/user/project/src"] },
+          "budget": { "model_calls": 12 }
+        },
+        "follows": ["propose"],
+        "verify": "check",
+        "retries": 1,
+        "max_fires": 2,
+        "terminal": true
+      }
+    },
+    "recovery": { "max_interventions": 2 }
+  },
+  "model": {
+    "provider": "exec",
+    "model": "workflow-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py",
+    "project_dir": "/home/user/project"
+  },
+  "task": "Implement add in src/calculator.py."
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "path": "crates/contract/src/lib.rs",
+    "line": 289,
+    "old": "    #[error(\"{key}: {rule}\")]",
+    "new": "    #[error(\"{name}: {rule}\")]"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "line": 20,
+    "old": "    #[error(\"{key}: {rule}\")]",
+    "new": "    #[error(\"{name}: {rule}\")]"
+  },
+  {
+    "path": "crates/transport/src/lib.rs",
+    "line": 62,
+    "old": "    #[error(\"model.{key}: required by provider {provider}; {hint}\")]",
+    "new": "    #[error(\"model {name}: required by provider {provider}; {hint}\")]"
+  }
+]

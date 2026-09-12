@@ -1,0 +1,313 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..4115286
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,7 @@
++#!/bin/sh
++# The check the whole change is judged on: every crate's tests, clippy with warnings denied, and the line budgets.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test --workspace
++cargo clippy --workspace -- -D warnings
++scripts/loc.sh
+diff --git a/crates/cli/src/main_test.rs b/crates/cli/src/main_test.rs
+index b7bf4b7..31b2831 100644
+--- a/crates/cli/src/main_test.rs
++++ b/crates/cli/src/main_test.rs
+@@ -31,6 +31,7 @@ fn every_form_parses_and_foreign_options_are_refused() {
+ #[test]
+ fn the_schema_is_json_and_names_every_key_of_the_document() {
+     let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
++    assert_eq!(schema["properties"]["version"]["const"], 2);
+     let keys: Vec<&str> = schema["properties"].as_object().unwrap().keys().map(String::as_str).collect();
+     let expected = [
+         "budget",
+diff --git a/crates/context/src/lib_test.rs b/crates/context/src/lib_test.rs
+index a9a7bf6..265d5b8 100644
+--- a/crates/context/src/lib_test.rs
++++ b/crates/context/src/lib_test.rs
+@@ -18,7 +18,15 @@ fn inbox(source: InboxSource, s: &str) -> EventData {
+ 
+ fn request(step: u32, id: &str, consumed: Vec<u64>) -> EventData {
+     let request_id = id.to_string();
+-    EventData::ModelRequest(ModelRequest { step, attempt: 1, request_id, header_seq: 2, consumed, messages: vec![] })
++    EventData::ModelRequest(ModelRequest {
++        step,
++        attempt: 1,
++        request_id,
++        header_seq: 2,
++        consumed,
++        messages: vec![],
++        max_output_tokens: None,
++    })
+ }
+ 
+ fn assistant(step: u32, id: &str, body: &str, calls: Vec<ToolCall>, input: u64) -> EventData {
+diff --git a/crates/core/src/budget_test.rs b/crates/core/src/budget_test.rs
+index a468564..e952abb 100644
+--- a/crates/core/src/budget_test.rs
++++ b/crates/core/src/budget_test.rs
+@@ -5,7 +5,8 @@ use foe_log::{BudgetAmount, EventData, ExhaustedLimit, Usage};
+ pub fn budget() -> Budget {
+     Budget {
+         model_calls: 10,
+-        tokens: Some(1000),
++        input_tokens: Some(1000),
++        output_tokens: Some(400),
+         seconds: None,
+         max_depth: 1,
+         max_episodes: 3,
+@@ -24,12 +25,13 @@ fn model_calls_count_every_request_including_retries() {
+ }
+ 
+ #[test]
+-fn tokens_sum_input_and_output_across_requests() {
++fn input_and_output_tokens_have_independent_remainders() {
+     let mut pool = Pool::new(budget());
+     pool.note_usage(Usage { input: 600, output: 300, cache_read: 500 });
+-    assert_eq!(pool.remaining().tokens, Some(100));
+-    pool.note_usage(Usage { input: 90, output: 10, cache_read: 0 });
+-    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::Tokens));
++    assert_eq!(pool.remaining().input_tokens, Some(400));
++    assert_eq!(pool.remaining().output_tokens, Some(100));
++    pool.note_usage(Usage { input: 10, output: 100, cache_read: 0 });
++    assert_eq!(pool.exhausted(), Some(ExhaustedLimit::OutputTokens));
+ }
+ 
+ #[test]
+@@ -45,32 +47,43 @@ fn seconds_elapse_on_the_wall_clock() {
+ fn reservation_debits_the_remainder_until_release() {
+     let mut pool = Pool::new(budget());
+     pool.note_request();
+-    let granted = pool
+-        .reserve("child", BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None })
+-        .unwrap();
++    let granted = pool.reserve("child", BudgetAmount { model_calls: Some(4), ..Default::default() }).unwrap();
+     assert_eq!(
+         granted,
+-        BudgetAmount { model_calls: Some(4), tokens: Some(1000), seconds: None, episodes: Some(2) },
++        BudgetAmount {
++            model_calls: Some(4),
++            input_tokens: Some(1000),
++            output_tokens: Some(400),
++            seconds: None,
++            episodes: Some(2),
++        },
+         "an unset dimension receives the remainder"
+     );
+     assert_eq!(pool.remaining().model_calls, Some(5));
+-    assert_eq!(pool.remaining().tokens, Some(0));
+-    pool.release("child", BudgetAmount { model_calls: Some(1), tokens: Some(200), seconds: None, episodes: None });
++    assert_eq!(pool.remaining().input_tokens, Some(0));
++    assert_eq!(pool.remaining().output_tokens, Some(0));
++    pool.release(
++        "child",
++        BudgetAmount { model_calls: Some(1), input_tokens: Some(200), output_tokens: Some(50), ..Default::default() },
++    );
+     assert_eq!(pool.remaining().model_calls, Some(8));
+-    assert_eq!(pool.remaining().tokens, Some(800));
++    assert_eq!(pool.remaining().input_tokens, Some(800));
++    assert_eq!(pool.remaining().output_tokens, Some(350));
+ }
+ 
+ #[test]
+ fn reservation_beyond_the_remainder_names_the_limit() {
+     let mut pool = Pool::new(budget());
++    let err = pool.reserve("child", BudgetAmount { model_calls: Some(11), ..Default::default() }).unwrap_err();
++    assert_eq!(err, ExhaustedLimit::ModelCalls);
+     let err = pool
+-        .reserve("child", BudgetAmount { model_calls: Some(11), tokens: None, seconds: None, episodes: None })
++        .reserve("child", BudgetAmount { model_calls: Some(1), input_tokens: Some(5000), ..Default::default() })
+         .unwrap_err();
+-    assert_eq!(err, ExhaustedLimit::ModelCalls);
++    assert_eq!(err, ExhaustedLimit::InputTokens);
+     let err = pool
+-        .reserve("child", BudgetAmount { model_calls: Some(1), tokens: Some(5000), seconds: None, episodes: None })
++        .reserve("child", BudgetAmount { model_calls: Some(1), output_tokens: Some(5000), ..Default::default() })
+         .unwrap_err();
+-    assert_eq!(err, ExhaustedLimit::Tokens);
++    assert_eq!(err, ExhaustedLimit::OutputTokens);
+ }
+ 
+ #[test]
+@@ -78,7 +91,7 @@ fn a_grant_of_zero_on_any_dimension_names_that_limit() {
+     let mut pool = Pool::new(budget());
+     pool.note_usage(Usage { input: 1000, output: 0, cache_read: 0 });
+     let err = pool.reserve("child", BudgetAmount { model_calls: Some(1), ..Default::default() }).unwrap_err();
+-    assert_eq!(err, ExhaustedLimit::Tokens, "the whole token remainder is zero, so no child could start");
++    assert_eq!(err, ExhaustedLimit::InputTokens, "the input remainder is zero, so no child could start");
+     assert_eq!(pool.active_children(), 0, "a refused reservation holds nothing");
+ }
+ 
+@@ -128,7 +141,10 @@ fn folding_reserve_and_release_events_matches_live_calls() {
+     let mut live = Pool::new(budget());
+     live.note_request();
+     let granted = live.reserve("k", BudgetAmount { model_calls: Some(3), ..Default::default() }).unwrap();
+-    live.release("k", BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None });
++    live.release(
++        "k",
++        BudgetAmount { model_calls: Some(2), input_tokens: Some(10), output_tokens: Some(3), ..Default::default() },
++    );
+ 
+     let mut folded = Pool::new(budget());
+     folded.apply(&EventData::ModelRequest(foe_log::ModelRequest {
+@@ -138,12 +154,50 @@ fn folding_reserve_and_release_events_matches_live_calls() {
+         header_seq: 0,
+         consumed: vec![],
+         messages: vec![],
++        max_output_tokens: None,
+     }));
+     folded.apply(&EventData::BudgetReserve { child_id: "k".into(), reserved: granted });
+     folded.apply(&EventData::BudgetRelease {
+         child_id: "k".into(),
+-        spent: BudgetAmount { model_calls: Some(2), tokens: Some(10), seconds: None, episodes: None },
++        spent: BudgetAmount {
++            model_calls: Some(2),
++            input_tokens: Some(10),
++            output_tokens: Some(3),
++            ..Default::default()
++        },
+     });
+     assert_eq!(folded.remaining(), live.remaining());
+     assert_eq!(folded.active_children(), 0);
+ }
++
++/// docs/config.md `budget`: the output cap for one request cannot exceed
++/// the output allowance that remains across the episode tree.
++#[test]
++fn request_output_is_clamped_to_the_remaining_allowance() {
++    let mut pool = Pool::new(budget());
++    pool.note_usage(Usage { input: 10, output: 350, cache_read: 0 });
++    assert_eq!(pool.request_max_output(20, Some(200)), Ok(Some(50)));
++    assert_eq!(pool.request_max_output(20, Some(25)), Ok(Some(25)));
++}
++
++/// docs/config.md `budget`: the runtime uses an approximate input count
++/// before a request and provider-reported usage after the response.
++#[test]
++fn estimated_input_that_exceeds_the_remainder_refuses_the_request() {
++    let mut pool = Pool::new(budget());
++    pool.note_usage(Usage { input: 990, output: 0, cache_read: 900 });
++    assert_eq!(pool.request_max_output(11, None), Err(ExhaustedLimit::InputTokens));
++}
++
++/// docs/compaction.md "How it is recorded": the summary response's
++/// `assistant/message` is the usage account. `compaction/end` repeats the
++/// usage as evidence and must not debit either allowance again.
++#[test]
++fn compaction_end_does_not_charge_summary_usage_twice() {
++    let mut pool = Pool::new(budget());
++    let usage = Usage { input: 80, output: 20, cache_read: 40 };
++    pool.note_usage(usage);
++    let once = pool.remaining();
++    pool.apply(&EventData::CompactionEnd { step: 2, ok: true, usage, active_estimate: 300, error: None });
++    assert_eq!(pool.remaining(), once);
++}
+diff --git a/crates/log/src/fold_test.rs b/crates/log/src/fold_test.rs
+index 8d3ea4f..875a84a 100644
+--- a/crates/log/src/fold_test.rs
++++ b/crates/log/src/fold_test.rs
+@@ -48,6 +48,7 @@ pub fn request(step: u32, header_seq: u64, consumed: Vec<u64>, messages: Vec<Mes
+         header_seq,
+         consumed,
+         messages,
++        max_output_tokens: None,
+     })
+ }
+ 
+@@ -95,6 +96,7 @@ fn summary_request(step: u32, header_seq: u64) -> EventData {
+         header_seq,
+         consumed: vec![],
+         messages: vec![Message::User { content: text("transcript") }],
++        max_output_tokens: None,
+     })
+ }
+ 
+@@ -125,7 +127,7 @@ fn compaction_summary(
+             files,
+             children: vec![],
+             covered: Covered { first_seq: 1, last_seq: first_kept_seq - 1 },
+-            budget_remaining: BudgetAmount { model_calls: Some(4), tokens: None, seconds: None, episodes: None },
++            budget_remaining: BudgetAmount { model_calls: Some(4), ..Default::default() },
+         },
+         first_kept_seq,
+         summary_request_seq,
+@@ -187,7 +189,9 @@ fn derivation_after_one_compaction_opens_with_task_and_continuation() {
+         .starts_with("## Continuation state\n\ncovered: seq 1 to 7\ndone_when: a turn with no tool calls\n"));
+     assert!(continuation.contains("\noutstanding_findings: (none)\nfiles_read:\n- a\nfiles_written: (none)\n"));
+     assert!(continuation
+-        .contains("\nchildren: (none)\nbudget_remaining: model_calls 4, tokens unlimited, seconds unlimited"));
++        .contains(
++            "\nchildren: (none)\nbudget_remaining: model_calls 4, input_tokens unlimited, output_tokens unlimited, seconds unlimited"
++        ));
+     assert!(continuation.ends_with("\n\n## Summary\n\nfirst summary"));
+     assert_eq!(messages[0], Message::User { content: text("fix it") });
+     assert_eq!(messages[1], Message::User { content: text(&continuation) });
+@@ -345,7 +349,7 @@ fn episode_end_is_last() {
+ /// Every pairing docs/log-format.md defines, as the opening event and the
+ /// closing event that the log owes it.
+ fn pairings() -> Vec<(EventData, EventData)> {
+-    let reserved = BudgetAmount { model_calls: Some(2), tokens: None, seconds: None, episodes: None };
++    let reserved = BudgetAmount { model_calls: Some(2), ..Default::default() };
+     vec![
+         (assistant(3, "", vec![call("tc_x")], false), result(3, "tc_x", "ok")),
+         (
+@@ -357,6 +361,7 @@ fn pairings() -> Vec<(EventData, EventData)> {
+                 header_seq: 2,
+                 consumed: vec![],
+                 messages: vec![],
++                max_output_tokens: None,
+             }),
+         ),
+         (
+@@ -533,7 +538,7 @@ fn every_event_variant_round_trips() {
+         inbox(InboxSource::Request, "reserved source"),
+         EventData::BudgetReserve {
+             child_id: "k".into(),
+-            reserved: BudgetAmount { model_calls: Some(1), tokens: None, seconds: Some(3), episodes: None },
++            reserved: BudgetAmount { model_calls: Some(1), seconds: Some(3), ..Default::default() },
+         },
+         EventData::BudgetRelease { child_id: "k".into(), spent: BudgetAmount::default() },
+         EventData::SpawnStart {
+@@ -561,7 +566,7 @@ fn every_event_variant_round_trips() {
+             covered: Covered { first_seq: 1, last_seq: 7 },
+             trigger: CompactionTrigger::Threshold,
+             projected_tokens: 190_000,
+-            reserved: BudgetAmount { model_calls: Some(3), tokens: None, seconds: None, episodes: None },
++            reserved: BudgetAmount { model_calls: Some(3), ..Default::default() },
+         }),
+         compaction_summary(3, 8, 13, "first summary", &["a"]),
+         EventData::CompactionEnd {
+diff --git a/crates/view/tests/fixtures/run/episode.jsonl b/crates/view/tests/fixtures/run/episode.jsonl
+index 9ddbac8..0b948db 100644
+--- a/crates/view/tests/fixtures/run/episode.jsonl
++++ b/crates/view/tests/fixtures/run/episode.jsonl
+@@ -5,12 +5,12 @@
+ {"seq":4,"time":1724200000004,"type":"assistant/chunk","data":{"step":1,"request_id":"rq_01","chunk":{"kind":"text","delta":"I will read the test <first>."}}}
+ {"seq":5,"time":1724200000005,"type":"assistant/message","data":{"step":1,"request_id":"rq_01","text":"I will read the test <first>.","tool_calls":[{"id":"tc_01","name":"read","args":{"path":"tests/parser_test.py"}}],"stop":"tool","usage":{"input":4120,"output":88,"cache_read":3900},"interrupted":false}}
+ {"seq":6,"time":1724200000006,"type":"tool/result","data":{"step":1,"call_id":"tc_01","name":"read","value":{"lines":2},"rendered":"1\timport pytest\n2\tdef test_parse(): ...","is_error":false,"spill":null,"duration_ms":4,"synthetic":false}}
+-{"seq":7,"time":1724200000007,"type":"budget/reserve","data":{"child_id":"ep_child","reserved":{"model_calls":6,"tokens":60000}}}
++{"seq":7,"time":1724200000007,"type":"budget/reserve","data":{"child_id":"ep_child","reserved":{"model_calls":6,"input_tokens":48000,"output_tokens":12000}}}
+ {"seq":8,"time":1724200000008,"type":"spawn/start","data":{"child_id":"ep_child","program":"survey","context":"fresh","call_id":"tc_02"}}
+ {"seq":9,"time":1724200000009,"type":"budget/reserve","data":{"child_id":"ep_fork","reserved":{"model_calls":4}}}
+ {"seq":10,"time":1724200000010,"type":"spawn/start","data":{"child_id":"ep_fork","program":"fixer","context":"fork","call_id":"tc_03"}}
+ {"seq":11,"time":1724200000011,"type":"spawn/end","data":{"child_id":"ep_child","outcome":{"kind":"blocked","code":"looping-tool-call","message":"grep repeated three times"}}}
+-{"seq":12,"time":1724200000012,"type":"budget/release","data":{"child_id":"ep_child","spent":{"model_calls":3,"tokens":1200}}}
++{"seq":12,"time":1724200000012,"type":"budget/release","data":{"child_id":"ep_child","spent":{"model_calls":3,"input_tokens":1000,"output_tokens":200}}}
+ {"seq":13,"time":1724200000013,"type":"spawn/end","data":{"child_id":"ep_fork","outcome":{"kind":"exhausted","limit":"model_calls"}}}
+ {"seq":14,"time":1724200000014,"type":"budget/release","data":{"child_id":"ep_fork","spent":{"model_calls":4}}}
+ {"seq":15,"time":1724200000015,"type":"assistant/message","data":{"step":2,"request_id":"rq_02","text":"Done. The test passes.","tool_calls":[],"stop":"end","usage":{"input":5000,"output":12,"cache_read":4100},"interrupted":false}}
+diff --git a/crates/workflow/src/lib_test.rs b/crates/workflow/src/lib_test.rs
+index a2ee4b9..b461cd3 100644
+--- a/crates/workflow/src/lib_test.rs
++++ b/crates/workflow/src/lib_test.rs
+@@ -4,7 +4,7 @@ use serde_json::json;
+ 
+ fn config() -> Config {
+     serde_json::from_value(json!({
+-        "version": 1, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
++        "version": 2, "name": "wf", "instructions": { "r": "x" }, "tools": ["block"],
+         "grants": { "read": ["/p"], "spawn": ["helper"] }, "budget": { "model_calls": 10 }, "task": "t",
+         "programs": { "helper": { "name": "helper", "instructions": { "r": "h" }, "tools": ["block"],
+                                   "grants": { "read": ["/p"] }, "budget": { "model_calls": 1 } } },

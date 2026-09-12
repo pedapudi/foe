@@ -1,0 +1,18 @@
+{
+  "outside": {
+    "grader/corruptions/unlisted-items/apply.py": "250b978c7dbfbd7f35fe35484211978db3aabaf72de2cadc57fdc9b17f19b88f",
+    "grader/corruptions/unlisted-items/edits.json": "1e4e83e466e04fcde13a10ea49593dde45a9b833dc05b62743cf3ba5a7858e8c",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "8bffb1629cb44cc3541401094faa18f5a4cb3f9ee4e536a57140afa4c19104a5",
+    "grader/oracle/candidate.json": "1dbc702523cb00bdb83ec46b01b8bdaaa36ec536c53614c0e04bec52d54687ef",
+    "grader/specification.json": "54b122774ad814747b742f7e7f629ed8b18ed1c5b08cf8e0c2f38dbdbb0ab534",
+    "grader/survey.py": "ec1bce080c20f882d23f9b32b4277d34998788c750df751b1a7d5b02f68dc21a",
+    "grader/workspace.patch": "e229fa79e03b9d7a55d1b2167ab39d09cea66d1f435f35a00f5197c6192fcf46",
+    "task.json": "b9d823324858dd7f44a8c9293495fb6d6e07c308f25ed01da2f1efbe03940036"
+  },
+  "workspace": {
+    "AGENTS.md": "af7fc9244877954fa8dfac379d17b4b23a779d00b4ea0c2feed6102decf4f6de",
+    "checks/run.sh": "83972918a78afa68294ff991be1e17d48d9c83bd5da1fd7ed959bb4796f0be3f",
+    "scripts/loc.sh": "317761a767bb2e3860e5f206a2d73b82ffd74a0e79e2ef54cf83af34ea2d6e46"
+  }
+}

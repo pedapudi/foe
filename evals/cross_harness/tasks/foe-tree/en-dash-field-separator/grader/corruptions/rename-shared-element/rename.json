@@ -1,0 +1,11 @@
+{
+  "unit": "crates/core",
+  "element": "LocalSessions",
+  "replacement": "LocalSessionsRenamed",
+  "files": [
+    "crates/core/src/session.rs"
+  ],
+  "used_by": [
+    "crates/cli"
+  ]
+}

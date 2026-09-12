@@ -1,0 +1,9 @@
+{
+  "unit": "crates/code",
+  "restore": [
+    "crates/code/src/bash.rs",
+    "crates/code/src/python.rs",
+    "crates/code/src/session.rs"
+  ],
+  "remove": []
+}

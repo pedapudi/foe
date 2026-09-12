@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en" data-dia-version="1" data-dia-transition="fade">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>foe — architecture and features</title>
+<style id="dia-theme">
+:root {
+  --dia-paper: #181818; --dia-ink: #DEDEDE; --dia-ink-soft: #B9B9B9;
+  --dia-ink-faint: #7A7A7A; --dia-accent: #56D8C9; --dia-rule: #353535;
+  --dia-good: #83C746; --dia-bad: #FF5E56;
+  --dia-face-display: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-body: "Source Sans 3", system-ui, sans-serif;
+  --dia-face-label: "Source Code Pro", ui-monospace, monospace;
+  --dia-scale-1: 12px; --dia-scale-2: 15px; --dia-scale-3: 18px;
+  --dia-scale-4: 22px; --dia-scale-5: 30px; --dia-scale-6: 38px;
+  --dia-scale-7: 48px; --dia-gap: 24px; --dia-pad: 52px;
+  --dia-page-w: 1080px;
+  --foe-accent: #E8A43E;
+}
+section.dia-slide {
+  aspect-ratio: 16 / 9; box-sizing: border-box; overflow: hidden;
+  background: var(--dia-paper); color: var(--dia-ink);
+  padding: var(--dia-pad); font-family: var(--dia-face-body);
+  display: flex; flex-direction: column;
+}
+.dia-kicker { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dia-ink-faint);
+  margin-bottom: 14px; }
+.dia-title { font-family: var(--dia-face-display); font-size: var(--dia-scale-5);
+  line-height: 1.22; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.01em; }
+.dia-title em { color: var(--dia-accent); font-style: normal; }
+.dia-cover-title { font-size: var(--dia-scale-7); max-width: 24ch; line-height: 1.14; }
+.dia-body { font-size: var(--dia-scale-2); line-height: 1.62; color: var(--dia-ink-soft); }
+.dia-body p { margin: 0 0 11px; }
+.dia-body strong { color: var(--dia-ink); font-weight: 600; }
+.dia-body code, .dia-caption code, .dia-title code {
+  font-family: var(--dia-face-label); font-size: 0.92em; color: var(--dia-ink);
+  background: rgba(255, 255, 255, 0.05); border: 1px solid var(--dia-rule);
+  border-radius: 4px; padding: 0 5px; }
+.dia-caption { font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-soft); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.dia-columns { display: grid; grid-template-columns: 1.05fr 1fr; gap: var(--dia-gap); align-items: start; min-height: 0; }
+.dia-figure { margin: 0; align-self: center; }
+.dia-figure svg { width: 100%; font-family: var(--dia-face-label); }
+.dia-body ul, .dia-body ol { margin: 0; padding-left: 1.1em; }
+.dia-body li { margin-bottom: 9px; line-height: 1.5; }
+li::before { content: var(--dia-marker, none); color: var(--dia-marker-ink, var(--dia-accent)); margin-right: 0.55em; }
+li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: auto 1fr; column-gap: 0.6em; align-items: start; }
+.dia-marker { color: var(--dia-ink-faint); }
+.dia-marker > svg { width: 1.25em; height: 1.25em; display: block; margin-top: 0.15em; }
+.foot { display: flex; justify-content: space-between; align-items: baseline;
+  border-top: 1px solid var(--dia-rule); padding-top: 10px; margin-top: auto;
+  font-family: var(--dia-face-label); font-size: var(--dia-scale-1);
+  color: var(--dia-ink-faint); }
+.wordmark { font-family: var(--dia-face-label); font-weight: 700; letter-spacing: -0.02em; }
+.lede { font-size: var(--dia-scale-3); line-height: 1.6; max-width: 54ch; }
+.dia-cover { justify-content: center; }
+table { border-collapse: collapse; font-size: var(--dia-scale-1); width: 100%; }
+th { font-family: var(--dia-face-label); text-transform: uppercase; letter-spacing: .08em;
+  font-size: 10.5px; text-align: left; color: var(--dia-ink-faint);
+  border-bottom: 1px solid var(--dia-ink-soft); padding: 4px 10px 6px 0; }
+td { border-bottom: 1px solid var(--dia-rule); padding: 5px 10px 5px 0; color: var(--dia-ink-soft); vertical-align: top; }
+td:first-child { font-family: var(--dia-face-label); color: var(--dia-ink); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<section class="dia-slide dia-cover" data-dia-part="cover">
+  <div class="dia-kicker">an overview</div>
+  <h1 class="dia-title dia-cover-title"><em>foe</em> — architecture and features</h1>
+  <p class="dia-body lede">One pass over the whole machine: how a contract becomes an
+  episode, what the kernel guarantees while it runs, and the surface built around it —
+  workflows, teams, transports, verification, and the evidence loop.</p>
+  <figure class="dia-figure" style="width: 42%; margin-top: 12px;">
+    <svg viewBox="0 0 420 170" role="img" aria-label="the machine at night: routine runs ride faint orbits through a teal nebula, one comet crosses, and the foe mark burns inside its dashed limit">
+      <defs>
+        <symbol id="m-page" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 2 h10 l4 4 v16 h-14 z"/><path d="M15 2 v4 h4 z"/></g></symbol>
+        <symbol id="m-shield" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2 l8 3 v7 c0 5 -4 8 -8 10 c-4 -2 -8 -5 -8 -10 v-7 z"/></g>
+          <circle cx="12" cy="11" r="1.4" fill="currentColor"/></symbol>
+        <symbol id="m-store" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <ellipse cx="12" cy="5" rx="8" ry="3"/>
+          <path d="M4 5 L4 19 C4 20.6 7.6 22 12 22 C16.4 22 20 20.6 20 19 L20 5"/></g></symbol>
+        <symbol id="m-person" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="8" r="4"/><path d="M4 21 C6 16 9 14.5 12 14.5 C15 14.5 18 16 20 21"/></g></symbol>
+        <symbol id="m-pool" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="2" y="9" width="13" height="10" rx="2"/>
+          <path d="M5 9 L5 6"/><path d="M5 6 L18 6"/><path d="M18 6 L18 16"/><path d="M18 16 L15 16"/>
+          <path d="M8 6 L8 3"/><path d="M8 3 L21 3"/><path d="M21 3 L21 13"/><path d="M21 13 L18 13"/></g></symbol>
+        <symbol id="m-cube" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 2 L21 7 L21 17 L12 22 L3 17 L3 7 z"/><path d="M3 7 L12 12"/><path d="M12 12 L21 7"/><path d="M12 12 L12 22"/></g></symbol>
+        <symbol id="m-flag" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" fill="none" stroke="none"/>
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M5 22 L5 3"/><path d="M5 4 C9 2 13 6 19 4 L19 12 C13 14 9 10 5 12 z"/></g></symbol>
+      </defs>
+      <ellipse cx="210" cy="86" rx="170" ry="52" fill="#12312E"/>
+      <ellipse cx="210" cy="86" rx="120" ry="36" fill="#16403A"/>
+      <g fill="none" stroke="#2A6A5E" stroke-width="1">
+        <ellipse cx="210" cy="86" rx="150" ry="44" stroke-dasharray="3 4"/>
+        <ellipse cx="210" cy="86" rx="96" ry="27" stroke-dasharray="3 4"/>
+      </g>
+      <g fill="#57A08F">
+        <circle cx="112" cy="68" r="2" opacity=".8"/><circle cx="300" cy="106" r="2" opacity=".8"/>
+        <circle cx="252" cy="60" r="1.6" opacity=".6"/><circle cx="150" cy="110" r="1.6" opacity=".6"/>
+      </g>
+      <g fill="#8FD6C8">
+        <circle cx="352" cy="41" r="1.9" opacity=".75"/><circle cx="380" cy="33" r="1.4" opacity=".5"/>
+      </g>
+      <g fill="#CDEFE7"><circle cx="322" cy="49" r="2.6">
+        <animate attributeName="opacity" values="1;.5;1" dur="7s" repeatCount="indefinite"/></circle></g>
+      <g fill="#8FD6C8">
+        <circle cx="294" cy="57" r="1.5" opacity=".6"/><circle cx="268" cy="64" r="1.1" opacity=".45"/>
+        <circle cx="244" cy="71" r="0.9" opacity=".3"/>
+      </g>
+      <g transform="translate(176,52)" fill="none" stroke="#DEDEDE" stroke-linecap="round">
+        <path d="M34,27.8 L34,8" stroke-width="1.5"/>
+        <path d="M28.6,30.9 L11.4,21" stroke-width="1.5"/>
+        <path d="M28.6,37.1 L11.4,47" stroke-width="1.5"/>
+        <path d="M34,40.2 L34,60" stroke-width="1.5"/>
+        <path d="M39.4,37.1 L56.6,47" stroke-width="1.5"/>
+        <path d="M39.4,30.9 L56.6,21" stroke-width="1.5"/>
+        <circle cx="34" cy="34" r="14.7" stroke-width="1" opacity=".42"/>
+        <circle cx="34" cy="34" r="21.5" stroke-width=".9" opacity=".28"/>
+        <circle cx="34" cy="34" r="29.4" stroke-width="1.2" opacity=".55" stroke-dasharray="4 5"/>
+        <circle cx="34" cy="34" r="2.8" fill="var(--foe-accent)" stroke="none"/>
+      </g>
+      <text x="292" y="128" font-size="9" fill="var(--dia-ink-soft)">one bounded burst,</text>
+      <text x="292" y="141" font-size="9" fill="var(--dia-ink-soft)">followed end to end</text>
+      <text x="36" y="162" font-size="8.5" fill="var(--dia-ink-faint)">routine keeps to its orbits</text>
+    </svg>
+  </figure>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the shape of a run">
+  <div class="dia-kicker">the shape of a run</div>
+  <h2 class="dia-title">Contract in, outcome and log out</h2>
+  <figure class="dia-figure" style="width: 88%;">
+    <svg viewBox="0 0 760 210" role="img" aria-label="the run as a foundry line: the contract sheet enters, the resolver fixes the tree, the die stamps the fingerprint, the episode chamber glows amber as it works, and the line ends in the outcome flag and the log reel">
+      <rect x="0" y="150" width="760" height="14" fill="#242424"/>
+      <rect x="0" y="150" width="760" height="3" fill="#3A3A3A"/>
+      <g fill="#3A3A3A">
+        <rect x="59" y="164" width="3" height="12"/><rect x="239" y="164" width="3" height="12"/>
+        <rect x="419" y="164" width="3" height="12"/><rect x="599" y="164" width="3" height="12"/>
+      </g>
+      <path d="M34,120 L86,120 L94,150 L26,150 Z" fill="#2E4A56"/>
+      <path d="M34,120 L86,120 L82,112 L38,112 Z" fill="#3E6273"/>
+      <path d="M48,124 L72,124 L74,144 L46,144 Z" fill="#EDE7D4"/>
+      <path d="M48,124 L72,124 L71,128 L49,128 Z" fill="#FFFFFF"/>
+      <g fill="#1E3640"><rect x="150" y="70" width="88" height="80" rx="6"/></g>
+      <g fill="#2A4C5C"><rect x="150" y="70" width="88" height="12" rx="6"/></g>
+      <g stroke="#57A08F" stroke-width="1.1" fill="none">
+        <path d="M194,88 L194,104"/><path d="M194,104 L176,120"/><path d="M194,104 L212,120"/>
+      </g>
+      <g fill="#57A08F">
+        <circle cx="194" cy="86" r="2.4"/><circle cx="175" cy="122" r="2.4"/><circle cx="213" cy="122" r="2.4"/>
+      </g>
+      <g fill="#20303C"><rect x="300" y="84" width="76" height="66" rx="6"/></g>
+      <g fill="#2C4250"><rect x="300" y="84" width="76" height="11" rx="6"/></g>
+      <g fill="none" stroke="#C8B37A" stroke-width="1.3">
+        <ellipse cx="338" cy="120" rx="16" ry="10"/>
+        <ellipse cx="338" cy="120" rx="8" ry="4.6"/>
+      </g>
+      <rect x="436" y="56" width="150" height="94" rx="10" fill="#3A2C14"/>
+      <rect x="436" y="56" width="150" height="94" rx="10" fill="none" stroke="#E8A43E" stroke-width="1.6"/>
+      <rect x="452" y="72" width="118" height="62" rx="6" fill="#5C3F14"/>
+      <circle cx="511" cy="103" r="17" fill="#E8A43E"/>
+      <circle cx="511" cy="103" r="26" fill="#E8A43E" opacity=".25"/>
+      <g stroke="#F3C878" stroke-width="1.2">
+        <path d="M511,80 L511,70"/><path d="M492,90 L483,84"/><path d="M530,90 L539,84"/>
+        <path d="M511,126 L511,136"/><path d="M492,116 L483,122"/><path d="M530,116 L539,122"/>
+      </g>
+      <path d="M636,96 L636,150" stroke="#4A4A4A" stroke-width="3"/>
+      <path d="M636,96 L676,102 L676,118 L636,112 Z" fill="#57A08F"/>
+      <path d="M636,96 L676,102 L672,98 L636,92 Z" fill="#79C0AF"/>
+      <ellipse cx="712" cy="118" rx="20" ry="7" fill="#3E5D68"/>
+      <rect x="692" y="118" width="40" height="26" fill="#2E4A56"/>
+      <ellipse cx="712" cy="144" rx="20" ry="7" fill="#22363E"/>
+      <ellipse cx="712" cy="118" rx="10" ry="3.4" fill="#57A08F"/>
+      <g font-size="9" fill="var(--dia-ink-soft)" text-anchor="middle">
+        <text x="60" y="188">contract.json</text>
+        <text x="194" y="188">resolve – capture</text>
+        <text x="338" y="188">fingerprint die</text>
+        <text x="511" y="188" fill="#E8A43E">the episode, burning</text>
+        <text x="656" y="70">outcome</text>
+        <text x="712" y="188">episode.jsonl</text>
+      </g>
+      <text x="511" y="46" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">one process – one writer – fixed before the first request</text>
+    </svg>
+    <figcaption class="dia-caption"><code>foe plan</code> reports this pipeline statically — resolved permissions,
+    reachable tools, warnings — before a request is spent. <code>foe view</code> renders the log afterwards.</figcaption>
+  </figure>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the crates">
+  <div class="dia-kicker">the crates</div>
+  <h2 class="dia-title">Small parts with enforced budgets</h2>
+  <div class="dia-columns" style="grid-template-columns: 1.15fr 1fr;">
+    <div class="dia-body">
+      <table>
+        <tr><th>crate</th><th>owns</th></tr>
+        <tr><td>log</td><td>the event vocabulary, append, fold, seeding — the record</td></tr>
+        <tr><td>core</td><td>the agent loop, registry, sandbox, spawning, budgets — the machine</td></tr>
+        <tr><td>contract</td><td>the document, resolution, the fingerprint — the data model</td></tr>
+        <tr><td>code</td><td>the built-in tools and the team coordinator — the verbs</td></tr>
+        <tr><td>workflow</td><td>graph execution over episodes</td></tr>
+        <tr><td>transport</td><td>model providers behind one streaming interface</td></tr>
+        <tr><td>evidence</td><td>portable bundle verification for adoption decisions</td></tr>
+        <tr><td>cli – view – telemetry – context</td><td>the operator surface, the viewer, emission, compaction</td></tr>
+      </table>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 320 230" role="img" aria-label="each crate drawn as a machined metal billet cut to its enforced line budget; the kernel billet reaches nearly to the amber ceiling post the build fails past">
+        <g font-size="9" fill="var(--dia-ink-soft)">
+          <text x="16" y="34">kernel (log+core)</text>
+          <text x="16" y="64">code</text>
+          <text x="16" y="94">contract</text>
+          <text x="16" y="124">cli</text>
+          <text x="16" y="154">workflow</text>
+          <text x="16" y="184">telemetry</text>
+          <text x="16" y="214">evidence</text>
+        </g>
+        <rect x="124" y="18" width="4" height="202" fill="#3A3A3A"/>
+        <g>
+          <rect x="130" y="27" width="164" height="9" fill="#2E6E63"/><rect x="130" y="24" width="164" height="3" fill="#4FA091"/>
+          <rect x="130" y="57" width="62" height="9" fill="#35597E"/><rect x="130" y="54" width="62" height="3" fill="#5B84AE"/>
+          <rect x="130" y="87" width="42" height="9" fill="#5C4A7E"/><rect x="130" y="84" width="42" height="3" fill="#8471AE"/>
+          <rect x="130" y="117" width="44" height="9" fill="#4A5560"/><rect x="130" y="114" width="44" height="3" fill="#6E7C8A"/>
+          <rect x="130" y="147" width="27" height="9" fill="#4A6B3E"/><rect x="130" y="144" width="27" height="3" fill="#6F955F"/>
+          <rect x="130" y="177" width="27" height="9" fill="#7E4A38"/><rect x="130" y="174" width="27" height="3" fill="#A86A52"/>
+          <rect x="130" y="207" width="11" height="9" fill="#6E5E42"/><rect x="130" y="204" width="11" height="3" fill="#967F5C"/>
+        </g>
+        <rect x="294" y="18" width="3" height="26" fill="var(--foe-accent)"/>
+        <text x="296" y="14" text-anchor="end" font-size="8.5" fill="var(--dia-ink-soft)">the ceiling — the build fails past it</text>
+      </svg>
+      <figcaption class="dia-caption">Every crate has a line ceiling that <code>scripts/loc.sh</code> enforces, drawn here to scale.
+      Growth states the failure that activates it; deletions fund additions. The kernel is budgeted apart because it is the machine.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the episode loop">
+  <div class="dia-kicker">the kernel</div>
+  <h2 class="dia-title">The episode loop</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Each step derives its request from the log, streams the model's
+      answer, executes the tool calls, and settles. Settlement checks in a
+      fixed order:</p>
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>an explicit <strong>block</strong> from the model,</li>
+        <li>mechanical <strong>loop detection</strong>,</li>
+        <li>the declared <strong>completion</strong>, then</li>
+        <li>the <strong>budgets</strong> —</li>
+      </ul>
+      <p>so a turn that finishes the task on its last permitted call still
+      completes. Arrivals — parent messages, child reports, session exits —
+      enter only at request boundaries, through a typed inbox.</p>
+      <p>Request failures are typed too: a provider outage is retried with
+      growing delays for as long as the seconds budget funds the next
+      attempt; causes repetition cannot fix keep a fixed attempt ceiling.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 230" role="img" aria-label="the episode loop as a rotary machine seen in cross-section: four chambers turn about a hub, and the settle chamber glows amber because it decides whether the machine turns again">
+        <circle cx="170" cy="115" r="98" fill="#222825"/>
+        <circle cx="170" cy="115" r="98" fill="none" stroke="#3A4540" stroke-width="1.4"/>
+        <circle cx="170" cy="115" r="58" fill="#161B19"/>
+        <circle cx="170" cy="115" r="80" fill="none" stroke="#4A5550" stroke-width="1" stroke-dasharray="3 4"/>
+        <g fill="#57A08F">
+          <path d="M232,62 L241,71 L228,74 Z"/>
+          <path d="M223,168 L228,156 L236,166 Z"/>
+          <path d="M104,169 L99,157 L112,161 Z"/>
+          <path d="M108,61 L120,58 L114,70 Z"/>
+        </g>
+        <circle cx="170" cy="35" r="27" fill="#2E4A56"/>
+        <circle cx="170" cy="35" r="27" fill="none" stroke="#5B84AE" stroke-width="1.1"/>
+        <circle cx="250" cy="115" r="27" fill="#35597E"/>
+        <circle cx="250" cy="115" r="27" fill="none" stroke="#6E9FD4" stroke-width="1.1"/>
+        <circle cx="170" cy="195" r="27" fill="#3E5D4A"/>
+        <circle cx="170" cy="195" r="27" fill="none" stroke="#6F9E82" stroke-width="1.1"/>
+        <circle cx="90" cy="115" r="34" fill="var(--foe-accent)" opacity=".22"/>
+        <circle cx="90" cy="115" r="27" fill="#5C3F14"/>
+        <circle cx="90" cy="115" r="27" fill="none" stroke="var(--foe-accent)" stroke-width="1.6"/>
+        <circle cx="170" cy="115" r="12" fill="#2E2E2E"/>
+        <circle cx="170" cy="115" r="12" fill="none" stroke="#4A5550" stroke-width="1"/>
+        <circle cx="170" cy="115" r="3.4" fill="#57A08F"/>
+        <g font-size="9.5" text-anchor="middle" fill="#C9D4CE">
+          <text x="170" y="39">assemble</text>
+          <text x="250" y="119">stream</text>
+          <text x="170" y="199">execute</text>
+          <text x="90" y="113" fill="#F3C878">settle</text>
+        </g>
+        <text x="90" y="126" text-anchor="middle" font-size="6.8" fill="#D9B36A">block–loop–done–budget</text>
+        <text x="170" y="146" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">one step per turn</text>
+      </svg>
+      <figcaption class="dia-caption">Settlement decides whether the circuit runs again; its order lets a final-call finish complete.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="the log">
+  <div class="dia-kicker">the record</div>
+  <h2 class="dia-title">One log, fully reconstructable</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><strong>Append-only JSONL</strong>, format version stated on the first
+        event; a reader that meets a version it does not speak refuses
+        with both versions named.</li>
+        <li><strong>Derived messages</strong> — what the model sees each step is folded
+        from events; the process holds no separate copy.</li>
+        <li><strong>Obligations</strong> — calls without results, unsettled children,
+        open sessions are tracked and closed by settlement, so a log
+        always ends well-formed.</li>
+        <li><strong>Seeding</strong> — a new episode can start from any prefix of an
+        existing log: fork a run at a decision point, or resume one.</li>
+        <li><strong>Spill</strong> — oversized values move to files beside the log and
+        leave a locator; the record stays complete, the requests stay bounded.</li>
+      </ul>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="the log as a luminous tape of events: a teal arc closes a tool call with its result, a violet arc closes a spawned child with its settlement, and an amber fork lifts a copied prefix onto a new tape">
+        <rect x="24" y="96" width="292" height="18" fill="#24313B"/>
+        <rect x="24" y="96" width="292" height="4" fill="#35495A"/>
+        <g fill="#7FB3D9">
+          <rect x="43" y="99" width="2.4" height="12"/><rect x="75" y="99" width="2.4" height="12"/>
+          <rect x="107" y="99" width="2.4" height="12"/><rect x="139" y="99" width="2.4" height="12"/>
+          <rect x="171" y="99" width="2.4" height="12"/><rect x="203" y="99" width="2.4" height="12"/>
+          <rect x="235" y="99" width="2.4" height="12"/><rect x="299" y="99" width="2.4" height="12"/>
+        </g>
+        <g fill="none" stroke-width="1.4">
+          <path d="M76,96 C90,64 126,64 140,96" stroke="#4FB3A0"/>
+          <path d="M172,96 C186,70 222,70 236,96" stroke="#9D7DC8"/>
+        </g>
+        <circle cx="76" cy="92" r="2.2" fill="#4FB3A0"/><circle cx="140" cy="92" r="2.2" fill="#4FB3A0"/>
+        <circle cx="172" cy="92" r="2.2" fill="#9D7DC8"/><circle cx="236" cy="92" r="2.2" fill="#9D7DC8"/>
+        <text x="108" y="52" text-anchor="middle" font-size="8.5" fill="#7FCFC0">call → result</text>
+        <text x="204" y="58" text-anchor="middle" font-size="8.5" fill="#BCA3E0">spawn → settle</text>
+        <path d="M140,114 C168,152 210,158 258,158" fill="none" stroke="var(--foe-accent)" stroke-width="1.8"/>
+        <circle cx="140" cy="112" r="3" fill="var(--foe-accent)"/>
+        <rect x="258" y="151" width="58" height="14" fill="#4A3618"/>
+        <rect x="258" y="151" width="58" height="3.4" fill="#6E5222"/>
+        <g fill="#E8A43E">
+          <rect x="268" y="154" width="2.2" height="9"/><rect x="284" y="154" width="2.2" height="9"/><rect x="300" y="154" width="2.2" height="9"/>
+        </g>
+        <text x="150" y="186" font-size="9" fill="var(--dia-ink-soft)">a fork: same prefix, new episode</text>
+        <text x="170" y="208" text-anchor="middle" font-size="9" fill="var(--dia-ink-faint)">version stated up front – every obligation closed</text>
+      </svg>
+      <figcaption class="dia-caption">Because requests derive from the log, a copied prefix is a complete starting state.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="tools">
+  <div class="dia-kicker">tools</div>
+  <h2 class="dia-title">Three sources, one registry, typed failures</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-pool"/></svg></span>
+        <span><strong>Built-in</strong> — <code>read</code>, <code>grep</code>, <code>edit</code>, <code>bash</code>,
+        <code>session</code>, <code>retrieve</code>, the opt-in <code>python</code> composer, and the
+        team verbs, described from the constants that enforce their limits.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-cube"/></svg></span>
+        <span><strong>Configured</strong> — any executable, by absolute path. Its bytes
+        are captured at construction and invoked by descriptor, so
+        replacing the file cannot change the run.</span></li>
+        <li><span class="dia-marker"><svg viewBox="0 0 24 24"><use href="#m-person"/></svg></span>
+        <span><strong>Host</strong> — tools the embedding application implements and
+        services over the protocol.</span></li>
+      </ul>
+      <p>Every failure carries one code from a closed vocabulary —
+      <code>invalid-call</code>, <code>capability-denied</code>, <code>limit-exceeded</code>, and the
+      rest — with the corrective action in the message. Recovery reads
+      codes rather than error prose.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="the tool registry as a switchboard: three colored source plates patch their cords into one brass registry plate, and a single amber line leaves it for the plug where effects happen">
+        <g>
+          <rect x="26" y="24" width="74" height="44" rx="5" fill="#2E4A56"/>
+          <rect x="26" y="24" width="74" height="8" rx="5" fill="#3E6273"/>
+          <rect x="26" y="88" width="74" height="44" rx="5" fill="#35597E"/>
+          <rect x="26" y="88" width="74" height="8" rx="5" fill="#4A6E96"/>
+          <rect x="26" y="152" width="74" height="44" rx="5" fill="#4A3D66"/>
+          <rect x="26" y="152" width="74" height="8" rx="5" fill="#5F5182"/>
+        </g>
+        <g color="#D6E4EC">
+          <use href="#m-pool" x="38" y="37" width="20" height="20"/>
+          <use href="#m-cube" x="38" y="101" width="20" height="20"/>
+          <use href="#m-person" x="38" y="165" width="20" height="20"/>
+        </g>
+        <g font-size="8.5" fill="#D6E4EC">
+          <text x="64" y="50">built-in</text>
+          <text x="64" y="114">configured</text>
+          <text x="64" y="178">host</text>
+        </g>
+        <g fill="none" stroke-width="1.4">
+          <path d="M100,46 C138,56 158,76 182,90" stroke="#5B9EB8"/>
+          <path d="M100,110 C132,110 156,110 182,110" stroke="#6E9FD4"/>
+          <path d="M100,174 C138,164 158,144 182,130" stroke="#9D7DC8"/>
+        </g>
+        <rect x="182" y="80" width="86" height="60" rx="6" fill="#3A3226"/>
+        <rect x="182" y="80" width="86" height="60" rx="6" fill="none" stroke="#C8B37A" stroke-width="1.3"/>
+        <circle cx="192" cy="90" r="2" fill="#C8B37A"/><circle cx="258" cy="90" r="2" fill="#C8B37A"/>
+        <circle cx="192" cy="130" r="2" fill="#C8B37A"/><circle cx="258" cy="130" r="2" fill="#C8B37A"/>
+        <text x="225" y="106" text-anchor="middle" font-size="9.5" fill="#EBD9A8">registry</text>
+        <text x="225" y="120" text-anchor="middle" font-size="7.2" fill="#C8B37A">validate – handles – record</text>
+        <path d="M268,110 L302,110" stroke="var(--foe-accent)" stroke-width="1.8"/>
+        <rect x="302" y="101" width="11" height="18" rx="2" fill="var(--foe-accent)"/>
+        <text x="316" y="156" text-anchor="end" font-size="8.5" fill="#F3C878">the only path to an effect</text>
+        <text x="170" y="212" text-anchor="middle" font-size="9.5" fill="var(--dia-ink-faint)">the python composer's inner calls dispatch here too</text>
+      </svg>
+      <figcaption class="dia-caption">Whatever the source, validation, capability handles, and recording happen at the registry.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="workflows">
+  <div class="dia-kicker">workflows</div>
+  <h2 class="dia-title">Graphs of episodes, bounded before they run</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>A workflow is a declared graph whose nodes are tools, model
+      episodes, or nested workflows. Data flows over declared edges; every
+      cycle carries a firing bound; edge references and total possible
+      firings are counted at construction and refused past fixed ceilings.
+      A graph that could run away never starts.</p>
+      <p>The built-in coding run is such a graph: implementation, then
+      assessment in a <strong>fresh child episode</strong> that never saw the
+      implementation's reasoning, then repair that fires only when
+      assessment reports findings — with the repair cycle bounded like any
+      other.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="the built-in coding workflow as three lamplit workbenches: implement in blue light, assess under its own amber lamp because it starts with fresh context, repair in green light, and a dashed return arc for the bounded re-assessment">
+        <rect x="0" y="170" width="340" height="10" fill="#262626"/>
+        <rect x="0" y="170" width="340" height="2.5" fill="#343434"/>
+        <g fill="#3A3A3A">
+          <rect x="64" y="0" width="2.4" height="40"/><rect x="168" y="0" width="2.4" height="40"/><rect x="272" y="0" width="2.4" height="40"/>
+        </g>
+        <path d="M65,48 L34,116 L98,116 Z" fill="#6E9FD4" opacity=".14"/>
+        <path d="M169,48 L138,116 L202,116 Z" fill="#E8A43E" opacity=".2"/>
+        <path d="M273,48 L242,116 L306,116 Z" fill="#6F955F" opacity=".14"/>
+        <circle cx="65" cy="45" r="6" fill="#35597E"/><circle cx="65" cy="45" r="2.4" fill="#A8C8E8"/>
+        <circle cx="169" cy="45" r="6" fill="#5C3F14"/><circle cx="169" cy="45" r="2.4" fill="#F3C878"/>
+        <circle cx="273" cy="45" r="6" fill="#3E5D4A"/><circle cx="273" cy="45" r="2.4" fill="#A8D4B0"/>
+        <rect x="24" y="118" width="84" height="8" fill="#35597E"/><rect x="24" y="118" width="84" height="2.4" fill="#5B84AE"/>
+        <rect x="128" y="118" width="84" height="8" fill="#5C3F14"/><rect x="128" y="118" width="84" height="2.4" fill="var(--foe-accent)"/>
+        <rect x="232" y="118" width="84" height="8" fill="#3E5D4A"/><rect x="232" y="118" width="84" height="2.4" fill="#6F9E82"/>
+        <g fill="#30302E">
+          <rect x="30" y="126" width="3" height="44"/><rect x="99" y="126" width="3" height="44"/>
+          <rect x="134" y="126" width="3" height="44"/><rect x="203" y="126" width="3" height="44"/>
+          <rect x="238" y="126" width="3" height="44"/><rect x="307" y="126" width="3" height="44"/>
+        </g>
+        <g fill="none" stroke="#57A08F" stroke-width="1.4">
+          <path d="M108,122 L128,122"/>
+          <path d="M212,122 L232,122"/>
+        </g>
+        <path d="M274,118 C274,88 202,82 170,118" fill="none" stroke="#8A94A0" stroke-width="1" stroke-dasharray="4 3"/>
+        <g font-size="9.5" text-anchor="middle" fill="var(--dia-ink-soft)">
+          <text x="66" y="140">implement</text>
+          <text x="170" y="140" fill="#F3C878">assess</text>
+          <text x="274" y="140">repair</text>
+        </g>
+        <g font-size="7.5" text-anchor="middle" fill="var(--dia-ink-faint)">
+          <text x="170" y="152">fresh context</text>
+          <text x="274" y="152">only on findings</text>
+          <text x="222" y="80">re-assess – bounded</text>
+        </g>
+        <text x="170" y="200" text-anchor="middle" font-size="9.5" fill="var(--dia-ink-faint)">independent assessment breaks the implementer's blind spots</text>
+      </svg>
+      <figcaption class="dia-caption">Assessment runs in its own episode with its own context; the repair cycle has a declared bound.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="spawning and teams">
+  <div class="dia-kicker">spawning &amp; teams</div>
+  <h2 class="dia-title">Child episodes, and six verbs over them</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>A contract may declare child contracts and grant spawning them. Each
+      child is its own process, its own log, its own narrowed sandbox —
+      with budget reserved from the parent's pool and returned on
+      settlement. No child outlives its parent.</p>
+      <p>The team layer is six built-in tools over that machinery:
+      <code>spawn</code>, <code>wait</code> with typed conditions, <code>steer</code>,
+      <code>notify</code>, <code>send</code>, and <code>team</code>. Members message each other
+      through the lead; the roster and queue fold from the lead's log.</p>
+      <p>One writer per log holds everywhere: messages travel over the
+      host protocol, never by writing into someone else's file.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 220" role="img" aria-label="the team as a small mission control: the lead's console glows amber on a raised dais, two member consoles glow teal below it, and the dashed floor path shows peer messages walking through the lead">
+        <rect x="118" y="74" width="104" height="6" fill="#30302E"/>
+        <rect x="118" y="74" width="104" height="2" fill="#3E3E3C"/>
+        <rect x="128" y="30" width="84" height="44" rx="5" fill="#3A2C14"/>
+        <rect x="128" y="30" width="84" height="44" rx="5" fill="none" stroke="var(--foe-accent)" stroke-width="1.4"/>
+        <rect x="138" y="38" width="42" height="26" rx="3" fill="#E8A43E" opacity=".85"/>
+        <circle cx="196" cy="52" r="8" fill="#D9C9A8"/>
+        <text x="170" y="90" text-anchor="middle" font-size="8.5" fill="#F3C878">lead</text>
+        <rect x="36" y="130" width="84" height="40" rx="5" fill="#1E3640"/>
+        <rect x="36" y="130" width="84" height="40" rx="5" fill="none" stroke="#4FB3A0" stroke-width="1"/>
+        <rect x="46" y="138" width="38" height="22" rx="3" fill="#63D9A8" opacity=".8"/>
+        <circle cx="100" cy="150" r="7" fill="#B8CCC4"/>
+        <rect x="220" y="130" width="84" height="40" rx="5" fill="#1E3640"/>
+        <rect x="220" y="130" width="84" height="40" rx="5" fill="none" stroke="#4FB3A0" stroke-width="1"/>
+        <rect x="230" y="138" width="38" height="22" rx="3" fill="#63D9A8" opacity=".8"/>
+        <circle cx="284" cy="150" r="7" fill="#B8CCC4"/>
+        <g font-size="8.5" fill="var(--dia-ink-soft)" text-anchor="middle">
+          <text x="78" y="182">reviewer</text><text x="262" y="182">tester</text>
+        </g>
+        <g fill="none" stroke-width="1.3">
+          <path d="M144,74 C120,92 104,110 90,130" stroke="#5B9EB8"/>
+          <path d="M196,74 C220,92 236,110 250,130" stroke="#5B9EB8"/>
+        </g>
+        <path d="M120,158 C150,192 190,192 220,160" fill="none" stroke="#8A94A0" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="170" y="210" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">send: peer → lead → peer, recorded in the lead's log</text>
+        <text x="42" y="106" font-size="8" fill="var(--dia-ink-faint)">narrowed grants ↓</text>
+        <text x="232" y="106" font-size="8" fill="var(--dia-ink-faint)">reserved budget ↓</text>
+      </svg>
+      <figcaption class="dia-caption">The parent is the natural orchestrator; the team layer stays thin on purpose.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="models">
+  <div class="dia-kicker">models</div>
+  <h2 class="dia-title">Who calls the model</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li><strong>Configured endpoint</strong> — compatible, OAuth-backed, managed-cloud,
+        and keyed endpoints use clients compiled into the binary.</li>
+        <li><strong>Host model backend</strong> — the embedding application answers requests
+        through a package or the raw protocol.</li>
+        <li><strong>One binary</strong> — every HTTP client is present, and runtime
+        endpoint credentials come from explicit files rather than environment variables.</li>
+      </ul>
+      <p>Streams record as chunks in the log — text, thinking, tool-call
+      deltas — so a replayed request shows exactly what arrived, in
+      order, including the errors.</p>
+      <p><code>foe login</code> stores endpoint settings, any credential, and a default model;
+      <code>foe plan</code> reports the resolved route before any run.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="providers as five colored transit lines converging at one junction into a single amber trunk, whose chunk cars run onto the log reel at the end of the line">
+        <g font-size="9" fill="var(--dia-ink-soft)">
+          <text x="30" y="46">compatible</text><text x="30" y="78">OAuth-backed</text>
+          <text x="30" y="110">managed cloud</text><text x="30" y="142">keyed HTTP</text><text x="30" y="174">host</text>
+        </g>
+        <circle cx="102" cy="42" r="3" fill="#5B9EB8"/>
+        <circle cx="110" cy="74" r="3" fill="#9D7DC8"/>
+        <circle cx="88" cy="106" r="3" fill="#6E9FD4"/>
+        <circle cx="72" cy="138" r="3" fill="#6F955F"/>
+        <circle cx="70" cy="170" r="3" fill="#C878A8"/>
+        <g fill="none" stroke-width="1.5">
+          <path d="M105,42 C155,52 186,80 210,98" stroke="#5B9EB8"/>
+          <path d="M113,74 C160,80 190,90 210,101" stroke="#9D7DC8"/>
+          <path d="M91,106 C145,104 186,104 210,104" stroke="#6E9FD4"/>
+          <path d="M75,138 C138,128 188,114 210,107" stroke="#6F955F"/>
+          <path d="M73,170 C138,150 190,122 210,110" stroke="#C878A8"/>
+        </g>
+        <circle cx="213" cy="104" r="5" fill="#E8A43E"/>
+        <rect x="218" y="102.6" width="76" height="2.8" fill="var(--foe-accent)"/>
+        <g fill="#E8A43E">
+          <rect x="228" y="99" width="6" height="9" rx="1.5"/><rect x="242" y="99" width="6" height="9" rx="1.5"/>
+          <rect x="256" y="99" width="6" height="9" rx="1.5"/><rect x="270" y="99" width="6" height="9" rx="1.5"/>
+        </g>
+        <circle cx="306" cy="104" r="13" fill="#4A3618"/>
+        <circle cx="306" cy="104" r="13" fill="none" stroke="var(--foe-accent)" stroke-width="1.3"/>
+        <circle cx="306" cy="104" r="4" fill="#F3C878"/>
+        <text x="252" y="88" text-anchor="middle" font-size="8.5" fill="#F3C878">one chunk stream</text>
+        <text x="240" y="126" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">recorded, replayable</text>
+        <text x="306" y="136" text-anchor="middle" font-size="8" fill="var(--dia-ink-faint)">the log</text>
+        <text x="170" y="198" text-anchor="middle" font-size="9.5" fill="var(--dia-ink-faint)">runtime credentials are files at explicit paths</text>
+      </svg>
+      <figcaption class="dia-caption">One HTTP client or the host owns model calls; every request and response is recorded.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="isolation">
+  <div class="dia-kicker">isolation, in one slide</div>
+  <h2 class="dia-title">Granted, compiled, enforced</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <p>Grants compile to kernel filesystem rules per process; execute
+      access names exact files and their interpreters rather than
+      directories of binaries. Configured executables run captured bytes
+      by descriptor. Each invocation owns a process subtree that is
+      killed, bounded, and removed at settlement.</p>
+      <p>The report is honest by construction: what <code>foe plan</code> and the
+      log's <code>episode/start</code> state is built from the same policy object
+      the kernel enforces.</p>
+      <p>The full story — why each choice, and its limits — is its own
+      deck: <code>foe-isolation-and-permissions.dia.html</code>.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 200" role="img" aria-label="isolation as three rings of light around the run at night: the pale dashed ring of declared grants, the teal ring of compiled kernel rules, and the amber-lit core where the process actually runs">
+        <g fill="#5A6470">
+          <circle cx="36" cy="30" r="1.4"/><circle cx="304" cy="40" r="1.4"/><circle cx="52" cy="160" r="1.2"/>
+          <circle cx="296" cy="164" r="1.2"/><circle cx="288" cy="112" r="1"/><circle cx="46" cy="96" r="1"/>
+        </g>
+        <circle cx="170" cy="100" r="82" fill="#1B2026"/>
+        <circle cx="170" cy="100" r="56" fill="#20313A"/>
+        <circle cx="170" cy="100" r="38" fill="var(--foe-accent)" opacity=".18"/>
+        <circle cx="170" cy="100" r="30" fill="#4A3618"/>
+        <circle cx="170" cy="100" r="82" fill="none" stroke="#8A94A0" stroke-width="1.1" stroke-dasharray="3 4"/>
+        <circle cx="170" cy="100" r="56" fill="none" stroke="#4FB3A0" stroke-width="1.3"/>
+        <circle cx="170" cy="100" r="30" fill="none" stroke="var(--foe-accent)" stroke-width="1.7"/>
+        <g color="#F3C878"><use href="#m-shield" x="160" y="90" width="20" height="20"/></g>
+        <text x="170" y="34" text-anchor="middle" font-size="8.5" fill="#8A94A0">declared grants</text>
+        <text x="170" y="60" text-anchor="middle" font-size="8.5" fill="#7FCFC0">compiled kernel rules</text>
+        <text x="170" y="192" text-anchor="middle" font-size="9.5" fill="var(--dia-ink-faint)">nothing outside the outer ring can appear in the inner ones</text>
+      </svg>
+      <figcaption class="dia-caption">Enforcement narrows monotonically: child episodes, tools, and sessions each get subsets.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="evidence">
+  <div class="dia-kicker">verification &amp; evidence</div>
+  <h2 class="dia-title">From a pass to bytes you can check</h2>
+  <div class="dia-columns">
+    <div class="dia-body">
+      <ul style="--dia-marker: '▸'; list-style: none;">
+        <li>Every authoritative verifier run is a recorded event carrying
+        the <strong>digest of the exact candidate it judged</strong>.</li>
+        <li>A completion can be required to cite <strong>learned evidence</strong> —
+        claims paired with log sequence numbers that must reconstruct.</li>
+        <li>An <strong>evidence bundle</strong> packages a candidate contract, its
+        retained proposal logs, and the accepted verifier result —
+        digest-checked file by file, verifiable standalone, portable to
+        whoever decides adoption.</li>
+      </ul>
+      <p>This closed one real loop already: from retained failure evidence,
+      a model repaired a broken configuration, an unchanged external
+      evaluator confirmed the fix, and the same workflow transferred to a
+      fixture it had never seen.</p>
+    </div>
+    <figure class="dia-figure">
+      <svg viewBox="0 0 340 210" role="img" aria-label="the evidence loop as six small planets on a night orbit — run, retain, diagnose, propose, verify, adopt — with the amber arc of an adopted contract falling back into the next run">
+        <g fill="#5A6470">
+          <circle cx="40" cy="26" r="1.3"/><circle cx="300" cy="30" r="1.3"/><circle cx="316" cy="182" r="1.2"/>
+          <circle cx="28" cy="176" r="1.2"/><circle cx="288" cy="96" r="1"/>
+        </g>
+        <circle cx="170" cy="102" r="66" fill="none" stroke="#4A5550" stroke-width="1" stroke-dasharray="3 4"/>
+        <circle cx="170" cy="36" r="7" fill="#6E9FD4"/><circle cx="170" cy="36" r="11" fill="#6E9FD4" opacity=".2"/>
+        <circle cx="227" cy="69" r="5.5" fill="#4FB3A0"/><circle cx="227" cy="69" r="9" fill="#4FB3A0" opacity=".2"/>
+        <circle cx="227" cy="135" r="5.5" fill="#9D7DC8"/><circle cx="227" cy="135" r="9" fill="#9D7DC8" opacity=".2"/>
+        <circle cx="170" cy="168" r="5.5" fill="#6F955F"/><circle cx="170" cy="168" r="9" fill="#6F955F" opacity=".2"/>
+        <circle cx="113" cy="135" r="5.5" fill="#C878A8"/><circle cx="113" cy="135" r="9" fill="#C878A8" opacity=".2"/>
+        <circle cx="113" cy="69" r="6" fill="var(--foe-accent)"/><circle cx="113" cy="69" r="11" fill="var(--foe-accent)" opacity=".25"/>
+        <g font-size="8.5" fill="var(--dia-ink-soft)" text-anchor="middle">
+          <text x="170" y="22">run</text>
+          <text x="254" y="62">retain</text>
+          <text x="262" y="154">diagnose</text>
+          <text x="170" y="188">propose</text>
+          <text x="82" y="154">verify</text>
+          <text x="84" y="58" fill="#F3C878">adopt</text>
+        </g>
+        <path d="M119,64 C136,49 148,42 163,38" fill="none" stroke="var(--foe-accent)" stroke-width="1.7"/>
+        <path d="M154,39 L163,38 L158,46" stroke="var(--foe-accent)" stroke-width="1.7" fill="none"/>
+        <text x="170" y="206" text-anchor="middle" font-size="8.5" fill="#F3C878">the adopted contract enters the next run</text>
+        <text x="170" y="106" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-faint)">every arc leaves bytes behind</text>
+      </svg>
+      <figcaption class="dia-caption">The runtime attests; an external policy adopts. Verification and adoption stay separate.</figcaption>
+    </figure>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide" data-dia-part="operator surface">
+  <div class="dia-kicker">the operator surface</div>
+  <h2 class="dia-title">Five verbs and a viewer</h2>
+  <div class="dia-body">
+    <table>
+      <tr><th>command</th><th>what it does</th></tr>
+      <tr><td>foe "task"</td><td>runs the built-in coding workflow against the current repository</td></tr>
+      <tr><td>foe init --repository PATH</td><td>writes a complete starting contract and a placeholder verifier; refuses to overwrite</td></tr>
+      <tr><td>foe plan</td><td>readiness summary first — model, roots, execute, completion, limits, sandbox, warnings — then the full resolution, statically</td></tr>
+      <tr><td>foe login</td><td>stores a provider credential file and the default model</td></tr>
+      <tr><td>foe view DIR</td><td>renders a log as one self-contained HTML page; also serves it live</td></tr>
+      <tr><td>foe telemetry LOG…</td><td>what emission writes for finished logs — local, scrubbed, optional</td></tr>
+    </table>
+    <p style="margin-top: 14px;">Fourteen runnable examples cover the surface — from <code>minimal</code> and
+    <code>sandbox</code> to <code>workflow</code>, <code>team</code>, <code>self-extension</code>, and embedding through the
+    Python package — and every one runs in the merge gate.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<section class="dia-slide dia-cover" data-dia-part="close">
+  <div class="dia-kicker">the whole machine</div>
+  <h2 class="dia-title">Everything reduces to the same five claims</h2>
+  <div class="dia-body lede">
+    <ul style="--dia-marker: '▸'; list-style: none;">
+      <li>the task is fixed at launch, with a declared completion,</li>
+      <li>nothing is reachable unless granted,</li>
+      <li>stuck detection is mechanical,</li>
+      <li>an episode ends only by budget, verifier, or typed report, and</li>
+      <li>the append-only log is the only state.</li>
+    </ul>
+    <p style="margin-top: 8px;">Every feature above is one of these claims, made concrete.</p>
+  </div>
+  <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>
+</section>
+
+<script id="dia-runtime">
+/* dia runtime v1 — embedded in every saved deck.
+ * Present-mode navigation + build steps + slide transitions.
+ * No dependencies, no network.
+ * In the editor this script is inert (the editor strips/reinjects on save). */
+(function () {
+  'use strict';
+  if (window.__diaRuntime) return;
+  window.__diaRuntime = 1;
+
+  var slides = Array.prototype.slice.call(
+    document.querySelectorAll('section.dia-slide')
+  );
+  if (!slides.length) return;
+
+  var current = 0;
+
+  /* present-only styles: transitions + step reveals. Injected at runtime,
+   * never part of the saved document content. Motion respects
+   * prefers-reduced-motion; the scale from fit() rides along via --dia-fit
+   * so entrance transforms compose with it instead of clobbering it. */
+  var style = document.createElement('style');
+  style.id = 'dia-runtime-style';
+  style.textContent =
+    /* the page behind the deck wears the deck's paper — otherwise every
+     * entrance animation (opacity 0 start) and letterbox strip flashes
+     * the browser's white */
+    'html, body { margin: 0; background: var(--dia-paper, #111); }' +
+    /* the DESIGN BOX: slides are authored against a fixed-width canvas and
+     * fit() scales that box to the screen — without it, a widthless slide
+     * tracks the viewport and fixed-px type reads tiny on large displays.
+     * :where() keeps specificity at zero so a theme's own width wins. */
+    ':where(section.dia-slide) { width: var(--dia-page-w, 1280px); }' +
+    /* connectors NEVER fill — svg's default black fill turns a curved edge
+     * into a lens on decks whose theme predates the scene rules */
+    ':where(svg.dia-scene [data-dia-edge] path) { fill: none; }' +
+    '@media (prefers-reduced-motion: no-preference) {' +
+    'section.dia-slide[data-dia-anim="fade"] { animation: diaFade .3s ease both; }' +
+    'section.dia-slide[data-dia-anim="slide"] { animation: diaSlide .36s cubic-bezier(.2,.7,.2,1) both; }' +
+    'section.dia-slide[data-dia-anim="rise"] { animation: diaRise .36s cubic-bezier(.2,.7,.2,1) both; }' +
+    '[data-dia-step] { transition: opacity .28s ease, translate .28s ease; }' +
+    '}' +
+    '@keyframes diaFade { from { opacity: 0; } }' +
+    '@keyframes diaSlide { from { opacity: 0; transform: var(--dia-fit, none) translateX(3%); } to { transform: var(--dia-fit, none); } }' +
+    '@keyframes diaRise { from { opacity: 0; transform: var(--dia-fit, none) translateY(2.5%); } to { transform: var(--dia-fit, none); } }';
+  document.head.appendChild(style);
+
+  function fromHash() {
+    var m = /^#(\d+)$/.exec(location.hash);
+    if (m) current = Math.min(slides.length - 1, Math.max(0, +m[1] - 1));
+  }
+
+  function steps(slide) {
+    return Array.prototype.slice.call(slide.querySelectorAll('[data-dia-step]'))
+      .sort(function (a, b) { return (+a.getAttribute('data-dia-step')) - (+b.getAttribute('data-dia-step')); });
+  }
+
+  function transitionOf(slide) {
+    var t = slide.getAttribute('data-dia-transition') ||
+      document.documentElement.getAttribute('data-dia-transition') || 'none';
+    return t === 'fade' || t === 'slide' || t === 'rise' ? t : 'none';
+  }
+
+  function show(i, animate) {
+    current = Math.min(slides.length - 1, Math.max(0, i));
+    slides.forEach(function (s, j) {
+      s.style.display = j === current ? '' : 'none';
+      s.removeAttribute('data-dia-anim');
+    });
+    var t = transitionOf(slides[current]);
+    if (animate && t !== 'none') {
+      // restart the entrance animation even on repeated visits
+      void slides[current].offsetWidth;
+      slides[current].setAttribute('data-dia-anim', t);
+    }
+    steps(slides[current]).forEach(function (el) {
+      el.style.opacity = '0';
+      el.style.translate = '0 6px';
+      el.removeAttribute('data-dia-step-shown');
+    });
+    if (location.hash !== '#' + (current + 1)) history.replaceState(null, '', '#' + (current + 1));
+  }
+
+  function advance(dir) {
+    var pend = steps(slides[current]).filter(function (el) { return !el.hasAttribute('data-dia-step-shown'); });
+    if (dir > 0 && pend.length) {
+      pend[0].style.opacity = '';
+      pend[0].style.translate = '';
+      pend[0].setAttribute('data-dia-step-shown', '1');
+      return;
+    }
+    show(current + dir, true);
+  }
+
+  function fit() {
+    var s = slides[current];
+    if (!s) return;
+    var scale = Math.min(innerWidth / s.offsetWidth, innerHeight / s.offsetHeight);
+    // center the letterbox: the fitted slide floats mid-screen instead of
+    // hugging top-left with a bare strip on the other side
+    var tx = Math.max(0, (innerWidth - s.offsetWidth * scale) / 2);
+    var ty = Math.max(0, (innerHeight - s.offsetHeight * scale) / 2);
+    slides.forEach(function (sl) {
+      sl.style.transformOrigin = 'top left';
+      sl.style.setProperty('--dia-fit', 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')');
+      sl.style.transform = 'var(--dia-fit)';
+    });
+    document.body.style.overflow = 'hidden';
+    document.body.style.margin = '0';
+    // the strip color must match even for decks whose theme paints slides
+    // directly (no --dia-paper token)
+    var bg = getComputedStyle(s).backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      document.body.style.background = bg;
+    }
+  }
+
+  addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { advance(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { advance(-1); e.preventDefault(); }
+    else if (e.key === 'Home') show(0, true);
+    else if (e.key === 'End') show(slides.length - 1, true);
+  });
+  addEventListener('hashchange', function () { fromHash(); show(current, true); });
+  addEventListener('resize', fit);
+
+  fromHash();
+  show(current, false);
+  fit();
+})();
+</script>
+</body>
+</html>

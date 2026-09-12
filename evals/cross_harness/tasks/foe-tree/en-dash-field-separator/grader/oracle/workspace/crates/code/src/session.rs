@@ -1,0 +1,246 @@
+//! `session`: a process that survives the call that started it.
+//!
+//! One tool drives every session through the `Sessions` handle in
+//! `CallCtx`; the tool never touches a process itself. `start` runs a
+//! command line under exactly the policy and fixed environment a `bash`
+//! call receives, in its own process group, and returns a session id.
+//! `poll` returns the output since the last poll, bounded by the same
+//! collection-and-spill rule as `bash` output. `write` sends bytes to
+//! standard input, `signal` sends a named signal to the process group, and
+//! `stop` ends the group. The runtime stops an episode-lifetime session at
+//! settlement. With explicit permission, a task-lifetime session is released
+//! to the environment that owns the foe invocation.
+
+use crate::{parse_args, process_output, shell_environment, SESSION_MAX_ALIVE, SHELL, SHELL_COMMAND_NUL_ERROR};
+
+use foe_contract::{Effect, ToolSpec};
+use foe_core::exec::TERM_GRACE;
+use foe_core::session::{subject, SESSION_TOOL};
+use foe_core::{CallCtx, SessionLifetime, SessionOutput, SessionRequest, SessionStatus, Tool, ToolValue};
+use serde::Deserialize;
+use serde_json::json;
+use std::path::Path;
+
+pub struct Session {
+    spec: ToolSpec,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Action {
+    Start,
+    Poll,
+    Write,
+    Signal,
+    Stop,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Args {
+    action: Action,
+    command: Option<String>,
+    session: Option<u64>,
+    input: Option<String>,
+    signal: Option<String>,
+    lifetime: Option<SessionLifetime>,
+}
+
+impl Session {
+    pub(crate) fn new() -> Self {
+        let grace = TERM_GRACE.as_secs();
+        Self {
+            spec: ToolSpec {
+                name: SESSION_TOOL.into(),
+                description: format!(
+                    "A process across calls. `start` runs `command` with {SHELL} -c under the `bash` \
+                     environment, network closed, in its own process group; at most {SESSION_MAX_ALIVE} \
+                     may be alive. `poll` returns new bounded output and final status. `write` sends \
+                     input; `signal` signals the group; `stop` terminates, escalating after {grace}s. \
+                     Default `episode` lifetime ends at settlement. `task` transfers cleanup of the \
+                     process group to the task environment and requires grants.task_session."
+                ),
+                instruction: Some(
+                    "Use session for a process that must outlive one bash call, such as a server under \
+                     test: start it, poll for its output, and stop it when it is no longer needed. \
+                     Use task lifetime only when the process must remain after foe exits and the \
+                     enclosing task environment owns cleanup. There is no terminal."
+                        .into(),
+                ),
+                params: json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string", "enum": ["start", "poll", "write", "signal", "stop"]},
+                        "command": {"type": "string", "description": "Shell command line; `start` only."},
+                        "session": {"type": "integer", "minimum": 1, "description": "Session id from `start`; every action except `start`."},
+                        "input": {"type": "string", "description": "Bytes for standard input; `write` only."},
+                        "signal": {"type": "string", "description": "Signal name such as SIGINT; `signal` only."},
+                        "lifetime": {"type": "string", "enum": ["episode", "task"], "description": "Process ownership for `start`; default `episode`. `task` requires grants.task_session."}
+                    },
+                    "required": ["action"],
+                    "additionalProperties": false
+                }),
+                effect: Effect::Execs,
+            },
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for Session {
+    fn spec(&self) -> &ToolSpec {
+        &self.spec
+    }
+
+    async fn call(&self, args: serde_json::Value, ctx: &CallCtx) -> ToolValue {
+        let a: Args = match parse_args(SESSION_TOOL, args) {
+            Ok(a) => a,
+            Err(e) => return e,
+        };
+        let Some(sessions) = ctx.sessions.as_ref() else {
+            return ToolValue::unavailable("session: dispatched without a sessions handle");
+        };
+        if a.action != Action::Start && a.lifetime.is_some() {
+            return ToolValue::invalid("session: `lifetime` applies only to `start`");
+        }
+        let sid = match (a.action, a.session) {
+            (Action::Start, _) => 0,
+            (_, Some(id)) => id,
+            (_, None) => return ToolValue::invalid("session: this action requires `session`, the id `start` returned"),
+        };
+        match a.action {
+            Action::Start => {
+                let Some(command) = a.command else {
+                    return ToolValue::invalid("session: `start` requires `command`");
+                };
+                if command.contains('\0') {
+                    return ToolValue::invalid(format!("session: {SHELL_COMMAND_NUL_ERROR}"));
+                }
+                let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
+                    return ToolValue::unavailable("session: no read root to use as the working directory");
+                };
+                let lifetime = a.lifetime.unwrap_or(SessionLifetime::Episode);
+                let req = SessionRequest {
+                    name: display_name(&command),
+                    command: SHELL.into(),
+                    args: vec!["-c".into(), command.clone()],
+                    env: shell_environment(&cwd),
+                    cwd,
+                    lifetime,
+                };
+                match sessions.start(req) {
+                    Ok(status) => {
+                        let lifetime_name = match lifetime {
+                            SessionLifetime::Episode => "episode",
+                            SessionLifetime::Task => "task",
+                        };
+                        let qualifier = if lifetime == SessionLifetime::Task { "task lifetime " } else { "" };
+                        let line = format!("session {}: {} \u{2013} {qualifier}started", status.id, status.name);
+                        ToolValue::ok(
+                            json!({
+                                "session": status.id, "name": status.name, "command": command,
+                                "lifetime": lifetime_name,
+                            }),
+                            format!("[{line}]\n"),
+                        )
+                        .subject(line)
+                    }
+                    Err(e) => ToolValue::from_cap_error("session", e),
+                }
+            }
+            Action::Poll => match sessions.take_output(sid) {
+                Ok((status, output)) => render_poll(ctx, &status, &output),
+                Err(e) => ToolValue::from_cap_error("session", e),
+            },
+            Action::Write => {
+                let Some(input) = a.input else {
+                    return ToolValue::invalid("session: `write` requires `input`");
+                };
+                match sessions.write_stdin(sid, input.as_bytes()) {
+                    Ok(status) => {
+                        let line =
+                            format!("session {}: {} \u{2013} {} bytes to stdin", status.id, status.name, input.len());
+                        ToolValue::ok(json!({ "session": sid, "bytes": input.len() }), format!("[{line}]\n"))
+                            .subject(line)
+                    }
+                    Err(e) => ToolValue::from_cap_error("session", e),
+                }
+            }
+            Action::Signal => {
+                let Some(signal) = a.signal else {
+                    return ToolValue::invalid("session: `signal` requires `signal`");
+                };
+                let name = normalize(&signal);
+                match sessions.signal(sid, &name) {
+                    Ok(status) => {
+                        let line = format!("session {}: {} \u{2013} {name} sent", status.id, status.name);
+                        ToolValue::ok(json!({ "session": sid, "signal": name }), format!("[{line}]\n")).subject(line)
+                    }
+                    Err(e) => ToolValue::from_cap_error("session", e),
+                }
+            }
+            Action::Stop => match sessions.stop(sid) {
+                Ok(status) => {
+                    let line = subject(&status);
+                    ToolValue::ok(
+                        json!({
+                            "session": sid, "name": status.name,
+                            "exit_code": status.exit_code, "seconds": status.seconds,
+                        }),
+                        format!("[{line}]\n"),
+                    )
+                    .subject(line)
+                }
+                Err(e) => ToolValue::from_cap_error("session", e),
+            },
+        }
+    }
+}
+
+/// The status line first, then the tail of the new output: the `bash`
+/// shape, so the status survives any later cut of the middle. On
+/// truncation the whole text is saved and a notice names the file.
+fn render_poll(ctx: &CallCtx, status: &SessionStatus, output: &SessionOutput) -> ToolValue {
+    let line = subject(status);
+    let output = process_output::render(ctx, &line, status.exit_code, &output.stdout, &output.stderr, "session");
+    ToolValue::ok(
+        json!({
+            "session": status.id, "name": status.name, "alive": status.alive,
+            "exit_code": status.exit_code, "seconds": status.seconds,
+            "stdout": output.stdout, "stderr": output.stderr,
+            "truncated": output.truncated, "spill": output.spill,
+            "permission_denial": output.permission_denial.then_some("possible"),
+        }),
+        output.rendered,
+    )
+    .subject(match status.alive {
+        true => format!("{line}, {} lines", output.line_count),
+        false => line,
+    })
+}
+
+/// The first word of the command line, reduced to its file name: what the
+/// subject calls the process, `postgres` for `postgres -D data`.
+fn display_name(command: &str) -> String {
+    command
+        .split_whitespace()
+        .next()
+        .map(|token| {
+            Path::new(token).file_name().map_or_else(|| token.to_string(), |n| n.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| "bash".into())
+}
+
+/// `int`, `INT`, and `SIGINT` all name SIGINT; the supervisor parses the
+/// `SIG` form.
+fn normalize(signal: &str) -> String {
+    let upper = signal.trim().to_ascii_uppercase();
+    match upper.starts_with("SIG") {
+        true => upper,
+        false => format!("SIG{upper}"),
+    }
+}
+
+#[cfg(test)]
+#[path = "session_test.rs"]
+mod tests;

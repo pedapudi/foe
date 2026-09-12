@@ -1,0 +1,8 @@
+{
+  "unit": "crates/cli",
+  "restore": [
+    "crates/cli/src/run.rs",
+    "crates/cli/src/schema.json"
+  ],
+  "remove": []
+}

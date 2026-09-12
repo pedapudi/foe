@@ -1,0 +1,136 @@
+{
+  "task": "en-dash-field-separator",
+  "units": [
+    {
+      "name": "crates/code",
+      "package": "foe-code",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/code/src/bash_test.rs": [
+          "builds_the_request_and_reports_a_non_zero_exit_as_a_result",
+          "possible_external_command_denial_is_recorded_and_explained",
+          "timeout_argument_and_deadline_bound_the_request",
+          "long_output_is_tail_truncated_and_spilled",
+          "missing_handles_are_errors",
+          "literal_nul_commands_explain_the_valid_shell_spelling",
+          "a_real_non_zero_exit_is_a_result",
+          "a_timed_out_run_is_reported_as_a_result_with_the_output_it_produced",
+          "states_the_command_and_how_it_ended",
+          "a_long_command_is_cut_before_its_status_is"
+        ],
+        "crates/code/src/session_test.rs": [
+          "start_runs_the_command_under_the_bash_contract",
+          "start_rejects_a_literal_nul_before_opening_a_session",
+          "start_passes_the_explicit_task_lifetime_to_the_capability",
+          "poll_leads_with_the_status_and_counts_the_new_lines",
+          "poll_reports_the_exit_status_once_the_process_ended",
+          "long_poll_output_is_tail_truncated_and_spilled",
+          "write_signal_and_stop_report_their_action",
+          "missing_arguments_and_handles_are_errors"
+        ]
+      }
+    },
+    {
+      "name": "crates/telemetry",
+      "package": "foe-telemetry",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/telemetry/src/extract_test.rs": [
+          "head_of_a_plain_command",
+          "every_segment_of_a_compound_command_votes",
+          "a_leading_directory_change_is_not_the_command",
+          "a_pipeline_votes_once_per_stage",
+          "a_double_pipe_is_one_separator_and_leaves_no_stray_stage",
+          "assignments_before_the_command_are_not_the_command",
+          "newlines_and_semicolons_separate_segments",
+          "a_path_qualified_command_votes_as_its_name",
+          "a_dispatcher_without_a_subcommand_votes_as_its_head",
+          "an_empty_command_yields_no_head",
+          "extensions_come_from_read_edit_and_grep_arguments",
+          "a_name_without_an_extension_contributes_none",
+          "steps_and_calls_carry_their_own_times_and_usage",
+          "tool_calls_classify_permission_denial_evidence",
+          "workflow_correction_evidence_is_derived_from_typed_events",
+          "an_unknown_recovery_action_emits_only_the_closed_unknown_term",
+          "known_values_are_the_configured_paths_the_log_directory_and_the_home_user",
+          "a_completed_outcome_contributes_no_text",
+          "an_exhausted_outcome_names_its_limit_as_the_exit_class",
+          "a_blocked_outcome_names_its_code_and_carries_its_message",
+          "provenance_is_verifier_when_the_last_verification_accepted",
+          "provenance_is_reviewed_for_a_terminal_model_node_fed_by_a_model_node",
+          "provenance_is_model_report_when_nothing_verified_or_reviewed",
+          "provenance_is_absent_for_an_episode_that_did_not_complete"
+        ],
+        "crates/telemetry/src/scrub_test.rs": [
+          "every_planted_secret_is_replaced",
+          "a_planted_secret_leaves_no_finding_behind",
+          "a_known_value_is_replaced_in_every_variant_form",
+          "no_known_value_survives_anywhere_in_the_corpus",
+          "scrubbing_is_idempotent",
+          "a_replacement_token_trips_no_detector",
+          "a_pseudonym_is_eight_hex_characters_under_a_keyed_digest",
+          "a_path_keeps_its_common_directories_and_its_extension",
+          "a_workspace_relative_path_is_componentized_too",
+          "a_path_of_common_directories_alone_is_left_as_it_is",
+          "ordinary_prose_is_left_as_it_is",
+          "a_long_low_entropy_run_is_not_treated_as_key_material",
+          "a_digest_in_an_error_line_is_masked_even_though_it_is_probably_a_commit",
+          "the_report_counts_replacements_by_type_and_never_the_values",
+          "the_self_check_sees_a_known_value_the_substitution_missed",
+          "the_self_check_names_every_detector_that_still_fires",
+          "the_key_is_generated_once_and_kept_private",
+          "hmac_matches_the_published_test_vector",
+          "one_known_value_carries_one_pseudonym_however_it_was_written",
+          "a_universal_system_path_survives_whole_while_a_home_path_does_not",
+          "a_percent_encoded_known_value_is_masked",
+          "a_base64_encoded_known_value_is_masked_even_below_the_entropy_gate",
+          "zero_width_characters_cannot_split_a_known_value",
+          "a_luhn_valid_card_number_is_masked_and_a_luhn_invalid_one_is_not",
+          "the_ported_provider_prefixes_are_masked",
+          "hardening_keeps_scrubbing_idempotent"
+        ],
+        "crates/telemetry/tests/emission.rs": [
+          "the_payload_matches_the_golden_file",
+          "the_golden_payload_carries_the_versions_a_consumer_needs_to_compare_two_of_them",
+          "permission_denial_classification_reaches_the_tool_span",
+          "no_free_text_beyond_the_two_permitted_fields_reaches_the_payload",
+          "the_self_check_refuses_a_log_it_cannot_fully_scrub",
+          "emission_refuses_the_seeded_log_and_writes_nothing",
+          "emission_refuses_a_log_it_cannot_fully_read_and_writes_nothing",
+          "the_skewed_log_reports_its_unreadable_line_and_shows_the_leak",
+          "two_emissions_produce_byte_identical_output",
+          "emission_appends_one_object_per_episode",
+          "the_capture_holds_exactly_the_rendered_line",
+          "preview_reports_the_bucket_its_evidence_the_totals_and_the_scrub_counts",
+          "emission_runs_against_every_real_viewer_fixture"
+        ]
+      }
+    },
+    {
+      "name": "crates/view",
+      "package": "foe-view",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/view/src/terminal_test.rs": [
+          "conversation_includes_only_visible_messages",
+          "polling_preserves_branch_returns_and_does_not_repeat_messages",
+          "polling_waits_for_complete_lines_and_discovers_children_later",
+          "long_lines_wrap_inside_the_lanes",
+          "terminal_controls_are_removed_and_color_is_optional",
+          "completed_values_read_as_titled_sections",
+          "unsuccessful_outcomes_and_output_errors_are_reported",
+          "the_progress_line_pulses_once_per_tick_and_counts_tool_calls",
+          "the_progress_line_yields_to_blocks_and_to_redirected_output",
+          "the_progress_line_stays_inside_the_terminal_width",
+          "each_episode_name_is_written_in_the_color_its_name_hashes_to"
+        ]
+      }
+    }
+  ],
+  "sentences": {
+    "docs/tools.md": [
+      "cargo test -p parser \u2013 exit 0 in 1.50s, the command and how it ended",
+      "session 2: postgres \u2013 alive, 41 lines for a poll, session 2: exit 0 after 84s for a stop or for a poll after the end"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "task": "unnamed-error-messages",
+  "threshold": 0.9,
+  "identity": [
+    {
+      "key": "path",
+      "kind": "path"
+    },
+    {
+      "key": "line",
+      "kind": "integer"
+    }
+  ]
+}

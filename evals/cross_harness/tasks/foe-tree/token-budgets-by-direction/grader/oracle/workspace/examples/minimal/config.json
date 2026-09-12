@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "name": "minimal",
+  "instructions": {
+    "role": "You are a coding agent working in a Python repository. Make the smallest change that completes the task, then run the tests."
+  },
+  "tools": ["read", "grep", "edit", "bash"],
+  "grants": {
+    "read": ["/home/user/project"],
+    "write": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 20 },
+  "model": {
+    "provider": "exec",
+    "model": "minimal-demo",
+    "exec": "/home/user/project/tools/transport.py"
+  },
+  "task": "test_brackets.py fails at test_nested_brackets. Make it pass without changing the test."
+}

@@ -1,0 +1,61 @@
+{
+  "name": "unnamed-error-messages",
+  "family": "teams",
+  "class_name": "survey",
+  "text": "Survey the Rust crates under crates/ for error messages that fail the AGENTS.md rule that every error names the key, event, or rule involved. The rule is applied by the following operational definition, so the answer is well defined.\n\nAn error message is the string literal of an `#[error(\"...\")]` attribute whose literal is the attribute's only argument, written on one line whose first non-blank characters are `#[error(`, in a `.rs` file under crates/ that is neither named `*_test.rs` nor held under a `tests/` directory; `#[error(transparent)]` carries no message, and an attribute with arguments after the literal, `#[error(\"...\", expr)]`, is outside the survey. A message names its subject when it contains a backtick-quoted identifier (a backtick, one or more characters, a backtick), a key path, or the placeholder `{key}`. A key path is two or more segments joined by single dots, each segment a name of two or more characters from lowercase letters, digits, and underscores that starts with a letter or underscore, or such a name in braces; `model.base_url` and `model.{key}` are key paths. Every other message fails the rule.\n\nReturn every failing message as the value {\"items\": [...]}, one object per message with `path` (the file's workspace-relative path), `line` (the line number of the attribute, counting from 1), and `message` (the literal between the quotes, as written). The grade compares the returned items with the survey the definition yields over the workspace as given: an item matches when its `path` and `line` match, precision and recall are computed over the matches, and the task passes when both are at least 0.9. Change no file under crates/.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 200000,
+    "seconds": 3600
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "06879813322f7bbfa9fb6962c696edd078fa73b9"
+    },
+    "survey": "error-messages",
+    "returns": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "line",
+              "message",
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "threshold": 0.9,
+    "item_count": 24,
+    "corruption_adds": 3,
+    "review": "revised: the text was written in specification voice and read by a person; the operational definition is the survey script's"
+  }
+}

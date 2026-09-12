@@ -1,0 +1,9 @@
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..74552d2
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,3 @@
++#!/bin/sh
++# A survey changes no file, so the check has nothing to run; the returned value is graded.
++exit 0

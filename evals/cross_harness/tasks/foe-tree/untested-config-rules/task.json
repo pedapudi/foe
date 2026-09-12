@@ -1,0 +1,57 @@
+{
+  "name": "untested-config-rules",
+  "family": "teams",
+  "class_name": "survey",
+  "text": "Survey docs/config.md for rule sentences whose key no test cites. The survey is defined operationally, so the answer is well defined.\n\nA key is a heading of docs/config.md of the form `### `key``, and its section runs to the next heading. A rule sentence is a sentence of the section's prose: the lines outside fenced code blocks and outside table rows, grouped into paragraphs at blank lines, headings, and the start of a list item, with each paragraph split into sentences at a period, question mark, or exclamation mark that is followed by whitespace or the end of the paragraph and lies outside a backtick span. A test cites a key when a `///` doc comment line in a file named `*_test.rs` under crates/ contains `docs/config.md` and the first backtick span after it on the same line is a backtick-quoted identifier; that identifier is the key.\n\nReturn every rule sentence of every key that no test cites as the value {\"items\": [...]}, one object per sentence with `key` and `sentence` (the sentence text as written, with its markup). The grade compares the returned items with the survey the definition yields over the workspace as given: an item matches when its `key` matches and its `sentence` matches after backticks and asterisks are removed, whitespace is collapsed, letters are lowercased, and trailing punctuation is dropped; precision and recall are computed over the matches, and the task passes when both are at least 0.9. Change no file under crates/ or docs/.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 200000,
+    "seconds": 3600
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "06879813322f7bbfa9fb6962c696edd078fa73b9"
+    },
+    "survey": "config-rules",
+    "returns": {
+      "type": "object",
+      "required": [
+        "items"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "sentence"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "sentence": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "threshold": 0.9,
+    "item_count": 82,
+    "corruption_adds": 49,
+    "review": "revised: the text was written in specification voice and read by a person; the operational definition is the survey script's"
+  }
+}

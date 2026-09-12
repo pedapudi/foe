@@ -1,0 +1,332 @@
+{
+  "items": [
+    {
+      "key": "version",
+      "sentence": "Integer."
+    },
+    {
+      "key": "version",
+      "sentence": "Required."
+    },
+    {
+      "key": "version",
+      "sentence": "The configuration format version."
+    },
+    {
+      "key": "version",
+      "sentence": "This document describes version 4."
+    },
+    {
+      "key": "name",
+      "sentence": "String."
+    },
+    {
+      "key": "name",
+      "sentence": "Required."
+    },
+    {
+      "key": "name",
+      "sentence": "A short name for the contract."
+    },
+    {
+      "key": "name",
+      "sentence": "Shown in the viewer and written into the log."
+    },
+    {
+      "key": "name",
+      "sentence": "It participates in fingerprint."
+    },
+    {
+      "key": "instructions",
+      "sentence": "Object mapping section key to section text."
+    },
+    {
+      "key": "instructions",
+      "sentence": "Required, with at least one entry."
+    },
+    {
+      "key": "instructions",
+      "sentence": "The key is an identifier the author chooses."
+    },
+    {
+      "key": "instructions",
+      "sentence": "The runtime never interprets it."
+    },
+    {
+      "key": "instructions",
+      "sentence": "It exists so that a section can be addressed later: replaced, removed, or diffed by whatever produced the configuration."
+    },
+    {
+      "key": "instructions",
+      "sentence": "The value is literal text, rendered into the system prompt unchanged."
+    },
+    {
+      "key": "instructions",
+      "sentence": "Sections render in lexicographic order of their keys."
+    },
+    {
+      "key": "instructions",
+      "sentence": "That order is stable across machines, which keeps the request prefix byte-identical across runs."
+    },
+    {
+      "key": "instructions",
+      "sentence": "An author who needs a specific order prefixes keys with digits, as in `10-role`, `20-style`."
+    },
+    {
+      "key": "instructions",
+      "sentence": "Both key and text participate in fingerprint."
+    },
+    {
+      "key": "instructions",
+      "sentence": "Renaming a key changes the rendered order, so it changes what the model sees, so it changes fingerprint."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Object mapping tool name to a definition."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Optional."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Each definition describes an executable that the model may invoke."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "`exec` must be absolute."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The runtime never searches a path list, because which executable a name resolves to would then depend on the machine."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "A host that wants `ruff` resolves it once and writes the absolute path."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The executable receives the model's `args` list as its argument vector, without a shell."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Standard input is `/dev/null`."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Standard output and standard error are captured."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The exit code is reported as part of the result."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "An exit code other than zero is a result rather than an error."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "During execution-contract construction, Foe captures the configured executable's bytes, digest, source path, and invocation name."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The invocation name is the final component of the configured `exec` path and must be valid UTF-8; resolution rejects any other name, so the fingerprint records name bytes exactly."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The digest and invocation name participate in the fingerprint."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Every later invocation uses the captured executable."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Source replacement, modification, or deletion cannot change the run."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "Declaring an entry in `tool_defs` permits the episode to execute that file."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "The file does not need a `grants.execute` entry."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "An explicit execute grant permits subprocesses of a tool, such as a compiler started by `bash`, and subprocesses of a configured executable, such as the commands a verifier script runs."
+    },
+    {
+      "key": "tool_defs",
+      "sentence": "A grant covers the file a path resolves to, so a command reached through a symlink is covered only when the link's target is granted as well; a refused execution says so in the result and names the roots in force."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "Object mapping tool name to a specification."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "Optional."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "Each entry describes a tool that the host process implements and answers over the [protocol](protocol.md)."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "The specification is in the document so that fingerprint is computable from the document alone; the host supplies only the implementation."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "A host that does not implement a tool named here fails the first call to it."
+    },
+    {
+      "key": "host_tools",
+      "sentence": "The Python package generates these entries from decorated functions."
+    },
+    {
+      "key": "context",
+      "sentence": "Object."
+    },
+    {
+      "key": "context",
+      "sentence": "Optional."
+    },
+    {
+      "key": "context",
+      "sentence": "Whether and when the conversation is compacted: the oldest steps replaced in the model's context by a summary and the runtime's continuation state when the next request is projected to outgrow the model's window."
+    },
+    {
+      "key": "context",
+      "sentence": "[compaction.md](compaction.md) specifies the policy."
+    },
+    {
+      "key": "context",
+      "sentence": "`window_tokens` may be omitted when `compact` is true and the `model` block names a model the provider table knows; [models.md](models.md) lists them."
+    },
+    {
+      "key": "context",
+      "sentence": "For any other model, and under a host that supplies the model backend, it is required, and its absence is a construction error naming the key."
+    },
+    {
+      "key": "context",
+      "sentence": "When given, it must exceed `reserve_tokens` plus `keep_recent_tokens`."
+    },
+    {
+      "key": "context",
+      "sentence": "The block participates in fingerprint."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "Object."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "Optional."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "`best-effort` applies whatever the kernel supports and records the Landlock version obtained."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "`required` refuses to start when Landlock is unavailable."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "`off` applies no kernel restriction and records that fact."
+    },
+    {
+      "key": "sandbox",
+      "sentence": "The rules themselves are compiled from `grants` and `tool_defs`; there is nothing else to declare."
+    },
+    {
+      "key": "workflow",
+      "sentence": "Object."
+    },
+    {
+      "key": "workflow",
+      "sentence": "Optional."
+    },
+    {
+      "key": "workflow",
+      "sentence": "A declared graph of nodes that replaces the free loop for this episode."
+    },
+    {
+      "key": "workflow",
+      "sentence": "[workflow.md](workflow.md) specifies every key under it and every construction rule."
+    },
+    {
+      "key": "workflow",
+      "sentence": "The document's permissions and budget are the ceiling the graph draws from."
+    },
+    {
+      "key": "workflow",
+      "sentence": "A tool node names a tool in `tools`."
+    },
+    {
+      "key": "workflow",
+      "sentence": "A model node's contract is a child contract in the sense of `child_contracts` whose tools, configured executables, host tool definitions, filesystem grants, spawn grants with their descendant child contracts, and spend limits all lie within the document's own."
+    },
+    {
+      "key": "workflow",
+      "sentence": "A child contract may carry a `workflow` of its own."
+    },
+    {
+      "key": "workflow",
+      "sentence": "A model node may declare `empty` so that a blocked or exhausted child contributes that value and downstream work continues."
+    },
+    {
+      "key": "workflow",
+      "sentence": "The graph may contain at most 4,096 edge references across all nested workflows."
+    },
+    {
+      "key": "workflow",
+      "sentence": "The count includes every `follows` entry, branch successor, and `recovery.follows` entry."
+    },
+    {
+      "key": "workflow",
+      "sentence": "Construction checks this count before building graph indexes."
+    },
+    {
+      "key": "workflow",
+      "sentence": "The graph participates in fingerprint as workflow.md \"Fingerprint\" lists."
+    },
+    {
+      "key": "workflow",
+      "sentence": "When this field is absent, planning and viewing project one terminal `root-agent` node that follows the invocation task and runs in the root episode."
+    },
+    {
+      "key": "workflow",
+      "sentence": "Execution uses the direct agent loop."
+    },
+    {
+      "key": "workflow",
+      "sentence": "The projection adds no configuration value, fingerprint input, log event, budget reservation, or child episode."
+    },
+    {
+      "key": "task",
+      "sentence": "String."
+    },
+    {
+      "key": "task",
+      "sentence": "Required."
+    },
+    {
+      "key": "task",
+      "sentence": "What this episode is to do."
+    },
+    {
+      "key": "task",
+      "sentence": "Written into the log as the first inbox item."
+    },
+    {
+      "key": "task",
+      "sentence": "The task does not participate in the fingerprint."
+    },
+    {
+      "key": "task",
+      "sentence": "Two episodes of the same contract with different tasks share a fingerprint."
+    }
+  ]
+}

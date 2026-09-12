@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "name": "sandbox-required",
+  "instructions": {
+    "role": "Use the cat tool to read both files named in the task. Report which read succeeded and which read the kernel denied."
+  },
+  "tools": ["cat"],
+  "tool_defs": {
+    "cat": {
+      "exec": "/usr/bin/cat",
+      "description": "Prints a file. Usage: cat <absolute-path>. Exits 1 with a message on standard error when the file cannot be read."
+    }
+  },
+  "grants": {
+    "read": ["/home/user/project"]
+  },
+  "budget": { "model_calls": 3, "seconds": 120 },
+  "model": {
+    "provider": "exec",
+    "model": "sandbox-demo",
+    "exec": "/home/user/foe/examples/support/scripted-transport.py",
+    "allowed_file": "/home/user/project/allowed.txt",
+    "denied_file": "/home/user/outside-grant/denied.txt"
+  },
+  "sandbox": { "mode": "required" },
+  "task": "Read /home/user/project/allowed.txt and /home/user/outside-grant/denied.txt with cat, then report both results."
+}
