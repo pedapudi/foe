@@ -31,7 +31,12 @@ harness's own records to the shared trajectory schema, grades the workspace
 with the task's hidden grader, and classifies the graded outcome into one
 confusion cell of `tasks/protocol.py`. One JSON record per attempt is
 written under `<out>/records/<task>/<arm>/`. `report.py` reads those
-records.
+records. The record's `grade` carries the grader's verdict, its findings,
+and the damage judged beside it; for a fan-out task of the teams family
+it also carries `units`, each unit's verdict as `{name: passed}`, read
+from the `units.json` the grade script of `tasks/teams.py` leaves in the
+materialized root's grader directory, and null when no grade left one.
+For every other task `units` is null.
 
 The runner takes one run document, a JSON file, and launches nothing
 without `--confirm-spend`:
@@ -67,6 +72,9 @@ document is in, and a leading `~` expands to the home directory.
     grader_timeout  seconds one grade script may run
     source_root     a path inside the foe checkout the binary was built from;
                     the binary's own path when absent
+    foe_config_dir  foe's configuration directory, where the run plants its
+                    foe canary; default `~/.config/foe`, the directory the
+                    binary resolves for the real user
 
 The family is the one the selected tasks declare in their `task.json`; a
 selection spanning two families is refused naming both. The run file
@@ -95,9 +103,24 @@ check suite could not run. Such a record carries `infrastructure_error` and
 no classification, following `evals/run_micro_evals.py`.
 
 The built-in documents of the foe-as-shipped arm carry their own grants,
-so that arm cannot take the tool roots a task names. A task whose metadata
-names `tool_roots` has its foe-as-shipped attempts recorded as not
-applicable, with the reason, and no such attempt runs.
+so that arm cannot take tool roots from the run document or from a task. A
+task needs tool roots when the run document names `tool_roots` or the
+task's metadata does. Such a task has its foe-as-shipped attempts recorded
+as not applicable, with the reason, and no such attempt runs. The
+container of `environment/environment.md` places the toolchain under
+`/usr/local`, one of the built-in execute roots of `contracts/graphs.py`,
+so inside the container a run document without `tool_roots` runs the
+foe-as-shipped arm on every task. The record of a foe-as-shipped attempt
+names the built-in execute roots under `tool_roots`, which are the roots
+its document grants.
+
+A task whose metadata names `presumes_absent`, as the missing-capability
+task of `tasks/constructions.py` does, presumes that program absent from
+every arm's search path, and its grader reads no search path. The runner
+holds the premise: before the plan it resolves the program against the
+system search path and the tool roots the foe arms execute, and against
+the PATH a Codex child inherits when a Codex arm is selected, and refuses
+the run by name when the program is found.
 
 Every attempt runs under the task's budget: `model_calls`, `input_tokens`,
 `output_tokens`, and `seconds`. Each key of the document's `budget`
@@ -120,6 +143,20 @@ commit the source tree was at, and whether the tree was dirty, with the
 changed paths, so that a record from a development tree stays
 identifiable.
 
+Every run plants two canary sentences, each generated for the run from a
+random identifier, and records them in the run file. The Codex arm writes
+one into the fresh `CODEX_HOME` of every attempt as `config.toml` under
+the `developer_instructions` key, the user configuration file that
+`--ignore-user-config` states it does not load. The runner writes the
+other into foe's configuration directory as `AGENTS.md`, a file foe never
+reads by design. That directory is `~/.config/foe` of the real user: the
+binary resolves it from the passwd database, and no argument or
+environment value moves it, so the document key `foe_config_dir` names it
+for a test that must leave the real directory untouched. The runner
+passes nothing about the file to foe and removes it once the attempts
+have ended. `gates/isolation.py` searches every recorded request for both
+sentences after the run.
+
 The runner calls a real model and spends real credit, so without
 `--confirm-spend` it prints every value the document resolved to and every
 planned attempt with the effective ceilings each one runs under, and exits
@@ -130,7 +167,12 @@ documents. The one exception is `CODEX_HOME`, which the Codex arm sets on
 its child because Codex locates its files by it; every record names the
 directory it was given. This module reads the environment in two places
 the document's rules call for: the PATH lookup of a bare `harnesses.codex`
-command name, and the home directory a leading `~` expands to.
+command name, and the home directory a leading `~` expands to; and it
+reads PATH once more, when a Codex arm is selected, to check that a
+program a task presumes absent under `metadata.presumes_absent` is absent
+from the search path the Codex child inherits. The same check resolves the
+program against the system search path and the tool roots the foe arms
+execute, and refuses the run by name when the program is found.
 """
 
 from __future__ import annotations
@@ -144,13 +186,14 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
 HERE = Path(__file__).resolve().parent
 EVALS = HERE.parent
-for directory in (EVALS, HERE, HERE / "arms", HERE / "contracts", HERE / "tasks"):
+for directory in (EVALS, HERE, HERE / "arms", HERE / "contracts", HERE / "gates", HERE / "tasks"):
     sys.path.insert(0, str(directory))
 
 import codex_arm  # noqa: E402
@@ -161,6 +204,7 @@ import graphs  # noqa: E402
 import normalize_codex  # noqa: E402
 import normalize_foe  # noqa: E402
 import protocol  # noqa: E402
+import teams  # noqa: E402
 import trajectory  # noqa: E402
 from foe_arm import ArmResult  # noqa: E402
 
@@ -184,7 +228,7 @@ DEFAULT_EFFORT = "medium"
 DEFAULT_GRADER_TIMEOUT_SECONDS = feature_removal.GRADE_TIMEOUT_SECONDS
 
 # The keys of a run document, of its `model` object, and of its `harnesses` object; the module docstring states each one.
-DOCUMENT_KEYS: tuple[str, ...] = ("tasks", "select", "arms", "attempts", "model", "budget", "tool_roots", "harnesses", "out", "grader_timeout", "source_root")
+DOCUMENT_KEYS: tuple[str, ...] = ("tasks", "select", "arms", "attempts", "model", "budget", "tool_roots", "harnesses", "out", "grader_timeout", "source_root", "foe_config_dir")
 MODEL_KEYS: tuple[str, ...] = ("route", "name", "effort", "base_url", "codex_wire_api")
 HARNESS_KEYS: tuple[str, ...] = ("foe", "codex", "credential")
 # The foe binary a document without `harnesses.foe` runs, under the git checkout the document or the current directory is in.
@@ -195,17 +239,31 @@ DEFAULT_CODEX = "codex"
 DEFAULT_CREDENTIAL = "~/.codex/auth.json"
 # A document without `out` writes under this directory, in a subdirectory named by the document's file stem.
 DEFAULT_OUT_ROOT = "~/.local/state/foe/cross-harness"
+# foe's configuration directory, from crates/transport/src/paths.rs: the
+# binary resolves it under the real user's home and reads its credentials
+# and default model file there, and nothing else.
+DEFAULT_FOE_CONFIG_DIR = "~/.config/foe"
 DEFAULT_CODEX_WIRE_API = "chat"
 # The entry a git checkout's root holds: a directory, or the file a worktree keeps in its place.
 GIT_ENTRY = ".git"
 
 RECORDS_DIR, ATTEMPTS_DIR, RUN_FILE = "records", "attempts", "run.json"
+# The two canaries of a run, by name: the sentence the Codex arm writes into
+# each attempt's CODEX_HOME configuration file, and the sentence the runner
+# writes into foe's configuration directory as a file foe never reads.
+CODEX_CONFIG_CANARY, FOE_CONFIG_CANARY = "codex_config", "foe_config"
+CANARY_NAMES: tuple[str, ...] = (CODEX_CONFIG_CANARY, FOE_CONFIG_CANARY)
+CANARY_FILE = "AGENTS.md"
+# Every canary sentence starts with this text, so the runner can tell its own file from one it must leave alone.
+CANARY_PREFIX = "This sentence is the "
 CHECK_SCRIPT_NAME = "check"
 # The check command the runner takes from a workspace, in order of preference.
 CHECK_SUITE = "checks/run.sh"
 TESTS_DIR = "tests"
 # Optional task metadata keys the runner reads.
 METADATA_CHECK, METADATA_WRITE_ROOTS, METADATA_TOOL_ROOTS = "check", "write_roots", "tool_roots"
+# The task metadata key naming the one program a missing-capability task presumes absent from every arm's search path.
+METADATA_PRESUMES_ABSENT = "presumes_absent"
 # The search path the runtime gives a bash command, from docs/tools.md "bash";
 # the check script starts from it because a configured executable receives no environment.
 SYSTEM_SEARCH_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -299,11 +357,14 @@ class Settings:
     tool_roots: tuple[str, ...] = ()
     # The budget keys the document's `budget` replaces for every attempt of the run.
     budget_overrides: dict[str, int] = field(default_factory=dict)
+    # The run's canary sentences by CANARY_NAMES; empty when the run plants none.
+    canaries: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "tool_roots": list(self.tool_roots),
             "budget_overrides": dict(self.budget_overrides),
+            "canaries": dict(self.canaries),
             "foe": str(self.foe),
             "codex": None if self.codex is None else str(self.codex),
             "family": self.family,
@@ -514,6 +575,7 @@ class Document:
     out: Path
     grader_timeout: int
     source_root: Path
+    foe_config_dir: Path
 
     def codex_fault(self) -> str | None:
         if self.codex is None:
@@ -537,10 +599,16 @@ class Document:
             "model": {"route": self.route, "name": self.model, "effort": self.effort, "base_url": self.base_url, "codex_wire_api": self.codex_wire_api},
             "budget": dict(self.budget),
             "tool_roots": list(self.tool_roots),
-            "harnesses": {"foe": str(self.foe), "codex": None if self.codex is None else str(self.codex), "codex_named": self.codex_named, "credential": str(self.credential)},
+            "harnesses": {
+                "foe": str(self.foe),
+                "codex": None if self.codex is None else str(self.codex),
+                "codex_named": self.codex_named,
+                "credential": str(self.credential),
+            },
             "out": str(self.out),
             "grader_timeout": self.grader_timeout,
             "source_root": str(self.source_root),
+            "foe_config_dir": str(self.foe_config_dir),
         }
 
 
@@ -598,6 +666,7 @@ def load_document(path: Path) -> Document:
         codex = None if found is None else Path(found).resolve()
     credential = document_path(keyed, harnesses.string("credential", DEFAULT_CREDENTIAL) or DEFAULT_CREDENTIAL)
     source_named = keyed.string("source_root")
+    config_named = keyed.string("foe_config_dir")
     return Document(
         path=keyed.document,
         tasks=tasks,
@@ -618,7 +687,42 @@ def load_document(path: Path) -> Document:
         out=document_out(keyed),
         grader_timeout=keyed.positive_integer("grader_timeout", DEFAULT_GRADER_TIMEOUT_SECONDS),
         source_root=foe if source_named is None else document_path(keyed, source_named),
+        foe_config_dir=document_path(keyed, config_named or DEFAULT_FOE_CONFIG_DIR),
     )
+
+
+def canaries() -> dict[str, str]:
+    """The two canary sentences of one run, each carrying a fresh random identifier so that no earlier run's text matches."""
+    return {
+        name: f"{CANARY_PREFIX}{name.replace('_', ' ')} isolation canary {uuid.uuid4()}; a model request that carries it was built from a file the harness must never read."
+        for name in CANARY_NAMES
+    }
+
+
+def plant_foe_canary(config_dir: Path, sentence: str) -> Path:
+    """Write the foe canary into foe's configuration directory as CANARY_FILE, a file foe never reads by design, and return its path.
+
+    A file already at that path that is not a canary of this runner is left
+    as it is and refused by path, because the directory belongs to the user.
+    """
+    path = config_dir / CANARY_FILE
+    if path.exists() and not (path.is_file() and path.read_text(encoding="utf-8").startswith(CANARY_PREFIX)):
+        raise ValueError(f"key foe_config_dir names {config_dir}, and {path} exists there without a canary sentence of this runner; move it or name another directory")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(sentence + "\n", encoding="utf-8")
+    return path
+
+
+def remove_foe_canary(path: Path, sentence: str) -> bool:
+    """Remove the foe canary at `path` when it still holds `sentence`, and return whether it was removed.
+
+    A file holding another sentence was planted by a later run into the
+    same directory and stays, since that run removes it.
+    """
+    if not path.is_file() or path.read_text(encoding="utf-8") != sentence + "\n":
+        return False
+    path.unlink()
+    return True
 
 
 def effective_budget(settings: Settings, task: protocol.Task) -> dict[str, int]:
@@ -638,17 +742,77 @@ def codex_limits(budget: dict[str, int]) -> dict[str, int]:
     return {"input_tokens": budget["input_tokens"], "output_tokens": budget["output_tokens"], "seconds": budget["seconds"]}
 
 
-def not_applicable(arm: Arm, task: protocol.Task) -> str | None:
+def needed_tool_roots(settings: Settings, task: protocol.Task) -> list[str]:
+    """The tool roots the task needs beyond the system roots, as the run document and the task's metadata name them, in that order.
+
+    A root is compared in its normalized spelling, so that a trailing slash
+    or a doubled separator names the same directory as the system root.
+    """
+    named = task.metadata.get(METADATA_TOOL_ROOTS) or []
+    roots: list[str] = []
+    for root in (*settings.tool_roots, *map(str, named)):
+        normalized = os.path.normpath(root)
+        if normalized not in graphs.EXECUTE_ROOTS and normalized not in roots:
+            roots.append(normalized)
+    return roots
+
+
+def presumed_absent_fault(settings: Settings, task: protocol.Task, arms: Sequence[Arm]) -> str | None:
+    """Where the program `metadata.presumes_absent` names is found among the directories the selected arms run commands from, or None.
+
+    A missing-capability task presumes one program absent, and its grader
+    reads no search path, so the runner is what holds the premise. A foe
+    arm runs commands from the system search path of docs/tools.md "bash"
+    and executes the task's tool roots; a Codex arm inherits the runner's
+    PATH, which is the one environment read this check makes. A host where
+    the program is found cannot run the task, and the run is refused by
+    name before the plan.
+    """
+    named = task.metadata.get(METADATA_PRESUMES_ABSENT)
+    if named is None:
+        return None
+    if not isinstance(named, str) or not named.strip() or "/" in named:
+        raise ValueError(f"task {task.name!r}: metadata.{METADATA_PRESUMES_ABSENT} is {named!r}; expected the bare name of a program")
+    premise = f"task {task.name!r} presumes {named} absent under metadata.{METADATA_PRESUMES_ABSENT}, and"
+    remedy = "the task's premise does not hold on this host; leave the task out with select, or run it on a host without the program"
+    if any(arm.harness == "foe" for arm in arms):
+        directories = [*SYSTEM_SEARCH_PATH.split(":"), *tool_roots(settings, task)]
+        found = shutil.which(named, path=":".join(directories))
+        if found is not None:
+            return f"{premise} {found} is under {Path(found).parent}, which the foe arms run commands from; {remedy}"
+    for arm in arms:
+        if arm.harness != "codex":
+            continue
+        found = shutil.which(named)
+        if found is not None:
+            return f"{premise} {found} is on the PATH the {arm.name} arm inherits; {remedy}"
+        break
+    return None
+
+
+def not_applicable(settings: Settings, arm: Arm, task: protocol.Task) -> str | None:
     """The reason the arm cannot run the task, or None when it can.
 
-    A built-in document carries its own grants, so a task whose metadata
-    names `tool_roots` has no way to grant them under the foe-as-shipped
-    arm; the attempt is recorded rather than run.
+    A built-in document carries its own grants, so a task that needs tool
+    roots, from the run document's `tool_roots` or its own metadata, has no
+    way to receive them under the foe-as-shipped arm; the attempt is
+    recorded and never launched. A host whose toolchain sits under the
+    built-in execute roots, as the container's does, names no tool roots
+    and the arm runs.
     """
-    named = task.metadata.get(METADATA_TOOL_ROOTS)
-    if arm.kind == "builtin" and named:
-        return f"the {arm.name} arm runs the built-in document {arm.variant}, whose grants cannot take the tool roots task {task.name!r} names under metadata.{METADATA_TOOL_ROOTS}: {', '.join(map(str, named))}"
-    return None
+    if arm.kind != "builtin" or not needed_tool_roots(settings, task):
+        return None
+    sources: list[str] = []
+    document_roots = [root for root in settings.tool_roots if root not in graphs.EXECUTE_ROOTS]
+    if document_roots:
+        sources.append(f"the run document names under tool_roots: {', '.join(document_roots)}")
+    named = task.metadata.get(METADATA_TOOL_ROOTS) or []
+    if named:
+        sources.append(f"task {task.name!r} names under metadata.{METADATA_TOOL_ROOTS}: {', '.join(map(str, named))}")
+    return (
+        f"the {arm.name} arm runs the built-in document {arm.variant}, whose grants cannot take the tool roots {', and '.join(sources)}; "
+        f"the arm runs a task whose tools sit under the built-in execute roots {', '.join(graphs.EXECUTE_ROOTS)} and whose document names no tool roots"
+    )
 
 
 def rotated(arms: list[Arm], attempt: int) -> list[Arm]:
@@ -689,6 +853,7 @@ def header(document: Document, settings: Settings, tasks: list[Selected], arms: 
         ("budget", f"{overrides} replace the same keys of every task's budget" if overrides else "every task's own budget"),
         ("grader timeout", f"{settings.grader_timeout} seconds"),
         ("source root", str(settings.source_root)),
+        ("foe config dir", str(document.foe_config_dir)),
     ]
     if settings.route == "compatible":
         rows[9:9] = [("base URL", str(settings.base_url)), ("codex wire API", settings.codex_wire_api)]
@@ -712,7 +877,7 @@ def plan(settings: Settings, tasks: list[Selected], arms: list[Arm], document: D
     totals = {key: 0 for key in protocol.BUDGET_KEYS}
     skipped: list[str] = []
     for attempt, entry, arm in triples:
-        reason = not_applicable(arm, entry.task)
+        reason = not_applicable(settings, arm, entry.task)
         if reason is not None:
             skipped.append(f"  {entry.task.name} / {arm.name} / {attempt}: {reason}")
             continue
@@ -858,9 +1023,27 @@ def tool_roots(settings: Settings, task: protocol.Task) -> list[str]:
             raise ValueError(f"task {task.name!r}: metadata.{METADATA_TOOL_ROOTS} names {root!r}, which is not an absolute path")
         if root in named and not Path(root).exists():
             raise ValueError(f"task {task.name!r}: metadata.{METADATA_TOOL_ROOTS} names {root!r}, which does not exist")
-        if root not in roots:
-            roots.append(root)
+        # A root is granted in its normalized spelling, so that a trailing slash or a doubled separator adds no second root.
+        normalized = os.path.normpath(root)
+        if normalized not in roots:
+            roots.append(normalized)
     return roots
+
+
+def recorded_tool_roots(settings: Settings, arm: Arm, task: protocol.Task) -> list[str]:
+    """The roots the arm's commands run under, for the attempt record.
+
+    A document arm executes the merged tool roots of `tool_roots`. A
+    built-in arm runs a document the binary carries, whose grants cover the
+    built-in execute roots and nothing the run document or the task names,
+    so its record states those roots alone. A Codex arm inherits the
+    runner's PATH and no grant; its record keeps the roots a document arm
+    of the same task holds, so that the records of one task state the same
+    roots for the harnesses that are compared.
+    """
+    if arm.kind == "builtin":
+        return list(graphs.EXECUTE_ROOTS)
+    return tool_roots(settings, task)
 
 
 def with_placeholder(document: dict[str, Any], workspace: Path) -> dict[str, Any]:
@@ -1073,6 +1256,7 @@ def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, 
         agents_enabled=arm.variant == "multi",
         max_threads=TEAM_CONCURRENCY if arm.variant == "multi" else None,
         model_providers=codex_providers(settings),
+        config_canary=settings.canaries.get(CODEX_CONFIG_CANARY),
     )
     return codex_arm.run(spec)
 
@@ -1184,8 +1368,8 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         "provenance": provenance,
         "budget": effective_budget(settings, task),
         "budget_overrides": dict(settings.budget_overrides),
-        "tool_roots": tool_roots(settings, task),
-        "not_applicable": not_applicable(arm, task),
+        "tool_roots": recorded_tool_roots(settings, arm, task),
+        "not_applicable": not_applicable(settings, arm, task),
         "paths": {"attempt_dir": str(attempt_dir), "root": str(root), "workspace": str(workspace)},
         "started_ms": foe_arm.now_ms(),
         "ended_ms": None,
@@ -1234,7 +1418,13 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
             record["totals"] = trajectory_.totals()
     reported = protocol_reported(record["reported"]) if record["reported"] else protocol.Reported(protocol.FAILED, None, record["infrastructure_error"] or "")
     graded = feature_removal.grade_with_timeout(root, reported, record["candidate"], arm.name, settings.grader_timeout)
-    record["grade"] = {"passed": graded.passed, "findings": list(graded.findings), "damage": list(graded.damage)}
+    record["grade"] = {"passed": graded.passed, "findings": list(graded.findings), "damage": list(graded.damage), "units": None}
+    if task.family == teams.FAMILY and task.class_name == teams.FAN_OUT:
+        try:
+            record["grade"]["units"] = teams.read_units(root)
+        except ValueError as exc:
+            # The grade ran, but its per-unit record cannot be read; the attempt measured no unit verdict.
+            record["infrastructure_error"] = record["infrastructure_error"] or f"the fan-out grade left an unreadable units record: {exc}"
     if record["infrastructure_error"] is None:
         record["classification"] = protocol.classify(task, reported, graded)
     record["ended_ms"] = foe_arm.now_ms()
@@ -1367,12 +1557,18 @@ def main(argv: list[str] | None = None) -> int:
         source_root=document.source_root,
         tool_roots=document.tool_roots,
         budget_overrides=document.budget,
+        canaries=canaries(),
     )
     try:
         if settings.route == "compatible":
             foe_route(settings)
         for entry in tasks:
             tool_roots(settings, entry.task)
+            # A premise the host breaks is refused before the plan, since it
+            # would let an attempt run whose grade measures the host and no harness.
+            fault = presumed_absent_fault(settings, entry.task, arms)
+            if fault is not None:
+                raise ValueError(fault)
             # The document builders refuse some budgets, such as a seconds
             # ceiling with no room for the check timeout; the refusal
             # belongs before the plan and before any attempt spends credit.
@@ -1401,6 +1597,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         return refuse(str(exc))
     run_file = run_file_path(settings.out)
+    try:
+        foe_canary = plant_foe_canary(document.foe_config_dir, settings.canaries[FOE_CONFIG_CANARY])
+    except (ValueError, OSError) as exc:
+        return refuse(str(exc))
     write_json(
         run_file,
         {
@@ -1408,6 +1608,10 @@ def main(argv: list[str] | None = None) -> int:
             "document": document.to_dict(),
             "settings": settings.to_dict(),
             "provenance": provenance,
+            "canaries": {
+                CODEX_CONFIG_CANARY: {"sentence": settings.canaries[CODEX_CONFIG_CANARY], "placement": f"{codex_arm.CONFIG_CANARY_NAME} in the fresh CODEX_HOME of every Codex attempt"},
+                FOE_CONFIG_CANARY: {"sentence": settings.canaries[FOE_CONFIG_CANARY], "path": str(foe_canary), "placement": f"{CANARY_FILE} in foe's configuration directory {document.foe_config_dir}, removed once the attempts have ended"},
+            },
             "arms": [arm.name for arm in arms],
             "tasks": [entry.task.name for entry in tasks],
             "budgets": {entry.task.name: effective_budget(settings, entry.task) for entry in tasks},
@@ -1417,17 +1621,21 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     faults = 0
-    for attempt, entry, arm in triples:
-        print(f"cross harness: attempt {attempt}, {entry.task.name}, {arm.name}", file=sys.stderr, flush=True)
-        record = run_attempt(settings, provenance, entry, arm, attempt)
-        write_json(record_path(settings.out, entry.task.name, arm.name, attempt), record)
-        if record["not_applicable"] is not None:
-            print(f"cross harness: {entry.task.name} under {arm.name} is not applicable: {record['not_applicable']}", file=sys.stderr, flush=True)
-        elif record["infrastructure_error"] is not None:
-            faults += 1
-            print(f"cross harness: {entry.task.name} under {arm.name} did not evaluate the harness: {record['infrastructure_error']}", file=sys.stderr, flush=True)
-        else:
-            print(f"cross harness: {entry.task.name} under {arm.name}: {record['classification']}", file=sys.stderr, flush=True)
+    try:
+        for attempt, entry, arm in triples:
+            print(f"cross harness: attempt {attempt}, {entry.task.name}, {arm.name}", file=sys.stderr, flush=True)
+            record = run_attempt(settings, provenance, entry, arm, attempt)
+            write_json(record_path(settings.out, entry.task.name, arm.name, attempt), record)
+            if record["not_applicable"] is not None:
+                print(f"cross harness: {entry.task.name} under {arm.name} is not applicable: {record['not_applicable']}", file=sys.stderr, flush=True)
+            elif record["infrastructure_error"] is not None:
+                faults += 1
+                print(f"cross harness: {entry.task.name} under {arm.name} did not evaluate the harness: {record['infrastructure_error']}", file=sys.stderr, flush=True)
+            else:
+                print(f"cross harness: {entry.task.name} under {arm.name}: {record['classification']}", file=sys.stderr, flush=True)
+    finally:
+        # The canary lies in the user's configuration directory, so it is removed however the attempts ended.
+        remove_foe_canary(foe_canary, settings.canaries[FOE_CONFIG_CANARY])
     print(json.dumps({"records": str(settings.out / RECORDS_DIR), "run": str(run_file), "attempts": len(triples), "infrastructure_failures": faults}))
     return DEPLOYMENT_FAULT if faults else EVALUATED
 

@@ -1,0 +1,45 @@
+{
+  "tasks": "../tasks/foe-tree",
+  "select": [
+    "bazel-lock-regeneration",
+    "carry-home-to-child",
+    "ceiling-bound-feature",
+    "ceiling-bound-feature-telemetry",
+    "charge-setup-time-once",
+    "child-message-in-failure",
+    "duplicate-grant-roots",
+    "frozen-interface-budget",
+    "frozen-interface-context",
+    "frozen-interface-tool-defs",
+    "inventory-regeneration-code",
+    "inventory-regeneration-context",
+    "inventory-regeneration-evidence",
+    "inventory-regeneration-workflow",
+    "refuse-file-write-grant",
+    "refuse-partial-log-reopen",
+    "saturate-budget-counters",
+    "unreleased-lock-contract",
+    "unreleased-lock-telemetry",
+    "unwritten-pipe-log",
+    "unwritten-pipe-workflow",
+    "waiting-check-suite"
+  ],
+  "arms": [
+    "foe-configured",
+    "foe-ablated",
+    "codex-equivalent",
+    "codex-default"
+  ],
+  "attempts": 1,
+  "model": {
+    "route": "subscription",
+    "name": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ]
+}

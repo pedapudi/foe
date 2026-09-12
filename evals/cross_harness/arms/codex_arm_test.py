@@ -392,6 +392,32 @@ class Running(unittest.TestCase):
             codex_arm.run(self.spec("complete the task", artifacts="fresh"))
         self.assertIn(str(self.credential), str(caught.exception))
 
+    def test_a_config_canary_is_written_into_the_home_as_developer_instructions_and_named_by_the_record(self) -> None:
+        sentence = "This sentence is the codex config isolation canary 00000000-0000-4000-8000-000000000000; a request that carries it was built from a file the harness must never read."
+        spec = codex_arm.CodexSpec(**{**self.spec("complete the task").__dict__, "config_canary": sentence})
+        result = codex_arm.run(spec)
+        home = self.root / "artifacts" / "codex-home"
+        self.assertEqual(result.record["config_canary_file"], str(home / codex_arm.CONFIG_CANARY_NAME))
+        # The file is the user configuration `--ignore-user-config` keeps Codex from loading, and the command line passes that flag.
+        self.assertEqual(codex_arm.CONFIG_CANARY_NAME, "config.toml")
+        self.assertIn("--ignore-user-config", result.record["commands"][0])
+        written = (home / "config.toml").read_text(encoding="utf-8")
+        self.assertIn(f'\ndeveloper_instructions = "{sentence}"\n', written)
+        self.assertTrue(all(line.startswith("#") or line.startswith("developer_instructions = ") for line in written.splitlines()), written)
+        # The home holds no global instructions file, which Codex loads in every session whatever the flags.
+        self.assertFalse((home / "AGENTS.md").exists())
+        # The home keeps the canary after the run, beside the session files, so the gate can confirm it was planted.
+        self.assertTrue((home / "config.toml").is_file())
+        self.assertFalse((home / "auth.json").exists())
+        plain = codex_arm.run(self.spec("complete the task", artifacts="plain"))
+        self.assertIsNone(plain.record["config_canary_file"])
+        self.assertFalse((self.root / "plain" / "codex-home" / "config.toml").exists())
+        with self.assertRaises(ValueError) as caught:
+            codex_arm.CodexSpec(**{**self.spec("complete the task").__dict__, "config_canary": "  "})
+        self.assertIn("spec config_canary is empty", str(caught.exception))
+        # A sentence with a quotation mark or a backslash is escaped as a TOML basic string.
+        self.assertEqual(codex_arm.config_canary_text('say "no" \\ once').splitlines()[-1], 'developer_instructions = "say \\"no\\" \\\\ once"')
+
 
 if __name__ == "__main__":
     unittest.main()

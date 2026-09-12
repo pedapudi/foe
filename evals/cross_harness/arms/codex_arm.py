@@ -33,6 +33,15 @@ The child inherits the arm's own environment otherwise, so that the binary
 finds its shared libraries and certificates; this module reads no
 environment value itself. The record names the directory, every command
 line, the event stream, and every session file the run wrote.
+
+A caller may give a config canary, one sentence the arm writes into the
+fresh `CODEX_HOME` as `config.toml` under the `developer_instructions` key,
+the user configuration file that `--ignore-user-config` states it does not
+load. Codex loads `AGENTS.md` from `CODEX_HOME` as global instructions in
+every session, and `--ignore-rules` covers execution-policy `.rules` files
+alone, so neither is a place Codex must not load. The sentence reaches no
+request unless Codex read the file, so the isolation gate of the evaluation
+searches the recorded requests for it; the record names the file.
 """
 
 from __future__ import annotations
@@ -75,6 +84,10 @@ DEFAULT_SCHEMA: dict[str, Any] = {
 }
 
 CODEX_HOME_NAME, CREDENTIAL_NAME = "codex-home", "auth.json"
+# The user configuration file under CODEX_HOME that `--ignore-user-config`
+# keeps Codex from loading, and the key of it that would reach a request as
+# a developer message if the file were loaded.
+CONFIG_CANARY_NAME, CONFIG_CANARY_KEY = "config.toml", "developer_instructions"
 SCHEMA_NAME, LAST_NAME, EVENTS_NAME, STDERR_NAME = "schema.json", "last.txt", "events.jsonl", "stderr.txt"
 
 
@@ -91,6 +104,8 @@ class CodexSpec:
     `environment` is the base environment of the child; the arm's own
     environment when None. `keep_credential` leaves the credential copy in
     `CODEX_HOME` after the run; the copy is removed otherwise.
+    `config_canary` is the sentence written into `CODEX_HOME` as
+    CONFIG_CANARY_NAME before the run; nothing is written when None.
     """
 
     arm_name: str
@@ -109,6 +124,7 @@ class CodexSpec:
     model_providers: Mapping[str, Mapping[str, Any]] | None = None
     environment: Mapping[str, str] | None = None
     keep_credential: bool = False
+    config_canary: str | None = None
 
     def __post_init__(self) -> None:
         if self.sandbox not in SANDBOX_MODES:
@@ -123,6 +139,8 @@ class CodexSpec:
             raise ValueError(f"spec max_threads is {self.max_threads!r}; expected a positive integer or None")
         if self.model_providers is not None and len(self.model_providers) != 1:
             raise ValueError(f"spec model_providers names {len(self.model_providers)} providers; a run uses exactly one")
+        if self.config_canary is not None and not self.config_canary.strip():
+            raise ValueError("spec config_canary is empty; the canary is one sentence, or None to plant none")
         codex_budget_watcher.check_limits(self.limits)
 
     @property
@@ -326,7 +344,7 @@ def interpret(
 
 
 def prepare_home(spec: CodexSpec) -> Path:
-    """A fresh `CODEX_HOME` under the artifacts holding the credential file."""
+    """A fresh `CODEX_HOME` under the artifacts holding the credential file, and the config canary when the spec gives one."""
     source = Path(spec.credential_source)
     if not source.is_file():
         raise FileNotFoundError(f"credential source {source} is not a file")
@@ -336,7 +354,18 @@ def prepare_home(spec: CodexSpec) -> Path:
     home.mkdir(parents=True)
     shutil.copyfile(source, home / CREDENTIAL_NAME)
     (home / CREDENTIAL_NAME).chmod(0o600)
+    if spec.config_canary is not None:
+        (home / CONFIG_CANARY_NAME).write_text(config_canary_text(spec.config_canary), encoding="utf-8")
     return home
+
+
+def config_canary_text(sentence: str) -> str:
+    """The `config.toml` that carries the canary sentence as developer instructions."""
+    return (
+        "# Planted by the cross-harness evaluation. The run passes --ignore-user-config, so this file must never be loaded;\n"
+        "# a model request that carries the sentence below shows that it was.\n"
+        f"{CONFIG_CANARY_KEY} = {toml_value(sentence.strip(), CONFIG_CANARY_KEY)}\n"
+    )
 
 
 def remove_credential(home: Path) -> Path:
@@ -410,6 +439,7 @@ def run(spec: CodexSpec) -> ArmResult:
         "credential_source": str(spec.credential_source),
         "credential_copy": str(home / CREDENTIAL_NAME),
         "credential_removed": not spec.keep_credential,
+        "config_canary_file": None if spec.config_canary is None else str(home / CONFIG_CANARY_NAME),
         "schema": str(schema),
         "last_message": str(last),
         "events": str(spec.artifacts / EVENTS_NAME),

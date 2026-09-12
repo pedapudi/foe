@@ -222,6 +222,8 @@ class Harness(unittest.TestCase):
             "model": {"route": "subscription", "name": "fixture-model"},
             "harnesses": {"foe": str(self.foe), "codex": str(self.codex), "credential": str(self.credential)},
             "out": str(self.out),
+            # The foe canary is planted in this directory; the default is the real ~/.config/foe, which a test leaves untouched.
+            "foe_config_dir": str(self.root / "foe-config"),
         }
         for key, value in {"arms": content["arms"], **keys}.items():
             if value is None:
@@ -249,7 +251,8 @@ class Harness(unittest.TestCase):
     def tasks_with_metadata(self, metadata: dict) -> Path:
         """A copy of the example task directory whose task carries `metadata`."""
         tasks = self.root / "tasks"
-        shutil.copytree(EXAMPLES / TASK, tasks / TASK)
+        # A test that writes the task twice, with different metadata, keeps one copy.
+        shutil.copytree(EXAMPLES / TASK, tasks / TASK, dirs_exist_ok=True)
         task_file = tasks / TASK / run.protocol.TASK_FILE
         task = json.loads(task_file.read_text(encoding="utf-8"))
         task["metadata"] = metadata
@@ -368,6 +371,13 @@ class Planning(Harness):
         status, _, err = self.main(self.argv(harnesses={"foe": str(self.foe), "shell": "/bin/sh"}))
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         self.assertIn(f"key harnesses.shell is unknown; the keys are {', '.join(run.HARNESS_KEYS)}", err)
+        # A key of an earlier document form is unknown like any other.
+        status, _, err = self.main(self.argv(tuning_log=str(self.root / "tuning-log.jsonl")))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key tuning_log is unknown; the keys are {', '.join(run.DOCUMENT_KEYS)}", err)
+        status, _, err = self.main(self.argv(harnesses={"foe": str(self.foe), "as_shipped_toolchain_on_path": True}))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"key harnesses.as_shipped_toolchain_on_path is unknown; the keys are {', '.join(run.HARNESS_KEYS)}", err)
         self.assertFalse(self.out.exists())
 
     def test_a_document_that_is_not_a_json_object_is_refused_by_path(self) -> None:
@@ -550,6 +560,45 @@ class Planning(Harness):
         self.assertRegex(out, r"\n\s+8\s+16,000\s+4,000\s+300\s+hello-solvable / foe-configured / 1")
         # The totals count the attempt that runs alone.
         self.assertRegex(out, r"\n\s+8\s+16,000\s+4,000\s+300\s+every planned attempt")
+
+    def test_a_task_presuming_a_program_absent_is_refused_when_an_arm_can_reach_it(self) -> None:
+        # A program under a system root reaches every foe arm.
+        tasks = self.tasks_with_metadata({"presumes_absent": "sh"})
+        status, out, err = self.main(self.argv(tasks=str(tasks)))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertEqual(out, "")
+        self.assertIn(f"task '{TASK}' presumes sh absent under metadata.presumes_absent, and ", err)
+        self.assertIn("which the foe arms run commands from; the task's premise does not hold on this host", err)
+        # A program no host holds leaves the plan as it is.
+        tasks = self.tasks_with_metadata({"presumes_absent": ABSENT_COMMAND})
+        status, out, err = self.main(self.argv(tasks=str(tasks)))
+        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+        self.assertIn("No attempt was launched.", out)
+        # A program under a tool root the document names reaches the foe arms through the execute grant.
+        tools = self.root / "tools"
+        tools.mkdir()
+        (tools / ABSENT_COMMAND).write_text("#!/bin/sh\n", encoding="utf-8")
+        (tools / ABSENT_COMMAND).chmod(0o755)
+        status, out, err = self.main(self.argv(tasks=str(tasks), tool_roots=[str(tools)]))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertEqual(out, "")
+        self.assertIn(f"{tools / ABSENT_COMMAND} is under {tools}, which the foe arms run commands from", err)
+        # A Codex arm inherits the runner's PATH, which the foe arms never read.
+        tasks = self.tasks_with_metadata({"presumes_absent": self.foe.name})
+        with mock.patch.dict(os.environ, {"PATH": str(self.bin)}):
+            status, out, err = self.main(self.argv(tasks=str(tasks), arms=["codex-default"]))
+            self.assertEqual(status, run.NOTHING_LAUNCHED)
+            self.assertEqual(out, "")
+            self.assertIn(f"{self.foe} is on the PATH the codex-default arm inherits", err)
+            status, out, err = self.main(self.argv(tasks=str(tasks), arms=["foe-configured", "foe-as-shipped"]))
+            self.assertEqual(status, run.NOTHING_LAUNCHED, err)
+            self.assertIn("No attempt was launched.", out)
+        # A value that is not a bare program name is refused by key.
+        for bad in ("", "/usr/bin/sh", 3):
+            tasks = self.tasks_with_metadata({"presumes_absent": bad})
+            status, _, err = self.main(self.argv(tasks=str(tasks)))
+            self.assertEqual(status, run.NOTHING_LAUNCHED)
+            self.assertIn(f"task '{TASK}': metadata.presumes_absent is {bad!r}; expected the bare name of a program", err)
 
     def test_the_plan_states_the_tool_roots_of_the_document_arms(self) -> None:
         tools = self.root / "tools"
@@ -759,20 +808,80 @@ class Pieces(unittest.TestCase):
         differing = run.trajectory.Trajectory("codex", {}, [], run.trajectory.Outcome("completed"), "subscription")
         self.assertEqual(run.outcomes_side_by_side(reported, differing), {"arm": {"status": "exhausted", "code": "input_tokens"}, "trajectory": {"status": "completed", "code": None}, "agree": False})
 
-    def test_the_shipped_arm_is_not_applicable_only_to_a_task_naming_tool_roots(self) -> None:
+    def test_a_tool_root_is_compared_and_granted_in_its_normalized_spelling(self) -> None:
+        spelled = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), ("/usr/bin/", "/usr//bin"))
+        self.assertEqual(run.needed_tool_roots(spelled, self.task), [])
+        self.assertEqual(run.tool_roots(spelled, self.task), list(run.graphs.EXECUTE_ROOTS))
         shipped = run.arm_by_name("autonomy", "foe-as-shipped")
-        self.assertIsNone(run.not_applicable(shipped, self.task))
+        self.assertIsNone(run.not_applicable(spelled, shipped, self.task))
+        named = run.protocol.Task.from_dict({**self.task.to_dict(), "metadata": {"tool_roots": ["/usr/bin/"]}})
+        self.assertEqual(run.needed_tool_roots(spelled, named), [])
+        self.assertEqual(run.tool_roots(spelled, named), list(run.graphs.EXECUTE_ROOTS))
+        self.assertIsNone(run.not_applicable(spelled, shipped, named))
+
+    def test_the_recorded_tool_roots_are_the_built_in_roots_for_a_shipped_arm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), (tmp,))
+            self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("autonomy", "foe-as-shipped"), self.task), list(run.graphs.EXECUTE_ROOTS))
+            self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("teams", "foe-as-shipped"), self.task), list(run.graphs.EXECUTE_ROOTS))
+            self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("autonomy", "foe-configured"), self.task), [*run.graphs.EXECUTE_ROOTS, tmp])
+
+    def test_the_presumed_absent_check_resolves_against_the_roots_of_the_selected_arms(self) -> None:
+        arms = list(run.ARMS["autonomy"])
+        foe_arms = [arm for arm in arms if arm.harness == "foe"]
+        codex_arms = [arm for arm in arms if arm.harness == "codex"]
+        plain = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"))
+        self.assertIsNone(run.presumed_absent_fault(plain, self.task, arms))
+        absent = run.protocol.Task.from_dict({**self.task.to_dict(), "metadata": {"presumes_absent": ABSENT_COMMAND}})
+        with tempfile.TemporaryDirectory() as tmp:
+            tools = Path(tmp) / "tools"
+            tools.mkdir()
+            (tools / ABSENT_COMMAND).write_text("#!/bin/sh\n", encoding="utf-8")
+            (tools / ABSENT_COMMAND).chmod(0o755)
+            with mock.patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+                self.assertIsNone(run.presumed_absent_fault(plain, absent, arms))
+                granted = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), (str(tools),))
+                fault = run.presumed_absent_fault(granted, absent, foe_arms)
+                self.assertIn(f"{tools / ABSENT_COMMAND} is under {tools}, which the foe arms run commands from", fault or "")
+                # The tool roots are the foe arms' grants; a Codex arm reads PATH alone.
+                self.assertIsNone(run.presumed_absent_fault(granted, absent, codex_arms))
+            with mock.patch.dict(os.environ, {"PATH": f"{tools}:/usr/bin:/bin"}):
+                self.assertIsNone(run.presumed_absent_fault(plain, absent, foe_arms))
+                fault = run.presumed_absent_fault(plain, absent, arms)
+                self.assertIn(f"{tools / ABSENT_COMMAND} is on the PATH the codex-equivalent arm inherits", fault or "")
+        system = run.protocol.Task.from_dict({**self.task.to_dict(), "metadata": {"presumes_absent": "sh"}})
+        fault = run.presumed_absent_fault(plain, system, foe_arms)
+        self.assertIn("presumes sh absent under metadata.presumes_absent", fault or "")
+        self.assertIn("leave the task out with select", fault or "")
+
+    def test_the_shipped_arm_is_not_applicable_only_to_a_task_needing_tool_roots(self) -> None:
+        shipped = run.arm_by_name("autonomy", "foe-as-shipped")
+        plain = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"))
+        self.assertIsNone(run.not_applicable(plain, shipped, self.task))
+        self.assertEqual(run.needed_tool_roots(plain, self.task), [])
         with tempfile.TemporaryDirectory() as tmp:
             named = run.protocol.Task.from_dict({**self.task.to_dict(), "metadata": {"tool_roots": [tmp]}})
-            reason = run.not_applicable(shipped, named)
+            reason = run.not_applicable(plain, shipped, named)
             self.assertIsNotNone(reason)
             self.assertIn("foe-as-shipped", reason)
             self.assertIn("builtin:coding", reason)
-            self.assertIn(tmp, reason)
+            self.assertIn(f"task '{self.task.name}' names under metadata.tool_roots: {tmp}", reason)
+            self.assertIn("whose document names no tool roots", reason)
             for name in ("foe-configured", "foe-ablated", "codex-equivalent", "codex-default"):
-                self.assertIsNone(run.not_applicable(run.arm_by_name("autonomy", name), named), name)
+                self.assertIsNone(run.not_applicable(plain, run.arm_by_name("autonomy", name), named), name)
             empty = run.protocol.Task.from_dict({**self.task.to_dict(), "metadata": {"tool_roots": []}})
-            self.assertIsNone(run.not_applicable(shipped, empty))
+            self.assertIsNone(run.not_applicable(plain, shipped, empty))
+            # The run document's own tool roots make a task need them as much as its metadata does; a system root adds no need.
+            documented = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), (tmp, "/usr/bin"))
+            self.assertEqual(run.needed_tool_roots(documented, self.task), [tmp])
+            self.assertEqual(run.needed_tool_roots(documented, named), [tmp])
+            self.assertIsNone(run.not_applicable(documented, run.arm_by_name("autonomy", "foe-configured"), self.task))
+            reason = run.not_applicable(documented, shipped, self.task)
+            self.assertIsNotNone(reason)
+            self.assertIn(f"the run document names under tool_roots: {tmp}", reason)
+            self.assertNotIn("metadata.tool_roots", reason)
+            system_only = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), ("/usr/bin",))
+            self.assertIsNone(run.not_applicable(system_only, shipped, self.task))
 
     def test_provenance_names_the_commit_and_the_changed_paths_of_a_dirty_tree(self) -> None:
         import subprocess
@@ -851,9 +960,13 @@ class Running(Harness):
         self.assertEqual(document["tasks"], str(EXAMPLES))
         self.assertEqual((document["select"], document["arms"]), (None, ["foe-configured", "foe-as-shipped", "codex-equivalent", "codex-default"]))
         self.assertEqual(document["model"], {"route": "subscription", "name": "fixture-model", "effort": run.DEFAULT_EFFORT, "base_url": None, "codex_wire_api": run.DEFAULT_CODEX_WIRE_API})
-        self.assertEqual(document["harnesses"], {"foe": str(self.foe), "codex": str(self.codex), "codex_named": str(self.codex), "credential": str(self.credential)})
+        self.assertEqual(
+            document["harnesses"],
+            {"foe": str(self.foe), "codex": str(self.codex), "codex_named": str(self.codex), "credential": str(self.credential)},
+        )
         self.assertEqual((document["out"], document["budget"], document["tool_roots"]), (str(self.out), {}, []))
         self.assertEqual((document["grader_timeout"], document["source_root"]), (run.DEFAULT_GRADER_TIMEOUT_SECONDS, str(self.foe)))
+        self.assertEqual(document["foe_config_dir"], str(self.root / "foe-config"))
         self.assertEqual(settings["settings"]["foe"], str(self.foe))
         self.assertIn("Run document", settings["plan"])
 
@@ -917,6 +1030,57 @@ class Running(Harness):
         default = self.record("codex-default")
         self.assertEqual(default["arm_result"]["record"]["commands"][0][-1], default["task"]["text"])
         self.assertEqual(default["classification"], "correct-completion")
+
+    def fan_out_tasks(self, verdicts: str) -> Path:
+        """A copy of the example task as a fan-out task of the teams family, whose grader records `verdicts` as its units file and names beta in a finding."""
+        tasks = self.root / "tasks"
+        shutil.copytree(EXAMPLES / TASK, tasks / TASK, dirs_exist_ok=True)
+        task_file = tasks / TASK / run.protocol.TASK_FILE
+        task = json.loads(task_file.read_text(encoding="utf-8"))
+        task.update(family="teams", class_name="fan-out", metadata={"units": {"alpha": ["src"], "beta": ["tests"]}, "interface_paths": ["src/greeting.py"]})
+        task_file.write_text(json.dumps(task, indent=2) + "\n", encoding="utf-8")
+        grade = tasks / TASK / run.protocol.GRADER / run.protocol.GRADE_SCRIPT
+        grade.write_text(
+            textwrap.dedent(
+                f"""\
+                #!/usr/bin/python3
+                import json, pathlib, sys
+                json.load(sys.stdin)
+                pathlib.Path(__file__).resolve().with_name({run.teams.UNITS_FILE!r}).write_text({verdicts!r}, encoding="utf-8")
+                print({run.teams.UNITS_PREFIX!r} + {verdicts!r}, file=sys.stderr)
+                print("unit beta: hidden test tests/greeting_test.py exited 1")
+                """
+            ),
+            encoding="utf-8",
+        )
+        grade.chmod(0o755)
+        return tasks
+
+    def test_a_fan_out_grade_records_each_units_verdict_beside_the_findings(self) -> None:
+        tasks = self.fan_out_tasks(json.dumps({"alpha": True, "beta": False}))
+        status, _, err = self.main(self.argv("--confirm-spend", tasks=str(tasks), arms=["foe-configured"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        record = self.record("foe-configured")
+        self.assertEqual(record["task"]["class_name"], "fan-out")
+        self.assertEqual(record["grade"], {"passed": False, "findings": ["unit beta: hidden test tests/greeting_test.py exited 1"], "damage": [], "units": {"alpha": True, "beta": False}})
+        self.assertEqual(record["classification"], "false-completion")
+        # A task of another class carries no unit verdicts.
+        other = self.root / "other"
+        status, _, err = self.main(self.argv("--confirm-spend", name="other", out=str(other)))
+        self.assertEqual(status, run.EVALUATED, err)
+        plain = json.loads(run.record_path(other, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
+        self.assertEqual(plain["grade"], {"passed": True, "findings": [], "damage": [], "units": None})
+        # A units file the grade left in another shape is a fault of the attempt, named by path.
+        tasks = self.fan_out_tasks(json.dumps({"alpha": "yes"}))
+        faulted = self.root / "faulted"
+        status, _, err = self.main(self.argv("--confirm-spend", name="faulted", tasks=str(tasks), arms=["foe-configured"], out=str(faulted)))
+        self.assertEqual(status, run.DEPLOYMENT_FAULT)
+        record = json.loads(run.record_path(faulted, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
+        self.assertIsNone(record["grade"]["units"])
+        self.assertIsNone(record["classification"])
+        self.assertIn("the fan-out grade left an unreadable units record: ", record["infrastructure_error"])
+        self.assertIn(f"{run.protocol.GRADER}/{run.teams.UNITS_FILE} holds", record["infrastructure_error"])
+        self.assertIn("did not evaluate the harness", err)
 
     def test_a_stop_on_a_solvable_task_is_a_wrong_stop(self) -> None:
         self.behave("blocked")
@@ -1044,7 +1208,8 @@ class Running(Harness):
         self.assertIsNone(shipped["infrastructure_error"])
         self.assertIsNone(shipped["arm_result"])
         self.assertIsNone(shipped["grade"])
-        self.assertEqual(shipped["tool_roots"], merged)
+        # The built-in document grants the system roots alone, and the record says so.
+        self.assertEqual(shipped["tool_roots"], list(run.graphs.EXECUTE_ROOTS))
         self.assertIsNotNone(shipped["ended_ms"])
         self.assertFalse(run.attempt_path(self.out, TASK, "foe-as-shipped", 1).exists())
 
@@ -1054,6 +1219,22 @@ class Running(Harness):
         config = json.loads(Path(configured["arm_result"]["record"]["config"]).read_text(encoding="utf-8"))
         self.assertEqual(config["grants"]["execute"], [*merged, configured["paths"]["workspace"]])
         self.assertEqual(config["grants"]["read"], [configured["paths"]["workspace"], str(extra), str(tools)])
+
+    def test_the_run_documents_tool_roots_record_the_shipped_arm_as_not_applicable(self) -> None:
+        extra = self.root / "extra"
+        extra.mkdir()
+        status, _, err = self.main(self.argv("--confirm-spend", tool_roots=[str(extra)], arms=["foe-as-shipped", "foe-configured"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        self.assertIn(
+            f"{TASK} under foe-as-shipped is not applicable: the foe-as-shipped arm runs the built-in document builtin:coding, "
+            f"whose grants cannot take the tool roots the run document names under tool_roots: {extra}",
+            err,
+        )
+        shipped = self.record("foe-as-shipped")
+        self.assertIn(f"the run document names under tool_roots: {extra}", shipped["not_applicable"])
+        self.assertIsNone(shipped["arm_result"])
+        self.assertFalse(run.attempt_path(self.out, TASK, "foe-as-shipped", 1).exists())
+        self.assertEqual(self.record("foe-configured")["classification"], "correct-completion")
 
     def test_a_check_suite_that_cannot_run_is_a_fault_until_its_tool_is_granted(self) -> None:
         tool_name = "cross-harness-fixture-checker"
@@ -1086,6 +1267,80 @@ class Running(Harness):
         self.assertIn(f":{tools}\n", Path(config["tool_defs"]["check"]["exec"]).read_text(encoding="utf-8"))
         settings = json.loads((granted / run.RUN_FILE).read_text(encoding="utf-8"))["settings"]
         self.assertEqual(settings["tool_roots"], [str(tools)])
+
+
+class Gates(Harness):
+    """The hooks the evaluation's gates rely on: the two canaries."""
+
+    def test_a_run_plants_both_canaries_records_them_and_passes_nothing_about_the_foe_one(self) -> None:
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "codex-default"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        written = json.loads((self.out / run.RUN_FILE).read_text(encoding="utf-8"))
+        canaries = written["canaries"]
+        codex_sentence, foe_sentence = canaries[run.CODEX_CONFIG_CANARY]["sentence"], canaries[run.FOE_CONFIG_CANARY]["sentence"]
+        self.assertNotEqual(codex_sentence, foe_sentence)
+        self.assertRegex(codex_sentence, r"^This sentence is the codex config isolation canary [0-9a-f-]{36};")
+        self.assertRegex(foe_sentence, r"^This sentence is the foe config isolation canary [0-9a-f-]{36};")
+        self.assertEqual(written["settings"]["canaries"], {run.CODEX_CONFIG_CANARY: codex_sentence, run.FOE_CONFIG_CANARY: foe_sentence})
+        # The foe canary lies in the document's foe configuration directory, in a file foe never reads; the run file names it, and the runner removed it after the attempts.
+        canary = Path(canaries[run.FOE_CONFIG_CANARY]["path"])
+        self.assertEqual(canary, self.root / "foe-config" / run.CANARY_FILE)
+        self.assertEqual(written["document"]["foe_config_dir"], str(self.root / "foe-config"))
+        self.assertEqual(canaries[run.FOE_CONFIG_CANARY]["placement"], f"AGENTS.md in foe's configuration directory {self.root / 'foe-config'}, removed once the attempts have ended")
+        self.assertFalse(canary.exists())
+        self.assertTrue(canary.parent.is_dir())
+        # The Codex attempt's fresh CODEX_HOME holds the config canary, and its record names the file.
+        codex = self.record("codex-default")["arm_result"]["record"]
+        planted = Path(codex["config_canary_file"])
+        self.assertEqual(planted, Path(codex["codex_home"]) / "config.toml")
+        self.assertIn(codex_sentence, planted.read_text(encoding="utf-8"))
+        self.assertEqual(canaries[run.CODEX_CONFIG_CANARY]["placement"], "config.toml in the fresh CODEX_HOME of every Codex attempt")
+        self.assertIn("--ignore-user-config", codex["commands"][0])
+        # Nothing given to foe carries either sentence: the document, the command line, and the task text are clean.
+        foe = self.record("foe-configured")
+        config = Path(foe["arm_result"]["record"]["config"]).read_text(encoding="utf-8")
+        for sentence in (codex_sentence, foe_sentence):
+            self.assertNotIn(sentence, config)
+            self.assertNotIn(sentence, json.dumps(foe["arm_result"]["record"]["commands"]))
+            self.assertNotIn(sentence, json.dumps(codex["commands"]))
+        # Another run generates sentences of its own.
+        other = self.root / "other"
+        status, _, err = self.main(self.argv("--confirm-spend", name="other", arms=["foe-configured"], out=str(other)))
+        self.assertEqual(status, run.EVALUATED, err)
+        again = json.loads((other / run.RUN_FILE).read_text(encoding="utf-8"))["canaries"]
+        self.assertNotEqual(again[run.CODEX_CONFIG_CANARY]["sentence"], codex_sentence)
+        self.assertNotEqual(again[run.FOE_CONFIG_CANARY]["sentence"], foe_sentence)
+
+    def test_the_foe_canary_is_planted_in_the_configuration_directory_during_the_attempts_and_removed_after_them(self) -> None:
+        config_dir = self.root / "foe-config"
+        sentence = "This sentence is the foe config isolation canary 22222222-2222-4222-8222-222222222222; a model request that carries it was built from a file the harness must never read."
+        planted = run.plant_foe_canary(config_dir, sentence)
+        self.assertEqual(planted, config_dir / "AGENTS.md")
+        self.assertEqual(planted.read_text(encoding="utf-8"), sentence + "\n")
+        # A later run into the same directory replaces the sentence; removal by the earlier run leaves the later run's file alone.
+        later = sentence.replace("2222", "3333")
+        self.assertEqual(run.plant_foe_canary(config_dir, later), planted)
+        self.assertFalse(run.remove_foe_canary(planted, sentence))
+        self.assertEqual(planted.read_text(encoding="utf-8"), later + "\n")
+        self.assertTrue(run.remove_foe_canary(planted, later))
+        self.assertFalse(planted.exists())
+        self.assertFalse(run.remove_foe_canary(planted, later))
+        # A file of the user's own at that path is refused by path and left as it is.
+        planted.write_text("# The user's notes\n", encoding="utf-8")
+        with self.assertRaises(ValueError) as caught:
+            run.plant_foe_canary(config_dir, sentence)
+        self.assertIn(f"key foe_config_dir names {config_dir}, and {planted} exists there without a canary sentence", str(caught.exception))
+        self.assertEqual(planted.read_text(encoding="utf-8"), "# The user's notes\n")
+        status, _, err = self.main(self.argv("--confirm-spend"))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"{planted} exists there without a canary sentence", err)
+        self.assertFalse((self.out / run.RUN_FILE).exists())
+        planted.unlink()
+        # The default directory is foe's own, resolved like every other path of the document; the plan states it.
+        status, out, _ = self.main(self.argv(foe_config_dir=None))
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertResolved(out, "foe config dir", str(Path(run.DEFAULT_FOE_CONFIG_DIR).expanduser()))
+        self.assertEqual(run.DEFAULT_FOE_CONFIG_DIR, "~/.config/foe")
 
 
 if __name__ == "__main__":
