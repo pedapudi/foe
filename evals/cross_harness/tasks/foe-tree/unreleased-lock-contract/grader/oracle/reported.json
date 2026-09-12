@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "checks/run.sh step 2 (wait for the release of checks/contract.lock) waits 900 seconds for what no process provides; the budget is 300 seconds"
+}

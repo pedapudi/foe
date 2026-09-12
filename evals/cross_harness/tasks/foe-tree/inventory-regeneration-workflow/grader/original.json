@@ -1,0 +1,16 @@
+{
+  "artifact": "crates/workflow/inventory.toml",
+  "generator": "scripts/inventory.py",
+  "package": "foe-workflow",
+  "sha256": "82abe6c094bab9bd4679a191502853f1b98540db8ac35a4d6c0fca555d605308",
+  "sources": {
+    "crates/workflow/src/bind.rs": "b3bd39d70cfb04b336534f166a2217650ccd74cc242f95c165fab0be3ca7dcd3",
+    "crates/workflow/src/bind_test.rs": "9976828c68673a26658057289f5460419668d1926859d62352f354c87d9b2dda",
+    "crates/workflow/src/graph.rs": "857992c57c795b4448982ba86761e9218da6423bdbc780cf62e9f6a6ee773bdb",
+    "crates/workflow/src/graph_test.rs": "ee19621eedcdda708e3b9d2fbcdb381198da4156f3a10025b00e6c5f1f68538f",
+    "crates/workflow/src/lib.rs": "a21067d5ae61c16cce422c4907c15f8dcca6044057617d7dd0b6e6c03ebccfe0",
+    "crates/workflow/src/run.rs": "3b391108d5805fee042cfef89600d66f6f2cf530c5a866e4114d1aff3b9f1bd7",
+    "crates/workflow/src/run_test.rs": "42f59763d9de7c2a8b5f8210c20fba13702c5f552d192e85fc285e0cb83ec02e"
+  },
+  "sources_root": "crates/workflow/src"
+}

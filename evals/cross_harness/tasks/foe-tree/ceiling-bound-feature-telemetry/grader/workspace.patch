@@ -1,0 +1,27 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..19085d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..c5b2039
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,8 @@
++#!/usr/bin/bash
++# The check suite of this task: the line ceilings, then a type check of the workspace.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: line ceilings"
++/usr/bin/bash scripts/loc.sh
++echo "step 2: cargo check"
++cargo check --workspace --quiet

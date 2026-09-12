@@ -1,0 +1,14 @@
+{
+  "artifact": "crates/evidence/inventory.toml",
+  "generator": "scripts/inventory.py",
+  "package": "foe-evidence",
+  "sha256": "40b3f8b6d26d8a521b27d7de2940036775b66349240b742817001504494190a6",
+  "sources": {
+    "crates/evidence/src/bin/build_bundle.rs": "dee6c381a627d52b79cd490972f66dba36e19c993491682080b56929eae89f13",
+    "crates/evidence/src/bin/build_bundle_test.rs": "bb888e711136442c1394c33d1524f3d4b66d7cd6a81cf23b4142470dea20e9fb",
+    "crates/evidence/src/bin/verify_bundle.rs": "2e72ad99e1ec2ff79a7dadec44c0696d7b2691c8e0e117a286715579ba86409b",
+    "crates/evidence/src/lib.rs": "63b15c154969794d2ed0f284d64237516d8366b20b5bb29be07c4d22ba9982d8",
+    "crates/evidence/src/lib_test.rs": "0f0bbd2589b4e018300b2f6d4ead0a926c69c39005cb3395f9f227d36d0ea833"
+  },
+  "sources_root": "crates/evidence/src"
+}

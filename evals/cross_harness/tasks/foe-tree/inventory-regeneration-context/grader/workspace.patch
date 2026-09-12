@@ -1,0 +1,126 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..19085d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..d1abd37
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/bash
++# The check suite of this task: a type check of the crate, then the inventory
++# must record the current digest of every source file of the crate.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: cargo check"
++cargo check -p foe-context --quiet
++echo "step 2: crates/context/inventory.toml records the current digest of every file under crates/context/src"
++for file in $(cd crates/context && /usr/bin/find src -name '*.rs' | /usr/bin/sort); do
++  if ! /usr/bin/grep -qF "\"$file\" = \"$(/usr/bin/sha256sum "crates/context/$file" | /usr/bin/cut -d' ' -f1)\"" crates/context/inventory.toml; then
++    echo "checks/run.sh: crates/context/inventory.toml does not record the current digest of crates/context/$file; regenerate it with scripts/inventory.py context" >&2
++    exit 1
++  fi
++done
+diff --git a/crates/context/inventory.toml b/crates/context/inventory.toml
+new file mode 100644
+index 0000000..d50ac67
+--- /dev/null
++++ b/crates/context/inventory.toml
+@@ -0,0 +1,22 @@
++# The public items of crates/context by source file, and the SHA-256 of each file read.
++# Written by scripts/inventory.py context; checks/run.sh compares the digests with the files.
++crate = "context"
++
++[sources]
++"src/lib.rs" = "60fe5b8489b58dd9da993f5948056b5991d56610f733b1ae8a3e74bccc68a60b"
++"src/lib_test.rs" = "7d63133b1bdee5ea891c0b5320d30e752aecf2b35da4da1fa92d81bc06b60528"
++
++[items]
++"src/lib.rs" = [
++    "struct Policy",
++    "fn tokens",
++    "fn projected",
++    "fn steps",
++    "fn first_kept",
++    "fn files",
++    "fn children",
++    "fn findings",
++    "fn done_when_line",
++    "fn prompt",
++]
++"src/lib_test.rs" = []
+diff --git a/scripts/inventory.py b/scripts/inventory.py
+new file mode 100755
+index 0000000..e5f8b7e
+--- /dev/null
++++ b/scripts/inventory.py
+@@ -0,0 +1,59 @@
++#!/usr/bin/python3
++"""Write the public-item inventory of one crate to crates/CRATE/inventory.toml.
++
++Usage: scripts/inventory.py CRATE
++
++The inventory holds, for every Rust source file under crates/CRATE/src in
++path order, the SHA-256 of the file under `[sources]` and the public items
++the file declares at its top level under `[items]`: every line of the form
++`pub fn NAME`, `pub struct NAME`, `pub enum NAME`, `pub trait NAME`,
++`pub type NAME`, `pub mod NAME`, `pub const NAME`, or `pub static NAME`,
++with `async`, `unsafe`, or `const` allowed before `fn`, recorded as
++`KIND NAME`. Two comment lines name the crate and this script, and the
++document follows, written with tomli_w. checks/run.sh compares the recorded
++digests with the files.
++"""
++
++import hashlib
++import pathlib
++import re
++import sys
++
++import tomli_w
++
++ITEM = re.compile(r"^pub (?:(?:async|unsafe|const) )*(?P<kind>fn|struct|enum|trait|type|mod|const|static) (?P<name>[A-Za-z_][A-Za-z0-9_]*)")
++HEADER = (
++    "# The public items of crates/{crate} by source file, and the SHA-256 of each file read.\n"
++    "# Written by scripts/inventory.py {crate}; checks/run.sh compares the digests with the files.\n"
++)
++
++
++def inventory(crate_dir, crate):
++    """The document: the crate, the digest per source file, and the public items per source file."""
++    sources, items = {}, {}
++    for path in sorted((crate_dir / "src").rglob("*.rs")):
++        relative = path.relative_to(crate_dir).as_posix()
++        sources[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
++        found = []
++        for line in path.read_text(encoding="utf-8").splitlines():
++            match = ITEM.match(line)
++            if match is not None:
++                found.append(f"{match.group('kind')} {match.group('name')}")
++        items[relative] = found
++    return {"crate": crate, "sources": sources, "items": items}
++
++
++def main(argv):
++    if len(argv) != 2:
++        raise SystemExit("usage: scripts/inventory.py CRATE")
++    crate = argv[1]
++    crate_dir = pathlib.Path(__file__).resolve().parent.parent / "crates" / crate
++    if not (crate_dir / "src").is_dir():
++        raise SystemExit(f"{crate_dir / 'src'} is absent; the crate has no sources to list")
++    document = inventory(crate_dir, crate)
++    (crate_dir / "inventory.toml").write_text(HEADER.format(crate=crate) + tomli_w.dumps(document), encoding="utf-8")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main(sys.argv))

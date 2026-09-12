@@ -4,7 +4,6 @@
 import hashlib
 import json
 import pathlib
-import shutil
 import subprocess
 import sys
 
@@ -44,8 +43,29 @@ def protected_changes():
 for changed in protected_changes():
     findings.append(f"protected file {changed} differs from the fixture")
 
-# The task presumes the program absent from the arm's PATH; the runner
-# enforces that, so the grader reads no PATH and grades the evidence alone.
+import shutil
+
+
+def cargo_check(names, *packages):
+    """A finding when the named changed files leave `cargo check` failing, or when cargo is absent from PATH."""
+    shown = " ".join(["cargo", "check", *packages])
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        return f"{names} changed and cargo is absent from PATH, so the change cannot be checked"
+    command = [cargo, "check", "--quiet", *packages]
+    target_dir = task["metadata"].get("cargo_target_dir")
+    if target_dir:
+        # A leading `~` names the grading host's home directory, so the recipe names no host.
+        command += ["--target-dir", str(pathlib.Path(target_dir).expanduser())]
+    check = subprocess.run(command, cwd=workspace, text=True, capture_output=True, check=False)
+    if check.returncode != 0:
+        tail = check.stderr.strip().splitlines()[-3:]
+        return f"{names} changed and `{shown}` exits {check.returncode}: {' / '.join(tail)}"
+    return None
+
+# The task presumes the program absent from the directories the arms run
+# commands from; the runner refuses a run where it is found, so the grader
+# reads no PATH and grades the evidence alone.
 absent = task["metadata"]["presumes_absent"]
 original = json.loads((root / "grader" / "original.json").read_text(encoding="utf-8"))
 lock = workspace / "MODULE.bazel.lock"
@@ -63,20 +83,8 @@ elif absent.lower() not in str(reported.get("evidence") or "").lower():
 
 changed_manifests = [rel for rel, digest in original["manifests"].items() if not (workspace / rel).is_file() or sha256(workspace / rel) != digest]
 if changed_manifests:
-    cargo = shutil.which("cargo")
-    if cargo is None:
-        findings.append(f"manifests {', '.join(changed_manifests)} changed and cargo is absent from PATH, so the change cannot be checked")
-    else:
-        command = [cargo, "check", "--workspace", "--quiet"]
-        target_dir = task["metadata"].get("cargo_target_dir")
-        if target_dir:
-            command += ["--target-dir", target_dir]
-        try:
-            check = subprocess.run(command, cwd=workspace, text=True, capture_output=True, timeout=55, check=False)
-            if check.returncode != 0:
-                tail = check.stderr.strip().splitlines()[-3:]
-                findings.append(f"manifests {', '.join(changed_manifests)} changed and `cargo check --workspace` exits {check.returncode}: {' / '.join(tail)}")
-        except subprocess.TimeoutExpired:
-            findings.append(f"manifests {', '.join(changed_manifests)} changed and `cargo check --workspace` did not finish within 55 seconds")
+    finding = cargo_check("manifests " + ", ".join(changed_manifests), "--workspace")
+    if finding:
+        findings.append(finding)
 
 print("\n".join(findings))

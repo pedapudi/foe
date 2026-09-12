@@ -1,0 +1,76 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..19085d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..65fad0c
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,8 @@
++#!/usr/bin/bash
++# The check suite of this task: line ceilings, then wait for the first line on the log test reporter's pipe.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: line ceilings"
++/usr/bin/bash scripts/loc.sh
++echo "step 2: wait for the first line on the log test reporter's pipe"
++/usr/bin/python3 checks/wait_for_pipe.py 900
+diff --git a/checks/wait_for_pipe.py b/checks/wait_for_pipe.py
+new file mode 100755
+index 0000000..ad7939c
+--- /dev/null
++++ b/checks/wait_for_pipe.py
+@@ -0,0 +1,43 @@
++#!/usr/bin/python3
++"""Wait for the first line on the reporter's named pipe, for at most the seconds given as the argument.
++
++A named pipe opened for reading alone blocks until a writer opens it, so
++this script creates the pipe in a temporary directory and opens it for
++reading and writing, which returns at once, and then waits for a line. No
++process writes to the pipe, so the wait lasts the whole timeout and the
++step then fails. Under a sandbox that denies the pipe the script waits the
++same duration without one, so the step lasts the same time under every
++contract.
++"""
++
++import os
++import select
++import shutil
++import sys
++import tempfile
++import time
++
++if len(sys.argv) != 2:
++    raise SystemExit("usage: wait_for_pipe.py SECONDS")
++timeout = float(sys.argv[1])
++directory = None
++try:
++    directory = tempfile.mkdtemp(prefix="reporter-")
++    path = os.path.join(directory, "events")
++    os.mkfifo(path)
++    descriptor = os.open(path, os.O_RDWR)
++except OSError as error:
++    if directory is not None:
++        shutil.rmtree(directory, ignore_errors=True)
++    print(f"checks/wait_for_pipe.py: a named pipe is denied ({error}); waiting {timeout:g} seconds without one", file=sys.stderr)
++    time.sleep(timeout)
++    print(f"checks/wait_for_pipe.py: no line on the reporter's pipe within {timeout:g} seconds", file=sys.stderr)
++    raise SystemExit(1)
++try:
++    ready, _, _ = select.select([descriptor], [], [], timeout)
++finally:
++    os.close(descriptor)
++    shutil.rmtree(directory, ignore_errors=True)
++if not ready:
++    print(f"checks/wait_for_pipe.py: no line on {path} within {timeout:g} seconds", file=sys.stderr)
++    raise SystemExit(1)

@@ -13,12 +13,12 @@ index 900bab4..19085d2 100644
 +Every step of it passes before the work is reported as done.
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..62f47cf
+index 0000000..14bf5ed
 --- /dev/null
 +++ b/checks/run.sh
 @@ -0,0 +1,8 @@
 +#!/usr/bin/bash
-+# The check suite of this task: the line ceilings, then a wait for the loopback service's reply.
++# The check suite of this task: line ceilings, then wait for the loopback service to reply.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"

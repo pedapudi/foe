@@ -1,0 +1,194 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..19085d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..3b37ba3
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/bash
++# The check suite of this task: a type check of the crate, then the inventory
++# must record the current digest of every source file of the crate.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: cargo check"
++cargo check -p foe-code --quiet
++echo "step 2: crates/code/inventory.toml records the current digest of every file under crates/code/src"
++for file in $(cd crates/code && /usr/bin/find src -name '*.rs' | /usr/bin/sort); do
++  if ! /usr/bin/grep -qF "\"$file\" = \"$(/usr/bin/sha256sum "crates/code/$file" | /usr/bin/cut -d' ' -f1)\"" crates/code/inventory.toml; then
++    echo "checks/run.sh: crates/code/inventory.toml does not record the current digest of crates/code/$file; regenerate it with scripts/inventory.py code" >&2
++    exit 1
++  fi
++done
+diff --git a/crates/code/inventory.toml b/crates/code/inventory.toml
+new file mode 100644
+index 0000000..61bb0cd
+--- /dev/null
++++ b/crates/code/inventory.toml
+@@ -0,0 +1,90 @@
++# The public items of crates/code by source file, and the SHA-256 of each file read.
++# Written by scripts/inventory.py code; checks/run.sh compares the digests with the files.
++crate = "code"
++
++[sources]
++"src/bash.rs" = "ef378472b74e5b71d2d2771369aeaace48d7ac716dcd4107b9c16725ee0af6d1"
++"src/bash_test.rs" = "c1c2d46dabde2552bd86e746f03107d6caa0fdd692cb2a301144e1a9fded4fda"
++"src/diff.rs" = "ef4d16d712a3e7d0059ad4644c648d9e713b1a653d397d8f01d02bdb77ab7d59"
++"src/diff_test.rs" = "221125ce87cf9baeba16e4bee6ab01d48a9590806a0f530a4b16e4f5bea6fab0"
++"src/edit.rs" = "ceae5bb746837d3fd7548e19d4473831dfc666db0267eacd2811faabf8e110a8"
++"src/edit_test.rs" = "e8aadffa59769af681d2fe143b971a22d3d3b5d7144df0229066cee2aa07cd26"
++"src/grep.rs" = "0e7849aff38017787cd0715c1d4f31218297cc94cf0513bf74c2be372ccbb4eb"
++"src/grep_test.rs" = "ec31a802db765a5ddd6ff11dd95b8383db643cb5dbe93d171cf84898dbd43d06"
++"src/handles_test.rs" = "4d77e128b3237c01bee89a57ff780cb1ffe9169988e4303f7695f3f632a208dc"
++"src/lib.rs" = "5453d4a1f01c18a6520a170d4a472d7f995bfabf43fcfd95ef198b70ce5fc056"
++"src/lib_test.rs" = "8438a22b8530e825501038a1fb170d91e63fd7bede3f74bd4798f3c89481c29c"
++"src/process_output.rs" = "4d5eb042f0bed4f47700a1ed5ebf597343dcace228f96bfde9b54ac9144ed944"
++"src/python.rs" = "cd2a60495411787f068c3f560c4d9f8cb58334ede72256a2080a9d3b5c3b557f"
++"src/python_test.rs" = "715085a6e975d0de58e22e2f586e9fe08e4c226f3b26d0e8c03f84a4e71e5411"
++"src/read.rs" = "60b19a2d4ddb47405cb05fd952a95695331198b3307ffd0b438c287b9bb25fd3"
++"src/read_test.rs" = "16b8d87452877aa3f60b25360f3647e753a172c164027798aaf1d9196c08a590"
++"src/runtime_test.rs" = "36391f8f5cd73f14e7cdd169c5aab6d6e767a7ad7b2f416f1a0983d7fec99899"
++"src/session.rs" = "34dd5ff83c60e760ad02db834127bbf6eff2337cdac16b4ca2bd36d5a8e6d12b"
++"src/session_test.rs" = "74e1898fe450e35ad720a0767baee139b1a5fbca947e392668768229dd9e66e9"
++
++[items]
++"src/bash.rs" = [
++    "struct Bash",
++]
++"src/bash_test.rs" = []
++"src/diff.rs" = [
++    "struct Span",
++    "struct Diff",
++    "fn unified",
++]
++"src/diff_test.rs" = []
++"src/edit.rs" = [
++    "struct Edit",
++]
++"src/edit_test.rs" = []
++"src/grep.rs" = [
++    "struct Grep",
++]
++"src/grep_test.rs" = []
++"src/handles_test.rs" = [
++    "struct ScratchDir",
++    "struct Fixture",
++    "fn ctx",
++    "fn ctx_with_executor",
++    "fn ctx_with_sessions",
++    "struct FakeExecutor",
++    "struct ProcessGroupExecutor",
++]
++"src/lib.rs" = [
++    "const OUTPUT_MAX_LINES",
++    "const OUTPUT_MAX_CHARS",
++    "const GREP_LINE_MAX_CHARS",
++    "const GREP_DEFAULT_LIMIT",
++    "const GREP_COLLECT_MAX",
++    "const GREP_HIT_COLLECT_MAX",
++    "const GREP_SEARCH_BUFFER_MAX_BYTES",
++    "const EDIT_DIFF_MAX_LINES",
++    "const READ_BUFFER_BYTES",
++    "const BASH_DEFAULT_TIMEOUT_SECS",
++    "const SESSION_MAX_ALIVE",
++    "const PYTHON_BIN",
++    "const PYTHON_SOURCE_MAX_BYTES",
++    "const PYTHON_INNER_CALL_MAX",
++    "const PYTHON_MEMORY_MAX_BYTES",
++    "const PYTHON_DIAGNOSTIC_MAX_CHARS",
++    "fn required_executables",
++    "fn required_executables",
++    "fn all",
++    "fn readonly",
++]
++"src/lib_test.rs" = []
++"src/process_output.rs" = []
++"src/python.rs" = [
++    "struct Python",
++]
++"src/python_test.rs" = []
++"src/read.rs" = [
++    "struct Read",
++]
++"src/read_test.rs" = []
++"src/runtime_test.rs" = []
++"src/session.rs" = [
++    "struct Session",
++]
++"src/session_test.rs" = []
+diff --git a/scripts/inventory.py b/scripts/inventory.py
+new file mode 100755
+index 0000000..e5f8b7e
+--- /dev/null
++++ b/scripts/inventory.py
+@@ -0,0 +1,59 @@
++#!/usr/bin/python3
++"""Write the public-item inventory of one crate to crates/CRATE/inventory.toml.
++
++Usage: scripts/inventory.py CRATE
++
++The inventory holds, for every Rust source file under crates/CRATE/src in
++path order, the SHA-256 of the file under `[sources]` and the public items
++the file declares at its top level under `[items]`: every line of the form
++`pub fn NAME`, `pub struct NAME`, `pub enum NAME`, `pub trait NAME`,
++`pub type NAME`, `pub mod NAME`, `pub const NAME`, or `pub static NAME`,
++with `async`, `unsafe`, or `const` allowed before `fn`, recorded as
++`KIND NAME`. Two comment lines name the crate and this script, and the
++document follows, written with tomli_w. checks/run.sh compares the recorded
++digests with the files.
++"""
++
++import hashlib
++import pathlib
++import re
++import sys
++
++import tomli_w
++
++ITEM = re.compile(r"^pub (?:(?:async|unsafe|const) )*(?P<kind>fn|struct|enum|trait|type|mod|const|static) (?P<name>[A-Za-z_][A-Za-z0-9_]*)")
++HEADER = (
++    "# The public items of crates/{crate} by source file, and the SHA-256 of each file read.\n"
++    "# Written by scripts/inventory.py {crate}; checks/run.sh compares the digests with the files.\n"
++)
++
++
++def inventory(crate_dir, crate):
++    """The document: the crate, the digest per source file, and the public items per source file."""
++    sources, items = {}, {}
++    for path in sorted((crate_dir / "src").rglob("*.rs")):
++        relative = path.relative_to(crate_dir).as_posix()
++        sources[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
++        found = []
++        for line in path.read_text(encoding="utf-8").splitlines():
++            match = ITEM.match(line)
++            if match is not None:
++                found.append(f"{match.group('kind')} {match.group('name')}")
++        items[relative] = found
++    return {"crate": crate, "sources": sources, "items": items}
++
++
++def main(argv):
++    if len(argv) != 2:
++        raise SystemExit("usage: scripts/inventory.py CRATE")
++    crate = argv[1]
++    crate_dir = pathlib.Path(__file__).resolve().parent.parent / "crates" / crate
++    if not (crate_dir / "src").is_dir():
++        raise SystemExit(f"{crate_dir / 'src'} is absent; the crate has no sources to list")
++    document = inventory(crate_dir, crate)
++    (crate_dir / "inventory.toml").write_text(HEADER.format(crate=crate) + tomli_w.dumps(document), encoding="utf-8")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main(sys.argv))

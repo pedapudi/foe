@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "missing-capability",
+  "evidence": "scripts/inventory.py imports tomli_w, which /usr/bin/python3 on this host lacks"
+}

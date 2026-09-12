@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "docs/config.md fixes the keys of the context block and stays as it is, so foe.Context cannot gain summary_tokens under AGENTS.md"
+}
