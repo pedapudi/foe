@@ -19,6 +19,12 @@ pub mod responses;
 pub trait Format: Send + Sync {
     /// The JSON body of one request.
     fn body(&self, req: &ModelRequestBody) -> Value;
+    /// Request headers that depend on the request, sent after the
+    /// provider's fixed headers. A backend that reads the conversation's
+    /// identity from a header rather than from the body is served here.
+    fn headers(&self, _req: &ModelRequestBody) -> Vec<(String, String)> {
+        Vec::new()
+    }
     /// A fresh translator for one response stream.
     fn decoder(&self) -> Box<dyn Decoder>;
 }
