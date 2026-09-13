@@ -397,6 +397,20 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let error = registry.verify_with("v", &handles, &json!("out"), 1, root.to_path_buf(), None).await.unwrap_err();
     assert!(error.contains(r#""out""#), "the diagnostic carries standard output: {error}");
 
+    // A verifier killed at its timeout has judged: the candidate could not
+    // be verified within the bound, and that is the one finding. The node
+    // then acts on it as on any finding rather than the episode failing.
+    let hanging = Arc::new(FakeExecutor { timed_out: true, ..Default::default() });
+    let handles = Handles { executor: Some(hanging), ..Default::default() };
+    let findings = registry.verify_with("v", &handles, &json!("c"), 1, root.to_path_buf(), None).await.unwrap();
+    assert_eq!(findings.len(), 1);
+    assert!(
+        findings[0].starts_with("verifier `v` did not finish within ")
+            && findings[0].contains("seconds and was killed"),
+        "{}",
+        findings[0]
+    );
+
     let contract = contract_with(&root, |v| {
         v["tools"] = json!(["block", "check"]);
         v["done_when"] = json!({ "verify": "check" });
