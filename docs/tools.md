@@ -469,8 +469,16 @@ there, where it finds none and falls back to a download the sandbox refuses.
 Outbound network access is closed; a process the command starts may bind
 the TCP ports `grants.bind` lists, and no others where the kernel enforces
 it ([sandbox.md](sandbox.md)).
-`timeout_seconds` defaults to 120 and is reduced to the episode's remaining
-wall-clock budget when that is smaller.
+`timeout_seconds` defaults to 120 and is held to half of the episode's
+remaining wall clock, whatever is asked for. A command bounded only by the
+deadline can consume everything left, and an episode that ends inside a tool
+call has no turn in which to report what it found, which in the log cannot be
+told from an episode with nothing to report. Half leaves the caller the other
+half, and the halves keep coming, so a command that legitimately needs a long
+time still gets it across turns while one that will never return costs a
+turn's patience rather than the episode. A request that is held back says so
+in the result, naming what was asked for, what remains, and what was given,
+so the caller can choose differently before the time is spent.
 
 A `bash` command or a `session` start command containing a literal U+0000
 character is rejected before process execution. Process arguments cannot
