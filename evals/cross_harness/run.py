@@ -921,7 +921,59 @@ def presumed_unimportable_fault(task: protocol.Task) -> str | None:
                 f"imports it from {completed.stdout.strip() or 'an unnamed location'}, which is an interpreter the attempt reaches; "
                 "the task's premise does not hold on this host; leave the task out with select, or run it on a host without the module"
             )
+    found = module_on_disk(named)
+    if found is not None:
+        return (
+            f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and no interpreter "
+            f"imports it, but a copy of it is on this host at {found}. An arm that reads outside its workspace can put that copy on a "
+            "path and run the generator, so the premise holds for an arm the kernel confines to its grants and not for an arm whose "
+            "sandbox reads the filesystem, and the task compares the two sandboxes rather than the two harnesses; leave the task out "
+            "with select, or run it on a host without the module"
+        )
     return None
+
+
+# Where a Python module may sit without any interpreter importing it: a
+# package directory, a single-file module, a distribution's metadata, or a
+# cached wheel. A distribution spells its name with either separator, so both
+# are searched.
+MODULE_SEARCH_ROOTS: tuple[str, ...] = ("/usr", "/opt", "/usr/local")
+MODULE_SEARCH_SECONDS = 120
+
+
+def module_on_disk(named: str) -> str | None:
+    """A path holding the module `named` that no interpreter imports, or None.
+
+    `presumed_unimportable_fault` asks every interpreter whether it imports
+    the module, which finds a copy on a search path and misses one beside it.
+    A module vendored inside another package, or a wheel in a download cache,
+    is importable by an arm that reads the filesystem, finds the copy, and
+    names its directory. The premise of the task is that the module cannot be
+    reached at all, so this searches the home directory and the system
+    prefixes for a copy under any of the four shapes a module takes on disk.
+    The runner's own state directory is left out: the attempts it holds carry
+    workspaces, and a module inside one of those is the fixture, not the host.
+    """
+    spellings = {named, named.replace("_", "-")}
+    patterns: list[str] = []
+    for spelling in sorted(spellings):
+        patterns += [spelling, f"{spelling}.py", f"{spelling}-*.dist-info", f"{spelling}-*.whl"]
+    roots = [str(Path.home()), *MODULE_SEARCH_ROOTS]
+    state = Path(DEFAULT_OUT_ROOT).expanduser()
+    # The name tests are parenthesised: -o binds looser than the implicit
+    # -a, so an unparenthesised list would print only the last name.
+    command = ["find", *(root for root in roots if Path(root).is_dir()), "-path", str(state), "-prune", "-o", "("]
+    for index, pattern in enumerate(patterns):
+        command += ["-name", pattern]
+        if index != len(patterns) - 1:
+            command.append("-o")
+    command += [")", "-print", "-quit"]
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=MODULE_SEARCH_SECONDS, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    hit = completed.stdout.strip().splitlines()
+    return hit[0] if hit else None
 
 
 def not_applicable(settings: Settings, arm: Arm, task: protocol.Task) -> str | None:

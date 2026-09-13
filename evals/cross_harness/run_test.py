@@ -643,6 +643,27 @@ class Planning(Harness):
             self.assertEqual(status, run.NOTHING_LAUNCHED)
             self.assertIn(f"task '{TASK}': metadata.presumes_unimportable is {bad!r}; expected a module name", err)
 
+    def test_a_module_no_interpreter_imports_is_still_found_where_it_sits(self) -> None:
+        """A copy an arm can put on a path defeats the premise even when no
+        interpreter imports it, and the two arms do not read the same amount
+        of the filesystem, so the task compares their sandboxes."""
+        home = self.root / "home"
+        vendored = home / "share" / "python" / "site-packages" / "pip" / "_vendor" / "cross_harness_vendored"
+        vendored.mkdir(parents=True)
+        (vendored / "__init__.py").write_text("value = 1\n", encoding="utf-8")
+        with unittest.mock.patch.object(run.Path, "home", staticmethod(lambda: home)):
+            found = run.module_on_disk("cross_harness_vendored")
+            self.assertEqual(found, str(vendored))
+            self.assertIsNone(run.module_on_disk("cross_harness_absent_module"))
+
+    def test_a_distribution_is_found_under_either_separator(self) -> None:
+        home = self.root / "home-wheels"
+        cache = home / "cache" / "wheels"
+        cache.mkdir(parents=True)
+        (cache / "cross-harness-hyphenated").mkdir()
+        with unittest.mock.patch.object(run.Path, "home", staticmethod(lambda: home)):
+            self.assertEqual(run.module_on_disk("cross_harness_hyphenated"), str(cache / "cross-harness-hyphenated"))
+
     def test_the_unimportable_check_reads_neither_the_runner_directory_nor_the_interpreter_of_another_path(self) -> None:
         # A module beside the runner's working directory is importable only from there, and no grade and no arm command runs there.
         planted = self.root / "cwd"
