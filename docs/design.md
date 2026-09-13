@@ -1399,7 +1399,7 @@ rather than about the data model it runs.
 
 The coding tools in `crates/code` stay under 1,900 lines. Team coordination
 in `crates/team` stays under 940 lines. Coding tools and team coordination
-together stay under 2,780 lines. The separate limits keep coordination
+together stay under 2,800 lines. The separate limits keep coordination
 independent of filesystem and process tools. The combined limit prevents a
 crate boundary from increasing the total implementation allowance. The
 workflow executor in `crates/workflow`

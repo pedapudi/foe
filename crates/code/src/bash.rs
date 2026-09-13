@@ -7,15 +7,15 @@
 //! rather than as a tool error.
 
 use crate::{
-    parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES,
-    SHELL, SHELL_COMMAND_NUL_ERROR,
+    command_timeout, parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS,
+    OUTPUT_MAX_LINES, SHELL, SHELL_COMMAND_NUL_ERROR,
 };
 use foe_contract::{Effect, ToolSpec};
 use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub struct Bash {
     spec: ToolSpec,
@@ -82,10 +82,8 @@ impl Tool for Bash {
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
             return ToolValue::unavailable("bash: no read root to use as the working directory");
         };
-        let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
-        if let Some(deadline) = ctx.deadline {
-            timeout = timeout.min(deadline.saturating_duration_since(Instant::now()));
-        }
+        let (timeout, clamped) =
+            command_timeout(Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS)), ctx.deadline);
         let req = ExecRequest {
             command: PathBuf::from(SHELL),
             captured_executable: None,
@@ -108,7 +106,13 @@ impl Tool for Bash {
             (false, Some(code)) => format!("exit {code} in {secs:.2}s"),
             (false, None) => format!("killed by a signal after {secs:.2}s"),
         };
-        let output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
+        let mut output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
+        // A caller that asked for longer than it may have is told so here,
+        // where it reads the result, rather than being left to infer it from
+        // a timeout it did not choose.
+        if let Some(note) = clamped {
+            output.rendered = format!("{}\n{note}", output.rendered.trim_end());
+        }
         ToolValue::ok(
             json!({
                 "command": a.command,

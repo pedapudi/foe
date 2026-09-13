@@ -12,6 +12,7 @@
 use foe_core::{CallCtx, Tool};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 #[cfg(feature = "exec")]
 mod bash;
@@ -54,6 +55,41 @@ pub const EDIT_DIFF_MAX_LINES: usize = 200;
 pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
+
+/// What one command may take of the episode's remaining wall clock.
+///
+/// A call bounded only by the deadline can consume everything left, and an
+/// episode that ends inside a tool call has no turn in which to say what it
+/// found: in the log it is indistinguishable from an episode with nothing to
+/// say. Holding a call to half of what remains leaves the caller the other
+/// half, whatever it asked for, and the halves keep coming, so a command that
+/// legitimately needs a long time still gets it across turns while a command
+/// that will never return costs one turn's patience rather than the episode.
+pub const SHARE_OF_REMAINING: u32 = 2;
+
+/// The limit one command runs under, and the sentence to add when the caller
+/// asked for longer than it may have.
+///
+/// The caller learns the arithmetic at the moment it matters. The other
+/// information it needs, that the request exceeded what remains, is the same
+/// signal a harness gets by being cut off, delivered before the time is spent
+/// rather than after.
+#[cfg(feature = "exec")]
+pub(crate) fn command_timeout(requested: Duration, deadline: Option<Instant>) -> (Duration, Option<String>) {
+    let Some(deadline) = deadline else { return (requested, None) };
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let allowed = remaining / SHARE_OF_REMAINING;
+    if requested <= allowed {
+        return (requested, None);
+    }
+    let note = format!(
+        "[the command asked for {}s; {}s of this episode remain, so it was given {}s, and the rest is left to report with]",
+        requested.as_secs(),
+        remaining.as_secs(),
+        allowed.as_secs()
+    );
+    (allowed, Some(note))
+}
 /// Process sessions the `session` tool may hold alive at once.
 pub const SESSION_MAX_ALIVE: usize = 8;
 /// Absolute path of the interpreter the `compose_tools` tool starts.
