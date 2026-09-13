@@ -111,11 +111,28 @@ codex-multi completing every unit with no shared write.
 Attempts: one per arm per task, eight in all. At this count the teams result
 supports no rate claim; what it can establish is the mechanism.
 
+### A hanging verifier after the repair
+
+The four non-terminating tasks under foe-configured, from a build that
+counts a verifier killed at its timeout as one finding rather than ending
+the episode `failed` (`runs/verifier-timeout.json`). In the first campaign
+one of the four ended `failed` this way.
+
+Prediction: all four end `blocked` with an accepted code. Falsified by any
+attempt ending `failed`, or by an attempt that re-fires on the finding and
+then reports `completed`.
+
+Attempts: one per task, four in all.
+
 ## What stays fixed
 
 The model, effort, route, budget defaults, tool roots, and grader are the
-first campaign's. The task texts, the graphs, and the Codex prompt are
-frozen at the commit that carries this document. A change to any of them
+first campaign's. The foe binary differs from the first campaign's in one
+rule, the verifier-timeout finding above, which can change an outcome only
+on a task whose check suite hangs; the foe-lean pairing on the four
+non-terminating tasks is therefore read against the verifier-timeout
+records rather than the first campaign's. The task texts, the graphs, and
+the Codex prompt are frozen at the commit that carries this document. A change to any of them
 after the first attempt launches means the affected case is rerun in full.
 
 ## A control that holds for the wrong reason

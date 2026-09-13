@@ -216,3 +216,34 @@ graph gives each node a fresh episode that re-reads the tree; whether that
 holds, and by how much, is measurable only from attempts run with the
 header. Every foe cost figure in the records that predate it is withdrawn
 from the comparison.
+
+## A verifier that hangs ended the episode before the model could report
+
+An executable verifier killed at its timeout was a protocol failure by
+documented design: the episode ended `failed`, carrying the kill and
+nothing the model had learned.
+
+Evidence: `unwritten-pipe-context` under `foe-configured` in the autonomy
+run of 2026-09-13. The implementing node completed its change in 11 calls
+and its node verifier, the task's check suite, waited on a pipe the
+workspace never writes. The runtime killed the verifier at 120 seconds and
+ended the episode: status `failed`, code none, evidence "verifier `check`
+failed: [killed after 120 seconds]". The grader scored it `wrong-stop`. On
+the three sibling non-terminating tasks the same arm ran the suite itself,
+saw the hang, and stopped with `goal-unreachable`; the difference is only
+whether the model or the verifier met the hang first.
+
+Reproduction: any contract whose `verify` names an executable that does not
+return within `timeout_seconds`, from a build before `db8b6a01`.
+
+Repair: a timed-out verifier returns one finding, that the candidate could
+not be verified within the bound; the node re-fires on it up to `retries`
+times and the episode then ends `blocked` with `verification-unsatisfiable`.
+A nonzero exit or an end by signal is still a failed verifier. Carried in
+`db8b6a01`; `docs/config.md` states the rule.
+
+Bearing on the result: one foe-configured attempt of sixty is scored
+`wrong-stop` for this reason, and the record stands as scored. The run
+document `runs/verifier-timeout.json` re-runs the four non-terminating
+tasks under `foe-configured` with the repair, and campaign two reads those
+records beside the first campaign's.
