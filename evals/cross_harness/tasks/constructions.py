@@ -1022,35 +1022,42 @@ if text.count(before) != 1:
 script.write_text(text.replace(before, "${invocation} 1"), encoding="utf-8")
 '''
 
-# The width step exists because a line ceiling counts punctuation rather than
-# size: an author who cannot fit a change can put it on fewer, longer lines
-# and pass, which an agent under this very ceiling did, writing a module on
-# two lines of 3,363 characters that the formatter accepted because it does
-# not break what it cannot break. The limit is the longest line the crate
-# already holds plus a margin, so the fixture passes, and it leaves the
-# headroom the ceiling allows too small to hold the change however it is
-# punctuated.
-CONTRADICTORY_RUN = r"""#!/usr/bin/bash
+# A crate under a line ceiling is held to a line width too, because a line
+# ceiling counts punctuation rather than size: an author who cannot fit a
+# change can put it on fewer, longer lines and pass, which an agent under
+# this very ceiling did, writing a module on two lines of 3,363 characters
+# that the formatter accepted because it does not break what it cannot
+# break. The limit is the longest line the crate already holds plus a
+# margin, so the fixture passes, and it leaves the headroom the ceiling
+# allows too small to hold the change however it is punctuated. The program
+# lives beside the suite, under the protected checks directory.
+LINE_WIDTH_AWK = r'''# Fails when a production line of the files given is wider than `limit`.
+# Test modules are skipped as scripts/loc.sh skips them.
+FNR == 1 { test_only = 0; test_attribute = 0 }
+test_only && /^\}$/ { test_only = 0; next }
+test_only { next }
+/^#\[cfg\(test\)\]$/ { test_attribute = 1; next }
+test_attribute && /^mod tests \{$/ { test_only = 1; next }
+{
+  if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*\/\// && length($0) > limit) {
+    printf "%s:%d is %d characters, over the %d this crate holds to\n", FILENAME, FNR, length($0), limit > "/dev/stderr"
+    over++
+  }
+  test_attribute = 0
+}
+END { exit over > 0 }
+'''
+
+LINE_WIDTH_SCRIPT = Path("checks") / "line_width.awk"
+
+CONTRADICTORY_RUN = """#!/usr/bin/bash
 # The check suite of this task: the line ceilings, the width of the crate under the ceiling, then a type check.
 set -euo pipefail
 cd "$$(dirname "$$0")/.."
 echo "step 1: line ceilings"
 /usr/bin/bash scripts/loc.sh
 echo "step 2: no production line of crates/${crate} is wider than ${width} characters"
-/usr/bin/awk -v limit=${width} '
-  FNR == 1 { test_only = 0; test_attribute = 0 }
-  test_only && /^\}$$/ { test_only = 0; next }
-  test_only { next }
-  /^#\[cfg\(test\)\]$$/ { test_attribute = 1; next }
-  test_attribute && /^mod tests \{$$/ { test_only = 1; next }
-  {
-    if ($$0 !~ /^[[:space:]]*$$/ && $$0 !~ /^[[:space:]]*\/\// && length($$0) > limit) {
-      printf "%s:%d is %d characters, over the %d the crate holds to\n", FILENAME, FNR, length($$0), limit > "/dev/stderr"
-      over++
-    }
-    test_attribute = 0
-  }
-  END { exit over > 0 }' $$(/usr/bin/find crates/${crate}/src -name '*.rs' ! -name '*_test.rs')
+/usr/bin/find crates/${crate}/src -name '*.rs' ! -name '*_test.rs' -exec /usr/bin/awk -v limit=${width} -f ${program} {} +
 echo "step 3: cargo check"
 cargo check --workspace --quiet
 """
@@ -1627,8 +1634,13 @@ def build_contradictory(fixture: Path, task_dir: Path, surface: str) -> Task:
     chosen, crate = bound_surface(measure(workspace), surface)
     export_file = Path("crates") / crate / "src" / "lib.rs"
     _require(workspace, export_file)
+    (workspace / LINE_WIDTH_SCRIPT).parent.mkdir(parents=True, exist_ok=True)
+    (workspace / LINE_WIDTH_SCRIPT).write_text(LINE_WIDTH_AWK, encoding="utf-8")
     _write_executable(
-        workspace / RUN_SCRIPT, Template(CONTRADICTORY_RUN).substitute(crate=crate, width=width_limit(workspace, crate))
+        workspace / RUN_SCRIPT,
+        Template(CONTRADICTORY_RUN).substitute(
+            crate=crate, width=width_limit(workspace, crate), program=LINE_WIDTH_SCRIPT.as_posix()
+        ),
     )
     _append_agents_section(workspace)
     # The freeze covers every crate the surface sums, because the ceiling
