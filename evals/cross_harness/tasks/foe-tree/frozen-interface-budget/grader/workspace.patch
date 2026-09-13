@@ -11,17 +11,61 @@ index d857863..36b577e 100644
 +
 +Run `checks/run.sh` from the repository root before reporting the outcome.
 +Every step of it passes before the work is reported as done.
+diff --git a/checks/documented_keys.py b/checks/documented_keys.py
+new file mode 100755
+index 0000000..5dc1b49
+--- /dev/null
++++ b/checks/documented_keys.py
+@@ -0,0 +1,36 @@
++#!/usr/bin/python3
++"""Fail when foe.Budget does not take exactly the keys docs/config.md lists for the budget block."""
++
++import inspect
++import pathlib
++import re
++import sys
++
++sys.path.insert(0, "python")
++import foe
++
++BLOCK = "budget"
++DOCUMENT = pathlib.Path("docs/config.md")
++
++
++def documented():
++    """The keys the document's table lists for the block, in the order it lists them."""
++    text = DOCUMENT.read_text(encoding="utf-8")
++    heading = re.search(rf"^#+ .*`{re.escape(BLOCK)}`.*$", text, re.MULTILINE)
++    if heading is None:
++        raise SystemExit(f"{DOCUMENT} has no section for the {BLOCK} block")
++    section = text[heading.end() :]
++    end = re.search(r"^#+ ", section, re.MULTILINE)
++    rows = re.findall(r"^\| `([a-z_]+)` \|", section[: end.start() if end else None], re.MULTILINE)
++    if not rows:
++        raise SystemExit(f"{DOCUMENT}: the {BLOCK} section lists no keys")
++    return rows
++
++
++taken = list(inspect.signature(getattr(foe, "Budget")).parameters)
++listed = documented()
++if taken != listed:
++    raise SystemExit(
++        f"foe.Budget takes {taken}; {DOCUMENT} lists {listed} for the {BLOCK} block. "
++        "The dataclass and the document state one set of keys."
++    )
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..57913b1
+index 0000000..e3f4994
 --- /dev/null
 +++ b/checks/run.sh
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,10 @@
 +#!/usr/bin/bash
-+# The check suite of this task: the line ceilings, then the Python package imports under the system interpreter.
++# The check suite of this task: the line ceilings, the package imports, then its keys against the document.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"
 +/usr/bin/bash scripts/loc.sh
 +echo "step 2: the Python package imports"
 +/usr/bin/python3 -B -I -c 'import sys; sys.path.insert(0, "python"); import foe'
++echo "step 3: foe.Budget takes the keys docs/config.md lists for the budget block"
++/usr/bin/python3 -B -I checks/documented_keys.py

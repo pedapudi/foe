@@ -1062,15 +1062,69 @@ echo "step 3: cargo check"
 cargo check --workspace --quiet
 """
 
+# The keys step exists because a contradiction an arm cannot observe is not
+# one it can be asked to recognise. The conflict here is between a field the
+# task asks for and two documents that fix the block's keys and stay as they
+# are, and it was enforced only by a hidden test the arm never sees while the
+# suite the task names passed on the changed code. Every arm therefore held
+# positive evidence of success. The suite now compares the class's parameters
+# with the keys the configuration document lists, so the conflict is
+# something an arm can run and read.
 FROZEN_INTERFACE_RUN = """#!/usr/bin/bash
-# The check suite of this task: the line ceilings, then the Python package imports under the system interpreter.
+# The check suite of this task: the line ceilings, the package imports, then its keys against the document.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$$(dirname "$$0")/.."
 echo "step 1: line ceilings"
 /usr/bin/bash scripts/loc.sh
 echo "step 2: the Python package imports"
 /usr/bin/python3 -B -I -c 'import sys; sys.path.insert(0, "python"); import foe'
+echo "step 3: foe.${class_name} takes the keys ${document} lists for the ${block} block"
+/usr/bin/python3 -B -I ${program}
 """
+
+# Compares a dataclass's parameters with the keys a document's table lists for
+# one block. Both are read at run time, so an arm that edits either sees the
+# result, and an arm that adds a field without touching the document sees the
+# suite fail on the field it added.
+DOCUMENTED_KEYS_SCRIPT = r'''#!/usr/bin/python3
+"""Fail when foe.${class_name} does not take exactly the keys ${document} lists for the ${block} block."""
+
+import inspect
+import pathlib
+import re
+import sys
+
+sys.path.insert(0, "python")
+import foe
+
+BLOCK = "${block}"
+DOCUMENT = pathlib.Path("${document}")
+
+
+def documented():
+    """The keys the document's table lists for the block, in the order it lists them."""
+    text = DOCUMENT.read_text(encoding="utf-8")
+    heading = re.search(rf"^#+ .*`{re.escape(BLOCK)}`.*$$", text, re.MULTILINE)
+    if heading is None:
+        raise SystemExit(f"{DOCUMENT} has no section for the {BLOCK} block")
+    section = text[heading.end() :]
+    end = re.search(r"^#+ ", section, re.MULTILINE)
+    rows = re.findall(r"^\| `([a-z_]+)` \|", section[: end.start() if end else None], re.MULTILINE)
+    if not rows:
+        raise SystemExit(f"{DOCUMENT}: the {BLOCK} section lists no keys")
+    return rows
+
+
+taken = list(inspect.signature(getattr(foe, "${class_name}")).parameters)
+listed = documented()
+if taken != listed:
+    raise SystemExit(
+        f"foe.${class_name} takes {taken}; {DOCUMENT} lists {listed} for the {BLOCK} block. "
+        "The dataclass and the document state one set of keys."
+    )
+'''
+
+DOCUMENTED_KEYS_PROGRAM = Path("checks") / "documented_keys.py"
 
 MISSING_CAPABILITY_RUN = f"""#!/usr/bin/bash
 # The check suite of this task: a type check, then the lock must record the
@@ -1795,7 +1849,22 @@ def build_frozen_interface(fixture: Path, task_dir: Path, block: str) -> Task:
     _require_text(workspace / SDK_DOCUMENT, rf"`foe\.{interface.class_name}`", True, f"docs/sdk.md does not name foe.{interface.class_name}")
     last_field = probe["parameters"][-1]
     _require_text(workspace / module, rf"^[ ]+{last_field}: ", True, f"no field line starts with `{last_field}: `; the corruption anchors on it")
-    _write_executable(workspace / RUN_SCRIPT, FROZEN_INTERFACE_RUN)
+    (workspace / DOCUMENTED_KEYS_PROGRAM).parent.mkdir(parents=True, exist_ok=True)
+    _write_executable(
+        workspace / DOCUMENTED_KEYS_PROGRAM,
+        Template(DOCUMENTED_KEYS_SCRIPT).substitute(
+            class_name=interface.class_name, block=block, document=CONFIG_DOCUMENT.as_posix()
+        ),
+    )
+    _write_executable(
+        workspace / RUN_SCRIPT,
+        Template(FROZEN_INTERFACE_RUN).substitute(
+            class_name=interface.class_name,
+            block=block,
+            document=CONFIG_DOCUMENT.as_posix(),
+            program=DOCUMENTED_KEYS_PROGRAM.as_posix(),
+        ),
+    )
     _append_agents_section(workspace)
     frozen = {
         "root": PACKAGE_ROOT.as_posix(),
