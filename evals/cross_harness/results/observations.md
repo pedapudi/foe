@@ -321,47 +321,44 @@ because a rule that admits the default failure cannot discriminate, not
 because of where the attempts fell, and the direction it moves them is
 recorded here for the reader to weigh.
 
-## The cache repair did not close the gap, and the diagnosis behind it was wrong
+## The cache gap was a missing request header, and it is closed
 
-The first attempt of the run that follows the repairs measures the same task
-and arm as before, so the two are directly comparable.
+The first attempt of the run that follows the cache-name repair measures the
+same task and arm as before, so the two are directly comparable, and the
+name repair alone moved nothing:
 
 | | input | cache read | hit | uncached |
 |---|---:|---:|---:|---:|
-| before the repair | 933,994 | 283,264 | 30.3% | 650,730 |
-| after the repair | 1,430,466 | 398,976 | 27.9% | 1,031,490 |
+| contract-named cache | 933,994 | 283,264 | 30.3% | 650,730 |
+| episode-named cache | 1,430,466 | 398,976 | 27.9% | 1,031,490 |
 
-The repair is in the binary that ran, the four node episodes computed four
-distinct identifiers, and the hit rate did not move. The turn curve has the
-same shape as before: nothing for the first five turns of an episode, then
-partial hits.
+Naming a cache after a contract sends unrelated conversations to one slot,
+which is wrong whatever the measured effect, so that change stays; the
+explanation that it accounts for the gap is withdrawn.
 
-The reasoning that led to the repair was that unrelated conversations shared
-one cache name and evicted one another. That reasoning was checked against
-the right evidence, seven names across thirty-three conversations, and it was
-still wrong: giving every conversation its own name changed nothing
-measurable. The claim that this explains the gap is withdrawn.
+The cause is in the headers. The Codex backend keys cache affinity on the
+`session-id` request header; its own client sends it, with `thread-id`, on
+every request, and foe's route sent neither. A wire capture of one episode
+showed a body that is a byte-identical growing prefix under one key, served
+from cache on 7 calls of 37 and never on the other 30: the prefix was cached
+and the request reached the replica holding it by chance. With the two
+headers added and nothing else changed, on the same task, model, route, and
+account:
 
-The change itself stays. Naming a cache after a contract sends unrelated
-conversations to one slot, which is wrong on its face whatever the measured
-effect. What is withdrawn is the explanation, not the repair.
+| | calls | input | cache read | hit |
+|---|---:|---:|---:|---:|
+| without the header | 37 | 1,040,410 | 165,376 | 15.9% |
+| with the header | 45 | 1,247,391 | 1,121,024 | 89.9% |
 
-What differs between the two harnesses is still open. One candidate, from
-inspecting the other harness's binary rather than its requests: it carries
-the field that chains a request to the previous response, which lets the
-provider continue a conversation it already holds. foe sends the whole
-conversation every turn with storage disabled and relies on the provider
-recognising the prefix. That is a difference in how a conversation is
-carried, not in how a cache is named, and it would explain why naming did
-nothing. It is a candidate and not a finding: string names in a binary are
-not observed requests, and settling it needs the requests themselves, which
-the metering proxy in this directory could capture.
+The other harness reads 93 percent on comparable work. The repair and its
+reproduction are recorded in `defects.md`.
 
 None of this changes an outcome. The budget charges input in full and the
 provider's input count already includes cached tokens, so a cache hit moves
-money and not behaviour. The run continues, and its cost figures are read as
-the cost of foe as it stands rather than as the cost of the defect that was
-repaired.
+money and not behaviour. Every foe cost figure recorded before the header
+repair measures the defect and is withdrawn from the comparison; the run
+that follows the three runtime repairs supplies the figures the comparison
+uses.
 
 ## The search path repair was half of the toolchain defect, and I reported it as all of it
 
@@ -418,7 +415,8 @@ lines passes, and the premise the task rests on, four lines of headroom,
 holds in the materialised workspace.
 
 That is the second of the three repairs confirmed end to end. The third,
-the prompt cache name, is confirmed not to work.
+the prompt cache name, moved nothing on its own; the header repair recorded
+under "The cache gap was a missing request header" is what closed the gap.
 
 ## The other harness reads the whole filesystem, in its own record
 

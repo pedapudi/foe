@@ -50,11 +50,10 @@ episode identifier is stable for the life of an episode and distinct between
 episodes, which is what the key routes on. Carried in
 https://github.com/pedapudi/foe/pull/246.
 
-Bearing on the result: hypothesis H2 predicted foe would spend more input
-than the other harness because its graph gives each node a fresh episode that
-re-reads the tree. The prediction holds, but this defect and not the graph is
-the larger part of the gap, and the reported figure is a measurement of the
-defect as much as of the architecture. Re-measure after the repair.
+Repairing the key alone changed nothing measurable: the episode below, run
+with a per-episode key, still read 15.9 percent of its input from cache. The
+larger part of the gap is the missing request header recorded under "The
+Codex route omitted the header the backend routes cache affinity on".
 
 ## A granted executable is unreachable by name from bash
 
@@ -170,40 +169,50 @@ produced nothing. The script no longer treats it as fatal. What remains is
 a check that sometimes reports this refusal as a finding, which costs the
 arm a repair cycle it did not earn.
 
-## The cache gap is not something foe's request can fix
+## The Codex route omitted the header the backend routes cache affinity on
 
-Captured at the wire, from a build that prints each request body before it is
-sent, over one episode of fifteen requests:
+The Codex backend keys prompt-cache affinity on the `session-id` request
+header. Its own client sends `session-id` and `thread-id` on every request,
+carrying the same value it sends as `prompt_cache_key`, and its source
+states the reason beside the code that builds the header. foe's
+`openai-codex` route sent `prompt_cache_key` in the body and no such
+header, so each request was routed to whichever replica the balancer chose
+and reached the replica holding its prefix by chance.
 
-- Every request's input array is a byte-identical extension of the one
-  before it. Not one item changed at any position, at any turn.
-- No field outside the input differs between requests: the same
-  instructions, the same tool definitions, the same model, the same
-  reasoning settings, one cache key for the whole episode.
+Evidence, from one four-node episode of `duplicate-grant-roots` under
+`foe-configured`, captured at the wire from a build that prints each
+request body:
 
-So the request shape is exactly what a prefix cache wants, and the provider
-returns 18.9 percent cache reads against the 94.4 percent the harness
-compared gets on the same backend, the same model, and the same account.
+- The body is correct. Every request's input array is a byte-identical
+  extension of the one before it, with the same instructions, tool
+  definitions, model, reasoning settings, and one cache key for the episode.
+  Storage is off because the backend refuses anything else, with
+  `HTTP 400: Store must be set to false`, so the harness compared sends the
+  same.
+- The misses are not a prefix problem. 7 of 37 calls read from cache, and
+  each of those read 51 to 98 percent of its input; the other 30 read
+  nothing. A prefix that is cached and served only on some calls is a
+  routing pattern.
+- Adding the two headers, and nothing else, on the same task, model, route,
+  and account: 43 of 45 calls read from cache, 89.9 percent of input against
+  15.9 percent before, with every call from the fourth step of each node
+  above 83 percent. The harness compared reads 93 percent on comparable
+  work.
 
-Two explanations were tested and both are wrong.
+Reproduction: run one foe episode on the `openai-codex` route from a build
+before `dba1a859` and read `cache_read` in its `assistant/message` records;
+repeat from that commit.
 
-The cache key naming the contract rather than the conversation was real and
-is repaired, and repairing it changed nothing measurable.
+Repair: the route sends `session-id` and `thread-id` equal to the cache key,
+which is now the episode digest in UUID form. Carried in the same branch as
+the check-write and timeout repairs.
 
-Sending requests with storage disabled, so the provider retains nothing, was
-the remaining candidate. It is not a choice: the backend refuses a request
-that asks for anything else, with `HTTP 400: Store must be set to false`. So
-the harness compared sends it too.
-
-What is left is on the provider's side of the boundary. Both clients send a
-stable growing prefix with storage off to the same endpoint, and one is given
-a cache and the other is not. The plausible remainder is that the backend
-extends prompt caching to sessions its own client registers, and a client
-that is not that one gets prefix matching alone.
-
-Bearing on the comparison, and it is a large one: **the cost figures on this
-route do not compare the two harnesses.** They compare a first-party client
-with a third-party one on a first-party endpoint. foe cannot close the gap by
-changing what it sends, because what it sends is already correct. A cost
-comparison that means anything has to run both harnesses against an endpoint
-neither owns.
+Bearing on the result: the cost comparison recorded so far is a measurement
+of this defect rather than of the harnesses. foe's uncached input on the two
+solvable tasks, 683,025 tokens per attempt against 61,704, was produced
+with a route that missed the cache on four calls in five. Hypothesis H2
+still predicts foe spends more input than the other harness, because its
+graph gives each node a fresh episode that re-reads the tree; whether that
+holds, and by how much, is measurable only from attempts run with the
+header. Every foe cost figure in the records that predate it is withdrawn
+from the comparison.
