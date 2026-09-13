@@ -1,0 +1,374 @@
+{
+  "arms": [
+    "foe-configured",
+    "foe-ablated",
+    "codex-equivalent",
+    "codex-default"
+  ],
+  "budgets": {
+    "ceiling-bound-feature": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "ceiling-bound-feature-telemetry": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "correlation-as-inbox-source": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "duplicate-grant-roots": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "frozen-interface-budget": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "frozen-interface-tool-defs": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "inventory-regeneration-code": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "inventory-regeneration-context": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "inventory-regeneration-evidence": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "inventory-regeneration-workflow": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "question-identifier-in-message-text": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "unreleased-lock-context": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "unreleased-lock-evidence": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "unwritten-pipe-context": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "waiting-check-suite": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    }
+  },
+  "canaries": {
+    "codex_config": {
+      "placement": "config.toml in the fresh CODEX_HOME of every Codex attempt",
+      "sentence": "This sentence is the codex config isolation canary 16a523dd-d68c-46fa-8107-e3c504ca72d4; a model request that carries it was built from a file the harness must never read."
+    },
+    "foe_config": {
+      "path": "/home/sunil/.config/foe/AGENTS.md",
+      "placement": "AGENTS.md in foe's configuration directory /home/sunil/.config/foe, removed once the attempts have ended",
+      "sentence": "This sentence is the foe config isolation canary 20ab088e-148b-4678-9ab0-106599ed9cfe; a model request that carries it was built from a file the harness must never read."
+    }
+  },
+  "document": {
+    "arms": [
+      "foe-configured",
+      "foe-ablated",
+      "codex-equivalent",
+      "codex-default"
+    ],
+    "attempts": 1,
+    "budget": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "foe_config_dir": "/home/sunil/.config/foe",
+    "grader_timeout": 1320,
+    "harnesses": {
+      "codex": "/home/sunil/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex",
+      "codex_named": "codex",
+      "credential": "/home/sunil/.codex/auth.json",
+      "foe": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build/target/release/foe"
+    },
+    "model": {
+      "base_url": null,
+      "codex_wire_api": "chat",
+      "effort": "medium",
+      "name": "gpt-5.6-sol",
+      "route": "subscription"
+    },
+    "out": "/home/sunil/.local/state/foe/cross-harness/autonomy",
+    "path": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/runs/autonomy-rerun.json",
+    "resume": true,
+    "select": [
+      "duplicate-grant-roots",
+      "question-identifier-in-message-text",
+      "correlation-as-inbox-source",
+      "ceiling-bound-feature",
+      "ceiling-bound-feature-telemetry",
+      "frozen-interface-budget",
+      "frozen-interface-tool-defs",
+      "inventory-regeneration-code",
+      "inventory-regeneration-context",
+      "inventory-regeneration-evidence",
+      "inventory-regeneration-workflow",
+      "unreleased-lock-context",
+      "unreleased-lock-evidence",
+      "unwritten-pipe-context",
+      "waiting-check-suite"
+    ],
+    "source_root": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build",
+    "tasks": "/home/sunil/git/foe/evals/cross_harness/tasks/foe-tree",
+    "tool_roots": [
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ]
+  },
+  "plan": "Run document /tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/runs/autonomy-rerun.json resolved to:\n  tasks           /home/sunil/git/foe/evals/cross_harness/tasks/foe-tree\n  family          autonomy\n  selected        duplicate-grant-roots, question-identifier-in-message-text, correlation-as-inbox-source, ceiling-bound-feature, ceiling-bound-feature-telemetry, frozen-interface-budget, frozen-interface-tool-defs, inventory-regeneration-code, inventory-regeneration-context, inventory-regeneration-evidence, inventory-regeneration-workflow, unreleased-lock-context, unreleased-lock-evidence, unwritten-pipe-context, waiting-check-suite\n  arms            foe-configured, foe-ablated, codex-equivalent, codex-default\n  attempts        1\n  resume          an attempt already recorded is skipped\n  foe             /tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build/target/release/foe\n  codex           /home/sunil/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex (the command 'codex' on PATH)\n  credential      /home/sunil/.codex/auth.json\n  route           subscription\n  model           gpt-5.6-sol\n  effort          medium\n  out             /home/sunil/.local/state/foe/cross-harness/autonomy\n  tool roots      /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  budget          input_tokens=4000000, output_tokens=400000, seconds=1200, model_calls=200 replace the same keys of every task's budget\n  grader timeout  1320 seconds\n  source root     /tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build\n  foe config dir  /home/sunil/.config/foe\n\nThis evaluation calls gpt-5.6-sol over the subscription route and spends real credit.\nLargest spend it can incur, at 1 attempt of each of 15 tasks under 4 arms:\n\n  model calls      input    output  seconds  attempt\n          200  4,000,000   400,000     1200  duplicate-grant-roots / foe-configured / 1\n          200  4,000,000   400,000     1200  duplicate-grant-roots / foe-ablated / 1\n          200  4,000,000   400,000     1200  question-identifier-in-message-text / foe-ablated / 1\n          200  4,000,000   400,000     1200  question-identifier-in-message-text / foe-configured / 1\n          200  4,000,000   400,000     1200  correlation-as-inbox-source / foe-configured / 1\n          200  4,000,000   400,000     1200  correlation-as-inbox-source / foe-ablated / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature / codex-default / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature / foe-configured / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature / foe-ablated / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature / codex-equivalent / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature-telemetry / foe-configured / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature-telemetry / foe-ablated / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature-telemetry / codex-equivalent / 1\n          200  4,000,000   400,000     1200  ceiling-bound-feature-telemetry / codex-default / 1\n          200  4,000,000   400,000     1200  frozen-interface-budget / foe-ablated / 1\n          200  4,000,000   400,000     1200  frozen-interface-budget / codex-equivalent / 1\n          200  4,000,000   400,000     1200  frozen-interface-budget / codex-default / 1\n          200  4,000,000   400,000     1200  frozen-interface-budget / foe-configured / 1\n          200  4,000,000   400,000     1200  frozen-interface-tool-defs / codex-equivalent / 1\n          200  4,000,000   400,000     1200  frozen-interface-tool-defs / codex-default / 1\n          200  4,000,000   400,000     1200  frozen-interface-tool-defs / foe-configured / 1\n          200  4,000,000   400,000     1200  frozen-interface-tool-defs / foe-ablated / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-code / codex-default / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-code / foe-configured / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-code / foe-ablated / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-code / codex-equivalent / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-context / foe-configured / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-context / foe-ablated / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-context / codex-equivalent / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-context / codex-default / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-evidence / foe-ablated / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-evidence / codex-equivalent / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-evidence / codex-default / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-evidence / foe-configured / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-workflow / codex-equivalent / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-workflow / codex-default / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-workflow / foe-configured / 1\n          200  4,000,000   400,000     1200  inventory-regeneration-workflow / foe-ablated / 1\n          200  4,000,000   400,000     1200  unreleased-lock-context / codex-default / 1\n          200  4,000,000   400,000     1200  unreleased-lock-context / foe-configured / 1\n          200  4,000,000   400,000     1200  unreleased-lock-context / foe-ablated / 1\n          200  4,000,000   400,000     1200  unreleased-lock-context / codex-equivalent / 1\n          200  4,000,000   400,000     1200  unreleased-lock-evidence / foe-configured / 1\n          200  4,000,000   400,000     1200  unreleased-lock-evidence / foe-ablated / 1\n          200  4,000,000   400,000     1200  unreleased-lock-evidence / codex-equivalent / 1\n          200  4,000,000   400,000     1200  unreleased-lock-evidence / codex-default / 1\n          200  4,000,000   400,000     1200  unwritten-pipe-context / foe-ablated / 1\n          200  4,000,000   400,000     1200  unwritten-pipe-context / codex-equivalent / 1\n          200  4,000,000   400,000     1200  unwritten-pipe-context / codex-default / 1\n          200  4,000,000   400,000     1200  unwritten-pipe-context / foe-configured / 1\n          200  4,000,000   400,000     1200  waiting-check-suite / codex-equivalent / 1\n          200  4,000,000   400,000     1200  waiting-check-suite / codex-default / 1\n          200  4,000,000   400,000     1200  waiting-check-suite / foe-configured / 1\n          200  4,000,000   400,000     1200  waiting-check-suite / foe-ablated / 1\n        10800  216,000,000  21,600,000    64800  every attempt this run launches\n\nAlready recorded under key resume and never launched again:\n  duplicate-grant-roots / codex-equivalent / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/duplicate-grant-roots/codex-equivalent/01.json\n  duplicate-grant-roots / codex-default / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/duplicate-grant-roots/codex-default/01.json\n  question-identifier-in-message-text / codex-equivalent / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/question-identifier-in-message-text/codex-equivalent/01.json\n  question-identifier-in-message-text / codex-default / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/question-identifier-in-message-text/codex-default/01.json\n  correlation-as-inbox-source / codex-equivalent / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/correlation-as-inbox-source/codex-equivalent/01.json\n  correlation-as-inbox-source / codex-default / 1: /home/sunil/.local/state/foe/cross-harness/autonomy/records/correlation-as-inbox-source/codex-default/01.json\n\nThe ceilings above are the effective ones: the document's budget replaces input_tokens=4000000, output_tokens=400000, seconds=1200, model_calls=200 in every task's budget.\n\nA foe document arm declares every ceiling in its document, and the runtime enforces model_calls\ninside the episode. A foe-as-shipped arm runs under the built-in document's own model-call\nceiling and no token ceiling; the seconds ceiling is the runner's cap. A Codex arm has its token\nand seconds ceilings enforced by the budget watcher on every attempt and no model-call ceiling,\nso the token and seconds ceilings are the shared bound and model calls are reported per arm.\n\nA foe document arm writes the whole workspace, or the roots a task names under metadata.write_roots. It executes\nthe workspace, so that a check suite can run the binaries its build wrote, and it reads and executes:\n  duplicate-grant-roots: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  question-identifier-in-message-text: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  correlation-as-inbox-source: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  ceiling-bound-feature: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  ceiling-bound-feature-telemetry: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  frozen-interface-budget: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  frozen-interface-tool-defs: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  inventory-regeneration-code: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  inventory-regeneration-context: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  inventory-regeneration-evidence: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  inventory-regeneration-workflow: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  unreleased-lock-context: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  unreleased-lock-evidence: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  unwritten-pipe-context: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\n  waiting-check-suite: /bin, /usr/bin, /usr/local/bin, /home/sunil/.cargo/bin, /home/sunil/.cargo, /home/sunil/.rustup, /usr/lib/gcc\nA check suite that needs a command outside those roots cannot run under foe, and the attempt\nis then recorded as a fault. Add each installation such a command lives in to the document's tool_roots.\n\nNo attempt was launched. Add --confirm-spend to launch them.",
+  "provenance": {
+    "base_url": null,
+    "codex": "/home/sunil/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex",
+    "codex_version": "codex-cli 0.154.0",
+    "foe": {
+      "changed_paths": [],
+      "dirty": false,
+      "git_head": "dba1a859b93034069850d2c491dd8d270f601f1f",
+      "runtime_binary": "sha256:74cbd30229febfb3c6a3375676f007c0d81c5ca2f28204f96ae96a1fa02dbe67",
+      "source_tree": "git-tree-sha1:f374ef4467055803b214ab7874fdca08a7e4b12b",
+      "source_tree_error": null
+    },
+    "foe_binary": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build/target/release/foe",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "recorded_at_ms": 1789318235236,
+    "route": "subscription"
+  },
+  "schema_version": 1,
+  "settings": {
+    "attempts": 1,
+    "base_url": null,
+    "budget_overrides": {
+      "input_tokens": 4000000,
+      "model_calls": 200,
+      "output_tokens": 400000,
+      "seconds": 1200
+    },
+    "canaries": {
+      "codex_config": "This sentence is the codex config isolation canary 16a523dd-d68c-46fa-8107-e3c504ca72d4; a model request that carries it was built from a file the harness must never read.",
+      "foe_config": "This sentence is the foe config isolation canary 20ab088e-148b-4678-9ab0-106599ed9cfe; a model request that carries it was built from a file the harness must never read."
+    },
+    "codex": "/home/sunil/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex",
+    "codex_wire_api": "chat",
+    "credential": "/home/sunil/.codex/auth.json",
+    "effort": "medium",
+    "family": "autonomy",
+    "foe": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build/target/release/foe",
+    "grader_timeout": 1320,
+    "model": "gpt-5.6-sol",
+    "out": "/home/sunil/.local/state/foe/cross-harness/autonomy",
+    "route": "subscription",
+    "source_root": "/tmp/claude-1000/-home-sunil-git-foe/56f45ab5-a601-4eeb-ae86-5ae4a10e73c1/scratchpad/rerun-build",
+    "tool_roots": [
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ]
+  },
+  "tasks": [
+    "duplicate-grant-roots",
+    "question-identifier-in-message-text",
+    "correlation-as-inbox-source",
+    "ceiling-bound-feature",
+    "ceiling-bound-feature-telemetry",
+    "frozen-interface-budget",
+    "frozen-interface-tool-defs",
+    "inventory-regeneration-code",
+    "inventory-regeneration-context",
+    "inventory-regeneration-evidence",
+    "inventory-regeneration-workflow",
+    "unreleased-lock-context",
+    "unreleased-lock-evidence",
+    "unwritten-pipe-context",
+    "waiting-check-suite"
+  ],
+  "tool_roots": {
+    "ceiling-bound-feature": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "ceiling-bound-feature-telemetry": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "correlation-as-inbox-source": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "duplicate-grant-roots": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "frozen-interface-budget": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "frozen-interface-tool-defs": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "inventory-regeneration-code": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "inventory-regeneration-context": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "inventory-regeneration-evidence": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "inventory-regeneration-workflow": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "question-identifier-in-message-text": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "unreleased-lock-context": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "unreleased-lock-evidence": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "unwritten-pipe-context": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ],
+    "waiting-check-suite": [
+      "/bin",
+      "/usr/bin",
+      "/usr/local/bin",
+      "/home/sunil/.cargo/bin",
+      "/home/sunil/.cargo",
+      "/home/sunil/.rustup",
+      "/usr/lib/gcc"
+    ]
+  }
+}
