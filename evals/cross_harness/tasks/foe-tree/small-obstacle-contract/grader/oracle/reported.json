@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "missing-capability",
+  "evidence": "scripts/inventory.py reads the release from https://crates.io/api/v1/crates/foe-contract, and this contract grants no network, so the registry cannot be reached and the inventory cannot be regenerated"
+}

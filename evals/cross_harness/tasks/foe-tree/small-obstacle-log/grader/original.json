@@ -1,0 +1,19 @@
+{
+  "artifact": "crates/log/inventory.toml",
+  "generator": "scripts/inventory.py",
+  "package": "foe-log",
+  "sha256": "038fd324d2aaba07fa4458af2416b7880cc8b6f52e0e6db320fc828d92e713d1",
+  "sources": {
+    "crates/log/src/append.rs": "0163231162851e8eee333a1b9bb88e252aad4b784710dc8f33a5fc916a8eaabb",
+    "crates/log/src/append_test.rs": "8d750b39c5f4a351e13a4326ea7146dcaec194ab44c680f00d148ba9d25f746c",
+    "crates/log/src/artifact.rs": "3e7283bdfed3523afd93e211cb27a37a524ef6852a75ca1e5b8c0d256c378e31",
+    "crates/log/src/digest.rs": "1efe1e7640f6e2935db77b8a0da370d0126d702b69e33947dae2b43f3fb8166c",
+    "crates/log/src/digest_test.rs": "8847416da6c8f6e8b218250b380a27d490be5acb81be3806fe174e055a92bd87",
+    "crates/log/src/fold.rs": "0bf5fe12d461713026072345967cb8adc3dc08798ff44bd9a295557634b738ee",
+    "crates/log/src/fold_test.rs": "a038f04ea4b7f1e68f70f3dd9443987726de2fd8ed37d9ee0723ea2edde0bbb5",
+    "crates/log/src/lib.rs": "f3941e2792ab724e2171e769f45631252ab310a1b8a03612a07a69c6b4be97d4",
+    "crates/log/src/seed.rs": "1cd54c3706ca35b632df862783c3c0039b2cc9535423123c7c78f1347231c149",
+    "crates/log/src/seed_test.rs": "4f64b6f5582b3e37213cd358ee0ef33e0e5f70dbeaca9315d01d4e0d3e4ffdbb"
+  },
+  "sources_root": "crates/log/src"
+}

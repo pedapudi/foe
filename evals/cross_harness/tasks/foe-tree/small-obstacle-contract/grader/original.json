@@ -1,0 +1,24 @@
+{
+  "artifact": "crates/contract/inventory.toml",
+  "generator": "scripts/inventory.py",
+  "package": "foe-contract",
+  "sha256": "c4c5210865092c4e53d8446ad977d3f2be84faeda77b2c4311882f975c36b05d",
+  "sources": {
+    "crates/contract/src/document.rs": "ea3c253cd5f04291506dc460c74db1e571c762a48fcce62c9ba992a2431e8d89",
+    "crates/contract/src/document_test.rs": "be41c908981c20ce108a91bfcc856054d18bd8472e74331ed52302165fabde93",
+    "crates/contract/src/fingerprint.rs": "11684b59c602308bd2af2942f5ded628f70bc46496d9c5cd001b8056411e438b",
+    "crates/contract/src/fingerprint_test.rs": "20915d93da40b3001d9685b39dea813e0ec5a2812c6d54450d980073ce11e99d",
+    "crates/contract/src/fixtures_test.rs": "02da9254fa0a821f1dc4770f1825d60620f22e0a7257efec0dae1bb9704c23a9",
+    "crates/contract/src/harness_text.rs": "9e29db742e32ba08bc0fa1d8365455f0221c981f44b651fb29dd003768853ae7",
+    "crates/contract/src/inspect.rs": "6ac3831ad08828d2779515a9386b3f004d11993aa42b3c59746a61609a02ea02",
+    "crates/contract/src/lib.rs": "e8387f30e3896e8569d21319a4cb2c458510bc570bfb3e620f7723a9813420fe",
+    "crates/contract/src/lib_test.rs": "3790b849fc177664cb649813dc9ff1b75a80735f1049042251a862d747ee9f4b",
+    "crates/contract/src/schema.rs": "0b1ba079e7790f89113cb101af4f8dbc3c1e7fa7361688c9410ff9d382b10a97",
+    "crates/contract/src/schema_test.rs": "20a6e46517ba96ffc7d7895c11619c57b7dec985f5740791e1d1aa9a040e7f7f",
+    "crates/contract/src/tools.rs": "e4e9bb4722768fd66fe8c998c071df258ef69a6a7528dbf33c3c9edf53d5a00b",
+    "crates/contract/src/tools_test.rs": "d4512f068e4dcff4262a83e6cd6213e6fad8cabf8251146de24d577cfc39ab20",
+    "crates/contract/src/workflow.rs": "de84d1503e42848527e523d0d885901331e0c9abfff772b7f2799e92b7d3f615",
+    "crates/contract/src/workflow_test.rs": "885fc07cc99451f16d42d1c03a846156bc1ae5d030772009701912f165fcd9c1"
+  },
+  "sources_root": "crates/contract/src"
+}

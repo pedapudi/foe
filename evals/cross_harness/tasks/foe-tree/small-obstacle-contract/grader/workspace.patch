@@ -1,0 +1,332 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d857863..36b577e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..64c9f9d
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/bash
++# The check suite of this task: a type check of the crate, then the inventory
++# must record the current digest of every source file of the crate.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: cargo check"
++cargo check -p foe-contract --quiet
++echo "step 2: crates/contract/inventory.toml records the current digest of every file under crates/contract/src"
++for file in $(cd crates/contract && /usr/bin/find src -name '*.rs' | /usr/bin/sort); do
++  if ! /usr/bin/grep -qF "\"$file\" = \"$(/usr/bin/sha256sum "crates/contract/$file" | /usr/bin/cut -d' ' -f1)\"" crates/contract/inventory.toml; then
++    echo "checks/run.sh: crates/contract/inventory.toml does not record the current digest of crates/contract/$file; regenerate it with scripts/inventory.py contract" >&2
++    exit 1
++  fi
++done
+diff --git a/crates/contract/inventory.toml b/crates/contract/inventory.toml
+new file mode 100644
+index 0000000..cd15196
+--- /dev/null
++++ b/crates/contract/inventory.toml
+@@ -0,0 +1,164 @@
++# The public items of crates/contract by source file, and the SHA-256 of each file read.
++# Written by scripts/inventory.py contract; checks/run.sh compares the digests with the files.
++crate = "contract"
++release = "unpublished"
++
++[sources]
++"src/document.rs" = "ea3c253cd5f04291506dc460c74db1e571c762a48fcce62c9ba992a2431e8d89"
++"src/document_test.rs" = "be41c908981c20ce108a91bfcc856054d18bd8472e74331ed52302165fabde93"
++"src/fingerprint.rs" = "11684b59c602308bd2af2942f5ded628f70bc46496d9c5cd001b8056411e438b"
++"src/fingerprint_test.rs" = "20915d93da40b3001d9685b39dea813e0ec5a2812c6d54450d980073ce11e99d"
++"src/fixtures_test.rs" = "02da9254fa0a821f1dc4770f1825d60620f22e0a7257efec0dae1bb9704c23a9"
++"src/harness_text.rs" = "9e29db742e32ba08bc0fa1d8365455f0221c981f44b651fb29dd003768853ae7"
++"src/inspect.rs" = "6ac3831ad08828d2779515a9386b3f004d11993aa42b3c59746a61609a02ea02"
++"src/lib.rs" = "e8387f30e3896e8569d21319a4cb2c458510bc570bfb3e620f7723a9813420fe"
++"src/lib_test.rs" = "3790b849fc177664cb649813dc9ff1b75a80735f1049042251a862d747ee9f4b"
++"src/schema.rs" = "0b1ba079e7790f89113cb101af4f8dbc3c1e7fa7361688c9410ff9d382b10a97"
++"src/schema_test.rs" = "20a6e46517ba96ffc7d7895c11619c57b7dec985f5740791e1d1aa9a040e7f7f"
++"src/tools.rs" = "e4e9bb4722768fd66fe8c998c071df258ef69a6a7528dbf33c3c9edf53d5a00b"
++"src/tools_test.rs" = "d4512f068e4dcff4262a83e6cd6213e6fad8cabf8251146de24d577cfc39ab20"
++"src/workflow.rs" = "de84d1503e42848527e523d0d885901331e0c9abfff772b7f2799e92b7d3f615"
++"src/workflow_test.rs" = "885fc07cc99451f16d42d1c03a846156bc1ae5d030772009701912f165fcd9c1"
++
++[items]
++"src/document.rs" = [
++    "const CONTRACT_FORMAT_VERSION",
++    "struct CapturedExecutable",
++    "enum ContractTreeSelection",
++    "fn completion_evidence_fields",
++    "struct ResolvedContract",
++    "fn parse",
++    "fn load",
++    "fn validate",
++    "fn resolve",
++    "fn resolve_with_executables",
++]
++"src/document_test.rs" = []
++"src/fingerprint.rs" = [
++    "struct Fingerprint",
++    "fn canonical",
++    "fn sha256_hex",
++    "fn compute",
++]
++"src/fingerprint_test.rs" = []
++"src/fixtures_test.rs" = [
++    "struct ScratchDir",
++    "fn tmp",
++    "fn config_value",
++    "fn config",
++    "fn contract",
++    "fn contract_with",
++    "fn spec",
++]
++"src/harness_text.rs" = [
++    "const VERSION",
++    "const BLOCK_NAME",
++    "const BLOCK_DESCRIPTION",
++    "const RETURN_NAME",
++    "const RETURN_DESCRIPTION",
++    "const RETRIEVE_DESCRIPTION",
++    "const RETRIEVE_INVALID",
++    "const RETRIEVE_UNAVAILABLE",
++    "const RETRIEVE_OFFSET",
++    "const RETRIEVE_MORE",
++    "const CUT_WINDOW",
++    "const CUT_OUTPUT",
++    "const CUT_RETRIEVABLE",
++    "const CUT_RETRIEVABLE_WINDOW",
++    "const RETURN_REQUIRED",
++    "const FINAL_REQUEST",
++    "const VERIFY_FINDINGS",
++    "const BOARD_UNACCOUNTED",
++    "const LENGTH_LIMIT_ERROR",
++    "const INTERRUPTED_RESULT",
++    "const SPILL_FRAME",
++    "const EXEC_STDERR",
++    "const EXEC_EXIT",
++    "const EXEC_TIMED_OUT",
++    "const EXEC_DENIED",
++    "const UNKNOWN_TOOL",
++    "const INVALID_ARGS",
++    "const SECTION_SEPARATOR",
++    "const TOOL_INSTRUCTIONS_HEADING",
++    "const TOOL_INSTRUCTION_TEMPLATE",
++    "const WORKFLOW_SECTION",
++    "const RECOVER_NAME",
++    "const RECOVER_DESCRIPTION",
++    "const WORKFLOW_RECOVERY_INSTRUCTION",
++    "const WORKFLOW_RECOVERY_FAILURE",
++    "const COMPACTION_POLICY_VERSION",
++    "const COMPACTION_INSTRUCTION",
++    "const COMPACTION_PRIOR",
++    "const COMPACTION_TRANSCRIPT",
++    "const COMPACTION_TURN",
++    "const COMPACTION_CALL",
++    "fn workflow_texts",
++    "fn all",
++    "fn fill",
++]
++"src/inspect.rs" = [
++    "struct ReachableTool",
++    "struct ConfigurationWarning",
++    "fn configuration_warnings",
++    "fn reachable_tools",
++    "fn tool_sources",
++    "fn cycles",
++    "fn write_overlaps",
++]
++"src/lib.rs" = [
++    "mod document",
++    "mod fingerprint",
++    "mod harness_text",
++    "mod inspect",
++    "mod schema",
++    "mod tools",
++    "mod workflow",
++    "const SCHEMA",
++    "enum Effect",
++    "struct ToolSpec",
++    "struct ContractDocument",
++    "struct ToolDef",
++    "struct HostToolDef",
++    "struct Grants",
++    "fn contains",
++    "const DEFAULT_RETRIES",
++    "struct DoneWhen",
++    "struct ContextConfig",
++    "struct ModelConfig",
++    "struct SandboxConfig",
++    "struct ChildContractDocument",
++    "enum ContractError",
++]
++"src/lib_test.rs" = []
++"src/schema.rs" = [
++    "const DIALECT",
++    "fn check",
++    "fn conforms",
++    "fn arguments_conform",
++]
++"src/schema_test.rs" = []
++"src/tools.rs" = [
++    "enum Source",
++    "fn resolve_sources",
++    "fn block_spec",
++    "fn return_spec",
++    "fn exec_spec",
++    "fn host_spec",
++    "fn resolve_specs",
++]
++"src/tools_test.rs" = []
++"src/workflow.rs" = [
++    "const TASK_SOURCE",
++    "const MAX_POSSIBLE_FIRINGS",
++    "const MAX_EDGE_REFERENCES",
++    "struct WorkflowConfig",
++    "struct RecoveryConfig",
++    "struct NodeRecovery",
++    "struct Node",
++    "fn ancestors",
++    "fn bindings",
++    "fn check",
++    "fn model_nodes",
++    "fn node_contract",
++]
++"src/workflow_test.rs" = []
+diff --git a/scripts/inventory.py b/scripts/inventory.py
+new file mode 100755
+index 0000000..a9ae845
+--- /dev/null
++++ b/scripts/inventory.py
+@@ -0,0 +1,123 @@
++#!/usr/bin/python3
++"""Write the public-item inventory of one crate to crates/CRATE/inventory.toml.
++
++Usage: scripts/inventory.py CRATE
++
++The inventory holds, for every Rust source file under crates/CRATE/src in
++path order, the SHA-256 of the file under `[sources]` and the public items
++the file declares at its top level under `[items]`: every line of the form
++`pub fn NAME`, `pub struct NAME`, `pub enum NAME`, `pub trait NAME`,
++`pub type NAME`, `pub mod NAME`, `pub const NAME`, or `pub static NAME`,
++with `async`, `unsafe`, or `const` allowed before `fn`, recorded as
++`KIND NAME`.
++
++It also records the release the crate's package is published as, which this
++script reads from the registry, so that a reader can tell the surface of a
++working tree from the surface of a release. The registry answering that a
++package is unpublished is an answer; not reaching it at all is not, and the
++script then writes nothing rather than recording a release it did not read.
++
++checks/run.sh compares the recorded digests with the files.
++"""
++
++import hashlib
++import json
++import pathlib
++import re
++import sys
++import urllib.error
++import urllib.request
++
++ITEM = re.compile(r"^pub (?:(?:async|unsafe|const) )*(?P<kind>fn|struct|enum|trait|type|mod|const|static) (?P<name>[A-Za-z_][A-Za-z0-9_]*)")
++REGISTRY = "https://crates.io/api/v1/crates/{package}"
++REGISTRY_TIMEOUT = 30
++UNPUBLISHED = "unpublished"
++HEADER = (
++    "# The public items of crates/{crate} by source file, and the SHA-256 of each file read.\n"
++    "# Written by scripts/inventory.py {crate}; checks/run.sh compares the digests with the files.\n"
++)
++
++
++def released(package):
++    """The release the registry lists, or that the package is unpublished.
++
++    A refusal is still an answer. Failing to reach the registry is not, and
++    ends the run, because the inventory would otherwise record a release
++    nobody read.
++    """
++    try:
++        with urllib.request.urlopen(REGISTRY.format(package=package), timeout=REGISTRY_TIMEOUT) as reply:
++            body = json.load(reply)
++    except urllib.error.HTTPError:
++        return UNPUBLISHED
++    except OSError as error:
++        raise SystemExit(
++            "scripts/inventory.py: the registry at %s cannot be reached (%s), so the release cannot be read and the "
++            "inventory is not written" % (REGISTRY.format(package=package), error)
++        )
++    return str((body.get("crate") or {}).get("max_version") or UNPUBLISHED)
++
++
++def package_name(crate_dir):
++    """The package the crate's manifest names."""
++    for line in (crate_dir / "Cargo.toml").read_text(encoding="utf-8").splitlines():
++        match = re.match(r'\s*name\s*=\s*"([^"]+)"', line)
++        if match is not None:
++            return match.group(1)
++    raise SystemExit("scripts/inventory.py: the crate manifest names no package")
++
++
++def quoted(value):
++    """The value as a TOML basic string."""
++    return json.dumps(value, ensure_ascii=False)
++
++
++def key(name):
++    """The name as a TOML key, quoted where it is not a bare key."""
++    return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else quoted(name)
++
++
++def inventory(crate_dir, crate, release):
++    """The document: the crate, its release, the digest per source file, and the public items per source file."""
++    sources, items = {}, {}
++    for path in sorted((crate_dir / "src").rglob("*.rs")):
++        relative = path.relative_to(crate_dir).as_posix()
++        sources[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
++        found = []
++        for line in path.read_text(encoding="utf-8").splitlines():
++            match = ITEM.match(line)
++            if match is not None:
++                found.append("%s %s" % (match.group("kind"), match.group("name")))
++        items[relative] = found
++    return {"crate": crate, "release": release, "sources": sources, "items": items}
++
++
++def render(document):
++    """The document as TOML, one table per section."""
++    lines = ["crate = %s" % quoted(document["crate"]), "release = %s" % quoted(document["release"]), "", "[sources]"]
++    lines.extend("%s = %s" % (key(path), quoted(digest)) for path, digest in document["sources"].items())
++    lines.extend(["", "[items]"])
++    for path, found in document["items"].items():
++        if not found:
++            lines.append("%s = []" % key(path))
++            continue
++        lines.append("%s = [" % key(path))
++        lines.extend("    %s," % quoted(entry) for entry in found)
++        lines.append("]")
++    return "\n".join(lines) + "\n"
++
++
++def main(argv):
++    if len(argv) != 2:
++        raise SystemExit("usage: scripts/inventory.py CRATE")
++    crate = argv[1]
++    crate_dir = pathlib.Path(__file__).resolve().parent.parent / "crates" / crate
++    if not (crate_dir / "src").is_dir():
++        raise SystemExit("%s is absent; the crate has no sources to list" % (crate_dir / "src"))
++    document = inventory(crate_dir, crate, released(package_name(crate_dir)))
++    (crate_dir / "inventory.toml").write_text(HEADER.format(crate=crate) + render(document), encoding="utf-8")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main(sys.argv))
