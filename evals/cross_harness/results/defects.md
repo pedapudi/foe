@@ -96,3 +96,39 @@ toolchain manager looks for its installation there, cannot create one because
 the write grants name directories under the workspace rather than the
 workspace itself, and falls back to a download the sandbox refuses. Both
 halves are repaired, and the second is what the measurement turned on.
+
+## A subprocess cannot write an existing file under a granted write root
+
+With the workspace named in `grants.write`, a build tool run through `bash`
+is refused when it opens `<workspace>/target/debug/.cargo-lock`:
+
+```
+error: failed to open: .../root/workspace/target/debug/.cargo-lock
+Caused by:
+  Permission denied (os error 13)
+```
+
+The file exists, is owned by the user, and is mode 664; the directory holding
+it is mode 775. The contract grants write on the workspace, which contains
+it. The refusal happened 55 times across the two foe arms of one task in the
+run, and the other harness, whose sandbox grants write on the same workspace,
+was refused zero times.
+
+What this is not, each checked rather than assumed:
+
+- Not the file mode. The same file in the other harness's workspace has the
+  same mode and is written.
+- Not a missing write rule. The compiled policy names the workspace as a
+  write root, and a write root that the in-process writer binds is added to
+  the kernel ruleset separately, so a subprocess is covered either way.
+- Not a missing truncate right. The write access set the policy compiles
+  includes truncation from the kernel interface version this host runs.
+
+The effect is a cost rather than an outcome: the arms work around it by
+building into a directory they create themselves, which takes model calls the
+other harness does not spend. On the one task where both foe arms and both
+of the other harness's arms have completed, foe spent 59 and 38 model calls
+against 36 and 19. Any comparison of cost carries this until it is closed.
+
+Reproduction: grant write on a directory, populate it with a cargo target
+directory, and run a build through the `bash` tool.
