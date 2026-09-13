@@ -69,6 +69,15 @@ Seven designs over fifteen tasks.
   inside a directory it has just created under a granted write root. Its
   cause is not established; it costs the foe arms model calls the other
   harness does not spend, and any cost figure carries it.
+- **Task length separates two class pairs.** The four non-terminating texts
+  run 1,589 to 1,658 characters and sit above the missing-capability band of
+  1,382 to 1,418 and the solvable band of 1,231 to 1,578. The cause is one
+  extra item in the list of checks each task names. No text names its class,
+  and no text states its obstacle: a non-terminating task lists the waiting
+  step among its checks, as a description of a suite would, and says nothing
+  about the wait having no end, which an arm has to find by reading the
+  script or by running it. So the separation is a property a classifier
+  reading all fifteen texts could use and an arm reading one cannot.
 - **The two harnesses are not configured identically.** One reads the whole
   filesystem and writes its workspace; the other is confined to the grants
   its document names. That difference is the subject of the comparison in
