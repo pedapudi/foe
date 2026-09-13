@@ -38,8 +38,9 @@ as it runs because a long episode eventually holds the slot it shares.
 
 The cost, over the development and holdout attempts scored so far: foe read
 27% of its input from cache against the other harness's 93%, on comparable
-work. On the solvable tasks that is 651,000 uncached input tokens against
-58,000.
+work. Over the two solvable tasks and four attempts each, foe's uncached
+input totals 2,732,102 tokens against the other harness's 246,818, which is
+683,025 against 61,704 per attempt.
 
 Reproduction: run any two foe episodes of one contract back to back and read
 `cache_read` in the `assistant/message` records of the second.
@@ -83,5 +84,15 @@ the contract grants. The grant already names them, so this adds no
 configuration and no environment variable, and it makes the search path agree
 with the permission. Carried in https://github.com/pedapudi/foe/pull/246.
 
-Bearing on the result: one holdout attempt is affected, recorded rather than
-re-run. The affected cell is named in the results document.
+Bearing on the result: twelve of the fourteen foe attempts of that run
+contain a command reporting the toolchain missing, and two of them cite it in
+their own reported evidence. The reach is the whole of foe's side of that
+run, not one attempt.
+
+This entry also understated the defect itself. Putting the granted
+directories on the search path makes the toolchain resolvable and not
+runnable: the shell also names the workspace as the home directory, so the
+toolchain manager looks for its installation there, cannot create one because
+the write grants name directories under the workspace rather than the
+workspace itself, and falls back to a download the sandbox refuses. Both
+halves are repaired, and the second is what the measurement turned on.

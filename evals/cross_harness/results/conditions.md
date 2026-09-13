@@ -37,16 +37,23 @@ instruments that grade it.
 - **A task presuming a capability absent is refused when the capability is
   on the host.** Both inventory tasks are refused on this host and are not
   in the run.
-- **A granted toolchain is reachable by name.** Confirmed in the run itself:
-  twenty-one shell commands name the Rust toolchain under the foe arms and
-  none exits with the status a missing command produces.
+- **A granted toolchain runs.** Reaching it took two repairs, not one: its
+  directory on the search path, and the real user's home directory in the
+  shell environment, without which the toolchain manager looks for its
+  installation inside the workspace and then tries to download one. The first
+  run after only the first repair is discarded, because in it no build, test
+  or format command succeeded under a foe arm while the other harness
+  compiled and tested normally.
 
 ## What this run cannot establish
 
 - **One attempt per task per arm.** Six tasks over three classes. The exact
-  paired test reaches a two-sided probability at or below 0.05 only with at
-  least six discordant pairs, which six paired attempts cannot produce. Every
-  rate here is descriptive.
+  paired test reaches a two-sided probability at or below 0.05 only when at
+  least six discordant pairs fall the same way. Six paired attempts can
+  produce six such pairs, which gives 0.031, so significance is reachable
+  only if every one of the six tasks separates the arms in the same
+  direction. Any other pattern cannot. Every rate here is read as
+  descriptive.
 - **Three designs, not six tasks.** The two contradictory tasks are one
   construction over two targets and so are the two non-terminating ones. The
   result generalises to those designs and not to autonomous coding at large.
