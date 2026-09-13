@@ -124,6 +124,10 @@ class TaskShape(unittest.TestCase):
             "key class_name": dict(class_name="fan-out"),
             "key correct_statuses is empty": dict(correct_statuses=frozenset()),
             "key correct_statuses names unknown": dict(correct_statuses=frozenset({"done"})),
+            # A run the watcher ended falls in the killed cell whatever the
+            # task accepts, so a task naming it would declare correct an
+            # outcome no attempt can be scored.
+            "which no attempt can be scored as correct": dict(correct_statuses=frozenset({"blocked", "killed"})),
             "key correct_codes is set while": dict(correct_codes=frozenset({"goal-unreachable"})),
             "key budget lacks seconds": dict(budget={"model_calls": 1, "input_tokens": 1, "output_tokens": 1}),
             "key budget.seconds is 0": dict(budget={"model_calls": 1, "input_tokens": 1, "output_tokens": 1, "seconds": 0}),

@@ -183,6 +183,16 @@ class Task:
             raise ValueError(f"{prefix}: key correct_statuses names unknown statuses {unknown}; expected a subset of {list(STATUSES)}")
         if self.correct_codes and BLOCKED not in self.correct_statuses:
             raise ValueError(f"{prefix}: key correct_codes is set while key correct_statuses lacks {BLOCKED!r}")
+        # `classify` returns the killed cell before it reads this set, because
+        # a run the watcher ended is its own outcome whatever the task wanted.
+        # A task naming KILLED here would declare correct something no attempt
+        # can ever be scored, so the contradiction is refused at the task
+        # rather than left to be found in a confusion matrix that never fills.
+        if KILLED in self.correct_statuses:
+            raise ValueError(
+                f"{prefix}: key correct_statuses names {KILLED!r}, which no attempt can be scored as correct; "
+                "a run the watcher ended falls in the killed cell, so name the statuses an arm reaches by its own decision"
+            )
         missing = [key for key in BUDGET_KEYS if key not in self.budget]
         if missing:
             raise ValueError(f"{prefix}: key budget lacks {', '.join(missing)}")
