@@ -1245,9 +1245,14 @@ try:
     client = socket.create_connection((host, port), timeout=timeout)
 except OSError as error:
     print(f"checks/wait_for_reply.py: loopback sockets are denied ({error}); waiting {timeout:g} seconds without one", file=sys.stderr)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        time.sleep(1.0)
+    # Sleep in steps of at most a second so that an unbounded wait is
+    # expressible; the last step is whatever remains, so a bounded wait is
+    # one call and ends exactly when it should.
+    remaining = timeout
+    while remaining > 0:
+        step = min(1.0, remaining)
+        time.sleep(step)
+        remaining -= step
     print(f"checks/wait_for_reply.py: no reply from 127.0.0.1 within {timeout:g} seconds", file=sys.stderr)
     raise SystemExit(1)
 try:
@@ -1289,9 +1294,14 @@ except OSError as error:
     if directory is not None:
         shutil.rmtree(directory, ignore_errors=True)
     print(f"checks/wait_for_pipe.py: a named pipe is denied ({error}); waiting {timeout:g} seconds without one", file=sys.stderr)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        time.sleep(1.0)
+    # Sleep in steps of at most a second so that an unbounded wait is
+    # expressible; the last step is whatever remains, so a bounded wait is
+    # one call and ends exactly when it should.
+    remaining = timeout
+    while remaining > 0:
+        step = min(1.0, remaining)
+        time.sleep(step)
+        remaining -= step
     print(f"checks/wait_for_pipe.py: no line on the reporter's pipe within {timeout:g} seconds", file=sys.stderr)
     raise SystemExit(1)
 try:

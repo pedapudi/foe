@@ -193,8 +193,10 @@ class Materialization(unittest.TestCase):
             # The workspace is the whole workspace of a call that writes both parts, and no path under the grader directory exists.
             self.assertEqual(snapshot(root / "workspace"), snapshot(together / "workspace"))
             self.assertFalse((root / "grader").exists())
-            # The root holds the workspace and the task alone; the staged record waits beside it, out of the arm's reach.
-            self.assertEqual(sorted(path.name for path in root.iterdir()), ["task.json", "workspace"])
+            # The root holds the workspace alone. The task file is not there either: it names the class
+            # this task belongs to and the outcome it accepts, so it waits for the grader part like the
+            # hidden tests do. The staged record waits beside the root, out of the arm's reach.
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ["workspace"])
             self.assertEqual(protocol.staged_protected_record(root), root.parent / "root.protected.json")
             self.assertTrue(protocol.staged_protected_record(root).is_file())
             # An arm runs here: it edits a source file, which is its job, and a protected file, which is damage.

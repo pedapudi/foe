@@ -321,16 +321,17 @@ def _outside_hashes(root: Path) -> dict[str, str]:
 
     The record inside the grader directory is written after these hashes are
     taken and is what they are compared against, so it is never one of them.
-    `task.json` is written then too, with the grader and after every arm has
-    exited, so it is not one of them either. Every other path outside the
-    workspace is hashed, including one that carries either name, so that a
-    file an arm writes under the root is damage whatever it is called.
+    Every other path outside the workspace is hashed, including one that
+    carries the record's own name, so that a file an arm writes under the
+    root is damage whatever it is called. `task.json` is among them: it is
+    written with the grader, after every arm has exited, and hashed then, so
+    a file an arm left under that name before it is damage.
     """
     record = Path(GRADER) / PROTECTED_FILE
     hashes: dict[str, str] = {}
     for file in _files_under(root):
         relative = file.relative_to(root)
-        if relative.parts[0] == WORKSPACE or relative in (record, Path(TASK_FILE)):
+        if relative.parts[0] == WORKSPACE or relative == record:
             continue
         hashes[relative.as_posix()] = sha256_file(file)
     return hashes
@@ -574,7 +575,6 @@ def _materialize_grader(task_dir: Path, root: Path) -> None:
     # directory above the tree it is working in, and an arm confined to its
     # grants would not, so the two would not be answering the same question.
     # A grade script reads it from here, after every arm has exited.
-    shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
     staged = staged_protected_record(root)
     if not staged.is_file():
         raise FileNotFoundError(f"{staged} is absent; the grader of {task_dir} needs a root whose workspace was materialized with parts={WORKSPACE!r}")
@@ -586,8 +586,13 @@ def _materialize_grader(task_dir: Path, root: Path) -> None:
     except (ValueError, KeyError, TypeError) as error:
         raise ValueError(f"{staged} does not hold the workspace and outside hashes the workspace materialization wrote: {error}") from error
     shutil.copytree(task_dir / GRADER, root / GRADER, symlinks=True)
+    shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
     grader_prefix = f"{GRADER}/"
-    outside = {**outside_hashes, **{relative: digest for relative, digest in _outside_hashes(root).items() if relative.startswith(grader_prefix)}}
+    written = _outside_hashes(root)
+    outside = {
+        **outside_hashes,
+        **{relative: digest for relative, digest in written.items() if relative.startswith(grader_prefix) or relative == TASK_FILE},
+    }
     # The record inside the grader is written first, so that a write that
     # fails leaves the staged baseline where a repeated call finds it.
     (root / GRADER / PROTECTED_FILE).write_text(json.dumps({"workspace": workspace_hashes, "outside": outside}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
