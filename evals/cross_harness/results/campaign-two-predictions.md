@@ -108,8 +108,10 @@ two of its agents write one file; codex-multi has at least one file written
 by two agents or one unit its lead reports done that fails. Falsified by
 codex-multi completing every unit with no shared write.
 
-Attempts: one per arm per task, eight in all. At this count the teams result
-supports no rate claim; what it can establish is the mechanism.
+Attempts: one per arm per task, eight in all, each under a wall-clock
+ceiling of 3,600 seconds in place of the tasks' 8,100, so that the eight fit
+in one session; the other ceilings are the tasks' own. At this count the
+teams result supports no rate claim; what it can establish is the mechanism.
 
 ### A hanging verifier after the repair
 

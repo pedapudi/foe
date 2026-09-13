@@ -23,5 +23,8 @@
     "~/.rustup",
     "/usr/lib/gcc"
   ],
-  "out": "~/.local/state/foe/cross-harness/teams-fan-out"
+  "out": "~/.local/state/foe/cross-harness/teams-fan-out",
+  "budget": {
+    "seconds": 3600
+  }
 }
