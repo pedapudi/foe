@@ -28,7 +28,7 @@ credential, the network, or a Codex login.
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
 | `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks, five of each |
 | `tasks/teams.py` | authors the teams tasks: fan-out tasks from sweep commits, and survey tasks whose answer a script computes |
-| `tasks/fanout.py` | authors two fan-out tasks by construction: one uniform change over the modules of one crate, with the table in the crate root every module must agree with |
+| `tasks/coherent.py` | authors two coherent controls by construction: one change over the modules of one crate, with the table in the crate root every module must agree with; every file it touches lies in one directory, so no division into workers exists |
 | `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
 | `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request |
 | `run.py` | runs every selected task under every selected arm, grades each run, and writes one record per attempt |
@@ -44,8 +44,8 @@ holds no copy of the repository. `--keep-workspace` on an authoring tool
 keeps the generated workspace for inspection, and `.gitignore` excludes it
 and any grading build directory.
 
-`tasks/foe-tree/` holds thirty-four task directories, of which twenty-three
-are admissible and eleven are suppressed. `admission.py` decides which:
+`tasks/foe-tree/` holds thirty-one task directories, of which twenty-three
+are admissible and eight are suppressed. `admission.py` decides which:
 a task is admissible when its oracle-solved workspace passes the visible
 check on the host, inside a foe episode, and under a Codex sandbox.
 
@@ -55,17 +55,19 @@ check on the host, inside a foe episode, and under a Codex sandbox.
 | autonomy, contradictory | 5 | 0 |
 | autonomy, missing-capability | 5 | 0 |
 | autonomy, non-terminating | 5 | 0 |
-| teams, fan-out | 2 | 2 |
+| teams, fan-out | 0 | 2 |
 | teams, survey | 2 | 0 |
-| teams, coherent | 0 | 3 |
+| teams, coherent | 2 | 0 |
 
 Every suppressed task runs a crate suite on `foe-core`, `foe-log`, or the
 command-line crate, whose own tests exercise sandboxing and therefore fail
-inside one. The two admissible fan-outs are constructed inside one crate,
-module by module, rather than harvested from a sweep commit, because every
-sweep commit large enough to fan out touches a crate that fails. The
-suppressed directories stay in the tree so that a later host, such as the
-container, can re-admit them.
+inside one. No fan-out is admissible on this host: a change that spreads over
+directories a delegation could grant separately reaches one of those crates,
+and both fan-outs are suppressed for that reason. The two constructed tasks
+are the coherent controls, because every file their change touches lies in one
+crate directory, so no two workers can be given directories that do not
+overlap. The suppressed directories stay in the tree so that a later host,
+such as the container, can re-admit them.
 
 Every task text was written by an agent and awaits a person's reading;
 `metadata.review` in each `task.json` says so. One task,
@@ -78,7 +80,7 @@ python3 evals/cross_harness/tasks/feature_removal.py author \
   --repo . --commit SHA --out evals/cross_harness/tasks/foe-tree/NAME --name NAME
 python3 evals/cross_harness/tasks/constructions.py --help
 python3 evals/cross_harness/tasks/teams.py --help
-python3 evals/cross_harness/tasks/fanout.py --help
+python3 evals/cross_harness/tasks/coherent.py --help
 ```
 
 ## Running

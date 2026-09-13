@@ -93,7 +93,15 @@
     "grader/oracle/workspace/view/src/types.ts": "7a9d0702810307507dab763da2b6ff9a0825affc288803d41adba47e9c014179",
     "grader/oracle/workspace/view/test/fold.test.ts": "25c2e064ef38523000c7cb32b40e07ec4b06ad0e48e2f5e30181512512938696",
     "grader/oracle/workspace/view/test/statistics.test.ts": "c64f4c9c28ec516cd4adf37533a5cb9ebd039436be68016f42b46b8bbd779aeb",
-    "grader/specification.json": "b7a761141c471d54ce5be66293f071f26f41f33a017212897b997e1c7e916387",
+    "grader/specification.json": "6b1d16943a0bf5b899fbf5b1e12be2da9218562b3a06b737161a38b9af044f6e",
+    "grader/tests/checks/units/docs.json": "5621cf8f4af56461987ae5f4d6dd53bfe98b105aa86c0f6cc0d100f836dc7cf0",
+    "grader/tests/checks/units/docs_test.py": "8b8aed49fcab27d5923f4bbd13c1d244c49a7265fbe21694c85c44962392bade",
+    "grader/tests/checks/units/examples.json": "ce75988def5cefe0f165e24d4edd72e7e6bf38ecdf93fdf7eb93a51ef0cfa643",
+    "grader/tests/checks/units/examples_test.py": "f2dfbcd74f6130e7a98aeef05dd004e957fad7b0ce5e93db8940cc3cb9eb12de",
+    "grader/tests/checks/units/python.json": "06d50aa1629390d2318a9b65d564fd9921bc79899a15f727155103631fd37122",
+    "grader/tests/checks/units/python_test.py": "17da2c70348b737471cb93ae932849fe97c81a28ce938670688a4f9c069bf165",
+    "grader/tests/checks/units/view.json": "63cdb86568010eb0eb784c939b35532ecd7b725934b2276b29bf4ca2897df2e4",
+    "grader/tests/checks/units/view_test.py": "64c5dc56e774364fc9e89a23bb20fadf4d73785a7122ace656ccb9fb25c58043",
     "grader/tests/crates/cli/src/main_test.rs": "604121d86a47982f052b02ff2bdd56aa63d05cf849a094b009c685a291f6e22f",
     "grader/tests/crates/cli/tests/integration.rs": "15ca9bf6dca8ae547e3d869fafb3b196400a2120216a6f574b30ae15816404f8",
     "grader/tests/crates/context/src/lib_test.rs": "76e0ce16f5faec241213d9d959fd3a7d8a6569168132eafd0d06dd08c8db25fe",
@@ -115,7 +123,7 @@
     "grader/tests/python/tests/test_config.py": "69ba13fa1c2583dc46bbbf7d44ad1e2932d95814881fad29ca11183576ec5713",
     "grader/tests/python/tests/test_run.py": "6bf272019e3d2f5d52e224045cbc328cff6dbd8402d1b821ec4d29562816027b",
     "grader/workspace.patch": "b3f5cc244108a159f0779c9ccf7ec641e11029cc57c7da4f23699c4732a49fa6",
-    "task.json": "759924471212472322563dbae55a7e0199eedd8de5f82c0748ac64250dddb464"
+    "task.json": "87b966a40fe8d4be4091c62ba2bdc2d42a109a5398a5c5903f4292ae8eb2c55b"
   },
   "workspace": {
     "AGENTS.md": "d5b52b028bad27576a8ffb4fd24542e3c281b84b7213d870a48303fd9b7968c2",

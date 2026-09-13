@@ -391,6 +391,22 @@ class Shape(unittest.TestCase):
             self.assertEqual(graph[name]["max_fires"], 7, name)
         self.assertNotIn("verify", graph["delegate"])
 
+    def test_the_task_shape_reaches_the_two_nodes_that_can_end_the_workflow(self) -> None:
+        items = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array", "items": {"type": "object"}}}}
+        graph = nodes(graphs.teams(self.workspace, self.check, BUDGET, returns=items))
+        for name in ("integrate", "implement-alone"):
+            self.assertEqual(graph[name]["model"]["done_when"]["returns"], items, name)
+            self.assertIn("Return the value the task's text states", graph[name]["model"]["instructions"]["10-role"], name)
+        # The nodes in the middle of the graph still report their work as a change.
+        self.assertEqual(graph["interface"]["model"]["done_when"]["returns"], graphs.change_report())
+        # The two declarations are separate objects, so a caller editing one leaves the other alone.
+        graph["integrate"]["model"]["done_when"]["returns"]["properties"]["items"]["type"] = "string"
+        self.assertEqual(graph["implement-alone"]["model"]["done_when"]["returns"]["properties"]["items"]["type"], "array")
+        without = nodes(graphs.teams(self.workspace, self.check, BUDGET))
+        for name in ("integrate", "implement-alone"):
+            self.assertEqual(without[name]["model"]["done_when"]["returns"], graphs.change_report(), name)
+            self.assertIn("Report every changed path", without[name]["model"]["instructions"]["10-role"], name)
+
     def test_the_teams_variants_change_one_declaration_each(self) -> None:
         configured = graphs.teams(self.workspace, self.check, BUDGET, "configured")
         undivided = graphs.teams(self.workspace, self.check, BUDGET, "undivided")

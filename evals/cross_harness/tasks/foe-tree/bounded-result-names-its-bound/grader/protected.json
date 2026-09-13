@@ -5,7 +5,7 @@
     "grader/corruptions/revert-one-unit/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
     "grader/corruptions/revert-one-unit/edits.json": "54427d47aa5d1b6c6c38f77494a660180db092de63acef6e1189ac85fe3bbb4e",
     "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
-    "grader/grade.py": "3920ddc063df690da3b79ab91ea184c67fa8aed2dc0af0841f3174e126424340",
+    "grader/grade.py": "3ded9f5587c4e29104ab78250212899bffa38f8990a02897f9fb1ce39d8e3c70",
     "grader/oracle/workspace/crates/code/src/bash.rs": "8ed1ce573ce90fa7912b49ee018afa3f84e4b02ebaed4c1660885f9d6fb40b2c",
     "grader/oracle/workspace/crates/code/src/edit.rs": "860bbf64471690bd6b778e37abbb28b54d5c9e9da5ec8e9738c0d3078b260d2d",
     "grader/oracle/workspace/crates/code/src/grep.rs": "d58a3c32a6244380248063c1a146072a93b3078c6436a029a3ac92fcd1d30dd9",
@@ -22,7 +22,7 @@
     "grader/tests/crates/code/src/read_test.rs": "206f4cfc122e4732302426e11f529373e2a9ccc2b9b0bccabd61ecc0afe730b2",
     "grader/tests/crates/code/src/session_test.rs": "d2465907fdc741e63b246a9942774c5542c01e7113438390175983c16026e73e",
     "grader/workspace.patch": "714eb09f5fad637ee6c32db576ad50e8de318abd0b14676dd9cd19c45a56fe8c",
-    "task.json": "140414d5964418d74fb19b2ccf0d276818469867106785ddac4c38197ba241aa"
+    "task.json": "e702d0c98cec7c232693bc7b2efca464854981d6533e8b40dd5f3977d66ea156"
   },
   "workspace": {
     "AGENTS.md": "016452f3106072be1c937c2325ab1e19a85a6dc9bd8b81f0f12f55a26464033d",

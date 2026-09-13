@@ -1,0 +1,429 @@
+{
+  "view/dist/viewer.js": {
+    "added": [
+      "${q(n.summary)}`}var qo=`",
+      "`,e),d=a<0?n.length:a;for(let p=e+1;p<d;p++){if(n[p]===\"\\\\\"){p++;continue}if(n[p]===\"$\"&&!/\\s/.test(n[p-1]??\" \"))return{node:{kind:\"math\",tex:n.slice(e+1,p),display:!1},next:p+1}}}return null}var wi=/^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@/;function Br(n){let e=n.split(`",
+      "`),r=!1,a=!1;for(let d of e)if(wi.test(d)&&(r=!0),(d.startsWith(\"--- \")||d.startsWith(\"+++ \"))&&(a=!0),r&&a)return!0;return r}function ki(n){if(!Br(n))return null;let e=n.endsWith(`",
+      "]`,xl=`(\\\\\\\\[a-zA-Z@]+)${Vs}*`,ur=\"[\\u0300-\\u036F]\",Xs=new RegExp(`${ur}+$`),wl=`(${Vs}+)|\\\\\\\\(",
+      "`)}function Bi(n){let e=n.indexOf(`"
+    ],
+    "removed": [
+      "${q(n.summary)}`}var Co=`",
+      "`,e),d=a<0?n.length:a;for(let p=e+1;p<d;p++){if(n[p]===\"\\\\\"){p++;continue}if(n[p]===\"$\"&&!/\\s/.test(n[p-1]??\" \"))return{node:{kind:\"math\",tex:n.slice(e+1,p),display:!1},next:p+1}}}return null}var xi=/^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@/;function Br(n){let e=n.split(`",
+      "`),r=!1,a=!1;for(let d of e)if(xi.test(d)&&(r=!0),(d.startsWith(\"--- \")||d.startsWith(\"+++ \"))&&(a=!0),r&&a)return!0;return r}function wi(n){if(!Br(n))return null;let e=n.endsWith(`",
+      "]`,wl=`(\\\\\\\\[a-zA-Z@]+)${Us}*`,dr=\"[\\u0300-\\u036F]\",Vs=new RegExp(`${dr}+$`),kl=`(${Us}+)|\\\\\\\\(",
+      "`)}function ji(n){let e=n.indexOf(`"
+    ]
+  },
+  "view/fixtures/compact.jsonl": {
+    "added": [
+      "{\"seq\":12,\"time\":1724200009130,\"type\":\"compaction/start\",\"data\":{\"step\":4,\"covered\":{\"first_seq\":1,\"last_seq\":8},\"trigger\":\"threshold\",\"projected_tokens\":3982,\"reserved\":{\"model_calls\":7,\"input_tokens\":76000,\"output_tokens\":19000}}}"
+    ],
+    "removed": [
+      "{\"seq\":12,\"time\":1724200009130,\"type\":\"compaction/start\",\"data\":{\"step\":4,\"covered\":{\"first_seq\":1,\"last_seq\":8},\"trigger\":\"threshold\",\"projected_tokens\":3982,\"reserved\":{\"model_calls\":7,\"tokens\":95000}}}"
+    ]
+  },
+  "view/fixtures/generate.mjs": {
+    "added": [
+      "program: program(\"fix-test\", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }),",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_child\", reserved: { model_calls: 3, input_tokens: 16000, output_tokens: 4000 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_child\", spent: { model_calls: 2, input_tokens: 1300, output_tokens: 40 } });",
+      "program: program(\"survey\", { model_calls: 3, input_tokens: 16000, output_tokens: 4000 }),",
+      "budget_remaining: { model_calls: 7, input_tokens: 76000, output_tokens: 19000 },",
+      "\"budget_remaining: model_calls 7, input_tokens 76000, output_tokens 19000, seconds unlimited\",",
+      "program: { ...program(\"rename-helper\", { model_calls: 10, input_tokens: 80000, output_tokens: 20000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },",
+      "log.ev(\"compaction/start\", { step: 4, covered: { first_seq: 1, last_seq: 8 }, trigger: \"threshold\", projected_tokens: 3982, reserved: { model_calls: 7, input_tokens: 76000, output_tokens: 19000 } });",
+      "program: program(\"lead\", { model_calls: 20, input_tokens: 160000, output_tokens: 40000 }),",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_over_child\", reserved: { model_calls: 8, input_tokens: 64000, output_tokens: 16000 } });",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_rich\", reserved: { model_calls: 6, input_tokens: 48000, output_tokens: 12000 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_rich\", spent: { model_calls: 2, input_tokens: 2200, output_tokens: 429 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_over_child\", spent: { model_calls: 3, input_tokens: 9000, output_tokens: 100 } });",
+      "program: program(\"surveyor\", { model_calls: 8, input_tokens: 64000, output_tokens: 16000 }),",
+      "log.ev(\"compaction/start\", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: \"threshold\", projected_tokens: 74000, reserved: { model_calls: 6, input_tokens: 56000, output_tokens: 14000 } }, 400);",
+      "\"| `input_tokens` | tokens | estimated before and counted after each request |\",",
+      "\"| `output_tokens` | tokens | capped before and counted after each request |\",",
+      "program: program(\"writer\", { model_calls: 6, input_tokens: 48000, output_tokens: 12000 }),",
+      "version: 2,",
+      "budget: { model_calls: 30, input_tokens: 240000, output_tokens: 60000, max_episodes: 6 },"
+    ],
+    "removed": [
+      "program: program(\"fix-test\", { model_calls: 10, tokens: 100000 }),",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_child\", reserved: { model_calls: 3, tokens: 20000 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_child\", spent: { model_calls: 2, tokens: 1340 } });",
+      "program: program(\"survey\", { model_calls: 3, tokens: 20000 }),",
+      "budget_remaining: { model_calls: 7, tokens: 95000 },",
+      "\"budget_remaining: model_calls 7, tokens 95000, seconds unlimited\",",
+      "program: { ...program(\"rename-helper\", { model_calls: 10, tokens: 100000 }), context: { compact: true, window_tokens: 4000, reserve_tokens: 500, keep_recent_tokens: 40 } },",
+      "log.ev(\"compaction/start\", { step: 4, covered: { first_seq: 1, last_seq: 8 }, trigger: \"threshold\", projected_tokens: 3982, reserved: { model_calls: 7, tokens: 95000 } });",
+      "program: program(\"lead\", { model_calls: 20, tokens: 200000 }),",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_over_child\", reserved: { model_calls: 8, tokens: 80000 } });",
+      "log.ev(\"budget/reserve\", { child_id: \"ep_rich\", reserved: { model_calls: 6, tokens: 60000 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_rich\", spent: { model_calls: 2, tokens: 2629 } });",
+      "log.ev(\"budget/release\", { child_id: \"ep_over_child\", spent: { model_calls: 3, tokens: 9100 } });",
+      "program: program(\"surveyor\", { model_calls: 8, tokens: 80000 }),",
+      "log.ev(\"compaction/start\", { step: 2, covered: { first_seq: 1, last_seq: 5 }, trigger: \"threshold\", projected_tokens: 74000, reserved: { model_calls: 6, tokens: 70000 } }, 400);",
+      "\"| `tokens` | tokens | after each response |\",",
+      "program: program(\"writer\", { model_calls: 6, tokens: 60000 }),",
+      "version: 1,",
+      "budget: { model_calls: 30, tokens: 300000, max_episodes: 6 },"
+    ]
+  },
+  "view/fixtures/overlap-child.jsonl": {
+    "added": [
+      "{\"seq\":6,\"time\":1730000006430,\"type\":\"compaction/start\",\"data\":{\"step\":2,\"covered\":{\"first_seq\":1,\"last_seq\":5},\"trigger\":\"threshold\",\"projected_tokens\":74000,\"reserved\":{\"model_calls\":6,\"input_tokens\":56000,\"output_tokens\":14000}}}"
+    ],
+    "removed": [
+      "{\"seq\":6,\"time\":1730000006430,\"type\":\"compaction/start\",\"data\":{\"step\":2,\"covered\":{\"first_seq\":1,\"last_seq\":5},\"trigger\":\"threshold\",\"projected_tokens\":74000,\"reserved\":{\"model_calls\":6,\"tokens\":70000}}}"
+    ]
+  },
+  "view/fixtures/overlap-parent.jsonl": {
+    "added": [
+      "{\"seq\":5,\"time\":1730000001940,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_over_child\",\"reserved\":{\"model_calls\":8,\"input_tokens\":64000,\"output_tokens\":16000}}}",
+      "{\"seq\":10,\"time\":1730000004640,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_rich\",\"reserved\":{\"model_calls\":6,\"input_tokens\":48000,\"output_tokens\":12000}}}",
+      "{\"seq\":13,\"time\":1730000006940,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_rich\",\"spent\":{\"model_calls\":2,\"input_tokens\":2200,\"output_tokens\":429}}}",
+      "{\"seq\":16,\"time\":1730000010760,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_over_child\",\"spent\":{\"model_calls\":3,\"input_tokens\":9000,\"output_tokens\":100}}}"
+    ],
+    "removed": [
+      "{\"seq\":5,\"time\":1730000001940,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_over_child\",\"reserved\":{\"model_calls\":8,\"tokens\":80000}}}",
+      "{\"seq\":10,\"time\":1730000004640,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_rich\",\"reserved\":{\"model_calls\":6,\"tokens\":60000}}}",
+      "{\"seq\":13,\"time\":1730000006940,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_rich\",\"spent\":{\"model_calls\":2,\"tokens\":2629}}}",
+      "{\"seq\":16,\"time\":1730000010760,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_over_child\",\"spent\":{\"model_calls\":3,\"tokens\":9100}}}"
+    ]
+  },
+  "view/fixtures/root.jsonl": {
+    "added": [
+      "{\"seq\":20,\"time\":1724200000890,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_child\",\"reserved\":{\"model_calls\":3,\"input_tokens\":16000,\"output_tokens\":4000}}}",
+      "{\"seq\":28,\"time\":1724200003570,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_child\",\"spent\":{\"model_calls\":2,\"input_tokens\":1300,\"output_tokens\":40}}}"
+    ],
+    "removed": [
+      "{\"seq\":20,\"time\":1724200000890,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_child\",\"reserved\":{\"model_calls\":3,\"tokens\":20000}}}",
+      "{\"seq\":28,\"time\":1724200003570,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_child\",\"spent\":{\"model_calls\":2,\"tokens\":1340}}}"
+    ]
+  },
+  "view/fixtures/workflow-apply-1.jsonl": {
+    "added": [
+      "{\"seq\":4,\"time\":1787424240527,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_read_1\",\"name\":\"read\"}}}",
+      "{\"seq\":5,\"time\":1787424240527,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_delta\",\"id\":\"tc_read_1\",\"delta\":\"{\\\"path\\\": \\\"src/collate.py\\\"}\"}}}",
+      "{\"seq\":6,\"time\":1787424240527,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_read_1\"}}}",
+      "{\"seq\":7,\"time\":1787424240527,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":3100,\"output\":74,\"cache_read\":0}}}}",
+      "{\"seq\":8,\"time\":1787424240527,\"type\":\"assistant/message\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"text\":\"\",\"tool_calls\":[{\"id\":\"tc_read_1\",\"name\":\"read\",\"args\":{\"path\":\"src/collate.py\"}}],\"stop\":\"tool\",\"usage\":{\"input\":3100,\"output\":74,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":11,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"Indexed \"}}}",
+      "{\"seq\":12,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"the \"}}}",
+      "{\"seq\":13,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"manifest \"}}}",
+      "{\"seq\":14,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"by \"}}}",
+      "{\"seq\":15,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"key \"}}}",
+      "{\"seq\":16,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"so \"}}}",
+      "{\"seq\":17,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"each \"}}}",
+      "{\"seq\":18,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"row \"}}}",
+      "{\"seq\":19,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"is \"}}}",
+      "{\"seq\":20,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"looked \"}}}",
+      "{\"seq\":21,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"up \"}}}",
+      "{\"seq\":22,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"once, \"}}}",
+      "{\"seq\":23,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"and \"}}}",
+      "{\"seq\":24,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"removed \"}}}",
+      "{\"seq\":25,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"the \"}}}",
+      "{\"seq\":26,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":27,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"comment. \"}}}",
+      "{\"seq\":28,\"time\":1787424240548,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"done\",\"stop\":\"end\",\"usage\":{\"input\":4260,\"output\":210,\"cache_read\":0}}}}",
+      "{\"seq\":29,\"time\":1787424240548,\"type\":\"assistant/message\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"text\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \",\"tool_calls\":[],\"stop\":\"end\",\"usage\":{\"input\":4260,\"output\":210,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":30,\"time\":1787424240548,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \"}}}"
+    ],
+    "removed": [
+      "{\"seq\":4,\"time\":1787342616957,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_read_1\",\"name\":\"read\"}}}",
+      "{\"seq\":5,\"time\":1787342616957,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_delta\",\"id\":\"tc_read_1\",\"delta\":\"{\\\"path\\\": \\\"src/collate.py\\\"}\"}}}",
+      "{\"seq\":6,\"time\":1787342616957,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_read_1\"}}}",
+      "{\"seq\":7,\"time\":1787342616957,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":3100,\"output\":74,\"cache_read\":0}}}}",
+      "{\"seq\":8,\"time\":1787342616957,\"type\":\"assistant/message\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"text\":\"\",\"tool_calls\":[{\"id\":\"tc_read_1\",\"name\":\"read\",\"args\":{\"path\":\"src/collate.py\"}}],\"stop\":\"tool\",\"usage\":{\"input\":3100,\"output\":74,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":11,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"Indexed \"}}}",
+      "{\"seq\":12,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"the \"}}}",
+      "{\"seq\":13,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"manifest \"}}}",
+      "{\"seq\":14,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"by \"}}}",
+      "{\"seq\":15,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"key \"}}}",
+      "{\"seq\":16,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"so \"}}}",
+      "{\"seq\":17,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"each \"}}}",
+      "{\"seq\":18,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"row \"}}}",
+      "{\"seq\":19,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"is \"}}}",
+      "{\"seq\":20,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"looked \"}}}",
+      "{\"seq\":21,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"up \"}}}",
+      "{\"seq\":22,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"once, \"}}}",
+      "{\"seq\":23,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"and \"}}}",
+      "{\"seq\":24,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"removed \"}}}",
+      "{\"seq\":25,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"the \"}}}",
+      "{\"seq\":26,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":27,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"text\",\"delta\":\"comment. \"}}}",
+      "{\"seq\":28,\"time\":1787342616978,\"type\":\"assistant/chunk\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"chunk\":{\"kind\":\"done\",\"stop\":\"end\",\"usage\":{\"input\":4260,\"output\":210,\"cache_read\":0}}}}",
+      "{\"seq\":29,\"time\":1787342616978,\"type\":\"assistant/message\",\"data\":{\"step\":2,\"request_id\":\"rq_0002\",\"text\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \",\"tool_calls\":[],\"stop\":\"end\",\"usage\":{\"input\":4260,\"output\":210,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":30,\"time\":1787342616978,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \"}}}"
+    ]
+  },
+  "view/fixtures/workflow-propose-1.jsonl": {
+    "added": [
+      "{\"seq\":4,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"The \"}}}",
+      "{\"seq\":5,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"survey \"}}}",
+      "{\"seq\":6,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"names \"}}}",
+      "{\"seq\":7,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"one \"}}}",
+      "{\"seq\":8,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":9,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"that \"}}}",
+      "{\"seq\":10,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"a \"}}}",
+      "{\"seq\":11,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"local \"}}}",
+      "{\"seq\":12,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"change \"}}}",
+      "{\"seq\":13,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"resolves. \"}}}",
+      "{\"seq\":14,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_return_1\",\"name\":\"return\"}}}",
+      "{\"seq\":16,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_return_1\"}}}",
+      "{\"seq\":17,\"time\":1787424240418,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":3300,\"output\":180,\"cache_read\":0}}}}",
+      "{\"seq\":20,\"time\":1787424240418,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"widen\",\"change\":\"widen the survey before choosing\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}"
+    ],
+    "removed": [
+      "{\"seq\":4,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"The \"}}}",
+      "{\"seq\":5,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"survey \"}}}",
+      "{\"seq\":6,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"names \"}}}",
+      "{\"seq\":7,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"one \"}}}",
+      "{\"seq\":8,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":9,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"that \"}}}",
+      "{\"seq\":10,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"a \"}}}",
+      "{\"seq\":11,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"local \"}}}",
+      "{\"seq\":12,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"change \"}}}",
+      "{\"seq\":13,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"resolves. \"}}}",
+      "{\"seq\":14,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_return_1\",\"name\":\"return\"}}}",
+      "{\"seq\":16,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_return_1\"}}}",
+      "{\"seq\":17,\"time\":1787342616858,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":3300,\"output\":180,\"cache_read\":0}}}}",
+      "{\"seq\":20,\"time\":1787342616858,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"widen\",\"change\":\"widen the survey before choosing\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}"
+    ]
+  },
+  "view/fixtures/workflow-propose-2.jsonl": {
+    "added": [
+      "{\"seq\":4,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"The \"}}}",
+      "{\"seq\":5,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"survey \"}}}",
+      "{\"seq\":6,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"names \"}}}",
+      "{\"seq\":7,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"one \"}}}",
+      "{\"seq\":8,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":9,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"that \"}}}",
+      "{\"seq\":10,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"a \"}}}",
+      "{\"seq\":11,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"local \"}}}",
+      "{\"seq\":12,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"change \"}}}",
+      "{\"seq\":13,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"resolves. \"}}}",
+      "{\"seq\":14,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_return_2\",\"name\":\"return\"}}}",
+      "{\"seq\":16,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_return_2\"}}}",
+      "{\"seq\":17,\"time\":1787424240474,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":4200,\"output\":180,\"cache_read\":0}}}}",
+      "{\"seq\":20,\"time\":1787424240474,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"apply\",\"change\":\"index the manifest by key and look each row up once\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}"
+    ],
+    "removed": [
+      "{\"seq\":4,\"time\":1787342616907,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"The \"}}}",
+      "{\"seq\":5,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"survey \"}}}",
+      "{\"seq\":6,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"names \"}}}",
+      "{\"seq\":7,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"one \"}}}",
+      "{\"seq\":8,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"TODO \"}}}",
+      "{\"seq\":9,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"that \"}}}",
+      "{\"seq\":10,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"a \"}}}",
+      "{\"seq\":11,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"local \"}}}",
+      "{\"seq\":12,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"change \"}}}",
+      "{\"seq\":13,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"text\",\"delta\":\"resolves. \"}}}",
+      "{\"seq\":14,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_return_2\",\"name\":\"return\"}}}",
+      "{\"seq\":16,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_return_2\"}}}",
+      "{\"seq\":17,\"time\":1787342616908,\"type\":\"assistant/chunk\",\"data\":{\"step\":1,\"request_id\":\"rq_0001\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":4200,\"output\":180,\"cache_read\":0}}}}",
+      "{\"seq\":20,\"time\":1787342616908,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"apply\",\"change\":\"index the manifest by key and look each row up once\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}"
+    ]
+  },
+  "view/fixtures/workflow.jsonl": {
+    "added": [
+      "{\"seq\":1,\"time\":1787424240367,\"type\":\"inbox/item\",\"data\":{\"source\":\"task\",\"content\":[{\"type\":\"text\",\"text\":\"Resolve one TODO comment in src.\"}],\"from\":null,\"message_id\":null}}",
+      "{\"seq\":2,\"time\":1787424240367,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"manifest\",\"fire\":1,\"inputs\":[]}}",
+      "{\"seq\":4,\"time\":1787424240367,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"survey\",\"fire\":1,\"inputs\":[3]}}",
+      "{\"seq\":6,\"time\":1787424240368,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_8936e375\",\"reserved\":{\"model_calls\":8,\"input_tokens\":240000,\"output_tokens\":60000,\"episodes\":1}}}",
+      "{\"seq\":7,\"time\":1787424240368,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_8936e375\",\"program\":\"propose\",\"context\":\"fresh\",\"call_id\":\"propose#1\"}}",
+      "{\"seq\":8,\"time\":1787424240368,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"propose\",\"fire\":1,\"inputs\":[1,5],\"child_id\":\"ep_8936e375\"}}",
+      "{\"seq\":9,\"time\":1787424240397,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_8936e375\",\"name\":\"ep_8936e375\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":11,\"time\":1787424240419,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_8936e375\",\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"widen\",\"change\":\"widen the survey before choosing\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}",
+      "{\"seq\":12,\"time\":1787424240419,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_8936e375\",\"spent\":{\"model_calls\":1,\"input_tokens\":3300,\"output_tokens\":180,\"seconds\":0,\"episodes\":1}}}",
+      "{\"seq\":14,\"time\":1787424240419,\"type\":\"workflow/branch\",\"data\":{\"node\":\"propose\",\"fire\":1,\"label\":\"widen\",\"successors\":[\"survey\"]}}",
+      "{\"seq\":15,\"time\":1787424240419,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"survey\",\"fire\":2,\"inputs\":[3]}}",
+      "{\"seq\":17,\"time\":1787424240420,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_b0f26af9\",\"reserved\":{\"model_calls\":8,\"input_tokens\":236700,\"output_tokens\":59820,\"episodes\":1}}}",
+      "{\"seq\":18,\"time\":1787424240420,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_b0f26af9\",\"program\":\"propose\",\"context\":\"fresh\",\"call_id\":\"propose#2\"}}",
+      "{\"seq\":19,\"time\":1787424240420,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"propose\",\"fire\":2,\"inputs\":[1,16],\"child_id\":\"ep_b0f26af9\"}}",
+      "{\"seq\":20,\"time\":1787424240453,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_b0f26af9\",\"name\":\"ep_b0f26af9\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":22,\"time\":1787424240474,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_b0f26af9\",\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"apply\",\"change\":\"index the manifest by key and look each row up once\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}",
+      "{\"seq\":23,\"time\":1787424240474,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_b0f26af9\",\"spent\":{\"model_calls\":1,\"input_tokens\":4200,\"output_tokens\":180,\"seconds\":0,\"episodes\":1}}}",
+      "{\"seq\":25,\"time\":1787424240475,\"type\":\"workflow/branch\",\"data\":{\"node\":\"propose\",\"fire\":2,\"label\":\"apply\",\"successors\":[\"apply\"]}}",
+      "{\"seq\":26,\"time\":1787424240475,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_d82415c7\",\"reserved\":{\"model_calls\":12,\"input_tokens\":232500,\"output_tokens\":59640,\"episodes\":1}}}",
+      "{\"seq\":27,\"time\":1787424240475,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_d82415c7\",\"program\":\"apply\",\"context\":\"fresh\",\"call_id\":\"apply#1\"}}",
+      "{\"seq\":28,\"time\":1787424240475,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"apply\",\"fire\":1,\"inputs\":[24],\"child_id\":\"ep_d82415c7\"}}",
+      "{\"seq\":29,\"time\":1787424240506,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_d82415c7\",\"name\":\"ep_d82415c7\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":30,\"time\":1787424240548,\"type\":\"inbox/item\",\"data\":{\"source\":\"child\",\"content\":[{\"type\":\"text\",\"text\":\"ep_d82415c7 (ep_d82415c7) ended: completed with \\\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \\\"\"}],\"from\":\"ep_d82415c7\",\"message_id\":null}}",
+      "{\"seq\":31,\"time\":1787424240549,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_d82415c7\",\"outcome\":{\"kind\":\"completed\",\"value\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \"}}}",
+      "{\"seq\":32,\"time\":1787424240549,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_d82415c7\",\"spent\":{\"model_calls\":2,\"input_tokens\":7360,\"output_tokens\":284,\"seconds\":0,\"episodes\":1}}}",
+      "{\"seq\":34,\"time\":1787424240549,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"inputs\":[33]}}",
+      "{\"seq\":35,\"time\":1787424240570,\"type\":\"workflow/node-end\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"value\":null,\"rendered\":\"\",\"error\":\"\\n[stderr]\\nsrc/collate.py:41: undefined name 'index'\\n\\n[exit code 1]\",\"duration_ms\":20}}",
+      "{\"seq\":39,\"time\":1787424240590,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_recover_1\",\"name\":\"recover\"}}}",
+      "{\"seq\":40,\"time\":1787424240590,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_delta\",\"id\":\"tc_recover_1\",\"delta\":\"{\\\"action\\\": \\\"retry\\\", \\\"node\\\": \\\"verify_change\\\"}\"}}}",
+      "{\"seq\":41,\"time\":1787424240590,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_recover_1\"}}}",
+      "{\"seq\":42,\"time\":1787424240590,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":1180,\"output\":96,\"cache_read\":0}}}}",
+      "{\"seq\":43,\"time\":1787424240590,\"type\":\"assistant/message\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"text\":\"\",\"tool_calls\":[{\"id\":\"tc_recover_1\",\"name\":\"recover\",\"args\":{\"action\":\"retry\",\"node\":\"verify_change\"}}],\"stop\":\"tool\",\"usage\":{\"input\":1180,\"output\":96,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":44,\"time\":1787424240591,\"type\":\"tool/result\",\"data\":{\"step\":8,\"call_id\":\"tc_recover_1\",\"name\":\"recover\",\"value\":{\"action\":\"retry\",\"node\":\"verify_change\"},\"rendered\":\"Applied.\",\"is_error\":false,\"spill\":null,\"duration_ms\":0,\"synthetic\":false}}",
+      "{\"seq\":45,\"time\":1787424240591,\"type\":\"workflow/recovery\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"cause\":\"tool-error\",\"action\":\"retry\",\"target\":\"verify_change\",\"intervention\":1}}",
+      "{\"seq\":46,\"time\":1787424240591,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"verify_change\",\"fire\":2,\"inputs\":[33]}}",
+      "{\"seq\":47,\"time\":1787424240611,\"type\":\"workflow/node-end\",\"data\":{\"node\":\"verify_change\",\"fire\":2,\"value\":{\"duration_ms\":20,\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"checked src: no findings\\n\",\"timed_out\":false},\"rendered\":\"checked src: no findings\\n\\n[exit code 0]\",\"duration_ms\":20}}",
+      "{\"seq\":48,\"time\":1787424240611,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"duration_ms\":20,\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"checked src: no findings\\n\",\"timed_out\":false}}}}"
+    ],
+    "removed": [
+      "{\"seq\":1,\"time\":1787342616810,\"type\":\"inbox/item\",\"data\":{\"source\":\"task\",\"content\":[{\"type\":\"text\",\"text\":\"Resolve one TODO comment in src.\"}],\"from\":null,\"message_id\":null}}",
+      "{\"seq\":2,\"time\":1787342616810,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"manifest\",\"fire\":1,\"inputs\":[]}}",
+      "{\"seq\":4,\"time\":1787342616811,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"survey\",\"fire\":1,\"inputs\":[3]}}",
+      "{\"seq\":6,\"time\":1787342616811,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_a2933c09\",\"reserved\":{\"model_calls\":8,\"tokens\":300000}}}",
+      "{\"seq\":7,\"time\":1787342616811,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_a2933c09\",\"program\":\"propose\",\"context\":\"fresh\",\"call_id\":\"propose#1\"}}",
+      "{\"seq\":8,\"time\":1787342616811,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"propose\",\"fire\":1,\"inputs\":[1,5],\"child_id\":\"ep_a2933c09\"}}",
+      "{\"seq\":9,\"time\":1787342616837,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_a2933c09\",\"name\":\"ep_a2933c09\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":11,\"time\":1787342616859,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_a2933c09\",\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"widen\",\"change\":\"widen the survey before choosing\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}",
+      "{\"seq\":12,\"time\":1787342616859,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_a2933c09\",\"spent\":{\"model_calls\":1,\"tokens\":3480,\"seconds\":0}}}",
+      "{\"seq\":14,\"time\":1787342616859,\"type\":\"workflow/branch\",\"data\":{\"node\":\"propose\",\"fire\":1,\"label\":\"widen\",\"successors\":[\"survey\"]}}",
+      "{\"seq\":15,\"time\":1787342616859,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"survey\",\"fire\":2,\"inputs\":[3]}}",
+      "{\"seq\":17,\"time\":1787342616860,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_83b6a50a\",\"reserved\":{\"model_calls\":8,\"tokens\":296520}}}",
+      "{\"seq\":18,\"time\":1787342616860,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_83b6a50a\",\"program\":\"propose\",\"context\":\"fresh\",\"call_id\":\"propose#2\"}}",
+      "{\"seq\":19,\"time\":1787342616860,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"propose\",\"fire\":2,\"inputs\":[1,16],\"child_id\":\"ep_83b6a50a\"}}",
+      "{\"seq\":20,\"time\":1787342616887,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_83b6a50a\",\"name\":\"ep_83b6a50a\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":22,\"time\":1787342616908,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_83b6a50a\",\"outcome\":{\"kind\":\"completed\",\"value\":{\"branch\":\"apply\",\"change\":\"index the manifest by key and look each row up once\",\"file\":\"src/collate.py\",\"todo\":\"TODO: the pass over the manifest is quadratic\"}}}}",
+      "{\"seq\":23,\"time\":1787342616908,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_83b6a50a\",\"spent\":{\"model_calls\":1,\"tokens\":4380,\"seconds\":0}}}",
+      "{\"seq\":25,\"time\":1787342616908,\"type\":\"workflow/branch\",\"data\":{\"node\":\"propose\",\"fire\":2,\"label\":\"apply\",\"successors\":[\"apply\"]}}",
+      "{\"seq\":26,\"time\":1787342616908,\"type\":\"budget/reserve\",\"data\":{\"child_id\":\"ep_dd6f77ed\",\"reserved\":{\"model_calls\":12,\"tokens\":292140}}}",
+      "{\"seq\":27,\"time\":1787342616909,\"type\":\"spawn/start\",\"data\":{\"child_id\":\"ep_dd6f77ed\",\"program\":\"apply\",\"context\":\"fresh\",\"call_id\":\"apply#1\"}}",
+      "{\"seq\":28,\"time\":1787342616909,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"apply\",\"fire\":1,\"inputs\":[24],\"child_id\":\"ep_dd6f77ed\"}}",
+      "{\"seq\":29,\"time\":1787342616936,\"type\":\"team/roster\",\"data\":{\"member_id\":\"ep_dd6f77ed\",\"name\":\"ep_dd6f77ed\",\"description\":\"\",\"phase\":\"active\"}}",
+      "{\"seq\":30,\"time\":1787342616978,\"type\":\"inbox/item\",\"data\":{\"source\":\"child\",\"content\":[{\"type\":\"text\",\"text\":\"ep_dd6f77ed (ep_dd6f77ed) ended: completed with \\\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \\\"\"}],\"from\":\"ep_dd6f77ed\",\"message_id\":null}}",
+      "{\"seq\":31,\"time\":1787342616979,\"type\":\"spawn/end\",\"data\":{\"child_id\":\"ep_dd6f77ed\",\"outcome\":{\"kind\":\"completed\",\"value\":\"Indexed the manifest by key so each row is looked up once, and removed the TODO comment. \"}}}",
+      "{\"seq\":33,\"time\":1787342616979,\"type\":\"budget/release\",\"data\":{\"child_id\":\"ep_dd6f77ed\",\"spent\":{\"model_calls\":2,\"tokens\":7644,\"seconds\":0}}}",
+      "{\"seq\":34,\"time\":1787342616979,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"inputs\":[32]}}",
+      "{\"seq\":35,\"time\":1787342616990,\"type\":\"workflow/node-end\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"value\":null,\"rendered\":\"\",\"error\":\"\\n[stderr]\\nsrc/collate.py:41: undefined name 'index'\\n\\n[exit code 1]\",\"duration_ms\":10}}",
+      "{\"seq\":39,\"time\":1787342617010,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_start\",\"id\":\"tc_recover_1\",\"name\":\"recover\"}}}",
+      "{\"seq\":40,\"time\":1787342617010,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_delta\",\"id\":\"tc_recover_1\",\"delta\":\"{\\\"action\\\": \\\"retry\\\", \\\"node\\\": \\\"verify_change\\\"}\"}}}",
+      "{\"seq\":41,\"time\":1787342617010,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"tool_call_end\",\"id\":\"tc_recover_1\"}}}",
+      "{\"seq\":42,\"time\":1787342617010,\"type\":\"assistant/chunk\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"chunk\":{\"kind\":\"done\",\"stop\":\"tool\",\"usage\":{\"input\":1180,\"output\":96,\"cache_read\":0}}}}",
+      "{\"seq\":43,\"time\":1787342617010,\"type\":\"assistant/message\",\"data\":{\"step\":8,\"request_id\":\"rq_0008\",\"text\":\"\",\"tool_calls\":[{\"id\":\"tc_recover_1\",\"name\":\"recover\",\"args\":{\"action\":\"retry\",\"node\":\"verify_change\"}}],\"stop\":\"tool\",\"usage\":{\"input\":1180,\"output\":96,\"cache_read\":0},\"interrupted\":false}}",
+      "{\"seq\":44,\"time\":1787342617010,\"type\":\"tool/result\",\"data\":{\"step\":8,\"call_id\":\"tc_recover_1\",\"name\":\"recover\",\"value\":{\"action\":\"retry\",\"node\":\"verify_change\"},\"rendered\":\"Applied.\",\"is_error\":false,\"spill\":null,\"duration_ms\":0,\"synthetic\":false}}",
+      "{\"seq\":45,\"time\":1787342617011,\"type\":\"workflow/recovery\",\"data\":{\"node\":\"verify_change\",\"fire\":1,\"cause\":\"tool-error\",\"action\":\"retry\",\"target\":\"verify_change\",\"intervention\":1}}",
+      "{\"seq\":46,\"time\":1787342617011,\"type\":\"workflow/node-start\",\"data\":{\"node\":\"verify_change\",\"fire\":2,\"inputs\":[32]}}",
+      "{\"seq\":47,\"time\":1787342617021,\"type\":\"workflow/node-end\",\"data\":{\"node\":\"verify_change\",\"fire\":2,\"value\":{\"duration_ms\":10,\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"checked src: no findings\\n\",\"timed_out\":false},\"rendered\":\"checked src: no findings\\n\\n[exit code 0]\",\"duration_ms\":10}}",
+      "{\"seq\":48,\"time\":1787342617021,\"type\":\"episode/end\",\"data\":{\"outcome\":{\"kind\":\"completed\",\"value\":{\"duration_ms\":10,\"exit_code\":0,\"stderr\":\"\",\"stdout\":\"checked src: no findings\\n\",\"timed_out\":false}}}}"
+    ]
+  },
+  "view/src/fold.ts": {
+    "added": [
+      "budget: { modelCalls: number | null; inputTokens: number | null; outputTokens: number | null };",
+      "budget: { modelCalls: null, inputTokens: null, outputTokens: null },",
+      "`${str(data.child_id)} \u00b7 ${num(r.model_calls)} calls \u00b7 ${num(r.input_tokens)} input \u00b7 ${num(r.output_tokens)} output`,",
+      "`${str(data.child_id)} \u00b7 spent ${num(r.model_calls)} calls \u00b7 ${num(r.input_tokens)} input \u00b7 ${num(r.output_tokens)} output`,",
+      "inputTokens: typeof budget.input_tokens === \"number\" ? budget.input_tokens : null,",
+      "outputTokens: typeof budget.output_tokens === \"number\" ? budget.output_tokens : null,"
+    ],
+    "removed": [
+      "budget: { modelCalls: number | null; tokens: number | null };",
+      "budget: { modelCalls: null, tokens: null },",
+      "`${str(data.child_id)} \u00b7 ${num(r.model_calls)} calls \u00b7 ${num(r.tokens)} tokens`,",
+      "`${str(data.child_id)} \u00b7 spent ${num(r.model_calls)} calls \u00b7 ${num(r.tokens)} tokens`,",
+      "tokens: typeof budget.tokens === \"number\" ? budget.tokens : null,"
+    ]
+  },
+  "view/src/messages.ts": {
+    "added": [
+      "`budget_remaining: model_calls ${amount(budget.model_calls)}, input_tokens ${amount(",
+      "budget.input_tokens,",
+      ")}, output_tokens ${amount(budget.output_tokens)}, seconds ${amount(budget.seconds)}`,"
+    ],
+    "removed": [
+      "`budget_remaining: model_calls ${amount(budget.model_calls)}, tokens ${amount(budget.tokens)}, seconds ${amount(",
+      "budget.seconds,",
+      ")}`,"
+    ]
+  },
+  "view/src/render/statistics.ts": {
+    "added": [
+      "label.textContent = `${fmtInt(curve.budget.inputTokens)} input-token budget`;",
+      "const share = curve.budget",
+      "? ` and reaches ${percent(last.input / curve.budget.inputTokens)} of the declared input-token budget`",
+      ": \"\";"
+    ],
+    "removed": [
+      "label.textContent = `${fmtInt(curve.budget.tokens)} token budget`;",
+      "const share = curve.budget ? ` and reaches ${percent(last.input / curve.budget.tokens)} of the declared budget` : \"\";"
+    ]
+  },
+  "view/src/render/tree.ts": {
+    "added": [
+      "if (s.usage.input > 0) {",
+      "\"input tokens\",",
+      "ratio(s.usage.input, s.budget.inputTokens, \"tokens\"),",
+      "h(\"div\", { class: \"sub\" }, `cache read ${fmtInt(s.usage.cacheRead)}`),",
+      "if (s.usage.output > 0) {",
+      "rows.push([\"output tokens\", ratio(s.usage.output, s.budget.outputTokens, \"tokens\")]);"
+    ],
+    "removed": [
+      "const tokensUsed = s.usage.input + s.usage.output;",
+      "if (tokensUsed > 0) {",
+      "\"tokens\",",
+      "ratio(tokensUsed, s.budget.tokens, \"tokens\"),",
+      "h(",
+      "{ class: \"sub\" },",
+      "parts([`in ${fmtInt(s.usage.input)}`, `out ${fmtInt(s.usage.output)}`, `cache read ${fmtInt(s.usage.cacheRead)}`]),",
+      "),"
+    ]
+  },
+  "view/src/statistics.ts": {
+    "added": [
+      "[\"input_tokens\", \"input tokens\", \"tokens\", counts.input!, \"input over every `assistant/message`\"],",
+      "[\"output_tokens\", \"output tokens\", \"tokens\", counts.output!, \"output over every `assistant/message`\"],",
+      "input: input ?? 0,",
+      "output: output ?? 0,",
+      "/** The declared input-token limit and its y, absent when none is declared. */",
+      "budget: { inputTokens: number; y: number } | null;",
+      "const declared = stats.limits.find((l) => l.key === \"input_tokens\");",
+      "budget: declared ? { inputTokens: declared.limit, y: y(declared.limit) } : null,"
+    ],
+    "removed": [
+      "[\"tokens\", \"tokens\", \"tokens\", counts.tokens!, \"input plus output over every `assistant/message`\"],",
+      "tokens: (input ?? 0) + (output ?? 0),",
+      "/** The declared token limit and its y, absent when none is declared. */",
+      "budget: { tokens: number; y: number } | null;",
+      "const declared = stats.limits.find((l) => l.key === \"tokens\");",
+      "budget: declared ? { tokens: declared.limit, y: y(declared.limit) } : null,"
+    ]
+  },
+  "view/src/types.ts": {
+    "added": [
+      "input_tokens?: number;",
+      "output_tokens?: number;"
+    ],
+    "removed": [
+      "tokens?: number;"
+    ]
+  },
+  "view/test/fold.test.ts": {
+    "added": [
+      "assert.deepEqual(s.budget, { modelCalls: 10, inputTokens: 80000, outputTokens: 20000 });",
+      "const reported = fixture(\"workflow.jsonl\")",
+      ".filter((event) => event.type === \"workflow/node-end\")",
+      ".map((event) => Number((event.data as Record<string, unknown>).duration_ms));",
+      "assert.deepEqual(s.firings.map((f) => f.durationMs), reported, \"the length each node reported\");"
+    ],
+    "removed": [
+      "assert.deepEqual(s.budget, { modelCalls: 10, tokens: 100000 });",
+      "assert.deepEqual(s.firings.map((f) => f.durationMs), [0, 0, 47, 0, 48, 70, 10, 10], \"the length each node reported\");"
+    ]
+  },
+  "view/test/statistics.test.ts": {
+    "added": [
+      "assert.deepEqual(out.limits.map((l) => l.key), [\"model_calls\", \"input_tokens\", \"output_tokens\"]);",
+      "const input = out.limits.find((l) => l.key === \"input_tokens\")!;",
+      "const output = out.limits.find((l) => l.key === \"output_tokens\")!;",
+      "assert.equal(input.limit, 80000);",
+      "assert.equal(input.used, 5540);",
+      "assert.equal(output.limit, 20000);",
+      "assert.equal(output.used, 136);",
+      "assert.equal(curve.budget!.inputTokens, 80000);"
+    ],
+    "removed": [
+      "assert.deepEqual(out.limits.map((l) => l.key), [\"model_calls\", \"tokens\"]);",
+      "const tokens = out.limits.find((l) => l.key === \"tokens\")!;",
+      "assert.equal(tokens.limit, 100000);",
+      "assert.equal(tokens.used, 5540 + 136);",
+      "assert.equal(curve.budget!.tokens, 100000);"
+    ]
+  }
+}

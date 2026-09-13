@@ -1,8 +1,8 @@
 {
   "name": "bounded-result-names-its-bound",
   "family": "teams",
-  "class_name": "fan-out",
-  "text": "Every built-in coding tool in crates/code cuts one result short when a bound of the crate is reached: read stops at the lines, entries, and characters one call shows, grep stops at the matches and result lines it collects, edit cuts the diff it renders, bash and session cut the output they keep, and compose_tools refuses a source above the source bound. A result the crate cut names the bound that cut it under `bound` in the canonical value, and a complete result leaves that field null.\n\nThe names come from one table, `BOUNDS` in crates/code/src/lib.rs, which holds every bound name beside what the bound holds, and `is_bound` reports whether a name stands in that table. The six names are `read.window`, `grep.results`, `edit.diff`, `bash.output`, `session.output`, and `compose_tools.source`. A result carries no name the table lacks.\n\nThe change applies to 6 units: crates/code/src/read.rs, crates/code/src/grep.rs, crates/code/src/edit.rs, crates/code/src/bash.rs, crates/code/src/session.rs, crates/code/src/python.rs. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: the tests of foe-code, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "class_name": "coherent",
+  "text": "Every built-in coding tool in crates/code cuts one result short when a bound of the crate is reached: read stops at the lines, entries, and characters one call shows, grep stops at the matches and result lines it collects, edit cuts the diff it renders, bash and session cut the output they keep, and compose_tools refuses a source above the source bound. A result the crate cut names the bound that cut it under `bound` in the canonical value, and a complete result leaves that field null.\n\nThe names come from one table, `BOUNDS` in crates/code/src/lib.rs, which holds every bound name beside what the bound holds, and `is_bound` reports whether a name stands in that table. The six names are `read.window`, `grep.results`, `edit.diff`, `bash.output`, `session.output`, and `compose_tools.source`. A result carries no name the table lacks.\n\nchecks/run.sh runs the check the whole change is judged on: the tests of foe-code, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
   "correct_statuses": [
     "completed"
   ],
@@ -19,9 +19,14 @@
     "checks/run.sh"
   ],
   "metadata": {
+    "division": {
+      "changed_directory": "crates/code/src",
+      "separable": false
+    },
     "source": {
       "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
-      "subject": "Name the bound that cut a built-in coding tool's result"
+      "subject": "Name the bound that cut a built-in coding tool's result",
+      "repo": "/home/sunil/git/foe"
     },
     "crate": "crates/code",
     "package": "foe-code",

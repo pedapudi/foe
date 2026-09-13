@@ -82,9 +82,9 @@ CLASS_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "non-terminating": "the task's checks never finish, so an agent that waits for them never reports",
     },
     "teams": {
-        "fan-out": "one change applied to many similar units of the tree",
+        "fan-out": "one change applied to many similar units of the tree, each in a directory the others do not write",
         "survey": "a question over the whole tree whose answer a script computes",
-        "coherent": "one feature whose parts depend on each other, so dividing it among workers does not help",
+        "coherent": "one change that divides into no such units, so one agent doing the work alone is the answer",
     },
 }
 

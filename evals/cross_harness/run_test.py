@@ -936,6 +936,15 @@ class Pieces(unittest.TestCase):
             sequential = run.foe_document(run.arm_by_name("teams", "foe-sequential"), teams_task, workspace, check)
             self.assertEqual(sequential["name"], "teams-sequential")
             self.assertEqual(sequential["budget"]["max_concurrent"], 1)
+            # A task that states the shape its grade reads has it declared on
+            # the two nodes that can end the workflow.
+            items = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array"}}}
+            surveying = run.protocol.Task.from_dict({**teams_task.to_dict(), "class_name": "survey", "metadata": {"returns": items}})
+            stated = run.foe_document(run.arm_by_name("teams", "foe-configured"), surveying, workspace, check)
+            for name in ("integrate", "implement-alone"):
+                self.assertEqual(stated["workflow"]["nodes"][name]["model"]["done_when"]["returns"], items, name)
+            for name in ("integrate", "implement-alone"):
+                self.assertEqual(sequential["workflow"]["nodes"][name]["model"]["done_when"]["returns"], run.graphs.change_report(), name)
 
     def test_a_normalizer_failure_of_any_kind_is_a_fault_of_the_attempt(self) -> None:
         from unittest import mock

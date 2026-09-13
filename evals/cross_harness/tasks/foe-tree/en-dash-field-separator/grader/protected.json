@@ -56,7 +56,15 @@
     "grader/oracle/workspace/view/test/attribution.test.ts": "adf30feb6ffae7cd27af694e0672e86cd9a2793b4a58b26ef790c01a738b36c1",
     "grader/oracle/workspace/view/test/causality.test.ts": "4f366e3969aec3980f16b500f15c4432a8504c9bedd6e4e0f5415b1fe88a2ba1",
     "grader/oracle/workspace/view/test/fold.test.ts": "4cd11af2c3841477b4881f2587a598377e771054082120ef554615bbbeb3a031",
-    "grader/specification.json": "1309a9bf41d2ec461c267ad7f0ead64b41e6b8163c4eea214a5258d5c192356a",
+    "grader/specification.json": "d936f9913241d1ad6e2b7231f181838d5499bccfa9d6ac42a3185ff0271183cc",
+    "grader/tests/checks/units/docs.json": "efc32ad0ea362f04c0e896bb92c8ae9fa15070951918c7fc5ba93756248d22a5",
+    "grader/tests/checks/units/docs_test.py": "8b8aed49fcab27d5923f4bbd13c1d244c49a7265fbe21694c85c44962392bade",
+    "grader/tests/checks/units/examples.json": "5161dc3c84bcd572708d73211cebd0362070020b590728a0f8ca77f827963055",
+    "grader/tests/checks/units/examples_test.py": "f2dfbcd74f6130e7a98aeef05dd004e957fad7b0ce5e93db8940cc3cb9eb12de",
+    "grader/tests/checks/units/site.json": "61abf2851ee39762059e0d468615caa77a2f8d55a45a5ead7b45d2e24080f48d",
+    "grader/tests/checks/units/site_test.py": "5f47515ee85876a0e632d5505244a65e2fd831f0efccf385f2e43e33b5068e58",
+    "grader/tests/checks/units/view.json": "013874c68d45c64163363c0faf4e88e45027b94a82d6609c01b6c8bebc2429db",
+    "grader/tests/checks/units/view_test.py": "64c5dc56e774364fc9e89a23bb20fadf4d73785a7122ace656ccb9fb25c58043",
     "grader/tests/crates/code/src/bash_test.rs": "1997a3a55f3f85ebcbd0815d0f0080ed2bfcbe01eb89d01020b368ab584a5782",
     "grader/tests/crates/code/src/session_test.rs": "b7bef011f520f0b9e4725122e65c7cffce47aa175076107ef96898f08791f288",
     "grader/tests/crates/telemetry/src/extract_test.rs": "8852bb89eedfdf8fbef9c49af185be3a3dde7b4c0b9824ff5ad1e58635511bf8",
@@ -65,7 +73,7 @@
     "grader/tests/crates/view/src/terminal_test.rs": "f41d8d825c34c873434c28deccbba18a6783a51bf94de975c780996d903e01d7",
     "grader/tests/evals/terminal_bench/trajectory_diagnostics_test.py": "4c8523c363684ac16685a4fd419f9ce498effb97e50c2dd60dbe496c092662bf",
     "grader/workspace.patch": "405f3536bd10ed75e57f196f4f3b73af7ff8bcc8f9c659cd05817a4a18d06b5e",
-    "task.json": "61a88d3c9d5fd5d07c65ebec447cd7798e2f2bca336fd41c17d5266aee162633"
+    "task.json": "6f6f8079a66b87bc685f64f65acb015076724c63f74d2bc6ebb8076c0404661c"
   },
   "workspace": {
     "AGENTS.md": "910dcbcb529871d8e3167f31fa375f739f50e320e6f4501e6bbf3e623a298670",

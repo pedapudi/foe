@@ -1,0 +1,36 @@
+{
+  "examples/README.md": {
+    "added": [
+      "| `blocked` \u2013 `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |",
+      "| `blocked` \u2013 `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |"
+    ],
+    "removed": [
+      "| `blocked` \u00b7 `recovery-exhausted` | the provider failed every attempt the retry ceiling allowed | [recovery-exhausted](recovery-exhausted/) |",
+      "| `blocked` \u00b7 `verification-unsatisfiable` | the model reported the work finished and the declared verifier disagreed, repeatedly | [verification-unsatisfiable](verification-unsatisfiable/) |"
+    ]
+  },
+  "examples/budget-exhausted/README.md": {
+    "added": [
+      "its outcome row reads `exhausted \u2013 model_calls`."
+    ],
+    "removed": [
+      "its outcome row reads `exhausted \u00b7 model_calls`."
+    ]
+  },
+  "examples/recovery-exhausted/README.md": {
+    "added": [
+      "`blocked \u2013 recovery-exhausted`."
+    ],
+    "removed": [
+      "`blocked \u00b7 recovery-exhausted`."
+    ]
+  },
+  "examples/verification-unsatisfiable/README.md": {
+    "added": [
+      "`blocked \u2013 verification-unsatisfiable`."
+    ],
+    "removed": [
+      "`blocked \u00b7 verification-unsatisfiable`."
+    ]
+  }
+}

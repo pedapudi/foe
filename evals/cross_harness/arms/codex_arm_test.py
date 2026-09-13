@@ -158,6 +158,25 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(schema["properties"]["code"]["enum"], ["goal-unreachable", "ambiguous-task", "missing-capability", None])
         self.assertEqual(sorted(schema["required"]), ["code", "evidence", "status"])
 
+    def test_a_task_shape_is_merged_into_the_final_message_schema(self) -> None:
+        items = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array"}, "note": {"type": "string"}}}
+        schema = codex_arm.schema_for(items)
+        self.assertEqual(sorted(schema["properties"]), ["code", "evidence", "items", "note", "status"])
+        self.assertEqual(schema["required"], ["status", "code", "evidence", "items"])
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(codex_arm.schema_for(None), codex_arm.DEFAULT_SCHEMA)
+        # The run reads the outcome from the same message, so a shape may not rename its keys.
+        with self.assertRaises(ValueError) as caught:
+            codex_arm.schema_for({"type": "object", "properties": {"status": {"type": "string"}}})
+        self.assertIn("already carries as the reported outcome", str(caught.exception))
+        with self.assertRaises(ValueError):
+            codex_arm.schema_for({"type": "array"})
+
+    def test_the_spec_carries_the_schema_it_is_given(self) -> None:
+        items = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array"}}}
+        self.assertIn("items", self.spec(output_schema=codex_arm.schema_for(items)).schema["properties"])
+        self.assertEqual(self.spec().schema, codex_arm.DEFAULT_SCHEMA)
+
 
 class Reading(unittest.TestCase):
     def test_events_are_parsed_and_the_rest_reported(self) -> None:

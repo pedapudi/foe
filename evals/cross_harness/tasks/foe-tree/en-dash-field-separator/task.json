@@ -2,16 +2,16 @@
   "name": "en-dash-field-separator",
   "family": "teams",
   "class_name": "fan-out",
-  "text": "An en dash with a space on each side, ` \u2013 `, separates the fields of every heading, label, subject, and metadata line that the runtime, the terminal display, the browser viewer, the presentation decks, the landing page, and the documentation print; the middle dot `\u00b7` is not a field separator anywhere. A tool subject reads `cargo test -p parser \u2013 exit 0 in 1.50s`; a session line reads `session 2: postgres \u2013 alive`; the telemetry preview joins its heading and its totals with ` \u2013 `; the terminal display prints `lead \u2013 You`, `reviewer \u2013 Completed`, and `Final \u2013 Completed`; and the viewer's rendering, fixtures, and tests use the same character. The terminal display in crates/view names the separator in one constant, `FIELD`, and every heading it prints reads that constant.\n\nThe middle dot has three uses that are not separators: the first and last frame of the brand pulse in docs/brand/README.md, the multiplication in `90\u00b0 + k\u00b760\u00b0` in the same document, and the middle dot the presentation decks set as a list marker. The vendored converter under view/vendor, the recorded episode logs under crates/telemetry/tests/fixtures, and the telemetry golden derived from them keep their bytes.\n\nThe change applies to 8 units: crates/code, crates/core, crates/telemetry, crates/view, docs, examples, site, view. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: cargo test --workspace, cargo clippy --workspace -- -D warnings, and scripts/loc.sh.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/tools.md: cargo test -p parser \u2013 exit 0 in 1.50s, the command and how it ended\n- docs/tools.md: session 2: postgres \u2013 alive, 41 lines for a poll, session 2: exit 0 after 84s for a stop or for a poll after the end\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "text": "An en dash with a space on each side, ` \u2013 `, separates the fields of every heading, label, subject, and metadata line that the runtime, the terminal display, the browser viewer, the presentation decks, the landing page, and the documentation print; the middle dot `\u00b7` is not a field separator anywhere. A tool subject reads `cargo test -p parser \u2013 exit 0 in 1.50s`; a session line reads `session 2: postgres \u2013 alive`; the telemetry preview joins its heading and its totals with ` \u2013 `; the terminal display prints `lead \u2013 You`, `reviewer \u2013 Completed`, and `Final \u2013 Completed`; and the viewer's rendering, fixtures, and tests use the same character. The terminal display in crates/view names the separator in one constant, `FIELD`, and every heading it prints reads that constant.\n\nThe middle dot has three uses that are not separators: the first and last frame of the brand pulse in docs/brand/README.md, the multiplication in `90\u00b0 + k\u00b760\u00b0` in the same document, and the middle dot the presentation decks set as a list marker. The vendored converter under view/vendor, the recorded episode logs under crates/telemetry/tests/fixtures, and the telemetry golden derived from them keep their bytes.\n\nEach part of the tree the change reaches is judged by the tests that cover it. checks/run.sh runs the check the whole change is judged on: cargo test --workspace, cargo clippy --workspace -- -D warnings, and scripts/loc.sh.\n\nThe documents under docs/ describe the behavior. Each sentence below belongs in the document named before it, in the same words:\n- docs/tools.md: cargo test -p parser \u2013 exit 0 in 1.50s, the command and how it ended\n- docs/tools.md: session 2: postgres \u2013 alive, 41 lines for a poll, session 2: exit 0 after 84s for a stop or for a poll after the end\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
   "correct_statuses": [
     "completed"
   ],
   "correct_codes": [],
   "budget": {
-    "model_calls": 120,
-    "input_tokens": 4000000,
-    "output_tokens": 180000,
-    "seconds": 4500
+    "model_calls": 240,
+    "input_tokens": 8000000,
+    "output_tokens": 340000,
+    "seconds": 8100
   },
   "protected": [
     "scripts/loc.sh",
@@ -22,7 +22,8 @@
     "source": {
       "commit": "7473945e801d723512be4d57ce1e7140dd119f36",
       "parent": "5697461b7529b2f476e697fe8467ed7e47261102",
-      "subject": "Stop using the middle dot as a field separator"
+      "subject": "Stop using the middle dot as a field separator",
+      "repo": "/home/sunil/git/foe"
     },
     "crates": [
       "crates/code",
@@ -56,13 +57,10 @@
       "crates/view/src/terminal_test.rs",
       "evals/terminal_bench/trajectory_diagnostics_test.py"
     ],
-    "review": "revised: the drafted text was rewritten in present-state specification voice after authoring; the sentence list and the checks paragraph are the tool's",
+    "review": "revised: the specification paragraphs were supplied to the authoring tool as written; the checks paragraph and the sentence list are the tool's",
     "units": {
       "crates/code": [
         "crates/code"
-      ],
-      "crates/core": [
-        "crates/core"
       ],
       "crates/telemetry": [
         "crates/telemetry"
@@ -83,7 +81,7 @@
         "view"
       ]
     },
-    "n": 8,
+    "n": 7,
     "unit_files": {
       "crates/code": [
         "crates/code/src/bash.rs",
@@ -91,9 +89,6 @@
         "crates/code/src/python.rs",
         "crates/code/src/session.rs",
         "crates/code/src/session_test.rs"
-      ],
-      "crates/core": [
-        "crates/core/src/session.rs"
       ],
       "crates/telemetry": [
         "crates/telemetry/src/extract_test.rs",
@@ -153,7 +148,6 @@
         "crates/code/src/bash_test.rs",
         "crates/code/src/session_test.rs"
       ],
-      "crates/core": [],
       "crates/telemetry": [
         "crates/telemetry/src/extract_test.rs",
         "crates/telemetry/src/scrub_test.rs",
@@ -169,7 +163,6 @@
     },
     "unit_packages": {
       "crates/code": "foe-code",
-      "crates/core": "foe-core",
       "crates/telemetry": "foe-telemetry",
       "crates/view": "foe-view",
       "docs": null,
@@ -180,8 +173,18 @@
     "checked_units": [
       "crates/code",
       "crates/telemetry",
-      "crates/view"
+      "crates/view",
+      "docs",
+      "examples",
+      "site",
+      "view"
     ],
+    "generated_unit_checks": {
+      "docs": "checks/units/docs_test.py",
+      "examples": "checks/units/examples_test.py",
+      "site": "checks/units/site_test.py",
+      "view": "checks/units/view_test.py"
+    },
     "interface_paths": [
       "crates/core/src/session.rs"
     ],
@@ -196,6 +199,18 @@
       "used_by": [
         "crates/cli"
       ]
+    },
+    "division": {
+      "write_roots": [
+        "crates/code",
+        "crates/telemetry",
+        "crates/view",
+        "docs",
+        "examples",
+        "site",
+        "view"
+      ],
+      "separable": true
     }
   }
 }

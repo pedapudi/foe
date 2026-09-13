@@ -1,0 +1,98 @@
+{
+  "docs/design.md": {
+    "added": [
+      "\u2502 \u25be root   completed  \u2502  system   charter, 2 sections \u2013 4 tools        \u2502"
+    ],
+    "removed": [
+      "\u2502 \u25be root   completed  \u2502  system   charter, 2 sections \u00b7 4 tools        \u2502"
+    ]
+  },
+  "docs/presentations/foe-isolation-and-permissions.dia.html": {
+    "added": [
+      "<div class=\"dia-kicker\">why \u2013 the principle</div>",
+      "<div class=\"dia-kicker\">how \u2013 the vocabulary</div>",
+      "<div class=\"dia-kicker\">how \u2013 enforcement</div>",
+      "<div class=\"dia-kicker\">how \u2013 exactness</div>",
+      "<div class=\"dia-kicker\">how \u2013 captured executables</div>",
+      "<text x=\"206\" y=\"162\" text-anchor=\"middle\" font-size=\"8.5\" fill=\"var(--dia-ink-soft)\">sealed bytes \u2013 digest in</text>",
+      "<div class=\"dia-kicker\">how \u2013 process ownership</div>",
+      "<div class=\"dia-kicker\">how \u2013 narrowing</div>",
+      "<div class=\"dia-kicker\">how \u2013 a worked detail</div>",
+      "<div class=\"dia-kicker\">how \u2013 reading what you got</div>",
+      "<div class=\"dia-kicker\">why \u2013 the honest limits</div>"
+    ],
+    "removed": [
+      "<div class=\"dia-kicker\">why \u00b7 the principle</div>",
+      "<div class=\"dia-kicker\">how \u00b7 the vocabulary</div>",
+      "<div class=\"dia-kicker\">how \u00b7 enforcement</div>",
+      "<div class=\"dia-kicker\">how \u00b7 exactness</div>",
+      "<div class=\"dia-kicker\">how \u00b7 captured executables</div>",
+      "<text x=\"206\" y=\"162\" text-anchor=\"middle\" font-size=\"8.5\" fill=\"var(--dia-ink-soft)\">sealed bytes \u00b7 digest in</text>",
+      "<div class=\"dia-kicker\">how \u00b7 process ownership</div>",
+      "<div class=\"dia-kicker\">how \u00b7 narrowing</div>",
+      "<div class=\"dia-kicker\">how \u00b7 a worked detail</div>",
+      "<div class=\"dia-kicker\">how \u00b7 reading what you got</div>",
+      "<div class=\"dia-kicker\">why \u00b7 the honest limits</div>"
+    ]
+  },
+  "docs/presentations/foe-overview.dia.html": {
+    "added": [
+      "<text x=\"194\" y=\"188\">resolve \u2013 capture</text>",
+      "<text x=\"511\" y=\"46\" text-anchor=\"middle\" font-size=\"8.5\" fill=\"var(--dia-ink-faint)\">one process \u2013 one writer \u2013 fixed before the first request</text>",
+      "<tr><td>cli \u2013 view \u2013 telemetry \u2013 context</td><td>the operator surface, the viewer, emission, compaction</td></tr>",
+      "<text x=\"90\" y=\"126\" text-anchor=\"middle\" font-size=\"6.8\" fill=\"#D9B36A\">block\u2013loop\u2013done\u2013budget</text>",
+      "<text x=\"170\" y=\"208\" text-anchor=\"middle\" font-size=\"9\" fill=\"var(--dia-ink-faint)\">version stated up front \u2013 every obligation closed</text>",
+      "<text x=\"225\" y=\"120\" text-anchor=\"middle\" font-size=\"7.2\" fill=\"#C8B37A\">validate \u2013 handles \u2013 record</text>",
+      "<text x=\"222\" y=\"80\">re-assess \u2013 bounded</text>"
+    ],
+    "removed": [
+      "<text x=\"194\" y=\"188\">resolve \u00b7 capture</text>",
+      "<text x=\"511\" y=\"46\" text-anchor=\"middle\" font-size=\"8.5\" fill=\"var(--dia-ink-faint)\">one process \u00b7 one writer \u00b7 fixed before the first request</text>",
+      "<tr><td>cli \u00b7 view \u00b7 telemetry \u00b7 context</td><td>the operator surface, the viewer, emission, compaction</td></tr>",
+      "<text x=\"90\" y=\"126\" text-anchor=\"middle\" font-size=\"6.8\" fill=\"#D9B36A\">block\u00b7loop\u00b7done\u00b7budget</text>",
+      "<text x=\"170\" y=\"208\" text-anchor=\"middle\" font-size=\"9\" fill=\"var(--dia-ink-faint)\">version stated up front \u00b7 every obligation closed</text>",
+      "<text x=\"225\" y=\"120\" text-anchor=\"middle\" font-size=\"7.2\" fill=\"#C8B37A\">validate \u00b7 handles \u00b7 record</text>",
+      "<text x=\"222\" y=\"80\">re-assess \u00b7 bounded</text>"
+    ]
+  },
+  "docs/presentations/what-is-foe.dia.html": {
+    "added": [
+      "<div class=\"dia-kicker\">concept 1 \u2013 the record</div>",
+      "<div class=\"dia-kicker\">concept 2 \u2013 authority</div>",
+      "<div class=\"dia-kicker\">concept 3 \u2013 endings</div>",
+      "<div class=\"dia-kicker\">concept 4 \u2013 completion</div>",
+      "<div class=\"dia-kicker\">concept 5 \u2013 identity</div>",
+      "<text x=\"34\" y=\"120\">instructions \u2013 tools \u2013 grants</text>",
+      "<text x=\"34\" y=\"132\">budget \u2013 workflow \u2013 build</text>",
+      "<div class=\"dia-kicker\">concept 6 \u2013 budgets</div>"
+    ],
+    "removed": [
+      "<div class=\"dia-kicker\">concept 1 \u00b7 the record</div>",
+      "<div class=\"dia-kicker\">concept 2 \u00b7 authority</div>",
+      "<div class=\"dia-kicker\">concept 3 \u00b7 endings</div>",
+      "<div class=\"dia-kicker\">concept 4 \u00b7 completion</div>",
+      "<div class=\"dia-kicker\">concept 5 \u00b7 identity</div>",
+      "<text x=\"34\" y=\"120\">instructions \u00b7 tools \u00b7 grants</text>",
+      "<text x=\"34\" y=\"132\">budget \u00b7 workflow \u00b7 build</text>",
+      "<div class=\"dia-kicker\">concept 6 \u00b7 budgets</div>"
+    ]
+  },
+  "docs/tools.md": {
+    "added": [
+      "| `bash` | `cargo test -p parser \u2013 exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |",
+      "| `session` | `session 2: postgres \u2013 alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |"
+    ],
+    "removed": [
+      "| `bash` | `cargo test -p parser \u00b7 exit 0 in 1.50s`, the command and how it ended | the error, which names why the process could not start |",
+      "| `session` | `session 2: postgres \u00b7 alive, 41 lines` for a poll, `session 2: exit 0 after 84s` for a stop or for a poll after the end | the error, which names the session id or what refused the start |"
+    ]
+  },
+  "docs/viewer.md": {
+    "added": [
+      "to, so `Branch: reviewer` opens a column and `reviewer \u2013 Completed` closes"
+    ],
+    "removed": [
+      "to, so `Branch: reviewer` opens a column and `reviewer \u00b7 Completed` closes"
+    ]
+  }
+}

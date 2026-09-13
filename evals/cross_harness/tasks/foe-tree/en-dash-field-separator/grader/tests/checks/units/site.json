@@ -1,0 +1,32 @@
+{
+  "site/build/parts/03-autonomy.html": {
+    "added": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &ndash; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &ndash; children 0 &ndash; reserved 0 &ndash; free 20</div>"
+    ],
+    "removed": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &middot; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &middot; children 0 &middot; reserved 0 &middot; free 20</div>"
+    ]
+  },
+  "site/public/artifact.html": {
+    "added": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &ndash; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &ndash; children 0 &ndash; reserved 0 &ndash; free 20</div>"
+    ],
+    "removed": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &middot; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &middot; children 0 &middot; reserved 0 &middot; free 20</div>"
+    ]
+  },
+  "site/public/index.html": {
+    "added": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &ndash; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &ndash; children 0 &ndash; reserved 0 &ndash; free 20</div>"
+    ],
+    "removed": [
+      "<code class=\"pos\" id=\"stagepos\">seq 0 of 33 &middot; 0.00 s</code>",
+      "<div id=\"meterread\">lead 0 &middot; children 0 &middot; reserved 0 &middot; free 20</div>"
+    ]
+  }
+}

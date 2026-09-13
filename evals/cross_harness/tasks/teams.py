@@ -6,27 +6,39 @@ from a sweep commit of this repository through `feature_removal.author`,
 which supplies the fixture, the oracle, the hidden tests, the trace scrub,
 and the recipe; this module adds what a fan-out needs. A unit is a crate
 `crates/<name>` or a top-level directory or file in which the commit changes
-an implementation file, named by that path. A crate or directory whose
-touched files are all tests or fixtures is no unit: the grader restores the
-commit form of every hidden test, so such a place holds nothing for the
-agent to change and its verdict follows from other units. The commit's test
-files are partitioned by unit, so a unit's verdict is one boolean: for a
-crate, `cargo test -p <package>` with the unit's hidden tests restored and
-every hidden test function seen running; for a directory, every hidden
-`*_test.py` file run with the interpreter. A unit with no runnable hidden
-test is unchecked, and the uniformity of the change is the fraction of
-checked units that pass. The task text names every unit and states that
-each is judged by its own tests; it does not say which units carry a
-verdict, so an arm cannot leave the unchecked ones untouched by design. The
-whole change is judged by the workspace check, which is `cargo test
---workspace`, `cargo clippy --workspace -- -D warnings`, and
-`scripts/loc.sh`, and by the specification sentences the commit added under
-`docs/`. `checks/run.sh` in the workspace runs the workspace check.
+an implementation file, named by that path. Three kinds of place are not
+units. A crate or directory whose touched files are all tests or fixtures is
+none: the grader restores the commit form of every hidden test, so such a
+place holds nothing for the agent to change. A place whose touched
+implementation files are all interface files is none either. The interface is
+what no worker can be given: the implementation files of a touched crate that
+another touched crate depends on, which the interface node of the graph
+writes before any worker starts, and the files that lie in no directory a
+write grant can name, such as a top-level `README.md`. What remains is the
+set a delegation can hand out, and authoring refuses a commit that leaves
+fewer than two of them or more than UNIT_MAX, the workers one delegation
+runs.
+
+Every unit carries a verdict of its own, and authoring refuses a commit that
+leaves one without. For a crate the verdict is `cargo test -p <package>`
+with the unit's hidden tests restored and every hidden test function seen
+running. For a directory or a file the verdict is every hidden `*_test.py`
+file run with the interpreter, and when the commit gives the unit none, the
+authoring tool generates one: it records, per file the change touches in the
+unit, the lines that tell the commit's form of the file apart from the
+parent's, and the check requires every added line to stand in the file and
+no removed line to. The uniformity of the change is the fraction of units
+that pass. The task text names no unit, because how the change divides is
+what the task measures. The whole change is judged by the workspace check,
+which is `cargo test --workspace`, `cargo clippy --workspace -- -D
+warnings`, and `scripts/loc.sh`, and by the specification sentences the
+commit added under `docs/`. `checks/run.sh` in the workspace runs the
+workspace check.
 
 Two corruptions of the solved workspace are recorded. `revert-one-unit`
-restores the parent form of one checked unit's implementation files; the
-unit is one that no other checked unit's crate depends on, so its own tests
-fail and every other unit's pass. `rename-shared-element` renames one
+restores the parent form of one unit's implementation files; the unit is one
+that no other unit's crate depends on, so its own tests fail and every other
+unit's pass. `rename-shared-element` renames one
 public Rust item defined in a touched file of one unit that a crate outside
 every checked unit's dependency closure uses, so every unit's tests pass and
 the workspace check fails; a commit in which no item qualifies records the
@@ -34,9 +46,14 @@ reason under `metadata.shared_element_absent` and carries the first
 corruption alone. `task.json` records the family `teams`, the class
 `fan-out`, `metadata.units` as an object of unit name to the unit's
 workspace-relative paths, `metadata.n`, the hidden tests and package of
-each unit, the checked units, and `metadata.interface_paths`, the
-implementation files of touched crates that another touched crate depends
-on. The grader keeps no `oracle.patch`: the oracle overlay and the hidden
+each unit, the units that carry a verdict, `metadata.generated_unit_checks`
+naming the generated check of each unit that needed one,
+`metadata.interface_paths`, the files no worker can be given, and
+`metadata.division`, which records the
+write root a delegation would grant each unit and that no two of them
+overlap. That last is what separates this class from the `coherent` controls
+of `tasks/coherent.py`, whose change lies in one directory and admits no such
+division. The grader keeps no `oracle.patch`: the oracle overlay and the hidden
 tests hold the commit form of every changed file, and a sweep touches many.
 
 A `survey` task is a question over the whole tree whose answer a script
@@ -78,7 +95,7 @@ keeps it for inspection. A fan-out grade runs cargo, so `verify` runs the
 grader controls with a build-length timeout, as `feature_removal.verify`
 does.
 
-    /usr/bin/python3 evals/cross_harness/tasks/teams.py fan-out --repo . --commit SHA --out DIR --name NAME
+    /usr/bin/python3 evals/cross_harness/tasks/teams.py fan-out --repo . --commit SHA --out DIR --name NAME [--text FILE]
     /usr/bin/python3 evals/cross_harness/tasks/teams.py survey --repo . --survey error-messages --out DIR --name NAME
     /usr/bin/python3 evals/cross_harness/tasks/teams.py verify --task DIR --scratch DIR
 """
@@ -109,6 +126,20 @@ RENAME_CORRUPTION = "rename-shared-element"
 SURVEY_CORRUPTION = "unlisted-items"
 SURVEY_SCRIPT = "survey.py"
 SURVEY_THRESHOLD = 0.9
+# The units one fan-out may hold. A delegation runs at most this many worker
+# episodes, and the survey's and the delegating node's report schemas admit
+# at most this many entries, so a task naming more units than this cannot be
+# divided the way the graph declares. `contracts/graphs.py` WORKER_EPISODES
+# holds the same number and `tasks/teams_test.py` holds them to it.
+UNIT_MAX = 8
+# The longest line a generated unit check records. A generated bundle or a
+# recorded fixture holds lines of thousands of characters, and whether such a
+# line stands unchanged says nothing a reader of the finding can act on.
+GENERATED_LINE_MAX = 300
+# Where a generated unit check and its recorded lines live, as a
+# workspace-relative directory. They reach the graded tree only as hidden
+# tests, which the grade copies into its own copy of the workspace.
+GENERATED_CHECK_DIRECTORY = "checks/units"
 UNITS_PREFIX = "units: "
 MEASURES_PREFIX = "measures: "
 UNITS_FILE = "units.json"
@@ -152,7 +183,11 @@ class Unit:
 
     @property
     def checked(self) -> bool:
-        """Whether the unit has a verdict of its own: implementation files to change, and a hidden test file for a crate or a runnable one for a directory."""
+        """Whether the commit's own tests give the unit a verdict: implementation files to change, and a hidden test file for a crate or a runnable one for a directory.
+
+        A unit this leaves without a verdict is given a generated one by
+        `write_generated_checks` when it is a directory or a file.
+        """
         if not self.implementation:
             return False
         if self.package is not None:
@@ -234,9 +269,8 @@ def closure(graph: dict[str, set[str]], starts: list[str]) -> set[str]:
     return seen
 
 
-def revert_unit_for(units: list[Unit], graph: dict[str, set[str]]) -> Unit:
-    """The checked unit with implementation files that no other checked unit's crate depends on, first in name order."""
-    checked = [unit for unit in units if unit.checked]
+def revert_unit_for(checked: list[Unit], graph: dict[str, set[str]]) -> Unit:
+    """The unit carrying a verdict whose implementation files no other such unit's crate depends on, first in name order."""
     for unit in checked:
         if not unit.implementation:
             continue
@@ -271,18 +305,17 @@ def _users(repo: Path, commit: str, name: str) -> list[str]:
     return [line.split(":", 1)[1] for line in result.stdout.splitlines() if ":" in line]
 
 
-def shared_element(repo: Path, commit: str, units: list[Unit], graph: dict[str, set[str]]) -> tuple[SharedElement | None, str]:
+def shared_element(repo: Path, commit: str, units: list[Unit], graph: dict[str, set[str]], checked: list[str]) -> tuple[SharedElement | None, str]:
     """The first public item a rename corruption can use, or None with the reason.
 
     An item qualifies when a touched implementation file of a crate unit
-    defines it, some crate outside the dependency closure of every checked
-    unit uses it, no file of a crate inside that closure uses it except the
-    defining unit's own non-test files, and, when the defining unit is
-    checked, none of its test files uses it. Whole-word search is the test
-    for use, so a common word is rejected more often than an item is
-    accepted wrongly.
+    defines it, some crate outside the dependency closure of every unit that
+    carries a verdict uses it, no file of a crate inside that closure uses it
+    except the defining unit's own non-test files, and, when the defining
+    unit carries a verdict, none of its test files uses it. Whole-word search
+    is the test for use, so a common word is rejected more often than an item
+    is accepted wrongly. `checked` names the units that carry a verdict.
     """
-    checked = [unit.name for unit in units if unit.checked]
     compiled = closure(graph, checked)
     for unit in units:
         if unit.package is None:
@@ -299,7 +332,7 @@ def shared_element(repo: Path, commit: str, units: list[Unit], graph: dict[str, 
                 users = _users(repo, commit, name)
                 own = [user for user in users if unit_name(user) == unit.name]
                 foreign = [user for user in users if unit_name(user) != unit.name]
-                if unit.checked and any(removal.is_test_path(user) for user in own):
+                if unit.name in checked and any(removal.is_test_path(user) for user in own):
                     continue
                 if not foreign or any(unit_name(user) in compiled for user in foreign):
                     continue
@@ -311,7 +344,7 @@ def shared_element(repo: Path, commit: str, units: list[Unit], graph: dict[str, 
                 return SharedElement(unit.name, name, replacement, files, used_by), ""
     return None, (
         "no public item defined in a touched implementation file is used by a crate outside the dependency closure "
-        f"of the checked units ({', '.join(sorted(compiled)) or 'none'}) and by nothing inside it"
+        f"of the units that carry a verdict ({', '.join(sorted(compiled)) or 'none'}) and by nothing inside it"
     )
 
 
@@ -332,17 +365,62 @@ def budget_for(checked_count: int) -> dict[str, int]:
     return removal.budget_for(max(1, checked_count))
 
 
-def fan_out_text(subject: str, body: str, sentences: dict[str, list[str]], units: list[Unit]) -> str:
-    """The specification paragraph of a fan-out, drafted from the commit and its document changes."""
-    parts = [subject.rstrip(".") + "."]
-    if body:
-        parts.append(body)
-    # The text names every unit and no subset: which units carry a verdict
-    # of their own is the grader's knowledge, and an arm told it could leave
-    # the other units untouched without a finding.
-    names = ", ".join(unit.name for unit in units)
+def grantable(unit: Unit, workspace: Path) -> bool:
+    """Whether a delegation can give the unit a write root of its own, which docs/config.md `write` requires to be a directory.
+
+    A commit that changes a top-level file, such as `README.md`, leaves a
+    unit no worker can be granted: the nearest directory that holds it is the
+    workspace, which overlaps every other unit. Such a file belongs to the
+    node that writes what the workers cannot.
+    """
+    return (workspace / unit.name).is_dir()
+
+
+def interface_only(unit: Unit, interface: list[str]) -> bool:
+    """Whether every implementation file of the unit belongs to the interface, the set no worker can be given.
+
+    Such a place is what the interface node of the teams graph writes before
+    any worker starts, so counting it as a unit would give a worker work the
+    graph has already assigned elsewhere.
+    """
+    return bool(unit.implementation) and all(path in interface for path in unit.implementation)
+
+
+def check_unit_set(units: list[Unit], checked: list[Unit], commit: str) -> None:
+    """Refuse a unit set a delegation cannot hand out or a grade cannot judge.
+
+    A fan-out is one change over two or more units, a delegation runs at most
+    UNIT_MAX workers, and the uniformity of the change is read from the units
+    that pass, so a unit without a verdict of its own would leave the measure
+    silent about part of the change.
+    """
+    named = ", ".join(unit.name for unit in units) or "none"
+    if len(units) < 2:
+        raise ValueError(f"commit {commit} leaves {len(units)} unit(s) once the interface is set apart ({named}); a fan-out is one change over two or more units")
+    if len(units) > UNIT_MAX:
+        raise ValueError(f"commit {commit} holds {len(units)} units, and a delegation runs at most {UNIT_MAX} workers: {named}")
+    unchecked = [unit.name for unit in units if unit not in checked]
+    if unchecked:
+        raise ValueError(f"commit {commit} leaves {', '.join(unchecked)} without a verdict of its own; every unit of a fan-out carries one")
+
+
+def fan_out_text(subject: str, body: str, sentences: dict[str, list[str]], text: str | None = None) -> str:
+    """The specification paragraphs of a fan-out, followed by the checks paragraph and the sentence list.
+
+    `text` replaces the paragraphs drafted from the commit subject and body
+    with prose the caller supplies, for a task whose specification has been
+    written rather than drafted. The text names no unit: how the change
+    divides is what the task measures, so an arm shown the division has been
+    given the answer.
+    """
+    if text:
+        parts = [text.strip()]
+    else:
+        parts = [subject.rstrip(".") + "."]
+        if body:
+            parts.append(body)
     parts.append(
-        f"The change applies to {len(units)} units: {names}. Each unit is judged by its own tests. "
+        "Each part of the tree the change reaches is judged by the tests that cover it. "
         f"{removal.CHECKS_SCRIPT} runs the check the whole change is judged on: cargo test --workspace, "
         "cargo clippy --workspace -- -D warnings, and scripts/loc.sh."
     )
@@ -547,6 +625,125 @@ FAN_OUT_GRADE_SCRIPT = (
     .replace("__UNITS_FILE__", UNITS_FILE)
 )
 
+_UNIT_CHECK_TEMPLATE = r'''#!/usr/bin/python3
+"""Whether one unit of a sweep carries the change, for a unit the commit gives no runnable test.
+
+The unit is a directory rather than a crate, so no cargo suite judges it.
+`__DATA__` beside this file records, for each file the change
+touches in the unit, the lines that tell the commit's form of that file
+apart from its parent's: a line the commit's form holds and the parent's
+does not, and a line the parent's form holds and the commit's does not. The
+check reads each file from the working directory, which is the workspace
+root, and requires every added line to stand in it and no removed line to.
+Leading and trailing whitespace is ignored, so re-indentation is no failure,
+and a line may stand anywhere in the file, so a change around it is none
+either.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+UNIT = "__UNIT__"
+# Findings beyond this many say the same thing again; the count states the rest.
+REPORTED_MAX = 20
+
+recorded = json.loads((HERE / "__DATA__").read_text(encoding="utf-8"))
+failures = []
+for path in sorted(recorded):
+    file = Path(path)
+    if not file.is_file():
+        failures.append(f"{path}: absent from the workspace")
+        continue
+    try:
+        present = {line.strip() for line in file.read_text(encoding="utf-8").splitlines()}
+    except UnicodeDecodeError as error:
+        failures.append(f"{path}: not UTF-8 at byte {error.start}, so the check cannot read it")
+        continue
+    for line in recorded[path]["added"]:
+        if line not in present:
+            failures.append(f"{path}: the change writes the line {line!r}, which the file lacks")
+    for line in recorded[path]["removed"]:
+        if line in present:
+            failures.append(f"{path}: the change removes the line {line!r}, which the file still holds")
+
+for failure in failures[:REPORTED_MAX]:
+    print(failure)
+if len(failures) > REPORTED_MAX:
+    print(f"and {len(failures) - REPORTED_MAX} more")
+if failures:
+    print(f"unit {UNIT}: {len(failures)} line(s) of the change are absent or still present")
+    sys.exit(1)
+'''
+
+assert _UNIT_CHECK_TEMPLATE.count("__UNIT__") == 1, "the unit check template names the unit once"
+assert _UNIT_CHECK_TEMPLATE.count("__DATA__") == 2, "the unit check template names its data file in the docstring and in the read"
+
+
+def check_slug(unit: str) -> str:
+    """The file-name stem of a unit's generated check: the unit's name with every run of other characters as one hyphen."""
+    return re.sub(r"[^A-Za-z0-9]+", "-", unit).strip("-")
+
+
+def discriminating_lines(repo: Path, parent: str, commit: str, path: str, added_file: bool) -> dict[str, list[str]]:
+    """The lines that tell the commit's form of one file apart from its parent's, stripped of surrounding whitespace.
+
+    A line the two forms share says nothing about whether the change was
+    made, and a line longer than GENERATED_LINE_MAX is left out because a
+    generated bundle or a recorded fixture holds lines no reader of a
+    finding can act on. `added_file` names a file the commit creates, whose
+    parent form is empty.
+    """
+
+    def lines(text: str) -> list[str]:
+        return [stripped for stripped in (line.strip() for line in text.splitlines()) if stripped and len(stripped) <= GENERATED_LINE_MAX]
+
+    after = lines(removal.show_file(repo, commit, path).decode("utf-8", "replace"))
+    before = [] if added_file else lines(removal.show_file(repo, parent, path).decode("utf-8", "replace"))
+    return {
+        "added": [line for line in dict.fromkeys(after) if line not in set(before)],
+        "removed": [line for line in dict.fromkeys(before) if line not in set(after)],
+    }
+
+
+def generated_check(repo: Path, parent: str, commit: str, unit: Unit, statuses: dict[str, str]) -> dict[str, dict[str, list[str]]]:
+    """The recorded lines of a unit's generated check, by file; empty when no file of the unit tells its two forms apart."""
+    recorded: dict[str, dict[str, list[str]]] = {}
+    for path in unit.implementation:
+        found = discriminating_lines(repo, parent, commit, path, statuses[path] == removal.ADDED)
+        if found["added"] or found["removed"]:
+            recorded[path] = found
+    return recorded
+
+
+def write_generated_checks(grader: Path, repo: Path, parent: str, commit: str, units: list[Unit], statuses: dict[str, str]) -> dict[str, str]:
+    """Write a generated check for every unit that is a directory the commit gives no runnable test for; the check path of each, by unit.
+
+    A crate unit is left alone: its verdict is its package's cargo suite,
+    and a generated line check over the same files would also fail under the
+    rename corruption, which must leave every unit passing.
+    """
+    written: dict[str, str] = {}
+    for unit in units:
+        if unit.package is not None or unit.python_tests:
+            continue
+        recorded = generated_check(repo, parent, commit, unit, statuses)
+        if not recorded:
+            continue
+        slug = check_slug(unit.name)
+        data = f"{GENERATED_CHECK_DIRECTORY}/{slug}.json"
+        check = f"{GENERATED_CHECK_DIRECTORY}/{slug}_test.py"
+        _write(grader / removal.HIDDEN_TESTS / data, json.dumps(recorded, indent=2) + "\n")
+        _write(
+            grader / removal.HIDDEN_TESTS / check,
+            _UNIT_CHECK_TEMPLATE.replace("__UNIT__", unit.name).replace("__DATA__", f"{slug}.json"),
+            executable=True,
+        )
+        written[unit.name] = check
+    return written
+
+
 REVERT_SCRIPT = r'''#!/usr/bin/python3
 """Restore the parent form of one unit's implementation files: that unit's tests must then fail and every other unit's pass."""
 
@@ -646,27 +843,38 @@ def author_fan_out(
     allow_traces: list[str] | None = None,
     keep_workspace: bool = False,
     revert_unit: str | None = None,
+    text: str | None = None,
 ) -> AuthoredFanOut:
     """Write the task directory for one sweep commit; see the module docstring for what it holds."""
     authored = removal.author(repo, commit, out, name, "solvable", allow_traces, keep_workspace=True)
     try:
-        return _write_fan_out(repo, authored, out, name, keep_workspace, revert_unit)
+        return _write_fan_out(repo, authored, out, name, keep_workspace, revert_unit, text)
     except BaseException:
         shutil.rmtree(out, ignore_errors=True)
         raise
 
 
-def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str, keep_workspace: bool, revert_name: str | None) -> AuthoredFanOut:
+def _write_fan_out(
+    repo: Path, authored: removal.Authored, out: Path, name: str, keep_workspace: bool, revert_name: str | None, text: str | None
+) -> AuthoredFanOut:
     source = authored.task.metadata[protocol.SOURCE_KEY]
     commit, parent = source["commit"], source["parent"]
     workspace, grader = out / WORKSPACE, out / GRADER
     diffs = removal.parse_diff(removal.commit_diff(repo, commit))
     tests, implementation = removal.partition(diffs)
-    units = partition_units(diffs, workspace)
+    statuses = {diff.path: diff.status for diff in diffs}
+    touched = partition_units(diffs, workspace)
     graph = crate_dependencies(workspace)
-    checked = [unit for unit in units if unit.checked]
-    if not checked:
-        raise ValueError(f"commit {commit} touches no unit with a runnable hidden test; a fan-out needs a verdict per unit")
+    # The interface is what no worker can be given: the implementation files
+    # another touched crate depends on, and the files that lie in no directory
+    # a write grant can name. A place whose whole change is interface is no
+    # unit. Counting such places as units named more units than a delegation
+    # can hold and gave a worker work the graph had already assigned.
+    interface = sorted(set(interface_paths(touched, graph)) | {path for unit in touched if not grantable(unit, workspace) for path in unit.implementation})
+    units = [unit for unit in touched if not interface_only(unit, interface)]
+    generated = write_generated_checks(grader, repo, parent, commit, units, statuses)
+    checked = [unit for unit in units if unit.checked or unit.name in generated]
+    check_unit_set(units, checked, commit)
 
     # The feature-removal grader and corruption give way to the fan-out's own,
     # and the commit diff is removed: the oracle overlay and the hidden tests
@@ -678,13 +886,12 @@ def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str,
 
     by_name = {unit.name: unit for unit in units}
     if revert_name is None:
-        reverted = revert_unit_for(units, graph)
-    elif revert_name in by_name and by_name[revert_name].checked and by_name[revert_name].implementation:
+        reverted = revert_unit_for(checked, graph)
+    elif revert_name in by_name and by_name[revert_name] in checked and by_name[revert_name].implementation:
         reverted = by_name[revert_name]
     else:
         raise ValueError(f"--revert-unit names {revert_name!r}, which is not a checked unit with implementation files; the units are {', '.join(by_name)}")
     revert = grader / protocol.CORRUPTIONS / REVERT_CORRUPTION
-    statuses = {diff.path: diff.status for diff in diffs}
     restore = [path for path in reverted.implementation if statuses[path] == removal.MODIFIED]
     remove = [path for path in reverted.implementation if statuses[path] == removal.ADDED]
     for path in restore:
@@ -692,7 +899,10 @@ def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str,
     _write(revert / "revert.json", json.dumps({"unit": reverted.name, "restore": restore, "remove": remove}, indent=2) + "\n")
     _write(revert / "apply.py", REVERT_SCRIPT, executable=True)
 
-    shared, reason = shared_element(repo, commit, units, graph)
+    # The rename corruption looks over every place the commit touched, the
+    # interface included: it is a control on the workspace check, and the
+    # item it renames need not lie in a unit a worker would be given.
+    shared, reason = shared_element(repo, commit, touched, graph, [unit.name for unit in checked])
     if shared is not None:
         rename = grader / protocol.CORRUPTIONS / RENAME_CORRUPTION
         _write(rename / "rename.json", json.dumps(shared.to_dict(), indent=2) + "\n")
@@ -707,7 +917,7 @@ def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str,
             {
                 "name": unit.name,
                 "package": unit.package,
-                "python_tests": list(unit.python_tests),
+                "python_tests": [*unit.python_tests, *([generated[unit.name]] if unit.name in generated else [])],
                 "hidden_test_names": {path: hidden_names.get(path, []) for path in unit.tests if path.endswith(".rs")},
             }
             for unit in checked
@@ -727,10 +937,20 @@ def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str,
             "unit_tests": {unit.name: list(unit.tests) for unit in units},
             "unit_packages": {unit.name: unit.package for unit in units},
             "checked_units": [unit.name for unit in checked],
-            "interface_paths": interface_paths(units, graph),
+            "generated_unit_checks": dict(sorted(generated.items())),
+            "interface_paths": interface,
             "revert_unit": reverted.name,
             "shared_element": None if shared is None else shared.to_dict(),
-            "review": "pending: the text is drafted from the commit message and the document changes and has not been read by a person",
+            # What makes this a fan-out rather than a control: a delegation
+            # can grant each unit one of these roots and no two of them
+            # overlap, so the division the survey's own instruction requires
+            # exists.
+            "division": {"write_roots": [unit.name for unit in units], "separable": True},
+            "review": (
+                "revised: the specification paragraphs were supplied to the authoring tool as written; the checks paragraph and the sentence list are the tool's"
+                if text
+                else "pending: the text is drafted from the commit message and the document changes and has not been read by a person"
+            ),
         }
     )
     if shared is None:
@@ -739,7 +959,7 @@ def _write_fan_out(repo: Path, authored: removal.Authored, out: Path, name: str,
         authored.task,
         family=FAMILY,
         class_name=FAN_OUT,
-        text=fan_out_text(subject, body, authored.sentences, units),
+        text=fan_out_text(subject, body, authored.sentences, text),
         budget=budget_for(len(checked)),
         protected=PROTECTED,
         metadata=metadata,
@@ -1361,6 +1581,7 @@ def main(argv: list[str] | None = None) -> int:
     fan_out.add_argument("--name", required=True, help="the task's name")
     fan_out.add_argument("--allow-traces", nargs="*", default=[], metavar="IDENTIFIER", help="added identifiers whose hits in the workspace are accepted")
     fan_out.add_argument("--revert-unit", help="the unit the revert corruption restores; default the first checked leaf unit with implementation files")
+    fan_out.add_argument("--text", type=Path, help="a file holding the specification paragraphs, in place of the ones drafted from the commit message")
     fan_out.add_argument("--keep-workspace", action="store_true", help="keep the workspace copy beside the recipe, for inspection")
     survey = commands.add_parser(SURVEY, help="write a survey task directory over the repository at a commit")
     survey.add_argument("--repo", required=True, type=Path, help="the repository to survey")
@@ -1377,11 +1598,16 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == FAN_OUT:
-            authored = author_fan_out(args.repo.resolve(), args.commit, args.out.resolve(), args.name, args.allow_traces, args.keep_workspace, args.revert_unit)
+            supplied = args.text.read_text(encoding="utf-8") if args.text else None
+            authored = author_fan_out(
+                args.repo.resolve(), args.commit, args.out.resolve(), args.name, args.allow_traces, args.keep_workspace, args.revert_unit, supplied
+            )
             print(f"task {authored.task.name} written to {authored.directory}")
+            generated_checks = authored.task.metadata["generated_unit_checks"]
             for unit in authored.units:
-                state = "checked" if unit.checked else "unchecked"
-                print(f"unit {unit.name}: {state}, {len(unit.implementation)} implementation file(s), {len(unit.tests)} hidden test(s)")
+                judged = "its generated line check" if unit.name in generated_checks else "the commit's tests"
+                print(f"unit {unit.name}: judged by {judged}, {len(unit.implementation)} implementation file(s), {len(unit.tests)} hidden test(s)")
+            print(f"interface, set apart from the units: {', '.join(authored.task.metadata['interface_paths']) or 'none'}")
             print(f"revert corruption: {authored.revert_unit}")
             if authored.shared is None:
                 print(f"rename corruption: none; {authored.task.metadata['shared_element_absent']}")

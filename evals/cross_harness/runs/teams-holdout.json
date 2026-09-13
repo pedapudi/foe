@@ -2,7 +2,9 @@
   "tasks": "../tasks/foe-tree",
   "select": [
     "bounded-result-names-its-bound",
-    "module-cites-its-specification"
+    "module-cites-its-specification",
+    "unnamed-error-messages",
+    "untested-config-rules"
   ],
   "arms": [
     "foe-configured",

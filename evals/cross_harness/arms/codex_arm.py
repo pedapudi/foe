@@ -12,7 +12,10 @@ Codex reports its outcome in the last agent message, which `-o` writes to
 or `blocked`, a `code` from the three blocked codes a foe model reports
 itself, and `evidence` as a list of sentences. A caller may pass another
 schema; the arm still reads `status`, `code`, and `evidence` from the
-message, and the whole message is the candidate.
+message, and the whole message is the candidate. `schema_for` builds that
+other schema for a task whose grade reads a value of its own: the shape the
+task states is merged into the default one, so the single final message
+carries the reported outcome and the value the grader reads together.
 
 Codex enforces no budget of its own, so the run is placed under the budget
 watcher in `codex_budget_watcher.py`, which sums the usage the session files
@@ -103,6 +106,35 @@ DEFAULT_SCHEMA: dict[str, Any] = {
     "required": ["status", "code", "evidence"],
     "additionalProperties": False,
 }
+
+
+
+def schema_for(returns: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The final-message schema for a task that states the shape of the value its grade reads.
+
+    A Codex run has one final message, so the outcome the arm reads and the
+    value the grader reads travel in the same object: the returned shape's
+    properties are merged into the default schema and required beside
+    `status`, `code`, and `evidence`. A shape that renames one of those three
+    is refused rather than silently overriding the outcome the arm reads.
+    `returns` of None is the default schema.
+    """
+    if returns is None:
+        return DEFAULT_SCHEMA
+    properties = returns.get("properties")
+    if returns.get("type") != "object" or not isinstance(properties, dict) or not properties:
+        raise ValueError(f"the returned shape is {json.dumps(returns)[:200]}; expected an object schema with a non-empty properties")
+    taken = sorted(set(properties) & set(DEFAULT_SCHEMA["properties"]))
+    if taken:
+        raise ValueError(f"the returned shape names {', '.join(taken)}, which the final message already carries as the reported outcome")
+    required = [key for key in returns.get("required", sorted(properties)) if key in properties]
+    return {
+        "type": "object",
+        "properties": {**DEFAULT_SCHEMA["properties"], **properties},
+        "required": [*DEFAULT_SCHEMA["required"], *required],
+        "additionalProperties": False,
+    }
+
 
 CODEX_HOME_NAME, CREDENTIAL_NAME = "codex-home", "auth.json"
 # The user configuration file under CODEX_HOME that `--ignore-user-config`

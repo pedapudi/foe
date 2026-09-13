@@ -125,6 +125,38 @@
           "each_episode_name_is_written_in_the_color_its_name_hashes_to"
         ]
       }
+    },
+    {
+      "name": "docs",
+      "package": null,
+      "python_tests": [
+        "checks/units/docs_test.py"
+      ],
+      "hidden_test_names": {}
+    },
+    {
+      "name": "examples",
+      "package": null,
+      "python_tests": [
+        "checks/units/examples_test.py"
+      ],
+      "hidden_test_names": {}
+    },
+    {
+      "name": "site",
+      "package": null,
+      "python_tests": [
+        "checks/units/site_test.py"
+      ],
+      "hidden_test_names": {}
+    },
+    {
+      "name": "view",
+      "package": null,
+      "python_tests": [
+        "checks/units/view_test.py"
+      ],
+      "hidden_test_names": {}
     }
   ],
   "sentences": {

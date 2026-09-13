@@ -1,0 +1,300 @@
+{
+  "view/fixtures/generate.mjs": {
+    "added": [
+      "log.ev(\"tool/result\", { step: 1, call_id: \"tc_10\", name: \"bash\", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: \"grep -rn TODO src \u2013 exit 0 in 0.01s\", duration_ms: 12, synthetic: false });",
+      "log.ev(\"tool/result\", { step: 1, call_id: \"tc_c1\", name: \"bash\", value: { exit: 0 }, rendered: \"cli\\ncode\\ncore\\nlog\", is_error: false, spill: null, subject: \"ls crates \u2013 exit 0 in 0.01s\", duration_ms: 2600, synthetic: false }, 2600);"
+    ],
+    "removed": [
+      "log.ev(\"tool/result\", { step: 1, call_id: \"tc_10\", name: \"bash\", value: { exit: 0, stdout: grepOut }, rendered: grepOut, is_error: false, spill: null, subject: \"grep -rn TODO src \u00b7 exit 0 in 0.01s\", duration_ms: 12, synthetic: false });",
+      "log.ev(\"tool/result\", { step: 1, call_id: \"tc_c1\", name: \"bash\", value: { exit: 0 }, rendered: \"cli\\ncode\\ncore\\nlog\", is_error: false, spill: null, subject: \"ls crates \u00b7 exit 0 in 0.01s\", duration_ms: 2600, synthetic: false }, 2600);"
+    ]
+  },
+  "view/fixtures/overlap-child.jsonl": {
+    "added": [
+      "{\"seq\":5,\"time\":1730000006030,\"type\":\"tool/result\",\"data\":{\"step\":1,\"call_id\":\"tc_c1\",\"name\":\"bash\",\"value\":{\"exit\":0},\"rendered\":\"cli\\ncode\\ncore\\nlog\",\"is_error\":false,\"spill\":null,\"subject\":\"ls crates \u2013 exit 0 in 0.01s\",\"duration_ms\":2600,\"synthetic\":false}}"
+    ],
+    "removed": [
+      "{\"seq\":5,\"time\":1730000006030,\"type\":\"tool/result\",\"data\":{\"step\":1,\"call_id\":\"tc_c1\",\"name\":\"bash\",\"value\":{\"exit\":0},\"rendered\":\"cli\\ncode\\ncore\\nlog\",\"is_error\":false,\"spill\":null,\"subject\":\"ls crates \u00b7 exit 0 in 0.01s\",\"duration_ms\":2600,\"synthetic\":false}}"
+    ]
+  },
+  "view/src/app.ts": {
+    "added": [
+      "\" move \u2013 \",",
+      "\" select \u2013 \",",
+      "\" compare \u2013 \",",
+      "\" filter \u2013 \",",
+      "\" tabs \u2013 drag or arrow a grip to resize, double click to reset\",",
+      "this.title.textContent = s ? `${s.name} \u2013 ${s.id}` : \"\";"
+    ],
+    "removed": [
+      "\" move \u00b7 \",",
+      "\" select \u00b7 \",",
+      "\" compare \u00b7 \",",
+      "\" filter \u00b7 \",",
+      "\" tabs \u00b7 drag or arrow a grip to resize, double click to reset\",",
+      "this.title.textContent = s ? `${s.name} \u00b7 ${s.id}` : \"\";"
+    ]
+  },
+  "view/src/attribution.ts": {
+    "added": [
+      "pieces.push({ kind: \"tool\", id: callId, label: `${str(m.name, \"?\")} \u2013 ${callId}`, chars: rendered.length });",
+      "const label = labels.has(piece.label) ? `${piece.label} \u2013 step ${num(data.step)}` : piece.label;"
+    ],
+    "removed": [
+      "pieces.push({ kind: \"tool\", id: callId, label: `${str(m.name, \"?\")} \u00b7 ${callId}`, chars: rendered.length });",
+      "const label = labels.has(piece.label) ? `${piece.label} \u00b7 step ${num(data.step)}` : piece.label;"
+    ]
+  },
+  "view/src/causality.ts": {
+    "added": [
+      "const attempts = row.attempts !== undefined && row.attempts > 1 ? ` \u2013 attempt ${row.attempts} of ${row.attempts}` : \"\";",
+      "return { rowId, title: row.aside === \"\" ? row.label : `${row.label} \u2013 ${row.aside}`, segments };"
+    ],
+    "removed": [
+      "const attempts = row.attempts !== undefined && row.attempts > 1 ? ` \u00b7 attempt ${row.attempts} of ${row.attempts}` : \"\";",
+      "return { rowId, title: row.aside === \"\" ? row.label : `${row.label} \u00b7 ${row.aside}`, segments };"
+    ]
+  },
+  "view/src/fold.ts": {
+    "added": [
+      "return `blocked \u2013 ${str(o.code, \"?\")}`;",
+      "return `exhausted \u2013 ${str(o.limit, \"?\")}`;",
+      "return `failed \u2013 ${str(o.error, \"?\")}`;",
+      "const detail = `step ${num(data.step)} \u2013 attempt ${num(data.attempt)} \u2013 header seq ${num(",
+      ")}${consumed ? ` \u2013 consumed ${consumed}` : \"\"}`;",
+      "`step ${num(data.step)} \u2013 attempt ${num(data.attempt)} \u2013 backoff before the next attempt`,",
+      "`step ${num(data.step)} \u2013 attempt ${num(data.attempt)} \u2013 ${str(data.cause, \"?\")} \u2013 ${num(",
+      "return this.note(ev, \"host call\", `${str(data.name, \"?\")} \u2013 ${str(data.call_id)}`, \"info\", data.args);",
+      "`${str(data.child_id)} \u2013 ${num(r.model_calls)} calls \u2013 ${num(r.input_tokens)} input \u2013 ${num(r.output_tokens)} output`,",
+      "`${str(data.child_id)} \u2013 spent ${num(r.model_calls)} calls \u2013 ${num(r.input_tokens)} input \u2013 ${num(r.output_tokens)} output`,",
+      "this.mark(ev, \"spawn\", child, `${str(data.contract, \"?\")} \u2013 ${str(data.context, \"?\")}`, 0);",
+      "`${child} \u2013 ${str(data.contract, \"?\")} \u2013 ${str(data.context, \"?\")} \u2013 ${str(data.call_id)}`,",
+      "`${str(data.child_id)} \u2013 ${outcomeLabel(outcome)}`,",
+      "`${str(data.name, \"?\")} (${member}) \u2013 ${str(data.phase, \"?\")}`,",
+      "`${str(data.message_id)} \u2013 ${str(data.from, \"?\")} \u2192 ${str(data.to, \"?\")}`,",
+      "`${str(data.task_id, \"?\")} \u2013 ${str(data.name, \"?\")} \u2013 ${status}${owner ? ` \u2013 ${owner}` : \"\"}`,",
+      "`${str(data.comm, \"?\")} (pid ${num(data.pid)}) \u2013 ${str(data.access, \"?\")} ${str(data.path, \"?\")}`,",
+      "const detail = `step ${num(data.step)} \u2013 projected ${num(data.projected_tokens)} tokens \u2013 covering seq ${num(",
+      "? `step ${num(data.step)} \u2013 ${fmtInt(num(usage.input))} in / ${fmtInt(num(usage.output))} out \u2013 next request about ${fmtInt(",
+      ": `step ${num(data.step)} \u2013 failed: ${str(data.error, \"?\")} \u2013 context unchanged`;",
+      "const detail = `${str(data.tool, \"?\")} \u2013 ${status} \u2013 ${findings} finding${findings === 1 ? \"\" : \"s\"} \u2013 ${fmtInt(",
+      "return this.note(ev, \"episode\", parts.join(\" \u2013 \"), \"info\", data);",
+      "detail: `${str(data.cause, \"?\")} on firing ${fire}${target === \"\" ? \"\" : ` \u2013 re-fires ${target}`}`,",
+      ".join(\" \u2013 \");"
+    ],
+    "removed": [
+      "return `blocked \u00b7 ${str(o.code, \"?\")}`;",
+      "return `exhausted \u00b7 ${str(o.limit, \"?\")}`;",
+      "return `failed \u00b7 ${str(o.error, \"?\")}`;",
+      "const detail = `step ${num(data.step)} \u00b7 attempt ${num(data.attempt)} \u00b7 header seq ${num(",
+      ")}${consumed ? ` \u00b7 consumed ${consumed}` : \"\"}`;",
+      "`step ${num(data.step)} \u00b7 attempt ${num(data.attempt)} \u00b7 backoff before the next attempt`,",
+      "`step ${num(data.step)} \u00b7 attempt ${num(data.attempt)} \u00b7 ${str(data.cause, \"?\")} \u00b7 ${num(",
+      "return this.note(ev, \"host call\", `${str(data.name, \"?\")} \u00b7 ${str(data.call_id)}`, \"info\", data.args);",
+      "`${str(data.child_id)} \u00b7 ${num(r.model_calls)} calls \u00b7 ${num(r.input_tokens)} input \u00b7 ${num(r.output_tokens)} output`,",
+      "`${str(data.child_id)} \u00b7 spent ${num(r.model_calls)} calls \u00b7 ${num(r.input_tokens)} input \u00b7 ${num(r.output_tokens)} output`,",
+      "this.mark(ev, \"spawn\", child, `${str(data.contract, \"?\")} \u00b7 ${str(data.context, \"?\")}`, 0);",
+      "`${child} \u00b7 ${str(data.contract, \"?\")} \u00b7 ${str(data.context, \"?\")} \u00b7 ${str(data.call_id)}`,",
+      "`${str(data.child_id)} \u00b7 ${outcomeLabel(outcome)}`,",
+      "`${str(data.name, \"?\")} (${member}) \u00b7 ${str(data.phase, \"?\")}`,",
+      "`${str(data.message_id)} \u00b7 ${str(data.from, \"?\")} \u2192 ${str(data.to, \"?\")}`,",
+      "`${str(data.task_id, \"?\")} \u00b7 ${str(data.name, \"?\")} \u00b7 ${status}${owner ? ` \u00b7 ${owner}` : \"\"}`,",
+      "`${str(data.comm, \"?\")} (pid ${num(data.pid)}) \u00b7 ${str(data.access, \"?\")} ${str(data.path, \"?\")}`,",
+      "const detail = `step ${num(data.step)} \u00b7 projected ${num(data.projected_tokens)} tokens \u00b7 covering seq ${num(",
+      "? `step ${num(data.step)} \u00b7 ${fmtInt(num(usage.input))} in / ${fmtInt(num(usage.output))} out \u00b7 next request about ${fmtInt(",
+      ": `step ${num(data.step)} \u00b7 failed: ${str(data.error, \"?\")} \u00b7 context unchanged`;",
+      "const detail = `${str(data.tool, \"?\")} \u00b7 ${status} \u00b7 ${findings} finding${findings === 1 ? \"\" : \"s\"} \u00b7 ${fmtInt(",
+      "return this.note(ev, \"episode\", parts.join(\" \u00b7 \"), \"info\", data);",
+      "detail: `${str(data.cause, \"?\")} on firing ${fire}${target === \"\" ? \"\" : ` \u00b7 re-fires ${target}`}`,",
+      ".join(\" \u00b7 \");"
+    ]
+  },
+  "view/src/render/attribution.ts": {
+    "added": [
+      "return request.attempt > 1 ? `${step} \u2013 attempt ${request.attempt}` : step;",
+      "`${KIND_NAMES[share.part.kind]} \u2013 ${share.replayed ? \"resent\" : \"first sent here\"}` +",
+      "(share.tokens === null ? \"\" : ` \u2013 ${fmtInt(Math.round(share.tokens))} tokens`),",
+      "? [fmtInt(attribution.input ?? 0), \" input tokens \u2013 cache read \", tools.absent()]",
+      ": `${fmtInt(attribution.input ?? 0)} input tokens \u2013 ${fmtInt(cache)} of them read from the provider's cache`,"
+    ],
+    "removed": [
+      "return request.attempt > 1 ? `${step} \u00b7 attempt ${request.attempt}` : step;",
+      "`${KIND_NAMES[share.part.kind]} \u00b7 ${share.replayed ? \"resent\" : \"first sent here\"}` +",
+      "(share.tokens === null ? \"\" : ` \u00b7 ${fmtInt(Math.round(share.tokens))} tokens`),",
+      "? [fmtInt(attribution.input ?? 0), \" input tokens \u00b7 cache read \", tools.absent()]",
+      ": `${fmtInt(attribution.input ?? 0)} input tokens \u00b7 ${fmtInt(cache)} of them read from the provider's cache`,"
+    ]
+  },
+  "view/src/render/conversation.ts": {
+    "added": [
+      "[h(\"span\", null, label), h(\"span\", { class: \"meta\" }, `step ${row.step} \u2013 kept from seq ${row.firstKeptSeq}`)],",
+      ".join(\" \u2013 \");",
+      "h(\"div\", { class: \"meta\" }, meta.join(\" \u2013 \")),",
+      "? lazyDetails([h(\"span\", { class: \"meta\" }, `thinking \u2013 ${fmtInt(row.thinking.length)} chars`)], () => h(\"pre\", { class: \"text\" }, row.thinking), {",
+      "meta.length ? h(\"span\", { class: \"meta\" }, meta.join(\" \u2013 \")) : null,",
+      "row.spill ? [h(\"span\", { title: \"canonical value stored under spill/\" }, `spill ${row.spill}`), \" \u2013 \"] : null,",
+      "meta.join(\" \u2013 \"),"
+    ],
+    "removed": [
+      "[h(\"span\", null, label), h(\"span\", { class: \"meta\" }, `step ${row.step} \u00b7 kept from seq ${row.firstKeptSeq}`)],",
+      ".join(\" \u00b7 \");",
+      "h(\"div\", { class: \"meta\" }, meta.join(\" \u00b7 \")),",
+      "? lazyDetails([h(\"span\", { class: \"meta\" }, `thinking \u00b7 ${fmtInt(row.thinking.length)} chars`)], () => h(\"pre\", { class: \"text\" }, row.thinking), {",
+      "meta.length ? h(\"span\", { class: \"meta\" }, meta.join(\" \u00b7 \")) : null,",
+      "row.spill ? [h(\"span\", { title: \"canonical value stored under spill/\" }, `spill ${row.spill}`), \" \u00b7 \"] : null,",
+      "meta.join(\" \u00b7 \"),"
+    ]
+  },
+  "view/src/render/diff.ts": {
+    "added": [
+      "h(\"div\", { class: \"column\" }, h(\"h2\", null, `${a.name} \u2013 ${a.id} \u2013 seq ${sharedLen} onward`), this.left.el),",
+      "h(\"div\", { class: \"column\" }, h(\"h2\", null, `${b.name} \u2013 ${b.id} \u2013 seq ${sharedLen} onward`), this.right.el),"
+    ],
+    "removed": [
+      "h(\"div\", { class: \"column\" }, h(\"h2\", null, `${a.name} \u00b7 ${a.id} \u00b7 seq ${sharedLen} onward`), this.left.el),",
+      "h(\"div\", { class: \"column\" }, h(\"h2\", null, `${b.name} \u00b7 ${b.id} \u00b7 seq ${sharedLen} onward`), this.right.el),"
+    ]
+  },
+  "view/src/render/json.ts": {
+    "added": [
+      "const size = `${text.length} characters${lines > 1 ? ` \u2013 ${lines} lines` : \"\"}`;"
+    ],
+    "removed": [
+      "const size = `${text.length} characters${lines > 1 ? ` \u00b7 ${lines} lines` : \"\"}`;"
+    ]
+  },
+  "view/src/render/scoped.ts": {
+    "added": [
+      "before.join(\" \u2013 \"),",
+      "name === \"\" ? null : before.length === 0 ? null : \" \u2013 \","
+    ],
+    "removed": [
+      "before.join(\" \u00b7 \"),",
+      "name === \"\" ? null : before.length === 0 ? null : \" \u00b7 \","
+    ]
+  },
+  "view/src/render/statistics.ts": {
+    "added": [
+      "() => `${run.name} \u2013 ${run.id}`,",
+      "`${run.episodes} episode${run.episodes === 1 ? \"\" : \"s\"} \u2013 ` +",
+      "const label = `${step.compaction ? \"compaction\" : `step ${step.step}`}${step.attempt > 1 ? ` \u2013 attempt ${step.attempt}` : \"\"}`;",
+      "() => `${name} \u2013 ${label}`,",
+      "`${step.input === null ? \"\" : ` \u2013 ${fmtInt(step.input)} input tokens`}`,",
+      "const total = h(\"span\", { class: \"fig-total\" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens \u2013 ${percent(rate)}`);",
+      "() => `${fmtInt(measuredRequests)} requests \u2013 mean ${percent(perRequest)}`,",
+      "() => `${fmtInt(group.calls)} calls \u2013 ${fmtInt(group.durationMs)} ms total`,"
+    ],
+    "removed": [
+      "() => `${run.name} \u00b7 ${run.id}`,",
+      "`${run.episodes} episode${run.episodes === 1 ? \"\" : \"s\"} \u00b7 ` +",
+      "const label = `${step.compaction ? \"compaction\" : `step ${step.step}`}${step.attempt > 1 ? ` \u00b7 attempt ${step.attempt}` : \"\"}`;",
+      "() => `${name} \u00b7 ${label}`,",
+      "`${step.input === null ? \"\" : ` \u00b7 ${fmtInt(step.input)} input tokens`}`,",
+      "const total = h(\"span\", { class: \"fig-total\" }, `${fmtInt(read)} of ${fmtInt(input)} input tokens \u00b7 ${percent(rate)}`);",
+      "() => `${fmtInt(measuredRequests)} requests \u00b7 mean ${percent(perRequest)}`,",
+      "() => `${fmtInt(group.calls)} calls \u00b7 ${fmtInt(group.durationMs)} ms total`,"
+    ]
+  },
+  "view/src/render/team.ts": {
+    "added": [
+      "h(\"span\", { class: \"fig-total\" }, `${boards.length} teams \u2013 ${taskCount} tasks`),"
+    ],
+    "removed": [
+      "h(\"span\", { class: \"fig-total\" }, `${boards.length} teams \u00b7 ${taskCount} tasks`),"
+    ]
+  },
+  "view/src/render/trajectory.ts": {
+    "added": [
+      "].join(\" \u2013 \");",
+      ".join(\" \u2013 \");",
+      "() => `${firing.node} \u2013 firing ${firing.fire}`,",
+      "() => `${decision.kind} \u2013 ${decision.node}`,",
+      "() => `seq ${decision.seq} \u2013 ${fmtTime(decision.time)}`,",
+      "const meta = row.name === row.id ? row.id : `${row.name} \u2013 ${row.id}`;",
+      "return lines.join(\" \u2013 \");"
+    ],
+    "removed": [
+      "].join(\" \u00b7 \");",
+      ".join(\" \u00b7 \");",
+      "() => `${firing.node} \u00b7 firing ${firing.fire}`,",
+      "() => `${decision.kind} \u00b7 ${decision.node}`,",
+      "() => `seq ${decision.seq} \u00b7 ${fmtTime(decision.time)}`,",
+      "const meta = row.name === row.id ? row.id : `${row.name} \u00b7 ${row.id}`;",
+      "return lines.join(\" \u00b7 \");"
+    ]
+  },
+  "view/src/render/tree.ts": {
+    "added": [
+      "runTitle.textContent = `${run.runs} runs of ${run.name} \u2013 one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;",
+      "return kept.flatMap((part, i) => [i > 0 ? \" \" : null, h(\"span\", { class: \"part\" }, i > 0 ? `\u2013 ${part}` : part)]);",
+      "provenance ? h(\"span\", { class: \"sub\" }, ` \u2013 ${provenanceText(provenance)}`) : null,"
+    ],
+    "removed": [
+      "runTitle.textContent = `${run.runs} runs of ${run.name} \u00b7 one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;",
+      "return kept.flatMap((part, i) => [i > 0 ? \" \" : null, h(\"span\", { class: \"part\" }, i > 0 ? `\u00b7 ${part}` : part)]);",
+      "provenance ? h(\"span\", { class: \"sub\" }, ` \u00b7 ${provenanceText(provenance)}`) : null,"
+    ]
+  },
+  "view/src/render/workflow.ts": {
+    "added": [
+      "`${recovery.action} \u2013 ${recovery.cause}`,",
+      "recovery.note ? ` \u2013 ${recovery.note}` : \"\"",
+      "() => `${kindLine(node)}${node.terminal ? \" \u2013 terminal\" : \"\"}`,",
+      ": `${fmtDuration(firing.durationMs)}${firing.label ? ` \u2013 chose ${firing.label}` : \"\"}`,"
+    ],
+    "removed": [
+      "`${recovery.action} \u00b7 ${recovery.cause}`,",
+      "recovery.note ? ` \u00b7 ${recovery.note}` : \"\"",
+      "() => `${kindLine(node)}${node.terminal ? \" \u00b7 terminal\" : \"\"}`,",
+      ": `${fmtDuration(firing.durationMs)}${firing.label ? ` \u00b7 chose ${firing.label}` : \"\"}`,"
+    ]
+  },
+  "view/test/attribution.test.ts": {
+    "added": [
+      "assert.equal(summary.shares[0]!.part.label, \"system prompt \u2013 step 4\");",
+      "const result = out.parts.find((p) => p.part.label === \"read \u2013 tc_01\")!;",
+      "const result = retry.shares.find((s) => s.part.label === \"read \u2013 tc_01\")!;",
+      "assert.equal(later.shares.find((s) => s.part.label === \"read \u2013 tc_01\")!.replayed, true);"
+    ],
+    "removed": [
+      "assert.equal(summary.shares[0]!.part.label, \"system prompt \u00b7 step 4\");",
+      "const result = out.parts.find((p) => p.part.label === \"read \u00b7 tc_01\")!;",
+      "const result = retry.shares.find((s) => s.part.label === \"read \u00b7 tc_01\")!;",
+      "assert.equal(later.shares.find((s) => s.part.label === \"read \u00b7 tc_01\")!.replayed, true);"
+    ]
+  },
+  "view/test/causality.test.ts": {
+    "added": [
+      "const labels = figure.rows.filter((r) => r.episodeId === \"ep_root\").map((r) => `${r.label} \u2013 ${r.aside}`);",
+      "\"fix-test \u2013 ep_root\",",
+      "\"read tests/parser_test.py lines 1\\u20135 of 5 \u2013 step 1\",",
+      "\"spawn survey \u2013 step 2\",",
+      "\"bash: the request was interrupted before the tool ran \u2013 step 3\",",
+      "\"answered \u2013 step 4\",",
+      "assert.equal(retried.label, \"step 2 \u2013 attempt 2 of 2\");",
+      "assert.equal(scope.title, \"spawn survey \u2013 step 2\");"
+    ],
+    "removed": [
+      "const labels = figure.rows.filter((r) => r.episodeId === \"ep_root\").map((r) => `${r.label} \u00b7 ${r.aside}`);",
+      "\"fix-test \u00b7 ep_root\",",
+      "\"read tests/parser_test.py lines 1\\u20135 of 5 \u00b7 step 1\",",
+      "\"spawn survey \u00b7 step 2\",",
+      "\"bash: the request was interrupted before the tool ran \u00b7 step 3\",",
+      "\"answered \u00b7 step 4\",",
+      "assert.equal(retried.label, \"step 2 \u00b7 attempt 2 of 2\");",
+      "assert.equal(scope.title, \"spawn survey \u00b7 step 2\");"
+    ]
+  },
+  "view/test/fold.test.ts": {
+    "added": [
+      "assert.match(s.decisions[2]!.detail, /^process-exit on firing 1 \u2013 re-fires verify_change$/);",
+      "assert.match(notes[0]!.detail, /^check \u2013 findings \u2013 2 findings \u2013 12 ms$/);",
+      "assert.match(notes[1]!.detail, /^check \u2013 accepted \u2013 0 findings \u2013 9 ms$/);"
+    ],
+    "removed": [
+      "assert.match(s.decisions[2]!.detail, /^process-exit on firing 1 \u00b7 re-fires verify_change$/);",
+      "assert.match(notes[0]!.detail, /^check \u00b7 findings \u00b7 2 findings \u00b7 12 ms$/);",
+      "assert.match(notes[1]!.detail, /^check \u00b7 accepted \u00b7 0 findings \u00b7 9 ms$/);"
+    ]
+  }
+}

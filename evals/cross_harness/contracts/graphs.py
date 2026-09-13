@@ -63,6 +63,14 @@ every verifier declaration, so a run under it can show what those two
 mechanisms contribute. The teams variant `undivided` leaves the survey only
 the `alone` label and drops the three nodes of the divide path; `sequential`
 keeps the graph and caps concurrency at one.
+
+The value a graph ends with is the value its terminal node returned, and a
+grader reads that value. A node that changes files returns a change report,
+which is the default shape of both terminal nodes of the teams graph. A task
+whose grade reads a value of its own, such as one that asks for a list of
+findings over the tree, states that shape and `teams` declares it on both
+terminal nodes instead, so the value the grader receives is the value the
+task asked for whichever branch the survey took.
 """
 
 from __future__ import annotations
@@ -527,6 +535,7 @@ def teams(
     write_roots: Sequence[str] = WRITE_ROOTS,
     execute: Sequence[str] = EXECUTE_ROOTS,
     task: str = PLACEHOLDER_TASK,
+    returns: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The survey, interface, delegate, integrate graph with an implement-alone branch, over one workspace.
 
@@ -534,7 +543,11 @@ def teams(
     the survey only the `alone` label and drop the divide path's three nodes,
     or `sequential` to cap concurrency at one worker. `max_concurrent` caps the workers one delegation runs at once
     and the model nodes the root runs at once; `sequential` sets both to 1.
-    The other keyword parameters mean what they mean for `autonomy`.
+    `returns` is the shape the task requires of the value the workflow ends
+    with; the two nodes that can end it declare it in place of the change
+    report, and their instructions then ask for that value rather than for a
+    change report. A task that states no shape leaves both on the change
+    report. The other keyword parameters mean what they mean for `autonomy`.
     """
     if variant not in TEAMS_VARIANTS:
         raise ValueError(f"variant is {variant!r}; expected one of {', '.join(TEAMS_VARIANTS)}")
@@ -543,6 +556,17 @@ def teams(
     if variant == "sequential":
         max_concurrent = 1
     shape = _shape(workspace, check, budget, root_files, write_roots, execute, block=True)
+    # The task's own shape reaches only the nodes that can end the workflow:
+    # the value the run grades is the one the terminal node returned, and a
+    # node in the middle of the graph still reports its work as a change.
+    def terminal_returns() -> dict[str, Any]:
+        return change_report() if returns is None else copy.deepcopy(dict(returns))
+
+    terminal_report = (
+        "Report every changed path, the validation you observed, unresolved risks, and cited evidence."
+        if returns is None
+        else "Return the value the task's text states, in the shape this node's contract declares."
+    )
     worker = shape.contract(
         WORKER,
         "Do the one unit your task names, inside the directories you were granted and nowhere else. Read and search anywhere. "
@@ -594,17 +618,15 @@ def teams(
     integrate = shape.contract(
         "integrate",
         "Integrate what the workers returned. Apply every change a worker reported as needed outside its grant, reconcile the "
-        "units where they meet, and account for every unit whose board task did not complete. Report every changed path, "
-        "the validation you observed, unresolved risks, and cited evidence.",
+        "units where they meet, and account for every unit whose board task did not complete. " + terminal_report,
         ("read", "grep", "edit", "bash", CHECK, "block"),
-        change_report(),
+        terminal_returns(),
     )
     alone = shape.contract(
         "implement-alone",
-        "Implement the whole task yourself, using the survey. Make the smallest sufficient change. "
-        "Report every changed path, the validation you observed, unresolved risks, and cited evidence.",
+        "Implement the whole task yourself, using the survey. Make the smallest sufficient change. " + terminal_report,
         ("read", "grep", "edit", "bash", CHECK, "block"),
-        change_report(),
+        terminal_returns(),
     )
     nodes = {
         "survey": shape.node(survey, ["task"], branches={"divide": ["interface"], "alone": ["implement-alone"]}),

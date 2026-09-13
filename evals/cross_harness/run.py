@@ -21,7 +21,11 @@ family has its own arms, and an arm is one harness in one configuration:
 
 Every Codex arm receives the output schema of `arms/codex_arm.py`, so its
 final message is a typed report with a status, a blocked code, and evidence,
-which is what a foe outcome carries.
+which is what a foe outcome carries. A task whose grade reads a value of its
+own records that value's shape under `metadata.returns`: the shape is
+declared on the two nodes that can end the foe document's teams graph and
+merged into the Codex arm's final-message schema, so both harnesses can
+return what the grade needs.
 
 Every run of one task under one arm is an attempt. The runner materializes
 the task's workspace into a fresh root, runs the arm, and materializes the
@@ -313,6 +317,11 @@ CHECK_SUITE = "checks/run.sh"
 TESTS_DIR = "tests"
 # Optional task metadata keys the runner reads.
 METADATA_CHECK, METADATA_WRITE_ROOTS, METADATA_TOOL_ROOTS = "check", "write_roots", "tool_roots"
+# The shape a task requires of the value its grade reads. A task that
+# states one has it declared on the foe document's terminal nodes and
+# merged into the Codex arm's final-message schema, so both harnesses can
+# return the value the grade needs.
+METADATA_RETURNS = "returns"
 # The task metadata key naming the one program a missing-capability task presumes absent from every arm's search path.
 METADATA_PRESUMES_ABSENT = "presumes_absent"
 # The task metadata key naming the one module a missing-capability task presumes the grading interpreter cannot import.
@@ -1339,7 +1348,15 @@ def foe_document(arm: Arm, task: protocol.Task, workspace: Path, check: Path, to
         document = graphs.autonomy(workspace, check, budget, ablated=arm.variant == "ablated", root_files=root_files, write_roots=roots or graphs.WRITE_ROOTS, execute=execute)
     else:
         document = graphs.teams(
-            workspace, check, budget, variant=arm.variant, max_concurrent=TEAM_CONCURRENCY, root_files=root_files, write_roots=roots or graphs.WRITE_ROOTS, execute=execute
+            workspace,
+            check,
+            budget,
+            variant=arm.variant,
+            max_concurrent=TEAM_CONCURRENCY,
+            root_files=root_files,
+            write_roots=roots or graphs.WRITE_ROOTS,
+            execute=execute,
+            returns=task.metadata.get(METADATA_RETURNS),
         )
     return with_placeholder(with_read_roots(document, tools), workspace)
 
@@ -1498,6 +1515,7 @@ def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, 
         agents_enabled=arm.variant == "multi",
         max_threads=TEAM_CONCURRENCY if arm.variant == "multi" else None,
         model_providers=codex_providers(settings),
+        output_schema=codex_arm.schema_for(task.metadata.get(METADATA_RETURNS)),
         config_canary=settings.canaries.get(CODEX_CONFIG_CANARY),
     )
     try:

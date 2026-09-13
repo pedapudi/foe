@@ -1,8 +1,8 @@
 {
   "name": "module-cites-its-specification",
   "family": "teams",
-  "class_name": "fan-out",
-  "text": "Each module of crates/contract implements one section of one specification document of this repository, and states which one in a line of its module documentation reading `//! Specification: <document> \"<section>\".`, where the section stands as a heading in that document. A module states one citation, and the document it names is one of the six AGENTS.md \"Read first\" names: docs/design.md, docs/config.md, docs/log-format.md, docs/protocol.md, docs/workflow.md, and docs/compaction.md. crates/contract/src/document.rs carries its citation already.\n\nThe table `SPECIFICATIONS` in crates/contract/src/lib.rs holds one row for every module of the crate: the module's name, the document, and the section. The citation a module states is the one the table gives it, and the table names every module of the crate. `specification` reads one module's row.\n\nThe change applies to 6 units: crates/contract/src/fingerprint.rs, crates/contract/src/harness_text.rs, crates/contract/src/inspect.rs, crates/contract/src/schema.rs, crates/contract/src/tools.rs, crates/contract/src/workflow.rs. Each unit is judged by its own tests. checks/run.sh runs the check the whole change is judged on: the tests of foe-contract, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "class_name": "coherent",
+  "text": "Each module of crates/contract implements one section of one specification document of this repository, and states which one in a line of its module documentation reading `//! Specification: <document> \"<section>\".`, where the section stands as a heading in that document. A module states one citation, and the document it names is one of the six AGENTS.md \"Read first\" names: docs/design.md, docs/config.md, docs/log-format.md, docs/protocol.md, docs/workflow.md, and docs/compaction.md. crates/contract/src/document.rs carries its citation already.\n\nThe table `SPECIFICATIONS` in crates/contract/src/lib.rs holds one row for every module of the crate: the module's name, the document, and the section. The citation a module states is the one the table gives it, and the table names every module of the crate. `specification` reads one module's row.\n\nchecks/run.sh runs the check the whole change is judged on: the tests of foe-contract, clippy with warnings denied on the same crate, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
   "correct_statuses": [
     "completed"
   ],
@@ -19,9 +19,14 @@
     "checks/run.sh"
   ],
   "metadata": {
+    "division": {
+      "changed_directory": "crates/contract/src",
+      "separable": false
+    },
     "source": {
       "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
-      "subject": "Cite the specification each module of the contract crate implements"
+      "subject": "Cite the specification each module of the contract crate implements",
+      "repo": "/home/sunil/git/foe"
     },
     "crate": "crates/contract",
     "package": "foe-contract",

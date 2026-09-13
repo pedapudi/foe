@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Hidden checks for a constructed fan-out: each unit's test, the integration test, clippy, and the line budgets.
+"""Hidden checks for a constructed control: each part's test, the integration test, clippy, and the line budgets.
 
 The script runs from the workspace, which holds `Cargo.toml` and `crates/`.
 It copies the workspace without its build directory, restores the hidden

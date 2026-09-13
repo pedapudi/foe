@@ -600,9 +600,11 @@ returns). Correct outcomes are `completed` with the hidden grader passing
 for the first class, `blocked` with a code from foe's fixed vocabulary for
 the second and third, and any bounded stop without damage for the fourth,
 where the measured quantity is the cost to stop. A teams task is a
-`fan-out` (one change applied to many similar units), a `survey` (a
-question over the whole tree whose ground truth a script computes), or a
-`coherent` control that a team should decline to divide.
+`fan-out` (one change applied to many similar units, each in a directory the
+others do not write), a `survey` (a question over the whole tree whose ground
+truth a script computes), or a `coherent` control whose change lies in one
+directory, so that no division into workers with separate write grants
+exists and a team should decline to divide.
 
 ### Arms
 
@@ -689,12 +691,41 @@ sweep commit through the same feature removal, with the commit's tests
 partitioned by unit so that a unit's pass is one number and the change's
 uniformity is the fraction of units passing, and with a corruption that
 renames one shared element to show that integration and no unit test
-detects it. A survey task asks a question over the whole tree whose ground
-truth a script computes, such as every error message that fails the rule
-that an error names the key, event, or rule involved; the grader scores
-the returned list by precision and recall. The multi-crate feature commits
-are the coherent controls a team should decline to divide. The tree holds
-two fan-out, two survey, and three coherent tasks.
+detects it. A unit is a crate or a top-level directory the commit changes an
+implementation file in, less the crates whose whole change is the interface
+another touched crate depends on, since the graph has one node write those
+before any worker starts. A unit the commit gives no runnable test carries a
+generated one, which requires every line the change adds to its files to
+stand there and every line the change removes to be gone, so every unit
+carries a verdict. Authoring refuses a commit that leaves fewer than two
+units or more than the eight workers a delegation runs. A survey task asks a
+question over the whole tree whose ground truth a script computes, such as
+every error message that fails the rule that an error names the key, event,
+or rule involved; the grader scores the returned list by precision and
+recall; the task records the shape of the value the grade reads, which
+reaches the foe document's terminal nodes and the Codex arm's final-message
+schema. The tree holds two fan-out, two survey, and two coherent tasks. No
+task text names its units: how the change divides is what the family
+measures.
+
+`tasks/coherent.py` authors the two coherent controls by construction rather
+than from a commit, so that the parts, the shared element, and the tests are
+chosen rather than inherited. What makes each a control is measured: every
+file its change touches lies in one crate directory, and a worker's write
+grant is a directory, so no two workers can be given directories that do not
+overlap and one agent doing the work alone is the only answer the delegating
+node's own instruction admits. Each is one change over six modules of one
+crate, with one table in that crate's root that every module must agree
+with, one hidden test per module, and one integration test that fails when a
+module disagrees with the table. Both crates pass their own tests inside a
+kernel sandbox, so the visible check passes in every environment an arm runs
+it in. Two corruptions of the solved workspace measure the two properties
+the design needs. Restoring one module to its fixture form fails that
+module's test and no other, and leaves the integration test passing, which
+is how the modules are shown to be independent. Making one module name a
+shared element the table does not give it fails the integration test and no
+module's test, which is how the integration test is shown to be the check
+that catches disagreement.
 
 A grader receives one JSON object on standard input, `reported` with
 `status`, `code`, and `evidence`, `candidate`, and `arm`, runs with the

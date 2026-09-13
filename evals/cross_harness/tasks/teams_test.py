@@ -300,15 +300,37 @@ class Units(Repositories):
         self.assertEqual(graph, {"crates/alpha": set(), "crates/beta": set(), "crates/delta": set(), "crates/gamma": {"crates/alpha"}})
         self.assertEqual(teams.closure(graph, ["crates/gamma"]), {"crates/gamma", "crates/alpha"})
 
-    def test_the_reverted_unit_is_the_first_checked_leaf_with_implementation_files(self) -> None:
+    def test_the_reverted_unit_is_the_first_leaf_with_implementation_files(self) -> None:
         units, graph = self.sweep_units()
         self.assertEqual(teams.revert_unit_for(units, graph).name, "crates/alpha")
         # With beta depending on alpha, alpha has a dependent and beta is the leaf.
         self.assertEqual(teams.revert_unit_for(units, {"crates/beta": {"crates/alpha"}}).name, "crates/beta")
-        tests_only = [unit for unit in units if unit.name == "docs"] + [teams.Unit("crates/zeta", ("crates/zeta/src/a_test.rs",), (), ("crates/zeta/src/a_test.rs",), "zeta")]
+        without_implementation = [teams.Unit("crates/zeta", ("crates/zeta/src/a_test.rs",), (), ("crates/zeta/src/a_test.rs",), "zeta")]
         with self.assertRaises(ValueError) as caught:
-            teams.revert_unit_for(tests_only, {})
+            teams.revert_unit_for(without_implementation, {})
         self.assertIn("--revert-unit", str(caught.exception))
+
+    def test_a_place_whose_whole_change_is_the_interface_is_no_unit(self) -> None:
+        units, _ = self.sweep_units()
+        by_name = {unit.name: unit for unit in units}
+        self.assertTrue(teams.interface_only(by_name["crates/alpha"], ["crates/alpha/src/lib.rs"]))
+        self.assertFalse(teams.interface_only(by_name["crates/alpha"], []))
+        self.assertFalse(teams.interface_only(by_name["docs"], ["crates/alpha/src/lib.rs"]))
+
+    def test_a_top_level_file_is_no_unit_because_a_write_grant_names_a_directory(self) -> None:
+        workspace = self.scratch() / "tree"
+        (workspace / "docs").mkdir(parents=True)
+        (workspace / "README.md").write_text("a line\n", encoding="utf-8")
+        readme = teams.Unit("README.md", ("README.md",), ("README.md",), (), None)
+        self.assertFalse(teams.grantable(readme, workspace))
+        self.assertTrue(teams.grantable(teams.Unit("docs", ("docs/a.md",), ("docs/a.md",), (), None), workspace))
+
+    def test_the_unit_ceiling_is_the_worker_episodes_the_teams_graph_declares(self) -> None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contracts"))
+        import graphs  # noqa: PLC0415
+
+        self.assertEqual(teams.UNIT_MAX, graphs.WORKER_EPISODES)
+        self.assertEqual(teams.UNIT_MAX, graphs.units_report()["properties"]["units"]["maxItems"])
 
     def test_interface_paths_are_the_implementation_files_touched_crates_depend_on(self) -> None:
         units, graph = self.sweep_units()
@@ -317,16 +339,38 @@ class Units(Repositories):
 
     def test_the_shared_element_is_used_outside_the_checked_closure_and_by_no_test_of_its_unit(self) -> None:
         units, graph = self.sweep_units()
-        shared, reason = teams.shared_element(self.sweep_repo, self.sweep, units, graph)
+        checked = [unit.name for unit in units if unit.checked]
+        shared, reason = teams.shared_element(self.sweep_repo, self.sweep, units, graph, checked)
         self.assertEqual(reason, "")
         assert shared is not None
         self.assertEqual((shared.unit, shared.element, shared.replacement), ("crates/alpha", "shared_thing", "shared_thing_renamed"))
         self.assertEqual(shared.files, ("crates/alpha/src/lib.rs",))
         self.assertEqual(shared.used_by, ("crates/gamma",))
         # With gamma inside the closure of a checked unit, no item qualifies.
-        shared, reason = teams.shared_element(self.sweep_repo, self.sweep, units, {"crates/beta": {"crates/gamma"}, "crates/gamma": {"crates/alpha"}})
+        shared, reason = teams.shared_element(self.sweep_repo, self.sweep, units, {"crates/beta": {"crates/gamma"}, "crates/gamma": {"crates/alpha"}}, checked)
         self.assertIsNone(shared)
         self.assertIn("crates/gamma", reason)
+
+    def test_a_unit_set_a_delegation_cannot_hand_out_or_a_grade_cannot_judge_is_refused(self) -> None:
+        units, _ = self.sweep_units()
+        teams.check_unit_set(units, units, "abc")
+        with self.assertRaises(ValueError) as caught:
+            teams.check_unit_set(units[:1], units[:1], "abc")
+        self.assertIn("two or more units", str(caught.exception))
+        many = [teams.Unit(f"part{index}", (f"part{index}/a.md",), (f"part{index}/a.md",), (), None) for index in range(teams.UNIT_MAX + 1)]
+        with self.assertRaises(ValueError) as caught:
+            teams.check_unit_set(many, many, "abc")
+        self.assertIn(f"at most {teams.UNIT_MAX} workers", str(caught.exception))
+        with self.assertRaises(ValueError) as caught:
+            teams.check_unit_set(units, [unit for unit in units if unit.name != "docs"], "abc")
+        self.assertIn("docs without a verdict of its own", str(caught.exception))
+
+    def test_the_generated_check_records_the_lines_that_tell_the_two_forms_apart(self) -> None:
+        recorded = teams.discriminating_lines(self.sweep_repo, self.parent, self.sweep, "examples/README.md", False)
+        self.assertEqual(recorded, {"added": ["A heading reads `lead - You`."], "removed": ["A heading reads `lead . You`."]})
+        added_only = teams.discriminating_lines(self.sweep_repo, self.parent, self.sweep, "examples/README.md", True)
+        self.assertEqual(added_only["removed"], [])
+        self.assertIn("# Examples", added_only["added"])
 
     def test_the_budget_grows_with_the_checked_units(self) -> None:
         self.assertEqual(teams.budget_for(3), removal.budget_for(3))
@@ -343,9 +387,9 @@ class FanOutAuthoring(Repositories):
         self.assertEqual((task.family, task.class_name), ("teams", "fan-out"))
         self.assertEqual(task.correct_statuses, frozenset({COMPLETED}))
         self.assertTrue(task.text.startswith("Use a dash between the fields of every heading."))
-        self.assertIn("The change applies to 5 units: crates/alpha, crates/beta, docs, evals, examples. Each unit is judged by its own tests.", task.text)
-        self.assertNotIn("crates/delta", task.text)
-        self.assertNotIn("tests of their own", task.text, "the text does not say which units carry a verdict")
+        self.assertIn("Each part of the tree the change reaches is judged by the tests that cover it.", task.text)
+        for name in ("crates/alpha", "crates/beta", "crates/delta", "examples"):
+            self.assertNotIn(name, task.text, "the text names no unit; how the change divides is what the task measures")
         self.assertIn("cargo test --workspace", task.text)
         self.assertIn("docs/spec.md: the dot is retired from every heading, label, and subject line.", task.text)
         self.assertTrue(task.text.endswith(protocol.CLOSING))
@@ -354,14 +398,16 @@ class FanOutAuthoring(Repositories):
         self.assertNotIn("crates/delta", metadata["unit_files"])
         self.assertIn("crates/delta/tests/fixture.rs", metadata["hidden_tests"], "the grader restores the test-only crate's test with every other hidden test")
         self.assertEqual(metadata["n"], 5)
-        self.assertEqual(metadata["checked_units"], ["crates/alpha", "crates/beta", "evals"])
+        self.assertEqual(metadata["checked_units"], ["crates/alpha", "crates/beta", "docs", "evals", "examples"], "every unit carries a verdict")
+        self.assertEqual(metadata["generated_unit_checks"], {"docs": "checks/units/docs_test.py", "examples": "checks/units/examples_test.py"})
+        self.assertEqual(metadata["division"], {"write_roots": ["crates/alpha", "crates/beta", "docs", "evals", "examples"], "separable": True})
         self.assertEqual(metadata["unit_tests"]["evals"], ["evals/check_test.py"])
         self.assertEqual(metadata["unit_packages"]["crates/beta"], "beta")
         self.assertEqual(metadata["revert_unit"], "crates/alpha")
         self.assertEqual(metadata["shared_element"]["element"], "shared_thing")
         self.assertEqual(metadata["source"], {"commit": self.sweep, "parent": self.parent, "subject": "Use a dash between the fields of every heading", "repo": str(self.sweep_repo)})
         self.assertTrue(metadata["review"].startswith("pending:"))
-        self.assertEqual(task.budget, removal.budget_for(3))
+        self.assertEqual(task.budget, removal.budget_for(5))
         self.assertEqual(task.protected, teams.PROTECTED)
 
     def test_the_grader_holds_the_fan_out_grade_and_both_corruptions_and_no_commit_diff(self) -> None:
@@ -369,9 +415,11 @@ class FanOutAuthoring(Repositories):
         self.assertFalse((grader / "oracle.patch").exists())
         self.assertTrue((grader / "grade.py").read_text(encoding="utf-8").startswith("#!/usr/bin/python3\n\"\"\"Hidden checks for a fan-out task"))
         specification = json.loads((grader / "specification.json").read_text(encoding="utf-8"))
-        self.assertEqual([unit["name"] for unit in specification["units"]], ["crates/alpha", "crates/beta", "evals"])
+        self.assertEqual([unit["name"] for unit in specification["units"]], ["crates/alpha", "crates/beta", "docs", "evals", "examples"])
         self.assertEqual(specification["units"][0]["hidden_test_names"], {"crates/alpha/src/lib_test.rs": ["joins_with_a_dash"]})
-        self.assertEqual(specification["units"][2]["python_tests"], ["evals/check_test.py"])
+        by_unit = {unit["name"]: unit for unit in specification["units"]}
+        self.assertEqual(by_unit["evals"]["python_tests"], ["evals/check_test.py"])
+        self.assertEqual(by_unit["docs"]["python_tests"], ["checks/units/docs_test.py"], "a unit the commit gives no test carries the generated one")
         self.assertEqual(sorted(path.name for path in protocol.corruptions(self.out)), ["rename-shared-element", "revert-one-unit"])
         revert = json.loads((grader / "corruptions/revert-one-unit/revert.json").read_text(encoding="utf-8"))
         self.assertEqual(revert, {"unit": "crates/alpha", "restore": ["crates/alpha/src/lib.rs"], "remove": []})
@@ -389,13 +437,23 @@ class FanOutAuthoring(Repositories):
         self.assertEqual((root / "workspace/crates/alpha/src/lib.rs").read_text(encoding="utf-8"), PARENT_FILES["crates/alpha/src/lib.rs"])
         self.assertEqual((root / "workspace/crates/alpha/src/lib_test.rs").read_text(encoding="utf-8"), SWEEP_FILES["crates/alpha/src/lib_test.rs"], "the visible subset")
 
+    def test_supplied_paragraphs_replace_the_drafted_ones_and_the_tool_keeps_the_rest(self) -> None:
+        supplied = self.scratch() / "specification.txt"
+        supplied.write_text("Every heading joins its fields with a dash.\n", encoding="utf-8")
+        out = self.scratch() / "supplied"
+        authored = teams.author_fan_out(self.sweep_repo, self.sweep, out, "supplied", text=supplied.read_text(encoding="utf-8"))
+        self.assertTrue(authored.task.text.startswith("Every heading joins its fields with a dash.\n\nEach part of the tree"))
+        self.assertNotIn("Use a dash between the fields", authored.task.text)
+        self.assertIn("docs/spec.md: the dot is retired", authored.task.text)
+        self.assertTrue(authored.task.metadata["review"].startswith("revised:"))
+
     def test_a_named_revert_unit_is_taken_and_an_unchecked_one_refused(self) -> None:
         out = self.scratch() / "beta-first"
         authored = teams.author_fan_out(self.sweep_repo, self.sweep, out, "beta-first", revert_unit="crates/beta")
         self.assertEqual(authored.revert_unit, "crates/beta")
         with self.assertRaises(ValueError) as caught:
-            teams.author_fan_out(self.sweep_repo, self.sweep, self.scratch() / "docs-first", "docs-first", revert_unit="docs")
-        self.assertIn("'docs'", str(caught.exception))
+            teams.author_fan_out(self.sweep_repo, self.sweep, self.scratch() / "gamma-first", "gamma-first", revert_unit="crates/gamma")
+        self.assertIn("'crates/gamma'", str(caught.exception))
 
 
 class FanOutGrading(Repositories):
@@ -427,6 +485,10 @@ class FanOutGrading(Repositories):
         untouched = controls["untouched"].findings
         self.assertTrue(any(finding.startswith("unit crates/alpha test:") and "join_dash is undefined" in finding for finding in untouched), untouched)
         self.assertTrue(any(finding.startswith("unit evals evals/check_test.py:") for finding in untouched), untouched)
+        self.assertTrue(
+            any(finding.startswith("unit docs checks/units/docs_test.py:") for finding in untouched),
+            f"the generated check fails on the untouched workspace: {untouched}",
+        )
         self.assertTrue(any("docs/spec.md lacks the sentence" in finding for finding in untouched), untouched)
 
     def test_the_oracle_passes_every_unit_and_records_the_verdicts(self) -> None:
@@ -434,25 +496,25 @@ class FanOutGrading(Repositories):
         self.assertIsNone(teams.read_units(root), "no grade has run")
         findings, stderr = grade_directly(root, None, "policy:oracle")
         self.assertEqual(findings, [])
-        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "evals": True})
-        self.assertEqual(teams.read_units(root), {"crates/alpha": True, "crates/beta": True, "evals": True}, "the verdicts are read from the root alone")
+        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "docs": True, "evals": True, "examples": True})
+        self.assertEqual(teams.read_units(root), {"crates/alpha": True, "crates/beta": True, "docs": True, "evals": True, "examples": True}, "the verdicts are read from the root alone")
         written = sorted((self.build / "dash-sweep/grades/policy-oracle").glob("*/logs/units.json"))
         self.assertEqual(len(written), 1)
-        self.assertEqual(json.loads(written[0].read_text(encoding="utf-8")), {"crates/alpha": True, "crates/beta": True, "evals": True})
+        self.assertEqual(json.loads(written[0].read_text(encoding="utf-8")), {"crates/alpha": True, "crates/beta": True, "docs": True, "evals": True, "examples": True})
         logs = sorted((self.build / "dash-sweep/grades/policy-oracle").glob("*/logs/*.log"))
         self.assertIn("unit-crates-alpha-test.log", [log.name for log in logs])
         self.assertIn("integration-test.log", [log.name for log in logs])
 
     def test_reverting_one_unit_fails_that_unit_alone(self) -> None:
         findings, stderr = grade_directly(self.solved_root("reverted", "revert-one-unit"), None)
-        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": False, "crates/beta": True, "evals": True})
+        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": False, "crates/beta": True, "docs": True, "evals": True, "examples": True})
         self.assertTrue(all(finding.startswith(("unit crates/alpha test:", "integration test:")) for finding in findings), findings)
 
     def test_renaming_the_shared_element_fails_the_workspace_check_and_no_unit(self) -> None:
         root = self.solved_root("renamed", "rename-shared-element")
         self.assertIn("shared_thing_renamed", (root / "workspace/crates/alpha/src/lib.rs").read_text(encoding="utf-8"))
         findings, stderr = grade_directly(root, None)
-        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "evals": True})
+        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "docs": True, "evals": True, "examples": True})
         self.assertEqual(len(findings), 1, findings)
         self.assertTrue(findings[0].startswith("integration test:") and "alpha::shared_thing" in findings[0], findings)
 
@@ -460,7 +522,7 @@ class FanOutGrading(Repositories):
         root = self.solved_root("python")
         (root / "workspace/evals/check.py").write_text(PARENT_FILES["evals/check.py"], encoding="utf-8")
         findings, stderr = grade_directly(root, None)
-        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "evals": False})
+        self.assertEqual(teams.parse_units(stderr), {"crates/alpha": True, "crates/beta": True, "docs": True, "evals": False, "examples": True})
         self.assertTrue(any(finding.startswith("unit evals evals/check_test.py: `/usr/bin/python3") for finding in findings), findings)
 
 
@@ -679,8 +741,8 @@ class CommandLine(Repositories):
         with contextlib.redirect_stdout(stdout):
             status = teams.main(["fan-out", "--repo", str(self.sweep_repo), "--commit", self.sweep, "--out", str(out / "sweep"), "--name", "sweep"])
         self.assertEqual(status, 0, stdout.getvalue())
-        self.assertIn("unit crates/alpha: checked, 1 implementation file(s), 1 hidden test(s)", stdout.getvalue())
-        self.assertIn("unit docs: unchecked", stdout.getvalue())
+        self.assertIn("unit crates/alpha: judged by the commit's tests, 1 implementation file(s), 1 hidden test(s)", stdout.getvalue())
+        self.assertIn("unit docs: judged by its generated line check, 1 implementation file(s), 0 hidden test(s)", stdout.getvalue())
         self.assertNotIn("crates/delta", stdout.getvalue())
         self.assertIn("rename corruption: shared_thing in crates/alpha, used by crates/gamma", stdout.getvalue())
         stdout = io.StringIO()
