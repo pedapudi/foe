@@ -415,3 +415,26 @@ fn a_request_policy_replaces_the_derived_narrowing() {
     let out = ex.run(req).unwrap();
     assert_ne!(out.exit_code, Some(0), "a path outside the request's policy is denied");
 }
+
+/// A grant naming a directory is that directory; a grant naming one file is
+/// the directory holding it, which is what a shell needs on its search path
+/// to run the file by name. The answer is sorted and holds each directory
+/// once, so two grants in one directory add one entry.
+#[test]
+fn granted_command_directories_name_a_directory_per_grant() {
+    let dir = scratch("exec", "granted-directories");
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for name in ["cargo", "rustc"] {
+        std::fs::write(bin.join(name), "#!/bin/sh\n").unwrap();
+    }
+    let tools = dir.join("tools");
+    std::fs::create_dir_all(&tools).unwrap();
+    let grants = vec![bin.join("rustc"), tools.clone(), bin.join("cargo")];
+    let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
+    let policy = Policy { delegated_exec: grants, ..Policy::default() };
+    let executor = LocalExecutor::new(sandbox, policy, dir.join("spill"), Arc::new(AtomicBool::new(false)));
+    let mut expected = vec![bin, tools];
+    expected.sort();
+    assert_eq!(executor.granted_command_directories(), expected);
+}

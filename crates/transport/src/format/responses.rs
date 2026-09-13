@@ -112,10 +112,8 @@ pub fn request_body(
         "store": false,
         "include": ["reasoning.encrypted_content"],
         "parallel_tool_calls": true,
-        // Requests reach the same cache only when they name it. The head
-        // every request in one episode repeats unchanged is its system
-        // prompt and its tool set, so their digest names the cache the
-        // episode's growing prefix belongs to.
+        // Requests reach the same cache only when they name it, and the
+        // name routes the whole prefix rather than the head alone.
         "prompt_cache_key": cache_key(req),
     });
     if !req.system.trim().is_empty() {
@@ -136,15 +134,13 @@ pub fn request_body(
     body
 }
 
-/// Names the cache a request's prefix belongs to. Two episodes that run the
-/// same contract share the head and so share the name.
+/// Names the cache a request's prefix belongs to. The prefix is the
+/// conversation an episode grows, so the episode names the cache. Naming it
+/// after anything two episodes share, such as the system prompt and tool set
+/// a contract fixes, sends unrelated conversations to one cache, where each
+/// evicts the prefix the last one wrote.
 fn cache_key(req: &ModelRequestBody) -> String {
-    let mut head = req.system.clone();
-    for tool in &req.tools {
-        head.push('\n');
-        head.push_str(&tool.name);
-    }
-    foe_log::digest::sha256_hex(head.as_bytes())
+    foe_log::digest::sha256_hex(req.episode_id.as_bytes())
 }
 
 fn tools_json(tools: &[ToolSchema]) -> Vec<Value> {
@@ -452,6 +448,7 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
 
     fn request() -> ModelRequestBody {
         ModelRequestBody {
+            episode_id: "ep_test".into(),
             request_id: "rq_01".into(),
             system: "You are a coding agent.".into(),
             tools: vec![ToolSchema {
@@ -520,17 +517,19 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(body["prompt_cache_key"].as_str().map(str::len), Some(64), "a digest names the cache");
     }
 
-    /// The cache name follows the head an episode repeats, so every step of
-    /// one episode names the same cache and a different tool set names
-    /// another.
+    /// The cache name follows the conversation. Every step of one episode
+    /// names the same cache, and two episodes that repeat the same system
+    /// prompt and tool set still name different ones, so neither evicts the
+    /// prefix the other wrote.
     #[test]
-    fn the_cache_name_holds_across_steps_and_follows_the_head() {
+    fn the_cache_name_holds_across_steps_and_separates_episodes() {
         let schema = |name: &str| ToolSchema {
             name: name.into(),
             description: "d".into(),
             parameters: json!({ "type": "object", "properties": {} }),
         };
-        let body = |messages: Vec<Message>, tools: Vec<ToolSchema>| ModelRequestBody {
+        let body = |episode: &str, messages: Vec<Message>, tools: Vec<ToolSchema>| ModelRequestBody {
+            episode_id: episode.into(),
             request_id: "rq_0001".into(),
             system: "You are a coding agent.".into(),
             tools,
@@ -538,11 +537,14 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
             max_output_tokens: None,
         };
         let user = |text: &str| Message::User { content: vec![ContentBlock::Text { text: text.into() }] };
-        let first = cache_key(&body(vec![user("one")], vec![schema("read")]));
-        let later = cache_key(&body(vec![user("one"), user("two")], vec![schema("read")]));
-        let other = cache_key(&body(vec![user("one")], vec![schema("read"), schema("edit")]));
+        let first = cache_key(&body("ep_one", vec![user("one")], vec![schema("read")]));
+        let later = cache_key(&body("ep_one", vec![user("one"), user("two")], vec![schema("read")]));
+        let grown = cache_key(&body("ep_one", vec![user("one")], vec![schema("read"), schema("edit")]));
+        let other = cache_key(&body("ep_two", vec![user("one")], vec![schema("read")]));
         assert_eq!(first, later, "a later step of the same episode names the same cache");
-        assert_ne!(first, other, "a different tool set is a different head");
+        assert_eq!(first, grown, "a changed tool set is the same conversation");
+        assert_ne!(first, other, "another episode running the same contract names another cache");
+        assert_eq!(first.len(), 64, "a digest names the cache");
     }
 
     #[tokio::test]

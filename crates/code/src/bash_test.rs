@@ -31,7 +31,11 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(req.stdin.is_none());
     assert!(!req.network);
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-    assert_eq!(req.env["HOME"], fx.root().display().to_string());
+    // HOME is the real user's home, not the workspace, so a toolchain
+    // manager finds its installation where it keeps it. The grants still
+    // decide what is readable there.
+    let home = foe_core::exec::real_home().unwrap_or_else(|| fx.root());
+    assert_eq!(req.env["HOME"], home.display().to_string());
     // docs/tools.md `bash`: the scratch directory is `tmp` beside `spill`.
     assert_eq!(req.env["TMPDIR"], c.spill_dir.with_file_name("tmp").display().to_string());
     assert_eq!(req.env.len(), 4, "the environment is exactly these four variables");
@@ -54,6 +58,24 @@ async fn the_canonical_value_is_identical_across_run_durations() {
     assert_eq!(quick.value, slow.value);
     assert!(quick.value.get("duration_ms").is_none(), "{:?}", quick.value);
     assert_ne!(quick.rendered, slow.rendered, "the rendering still states the duration");
+}
+
+/// A granted toolchain is runnable by name. The search path is the system
+/// directories first, so a granted directory never shadows a system command,
+/// followed by each directory the contract grants execute on, deduplicated
+/// against what the system directories already cover.
+#[tokio::test]
+async fn the_search_path_ends_with_the_directories_the_contract_grants() {
+    let fx = Fixture::new();
+    let granted = vec![PathBuf::from("/opt/toolchain/bin"), PathBuf::from("/usr/bin")];
+    let exec = Arc::new(FakeExecutor::new(result(0, "", "")).granting(granted));
+    let c = ctx_with_executor(&fx, exec.clone());
+    Bash::new().call(json!({"command": "cargo test"}), &c).await;
+    assert_eq!(
+        exec.last().unwrap().env["PATH"],
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/toolchain/bin",
+        "the grant is appended once and /usr/bin is not repeated"
+    );
 }
 
 /// docs/tools.md `bash`: exit 126 with the shell's permission diagnostic

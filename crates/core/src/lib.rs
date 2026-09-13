@@ -215,6 +215,16 @@ pub trait Writer: Send + Sync {
 /// Never invokes a shell on the caller's behalf.
 pub trait Executor: Send + Sync {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError>;
+
+    /// Directories holding the executables the contract grants, for a
+    /// caller that builds a search path. A grant makes a command runnable;
+    /// without its directory on the path the command is runnable only by
+    /// absolute path, and a script that names it plainly fails as though it
+    /// were not installed. This reports what is already granted and widens
+    /// nothing. Empty when the contract grants no executable.
+    fn granted_command_directories(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -413,10 +423,13 @@ pub trait Tool: Send + Sync {
 
 // ---- transport ---------------------------------------------------------------
 
-/// One model request as the transport sees it.
+/// One model request as the transport sees it. `episode_id` names the
+/// conversation the request extends, which a format that names a prompt
+/// cache uses to keep one episode's prefix apart from another's.
 #[derive(Debug, Clone)]
 pub struct ModelRequestBody {
     pub request_id: String,
+    pub episode_id: String,
     pub system: String,
     pub tools: Vec<ToolSchema>,
     pub messages: Vec<Message>,

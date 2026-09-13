@@ -19,7 +19,7 @@ use nix::unistd::Pid;
 use std::io::{Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -27,6 +27,23 @@ use std::time::{Duration, Instant};
 
 /// Bytes of one output stream kept in the result.
 pub const CAPTURE_LIMIT: usize = 1 << 20;
+
+/// The home directory of the real user, from the passwd database, or None
+/// when the database holds no entry for the user.
+///
+/// A process the runtime starts inherits no environment, so the runtime
+/// states `HOME` itself. A toolchain manager keeps its installation under
+/// the home directory and reads it there; naming anything else sends it
+/// looking for an installation that is not present and then to the network
+/// for one, which the sandbox refuses. This is a path, not a permission:
+/// the grants decide what is readable, and a home directory the contract
+/// does not grant stays unreadable.
+pub fn real_home() -> Option<PathBuf> {
+    match nix::unistd::User::from_uid(nix::unistd::getuid()) {
+        Ok(Some(user)) if user.dir.is_absolute() => Some(user.dir),
+        _ => None,
+    }
+}
 
 /// Time between SIGTERM and SIGKILL when a process group is ended, and the
 /// longest wait for an output pipe to close after the group is gone.
@@ -51,6 +68,19 @@ impl LocalExecutor {
 }
 
 impl Executor for LocalExecutor {
+    /// `delegated_exec` is the contract's own `grants.execute`, which is
+    /// what a subprocess of a shell may still execute. A grant naming a
+    /// directory is that directory; a grant naming one file is the
+    /// directory holding it.
+    fn granted_command_directories(&self) -> Vec<PathBuf> {
+        let holder =
+            |path: &PathBuf| if path.is_dir() { Some(path.clone()) } else { path.parent().map(Path::to_path_buf) };
+        let mut directories: Vec<PathBuf> = self.policy.delegated_exec.iter().filter_map(holder).collect();
+        directories.sort();
+        directories.dedup();
+        directories
+    }
+
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);

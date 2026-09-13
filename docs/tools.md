@@ -448,13 +448,24 @@ produced; an emitted rendering is never rewritten.
 ### `bash`
 
 The tool runs `/bin/bash -c COMMAND` through the executor with the first
-read root as the working directory and a fixed environment: `PATH` is
-`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, `HOME` is
-the working directory, `LANG` is `C.UTF-8`, and `TMPDIR` is the `tmp`
-directory under the episode's log directory, which the runtime creates at
-launch and which the kernel policy opens to every executable of the episode
-([sandbox.md](sandbox.md)). No grant covers the host's `/tmp`, so a command
-that needs scratch space uses `TMPDIR`. Standard input is `/dev/null`.
+read root as the working directory and an environment the runtime builds
+rather than inherits: `PATH` is
+`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` followed by
+the directories holding the executables `grants.execute` names, so a granted
+toolchain outside the system directories runs by name and not only by
+absolute path; `HOME` is the home directory the passwd database records for
+the real user, and the working directory where it records none; `LANG` is
+`C.UTF-8`; and `TMPDIR` is the `tmp` directory under the episode's log
+directory, which the runtime creates at launch and which the kernel policy
+opens to every executable of the episode ([sandbox.md](sandbox.md)). No grant
+covers the host's `/tmp`, so a command that needs scratch space uses
+`TMPDIR`. The granted directories come last on the search path, so a name a
+system directory resolves keeps resolving there, and each appears once.
+Neither the search path nor the home directory adds a permission: each is a
+path the grants still decide access to. Naming the workspace as the home
+directory instead sends a toolchain manager looking for its installation
+there, where it finds none and falls back to a download the sandbox refuses.
+`session` builds the same environment. Standard input is `/dev/null`.
 Outbound network access is closed; a process the command starts may bind
 the TCP ports `grants.bind` lists, and no others where the kernel enforces
 it ([sandbox.md](sandbox.md)).

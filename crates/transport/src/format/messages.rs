@@ -524,6 +524,7 @@ data: {"type":"message_stop"}
 
     fn request() -> ModelRequestBody {
         ModelRequestBody {
+            episode_id: "ep_test".into(),
             request_id: "rq_01".into(),
             system: "You are a coding agent.".into(),
             tools: vec![

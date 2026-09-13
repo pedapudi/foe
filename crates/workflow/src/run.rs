@@ -65,6 +65,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
     let log = p.log.clone();
     let text = p.start.task.clone();
     let runtime_build = p.start.runtime.build.clone();
+    let episode_id = p.start.id.clone();
     initialize(&log, &p.start)?;
     log.with_events(|events| lock(&p.pool).restore(events, foe_log::append::now_millis()));
     // The task item is at seq 1 in every log (docs/log-format.md), so a
@@ -81,6 +82,7 @@ pub async fn run(params: WorkflowParams) -> Result<Outcome, RuntimeError> {
         spawner: params.spawner,
         contract: p.contract,
         runtime_build,
+        episode_id,
         task,
         step: AtomicU32::new(0),
         header: Mutex::new(None),
@@ -103,6 +105,9 @@ struct Shared {
     /// `episode/start.runtime.build`, which a `verification/result` records
     /// as the fingerprint of a built-in or host verifier.
     runtime_build: String,
+    /// `episode/start.id`. A recovery request is part of this episode's
+    /// conversation, so it names the same prompt cache as the rest of it.
+    episode_id: String,
     /// The invocation task as the value of the `task` source, at every depth.
     task: Produced,
     /// Counts firings, verifications, and recovery requests; a recovery
@@ -935,7 +940,14 @@ impl Executor {
             max_output_tokens,
         }))?;
         lock(&sh.pool).note_request();
-        let body = ModelRequestBody { request_id: request_id.clone(), system, tools, messages, max_output_tokens };
+        let body = ModelRequestBody {
+            request_id: request_id.clone(),
+            episode_id: sh.episode_id.clone(),
+            system,
+            tools,
+            messages,
+            max_output_tokens,
+        };
         let mut recorder = Recorder::new(sh.log.clone(), step, request_id);
         let ended = tokio::select! {
             _ = sh.transport.stream(body, &mut recorder) => None,

@@ -137,6 +137,7 @@ fn request(log: &Log, id: &str) -> ModelRequestBody {
     }))
     .unwrap();
     ModelRequestBody {
+        episode_id: "ep_self".into(),
         request_id: id.into(),
         system: String::new(),
         tools: vec![],

@@ -77,7 +77,11 @@ async fn start_runs_the_command_under_the_bash_contract() {
     assert_eq!(req.lifetime, SessionLifetime::Episode);
     assert_eq!(req.cwd, fx.root());
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-    assert_eq!(req.env["HOME"], fx.root().display().to_string());
+    // HOME is the real user's home, not the workspace, so a toolchain
+    // manager finds its installation where it keeps it. The grants still
+    // decide what is readable there.
+    let home = foe_core::exec::real_home().unwrap_or_else(|| fx.root());
+    assert_eq!(req.env["HOME"], home.display().to_string());
     assert_eq!(req.env["LANG"], "C.UTF-8");
     assert_eq!(req.env["TMPDIR"], c.spill_dir.with_file_name("tmp").display().to_string());
 }

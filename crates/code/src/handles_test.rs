@@ -178,11 +178,17 @@ pub fn ctx_with_sessions(fx: &Fixture, sessions: Arc<dyn foe_core::Sessions>) ->
 pub struct FakeExecutor {
     result: ExecResult,
     requests: Mutex<Vec<ExecRequest>>,
+    granted: Vec<PathBuf>,
 }
 
 impl FakeExecutor {
     pub fn new(result: ExecResult) -> Self {
-        Self { result, requests: Mutex::new(Vec::new()) }
+        Self { result, requests: Mutex::new(Vec::new()), granted: Vec::new() }
+    }
+    /// Stands in for a contract whose `grants.execute` names these directories.
+    pub fn granting(mut self, directories: Vec<PathBuf>) -> Self {
+        self.granted = directories;
+        self
     }
     pub fn last(&self) -> Option<ExecRequest> {
         self.requests.lock().unwrap().last().cloned()
@@ -193,6 +199,10 @@ impl Executor for FakeExecutor {
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         self.requests.lock().unwrap().push(req);
         Ok(self.result.clone())
+    }
+
+    fn granted_command_directories(&self) -> Vec<PathBuf> {
+        self.granted.clone()
     }
 }
 
