@@ -143,8 +143,25 @@ other harness does not spend. On the one task where both foe arms and both
 of the other harness's arms have completed, foe spent 59 and 38 model calls
 against 36 and 19. Any comparison of cost carries this until it is closed.
 
-Reproduction: grant write on a directory and, from a subprocess, create a
-directory beneath it and then a file inside that directory.
+A minimal case does not reproduce it. One scripted episode under an enforced
+sandbox, granting read, write and execute on an empty workspace, running a
+configured executable that creates a directory beneath the grant, a file
+inside that new directory, and a file at the root of the grant: all three
+succeed. Adding an execute grant on the same directory as the write grant,
+which the evaluation's documents carry and the minimal case first lacked,
+changes nothing. So the refusal needs something the minimal case does not
+have, and the five candidates ruled out above are joined by a sixth: it is
+not the bare combination of a write grant, a subprocess, and a newly created
+directory.
+
+What the minimal case lacks that the run has: a workspace of thousands of
+files rather than an empty one, a build tool spawning many processes at once,
+and an episode that has already run other tools. The refusal being transient
+within a single episode points at the second of those.
+
+Reproduction, in the run rather than in isolation: run any task whose check
+suite builds, and read the tool results for a refused write under the
+workspace.
 
 Bearing on the result: while the check script treated a refused scratch
 directory as fatal, this defect stopped the check suite from running at all
