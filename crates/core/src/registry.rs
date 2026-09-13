@@ -259,6 +259,13 @@ impl Registry {
     /// judged: it could not run, a `tool_defs` executable exited with a
     /// status other than zero, or a tool returned an error. The episode then
     /// ends as `failed`.
+    ///
+    /// An executable that outlives its timeout is judged, not failed: the
+    /// candidate could not be verified within the bound, which is one
+    /// finding the node acts on like any other. A verifier that hangs is a
+    /// condition of the work, such as a check suite waiting on a resource,
+    /// and the model is the party that can say so; an episode ended
+    /// `failed` here would report the hang and nothing the model learned.
     pub async fn verify_with(
         &self,
         name: &str,
@@ -276,6 +283,13 @@ impl Registry {
             req.stdin = Some(serde_json::to_vec(candidate).map_err(|e| e.to_string())?);
             let result =
                 run_blocking(executor, req).await.map_err(|e| format!("verifier `{name}` failed to run: {e}"))?;
+            if result.timed_out {
+                return Ok(vec![format!(
+                    "verifier `{name}` did not finish within {} seconds and was killed; the candidate could not be verified \
+                     within that bound",
+                    exec.def.timeout_seconds
+                )]);
+            }
             if result.exit_code != Some(0) {
                 return Err(format!("verifier `{name}` failed: {}", exec.render(&result)));
             }
