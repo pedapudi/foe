@@ -346,3 +346,15 @@ provider's input count already includes cached tokens, so a cache hit moves
 money and not behaviour. The run continues, and its cost figures are read as
 the cost of foe as it stands rather than as the cost of the defect that was
 repaired.
+
+## The search path repair holds in the run
+
+Across the foe arms of the new run, twenty-one shell commands name `cargo`
+and none exits 127. Ten succeed, eight fail on real test failures, and three
+end with the toolchain's own error status. Before the repair the same command
+exited 127 with `cargo: not found`, which is what one arm read as the
+toolchain being absent and reported as a missing capability over a workspace
+whose tests then passed.
+
+This was the reason the run is being repeated, and it is the one repair of
+the three whose effect is confirmed in a live attempt.
