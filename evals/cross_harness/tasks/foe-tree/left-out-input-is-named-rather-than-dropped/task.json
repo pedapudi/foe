@@ -1,0 +1,103 @@
+{
+  "name": "left-out-input-is-named-rather-than-dropped",
+  "family": "teams",
+  "class_name": "fan-out",
+  "text": "A value this repository derives from a log or from a bundle states what it left out of the input it was derived from. A derived value that drops part of its input without saying so leaves no reader able to tell that it happened, and the loss reaches whatever rests on the value. docs/design.md \"What a derived value left out\" states the rule.\n\nA report is `LeftOut` in crates/log/src/lib.rs: the kind of thing left out, how many of them there were, and the first `LEFT_OUT_NAMED` of them named. `left_out` builds one and returns none when nothing was left out, `left_out_kind` says what one thing of a kind is, and `LeftOut::sentence` renders the report for a message. The kinds stand in the table `LEFT_OUT_KINDS` beside what one of the things left out is. A kind is the crate that reports it, a dot, and what was left out. crates/log/src/fold.rs reports `log.partial_line` already, and no other crate reports a kind yet.\n\nGive the table a row for each of the three kinds below, in byte order of kind, and report under it where that input is dropped. The crate that reports a kind declares its name as a public constant of that crate and states no kind the table gives another crate.\n\n- `evidence.unchecked_file`, a file an evidence manifest lists that no established fact rests on, declared as `UNCHECKED_FILE`. Standalone adoption verification refuses such a bundle, naming the files against the key `evidence.manifest.files`. The files a fact rests on are the retained episode logs, the adoption record, the fingerprint document, the artifact manifest, and the attested candidate file when the accepted verification names one.\n- `telemetry.unreadable_line`, a line of an episode log this build cannot read, declared as `UNREADABLE_LINE`. Reading a log returns the report in place of the count it returns now, naming each unreadable line by its number in the file and by what the parse said. A blank line is no line of the log and takes no number of its own away from the lines that follow. Emission and the preview command refuse a log the read left anything out of, and say what it left out.\n- `workflow.unnamed_binding`, an argument shaped like a binding that names no node, declared as `UNNAMED_BINDING`. Resolving a tool node's arguments refuses when any object holds `pointer` and no `$node`, naming each one by the JSON Pointer of where it stands within the arguments, in backticks.\n\nchecks/run.sh runs the check the whole change is judged on: the tests of foe-evidence, foe-log, foe-telemetry, and foe-workflow, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 180000,
+    "seconds": 4500
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
+      "subject": "Name what a derived value left out of the input it was derived from"
+    },
+    "units": {
+      "crates/evidence": [
+        "crates/evidence"
+      ],
+      "crates/telemetry": [
+        "crates/telemetry"
+      ],
+      "crates/workflow": [
+        "crates/workflow"
+      ]
+    },
+    "n": 3,
+    "unit_files": {
+      "crates/evidence": [
+        "crates/evidence/src/lib.rs"
+      ],
+      "crates/telemetry": [
+        "crates/telemetry/src/lib.rs",
+        "crates/telemetry/src/capture.rs"
+      ],
+      "crates/workflow": [
+        "crates/workflow/src/bind.rs"
+      ]
+    },
+    "unit_tests": {
+      "crates/evidence": [
+        "crates/evidence/src/lib_test.rs"
+      ],
+      "crates/telemetry": [
+        "crates/telemetry/tests/emission.rs"
+      ],
+      "crates/workflow": [
+        "crates/workflow/src/bind_test.rs"
+      ]
+    },
+    "unit_packages": {
+      "crates/evidence": "foe-evidence",
+      "crates/telemetry": "foe-telemetry",
+      "crates/workflow": "foe-workflow"
+    },
+    "unit_lines": {
+      "crates/evidence": 19,
+      "crates/telemetry": 28,
+      "crates/workflow": 26
+    },
+    "checked_units": [
+      "crates/evidence",
+      "crates/telemetry",
+      "crates/workflow"
+    ],
+    "generated_unit_checks": {},
+    "interface_paths": [
+      "crates/log/src/lib.rs"
+    ],
+    "interface_package": "foe-log",
+    "integration_test": "every_kind_a_crate_reports_is_the_one_the_table_gives_that_crate",
+    "packages": [
+      "foe-evidence",
+      "foe-log",
+      "foe-telemetry",
+      "foe-workflow"
+    ],
+    "revert_unit": "crates/evidence",
+    "rename_unit": "crates/evidence",
+    "check_skip": "file_failures_preserve_the_original_recording_error",
+    "check_skip_reason": "The one foe-log test whose name this holds makes a directory unwritable and then writes to it, which a\n# kernel sandbox refuses before the writer sees it, so this suite leaves it out.",
+    "division": {
+      "write_roots": [
+        "crates/evidence",
+        "crates/telemetry",
+        "crates/workflow"
+      ],
+      "separable": true
+    },
+    "authored": "by construction: the units, the shared element, and the tests are chosen rather than read from a commit",
+    "review": "pending: the text was drafted with the construction and has not been read by a person"
+  }
+}

@@ -99,7 +99,7 @@ GRADE_TIMEOUT_SECONDS = removal.GRADE_TIMEOUT_SECONDS
 # base tree holding it would show an arm the classes, the grading rules, and
 # the construction its own task came from, so a base commit whose tree holds
 # it is refused.
-EVALUATION_ROOT = Path(__file__).resolve().parents[1].relative_to(protocol.repository_of(Path(__file__)))
+EVALUATION_ROOT = teams.EVALUATION_ROOT
 
 # The budget of every control of this module, which is the budget the
 # harvested fan-out tasks carry. The change of each task lives in one crate,
@@ -108,23 +108,11 @@ EVALUATION_ROOT = Path(__file__).resolve().parents[1].relative_to(protocol.repos
 BUDGET: dict[str, int] = {"model_calls": 120, "input_tokens": 4_000_000, "output_tokens": 180_000, "seconds": 4500}
 
 
-@dataclass(frozen=True)
-class Edit:
-    """One scripted replacement: the source must stand exactly once in the file."""
-
-    path: str
-    old: str
-    new: str
-
-    def apply(self, root: Path) -> None:
-        target = root / self.path
-        if not target.is_file():
-            raise FileNotFoundError(f"{target} is absent; the edit of {self.path} has nothing to change")
-        text = target.read_text(encoding="utf-8")
-        found = text.count(self.old)
-        if found != 1:
-            raise ValueError(f"{target}: the edit's source stands {found} times; an edit's source stands exactly once")
-        target.write_text(text.replace(self.old, self.new), encoding="utf-8")
+# One scripted replacement, and the edits that move one line ceiling. Both
+# constructed classes of this family state their changes as these, so they
+# live with the fan-out authoring tool and are used from here.
+Edit = teams.Edit
+ceiling_edits = teams.ceiling_edits
 
 
 @dataclass(frozen=True)
@@ -404,23 +392,6 @@ for edit in json.loads((here / "edits.json").read_text(encoding="utf-8")):
 # ---- the ceilings the fixtures raise --------------------------------------------
 
 
-def ceiling_edits(table_row: str, readme_row: str | None, prose: tuple[tuple[str, str], ...], old: int, new: int) -> list[Edit]:
-    """The edits that move one line ceiling: the table in `scripts/loc.sh`, and the number every document quotes.
-
-    `scripts/loc.sh` fails when `AGENTS.md`, `README.md`, or `docs/design.md`
-    quotes a ceiling other than the one it holds, so they move together. A
-    group ceiling stands in prose alone, so `readme_row` is None for one.
-    `CEILING` in a prose anchor stands for the number with its separator.
-    """
-    quoted_old, quoted_new = f"{old:,}", f"{new:,}"
-    edits = [Edit("scripts/loc.sh", f"{table_row}| {old} |", f"{table_row}| {new} |")]
-    if readme_row is not None:
-        edits.append(Edit("README.md", f"| {readme_row} | {quoted_old} |", f"| {readme_row} | {quoted_new} |"))
-    for path, sentence in prose:
-        edits.append(Edit(path, sentence.replace("CEILING", quoted_old), sentence.replace("CEILING", quoted_new)))
-    return edits
-
-
 # The coding tools take the change of the first task, and the group over the
 # coding tools and team coordination holds no room at the base commit, so the
 # fixture raises both. A group ceiling may not exceed the sum of the ceilings
@@ -445,16 +416,7 @@ TOOLS_CEILING = ceiling_edits(
     2765,
     2915,
 )
-CONTRACT_CEILING = ceiling_edits(
-    "contract  ",
-    "execution contracts",
-    (
-        ("AGENTS.md", "`contract` stays under CEILING"),
-        ("docs/design.md", "apart under CEILING lines."),
-    ),
-    1575,
-    1650,
-)
+CONTRACT_CEILING = teams.CONTRACT_CEILING
 
 
 # ---- the bound-naming change in crates/code -------------------------------------

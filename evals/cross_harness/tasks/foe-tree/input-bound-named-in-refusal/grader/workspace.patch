@@ -1,0 +1,177 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 900bab4..74199e8 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -52,9 +52,9 @@ sentence on first reading.
+   "The two tiers of the test suite".
+ - Rust line budgets exclude tests, generated code, blank lines, and
+   comment-only lines. `log` and `core` form the kernel and stay under 6,450
+-  lines together. `contract` stays under 1,575 and `code` under 1,900. `team`
++  lines together. `contract` stays under 1,650 and `code` under 1,900. `team`
+   stays under 940. Coding tools and team coordination together stay under
+-  2,765. `workflow` stays under 1,050, `context` under 500, `view` under 1,150,
++  2,765. `workflow` stays under 1,100, `context` under 500, `view` under 1,150,
+   `cli` under 2,050, `transport` under 2,700, `telemetry` under 1,000, and
+   `evidence` under 500. The viewer HTML, TypeScript, and CSS use the
+   compressed bundle limit in `docs/design.md`. `scripts/loc.sh` enforces every
+diff --git a/README.md b/README.md
+index 98bac9f..1d077df 100644
+--- a/README.md
++++ b/README.md
+@@ -187,10 +187,10 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
+ | surface | line ceiling |
+ |---|---:|
+ | kernel (`log` and `core`) | 6,450 |
+-| execution contracts | 1,575 |
++| execution contracts | 1,650 |
+ | coding tools | 1,900 |
+ | team coordination | 940 |
+-| workflows | 1,050 |
++| workflows | 1,100 |
+ | compaction | 500 |
+ | viewer server | 1,150 |
+ | command line | 2,050 |
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..8efa21f
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,8 @@
++#!/bin/sh
++# The check the whole change is judged on: the tests of foe-context, foe-contract, foe-evidence, foe-workflow, clippy with warnings denied on the same crates,
++# and the line budgets.
++set -eu
++cd "$(dirname "$0")/.."
++cargo test -p foe-context -p foe-contract -p foe-evidence -p foe-workflow
++cargo clippy -p foe-context -p foe-contract -p foe-evidence -p foe-workflow --all-targets -- -D warnings
++scripts/loc.sh
+diff --git a/crates/contract/src/document.rs b/crates/contract/src/document.rs
+index 54772d8..2a5a714 100644
+--- a/crates/contract/src/document.rs
++++ b/crates/contract/src/document.rs
+@@ -172,9 +172,14 @@ pub fn parse(text: &str) -> Result<ContractDocument, ContractError> {
+     Ok(serde_json::from_str(text)?)
+ }
+ 
++/// The bound this crate enforces on a document it reads.
++pub const DOCUMENT: &str = "contract.document";
++
+ /// Reads, parses, validates, and resolves a document from `path`.
+ pub fn load(path: &Path) -> Result<ResolvedContract, ContractError> {
+-    let config = parse(&std::fs::read_to_string(path)?)?;
++    let text = std::fs::read_to_string(path)?;
++    crate::within_input_bound(DOCUMENT, text.len()).map_err(|rule| invalid("contract.document", rule))?;
++    let config = parse(&text)?;
+     resolve(&config)
+ }
+ 
+diff --git a/crates/contract/src/lib.rs b/crates/contract/src/lib.rs
+index 6c237a0..5c2bc46 100644
+--- a/crates/contract/src/lib.rs
++++ b/crates/contract/src/lib.rs
+@@ -280,6 +280,47 @@ pub struct ChildContractDocument {
+     pub workflow: Option<workflow::WorkflowConfig>,
+ }
+ 
++// ---- input bounds ---------------------------------------------------------------
++
++/// One bound on an input a crate of this repository reads from outside the
++/// process: the name a refusal gives it, the largest input it admits, and
++/// what the count measures. A crate that reads such an input refuses one
++/// above the bound and names the bound in the refusal, so a caller learns
++/// from the message alone which limit it met and what that limit holds. A
++/// name is the crate that enforces the bound, a dot, and what the bound
++/// covers, and a crate enforces no bound this table lacks.
++pub struct InputBound {
++    pub name: &'static str,
++    pub maximum: usize,
++    pub measures: &'static str,
++}
++
++/// Every bounded input, in byte order of `name`.
++pub const INPUT_BOUNDS: &[InputBound] = &[InputBound {
++    name: "contract.document",
++    maximum: 1_048_576,
++    measures: "the bytes of one execution contract document",
++}];
++
++/// The bound of that name, or `None` when the table holds none.
++pub fn input_bound(name: &str) -> Option<&'static InputBound> {
++    INPUT_BOUNDS.iter().find(|bound| bound.name == name)
++}
++
++/// `Ok` when `measured` lies within the bound of that name. The error is the
++/// rule the input broke, which a caller states beside the key it read. A name
++/// the table lacks is itself a rule failure, so no refusal names a bound the
++/// table does not declare.
++pub fn within_input_bound(name: &str, measured: usize) -> Result<(), String> {
++    match input_bound(name) {
++        None => Err(format!("names the input bound `{name}`, which foe_contract::INPUT_BOUNDS lacks")),
++        Some(bound) if measured > bound.maximum => {
++            Err(format!("is at most {} bytes by the input bound `{name}`, and measured {measured}", bound.maximum))
++        }
++        Some(_) => Ok(()),
++    }
++}
++
+ // ---- errors --------------------------------------------------------------------
+ 
+ /// Every construction error names the key and the rule. Construction fails
+diff --git a/docs/design.md b/docs/design.md
+index 620ca3a..5e20218 100644
+--- a/docs/design.md
++++ b/docs/design.md
+@@ -475,6 +475,18 @@ observation.
+ executable digest. `foe plan --json` exposes the fingerprint document that
+ contains the individual digests and invocation names.
+ 
++### Input bounds
++
++Every input a crate reads from outside the process is bounded, and a crate
++that reads one refuses an input above the bound and names the bound in the
++refusal. A caller then learns from the message alone which limit it met and
++what that limit holds. The bounds stand in one table, `INPUT_BOUNDS` in
++`foe_contract`, which holds each bound beside the largest input it admits and
++what the count measures. A bound is named for the crate that enforces it, a
++dot, and what the bound covers, so a refusal locates the rule that produced
++it. A crate enforces no bound the table lacks and states no bound name the
++table gives another crate.
++
+ ## Tools
+ 
+ A tool has a specification and an implementation. The specification is what
+@@ -1392,7 +1404,7 @@ sandbox, and spawning — and its Rust source stays under 6,450 lines,
+ excluding tests and generated code. Its smallness is the product claim, so
+ it carries the tightest budget relative to its size. The number measures the
+ machine alone: what a contract is lives in `crates/contract`, which is budgeted
+-apart under 1,575 lines. The two are separate because a contract
++apart under 1,650 lines. The two are separate because a contract
+ document that gains a key must not buy room in the loop, and because the
+ claim the kernel's number supports is about the machine that runs a contract
+ rather than about the data model it runs.
+@@ -1403,7 +1415,7 @@ together stay under 2,765 lines. The separate limits keep coordination
+ independent of filesystem and process tools. The combined limit prevents a
+ crate boundary from increasing the total implementation allowance. The
+ workflow executor in `crates/workflow`
+-stays under 1,050 lines. It schedules the graph, bounds text entering model
++stays under 1,100 lines. It schedules the graph, bounds text entering model
+ nodes, and routes failures through recovery. Inspection of a configured
+ contract tree remains in `foe_contract::inspect`, beside the model it analyses.
+ Both crates implement one shared rule: firing a model node starts that node's
+diff --git a/scripts/loc.sh b/scripts/loc.sh
+index f72c5b6..f144cdc 100755
+--- a/scripts/loc.sh
++++ b/scripts/loc.sh
+@@ -16,10 +16,10 @@ cd "$(dirname "$0")/.."
+ # surface | ceiling | README table row label | crates whose lines are summed
+ budgets='
+ kernel    | 6450 | kernel               | log core
+-contract  | 1575 | execution contracts  | contract
++contract  | 1650 | execution contracts  | contract
+ tools     | 1900 | coding tools         | code
+ team      |  940 | team coordination    | team
+-workflow  | 1050 | workflows            | workflow
++workflow  | 1100 | workflows            | workflow
+ context   |  500 | compaction           | context
+ view      | 1150 | viewer server        | view
+ cli       | 2050 | command line         | cli

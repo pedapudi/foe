@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "pub const BUNDLE_FILE: &str = \"evidence.bundle_file\";",
+    "new": "pub const BUNDLE_FILE: &str = \"workflow.bound_value\";"
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "tasks": "../tasks/foe-tree",
+  "select": [
+    "input-bound-named-in-refusal",
+    "left-out-input-is-named-rather-than-dropped"
+  ],
+  "arms": [
+    "foe-configured",
+    "foe-undivided",
+    "codex-single",
+    "codex-multi"
+  ],
+  "attempts": 1,
+  "resume": true,
+  "model": {
+    "route": "subscription",
+    "name": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ],
+  "out": "~/.local/state/foe/cross-harness/teams-fan-out"
+}

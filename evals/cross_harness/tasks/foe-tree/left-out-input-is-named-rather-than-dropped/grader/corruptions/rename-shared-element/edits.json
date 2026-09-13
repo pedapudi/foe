@@ -1,0 +1,7 @@
+[
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "pub const UNCHECKED_FILE: &str = \"evidence.unchecked_file\";",
+    "new": "pub const UNCHECKED_FILE: &str = \"telemetry.unreadable_line\";"
+  }
+]

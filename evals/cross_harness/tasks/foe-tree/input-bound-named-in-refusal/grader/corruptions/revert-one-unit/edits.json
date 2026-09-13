@@ -1,0 +1,27 @@
+[
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "/// The bounds this crate enforces on a bundle it reads: one retained file,\n/// and every file the manifest lists together. The manifest states the\n/// length of each file, so a bundle over either bound is refused before any\n/// file of it is read.\npub const BUNDLE_FILE: &str = \"evidence.bundle_file\";\npub const BUNDLE_TOTAL: &str = \"evidence.bundle_total\";\n\n/// `Ok` when `measured` lies within the named bound, and otherwise the\n/// refusal stated against `key`. A length past what this machine can address\n/// is past every bound, so it is measured as the largest addressable count.\nfn within_bundle_bound(bound: &str, key: impl Into<String>, measured: u64) -> Result<(), EvidenceError> {\n    let measured = usize::try_from(measured).unwrap_or(usize::MAX);\n    foe_contract::within_input_bound(bound, measured).map_err(|rule| invalid(key, rule))\n}\n\npub fn digest_of(bytes: &[u8]) -> String {",
+    "new": "pub fn digest_of(bytes: &[u8]) -> String {"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "    let mut together: u64 = 0;\n    for (index, file) in manifest.files.iter().enumerate() {\n        require_manifest_path(&format!(\"{key}.files[{index}].path\"), &file.path)?;\n        require_digest(&format!(\"{key}.files[{index}].sha256\"), &file.sha256)?;\n        within_bundle_bound(BUNDLE_FILE, format!(\"{key}.files[{index}].bytes\"), file.bytes)?;\n        together = together.saturating_add(file.bytes);\n        if index > 0 && manifest.files[index - 1].path >= file.path {\n            return Err(invalid(format!(\"{key}.files[{index}].path\"), \"follows the prior path in byte order\"));\n        }\n    }\n    within_bundle_bound(BUNDLE_TOTAL, format!(\"{key}.files\"), together)?;\n",
+    "new": "    for (index, file) in manifest.files.iter().enumerate() {\n        require_manifest_path(&format!(\"{key}.files[{index}].path\"), &file.path)?;\n        require_digest(&format!(\"{key}.files[{index}].sha256\"), &file.sha256)?;\n        if index > 0 && manifest.files[index - 1].path >= file.path {\n            return Err(invalid(format!(\"{key}.files[{index}].path\"), \"follows the prior path in byte order\"));\n        }\n    }\n"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "        .map_err(|error| invalid(\"evidence.manifest\", format!(\"is readable: {}: {error}\", dir.display())))?;\n    within_bundle_bound(BUNDLE_FILE, \"evidence.manifest\", bytes.len() as u64)?;\n    let manifest = check_manifest(&bytes)?;",
+    "new": "        .map_err(|error| invalid(\"evidence.manifest\", format!(\"is readable: {}: {error}\", dir.display())))?;\n    let manifest = check_manifest(&bytes)?;"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "            .map_err(|error| invalid(format!(\"evidence file {}\", file.path), format!(\"is readable: {error}\")))?;\n        within_bundle_bound(BUNDLE_FILE, format!(\"evidence file {}\", file.path), content.len() as u64)?;\n        if content.len() as u64 != file.bytes",
+    "new": "            .map_err(|error| invalid(format!(\"evidence file {}\", file.path), format!(\"is readable: {error}\")))?;\n        if content.len() as u64 != file.bytes"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "                within_bundle_bound(BUNDLE_FILE, format!(\"evidence file {}\", parts.join(\"/\")), content.len() as u64)?;\n                files.push(ManifestFile {\n                    path: parts.join(\"/\"),",
+    "new": "                files.push(ManifestFile {\n                    path: parts.join(\"/\"),"
+  }
+]

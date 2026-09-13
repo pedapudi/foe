@@ -1,0 +1,12 @@
+[
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "/// The kind this crate reports what a verified bundle left out under. A\n/// bundle retains what its facts rest on; a file nothing rests on was\n/// carried by a bundle nobody checked it against, and verification names it\n/// rather than passing over it.\npub const UNCHECKED_FILE: &str = \"evidence.unchecked_file\";\n\npub fn digest_of(bytes: &[u8]) -> String {",
+    "new": "pub fn digest_of(bytes: &[u8]) -> String {"
+  },
+  {
+    "path": "crates/evidence/src/lib.rs",
+    "old": "    verify_provenance(&manifest.proposal_log, &record.verification_log, &logs)?;\n\n    let mut rests_on: std::collections::BTreeSet<&str> = logs.keys().map(String::as_str).collect();\n    rests_on.insert(manifest.adoption_record.as_str());\n    rests_on.insert(fingerprint_file.path.as_str());\n    if let Some(file) = listed(&record.artifact_manifest_sha256) {\n        rests_on.insert(file.path.as_str());\n    }\n    if let Some(path) = &candidate_file {\n        rests_on.insert(path.as_str());\n    }\n    let unchecked =\n        manifest.files.iter().map(|file| file.path.clone()).filter(|path| !rests_on.contains(path.as_str())).collect();\n    if let Some(report) = foe_log::left_out(UNCHECKED_FILE, unchecked) {\n        return Err(invalid(\"evidence.manifest.files\", report.sentence()));\n    }\n\n    Ok(VerifiedAdoption {",
+    "new": "    verify_provenance(&manifest.proposal_log, &record.verification_log, &logs)?;\n\n    Ok(VerifiedAdoption {"
+  }
+]

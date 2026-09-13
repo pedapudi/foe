@@ -1,0 +1,102 @@
+{
+  "name": "input-bound-named-in-refusal",
+  "family": "teams",
+  "class_name": "fan-out",
+  "text": "Every input a crate of this repository reads from outside the process is bounded. A crate that reads such an input refuses one above the bound and names the bound in the refusal, so a caller learns from the message alone which limit it met and what that limit holds. docs/design.md \"Input bounds\" states the rule.\n\nThe bounds come from one table, `INPUT_BOUNDS` in crates/contract/src/lib.rs, which holds each bound name beside the largest input it admits and a sentence saying what the count measures. A bound name is the crate that enforces the bound, a dot, and what the bound covers. `input_bound` reads one row, and `within_input_bound` reports whether a measured count lies within a named bound and returns as its error the rule the input broke. crates/contract/src/document.rs enforces `contract.document` already, and no other crate enforces a bound yet.\n\nGive the table a row for each of the six bounds below, in byte order of name, and refuse above each one where that input is read, stating the refusal against the key the input arrived under. A crate declares the names of the bounds it enforces as public constants of that crate and states no bound name the table gives another crate.\n\n- `evidence.bundle_file`, at most 4,194,304 bytes, one file of an evidence bundle, declared as `BUNDLE_FILE`. It is enforced on the manifest's own bytes, on the length the manifest states for each file it lists, on each file read while a bundle is verified, and on each file read while a manifest is built.\n- `evidence.bundle_total`, at most 67,108,864 bytes, every file an evidence manifest lists, declared as `BUNDLE_TOTAL` and enforced on the sum of the lengths the manifest states.\n- `context.summary`, at most 65,536 bytes, the summary a compaction carries across the cut, declared as `SUMMARY`. A summary above it fails the compaction rather than being carried.\n- `context.continuation_task`, at most 16,384 bytes, the task text a compaction carries across the cut, declared as `CONTINUATION_TASK`. A task text above it fails the compaction before the summarization request is made.\n- `workflow.bound_value`, at most 262,144 bytes, one value bound into a tool node's arguments, declared as `BOUND_VALUE` and measured as the bytes of the value's serialization.\n- `workflow.node_arguments`, at most 524,288 bytes, one tool node's resolved arguments, declared as `NODE_ARGUMENTS` and measured the same way.\n\nA value whose serialization fails, and a length past what this machine can address, are past every bound rather than unbounded.\n\nchecks/run.sh runs the check the whole change is judged on: the tests of foe-context, foe-contract, foe-evidence, and foe-workflow, clippy with warnings denied on the same crates, and scripts/loc.sh.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 120,
+    "input_tokens": 4000000,
+    "output_tokens": 180000,
+    "seconds": 4500
+  },
+  "protected": [
+    "scripts/loc.sh",
+    "AGENTS.md",
+    "checks/run.sh"
+  ],
+  "metadata": {
+    "source": {
+      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e",
+      "subject": "Bound every input read from outside the process and name the bound in the refusal"
+    },
+    "units": {
+      "crates/context": [
+        "crates/context"
+      ],
+      "crates/evidence": [
+        "crates/evidence"
+      ],
+      "crates/workflow": [
+        "crates/workflow"
+      ]
+    },
+    "n": 3,
+    "unit_files": {
+      "crates/context": [
+        "crates/context/src/lib.rs"
+      ],
+      "crates/evidence": [
+        "crates/evidence/src/lib.rs"
+      ],
+      "crates/workflow": [
+        "crates/workflow/src/bind.rs"
+      ]
+    },
+    "unit_tests": {
+      "crates/context": [
+        "crates/context/src/lib_test.rs"
+      ],
+      "crates/evidence": [
+        "crates/evidence/src/lib_test.rs"
+      ],
+      "crates/workflow": [
+        "crates/workflow/src/bind_test.rs"
+      ]
+    },
+    "unit_packages": {
+      "crates/context": "foe-context",
+      "crates/evidence": "foe-evidence",
+      "crates/workflow": "foe-workflow"
+    },
+    "unit_lines": {
+      "crates/context": 30,
+      "crates/evidence": 20,
+      "crates/workflow": 19
+    },
+    "checked_units": [
+      "crates/context",
+      "crates/evidence",
+      "crates/workflow"
+    ],
+    "generated_unit_checks": {},
+    "interface_paths": [
+      "crates/contract/src/lib.rs"
+    ],
+    "interface_package": "foe-contract",
+    "integration_test": "every_bound_a_crate_names_is_the_one_the_table_gives_that_crate",
+    "packages": [
+      "foe-context",
+      "foe-contract",
+      "foe-evidence",
+      "foe-workflow"
+    ],
+    "revert_unit": "crates/evidence",
+    "rename_unit": "crates/evidence",
+    "check_skip": "",
+    "check_skip_reason": "",
+    "division": {
+      "write_roots": [
+        "crates/context",
+        "crates/evidence",
+        "crates/workflow"
+      ],
+      "separable": true
+    },
+    "authored": "by construction: the units, the shared element, and the tests are chosen rather than read from a commit",
+    "review": "pending: the text was drafted with the construction and has not been read by a person"
+  }
+}

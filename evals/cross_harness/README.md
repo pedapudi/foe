@@ -27,7 +27,7 @@ credential, the network, or a Codex login.
 | `tasks/policies.py` | degenerate policies that stand in for an arm, so the grader controls run without a model |
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
 | `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks, five of each |
-| `tasks/teams.py` | authors the teams tasks: fan-out tasks from sweep commits, and survey tasks whose answer a script computes |
+| `tasks/teams.py` | authors the teams tasks: fan-out tasks, harvested from a sweep commit or constructed over the crates of one change, and survey tasks whose answer a script computes |
 | `tasks/coherent.py` | authors two coherent controls by construction: one change over the modules of one crate, with the table in the crate root every module must agree with; every file it touches lies in one directory, so no division into workers exists |
 | `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
 | `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request |
@@ -44,7 +44,7 @@ holds no copy of the repository. `--keep-workspace` on an authoring tool
 keeps the generated workspace for inspection, and `.gitignore` excludes it
 and any grading build directory.
 
-`tasks/foe-tree/` holds thirty-one task directories, of which twenty-three
+`tasks/foe-tree/` holds thirty-three task directories, of which twenty-five
 are admissible and eight are suppressed. `admission.py` decides which:
 a task is admissible when its oracle-solved workspace passes the visible
 check on the host, inside a foe episode, and under a Codex sandbox.
@@ -55,19 +55,30 @@ check on the host, inside a foe episode, and under a Codex sandbox.
 | autonomy, contradictory | 5 | 0 |
 | autonomy, missing-capability | 5 | 0 |
 | autonomy, non-terminating | 5 | 0 |
-| teams, fan-out | 0 | 2 |
+| teams, fan-out | 2 | 2 |
 | teams, survey | 2 | 0 |
 | teams, coherent | 2 | 0 |
 
-Every suppressed task runs a crate suite on `foe-core`, `foe-log`, or the
-command-line crate, whose own tests exercise sandboxing and therefore fail
-inside one. No fan-out is admissible on this host: a change that spreads over
-directories a delegation could grant separately reaches one of those crates,
-and both fan-outs are suppressed for that reason. The two constructed tasks
-are the coherent controls, because every file their change touches lies in one
-crate directory, so no two workers can be given directories that do not
-overlap. The suppressed directories stay in the tree so that a later host,
-such as the container, can re-admit them.
+Every suppressed task runs a crate suite that a sandbox breaks. Running
+`cargo test -p <package>` for each crate under both sandboxes, on this host,
+leaves `foe-core`, `foe-code`, `foe-transport`, `foe-view`, and the
+command-line crate failing: their tests bind or connect loopback sockets,
+place a store outside a declared write root, or start an interpreter over a
+socket pair. `foe-code` fails under the Codex policy alone and `foe-log` on
+one test inside a foe episode alone. A check that runs one of the failing
+suites can pass for no arm however well the arm worked. The two harvested
+fan-outs are suppressed for that reason: each comes from a sweep commit and
+is judged by `cargo test --workspace`.
+
+The four admissible teams tasks that change code are constructed rather than
+harvested, and the two classes differ in the division alone. The two fan-outs
+put each unit in a crate directory of its own, so a delegation can grant
+directories that do not overlap, and name the crates their change touches in
+place of the workspace, so the check passes inside both sandboxes. The two
+coherent controls put the whole change in one crate directory, so no two
+workers can be given directories that do not overlap. The suppressed
+directories stay in the tree so that a later host, such as the container, can
+re-admit them.
 
 Every task text was written by an agent and awaits a person's reading;
 `metadata.review` in each `task.json` says so. One task,
@@ -111,8 +122,10 @@ python3 evals/cross_harness/gates/label_leakage.py evals/cross_harness/runs/auto
 `runs/smoke.json` runs the example task under one foe arm and one Codex
 arm; `runs/autonomy-pilot.json` runs the two cheapest tasks on foe's tree
 under the four autonomy arms; `runs/autonomy-full.json` selects every
-autonomy task. A document's keys, with relative paths resolved against the
-document's own directory:
+autonomy task; `runs/teams-fan-out.json` selects the two fan-out tasks under
+the four teams arms, which is the comparison the fan-out class exists for.
+A document's keys, with relative paths resolved against the document's own
+directory:
 
 | key | meaning |
 |---|---|

@@ -1,0 +1,26 @@
+{
+  "outside": {
+    "grader/corruptions/rename-shared-element/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/rename-shared-element/edits.json": "dc1a8c648757898571283fd145185fba6225e2dfb1695090abafaf27ca9e23c7",
+    "grader/corruptions/revert-one-unit/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/revert-one-unit/edits.json": "912aed67d303534ed964d671c4b00962a9f8f2db709c21150a84ee5564407190",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "3756d92dacec738f4a4ba5734f86b8fbd0791eb19cb8072c29ba4ac935d77cb6",
+    "grader/oracle/workspace/crates/context/src/lib.rs": "4a34b1e61750d1c6aafbfc2b31bc497e4c59449ae8f237b8d58675bb4b08c086",
+    "grader/oracle/workspace/crates/contract/src/lib.rs": "35efae47d87f30c773e0134e9440eee266f7f74c459681a648fcf36dce8a7802",
+    "grader/oracle/workspace/crates/evidence/src/lib.rs": "2ad908b050704ce3c60e9f3e6da4fb78ecee6a6ff2f454af0acc8995a2b6fccc",
+    "grader/oracle/workspace/crates/workflow/src/bind.rs": "f736d88b315bfcd14e2bb1649d4ff1038c2f8840603a6b88b2e76a2326424dfb",
+    "grader/specification.json": "0b2ee627ccf2b2bbff2d96ac6ce72d0827ab69994b845c8f4ea5cdcd069f8a1a",
+    "grader/tests/crates/context/src/lib_test.rs": "bec521701684adf3c25e31d789bf13429746e2b79457f3b6227974c371e88631",
+    "grader/tests/crates/contract/src/lib_test.rs": "5a639d4af97681821aa341dae3bbc67b2bb3837bbe01080709ade7a8efe6262b",
+    "grader/tests/crates/evidence/src/lib_test.rs": "08e4d0678efedaf3665f3e07a007052763f770791be7a607b4797da3f67f67d8",
+    "grader/tests/crates/workflow/src/bind_test.rs": "d3d3d374e98d1e82e92041f8d6877e94516d412dee6094b6f5d41b064ba3e7c2",
+    "grader/workspace.patch": "8d1ec26ffedc90d0401e3115656f7cd463f47ae108fef84b1354a3d045abce5c",
+    "task.json": "cb23b3ef8d1f1a863729810879ab52655bff128d806e6eac6caeca209a3c7daf"
+  },
+  "workspace": {
+    "AGENTS.md": "e5348bfb6e024240151207efc39f30e1fcdd05681bca4e5e992bef658ca8d337",
+    "checks/run.sh": "ac9cae6e018f64d56cab09e8b900a39b31f2a009f644c8aa59834e58a7e512a4",
+    "scripts/loc.sh": "b40482442829fa7d396c371ea38525b9c9d5d870dfb19571af04ea5a7c324e4c"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "task": "input-bound-named-in-refusal",
+  "units": [
+    {
+      "name": "crates/context",
+      "package": "foe-context",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/context/src/lib_test.rs": [
+          "text_above_an_input_bound_fails_the_compaction_naming_the_bound"
+        ]
+      }
+    },
+    {
+      "name": "crates/evidence",
+      "package": "foe-evidence",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/evidence/src/lib_test.rs": [
+          "a_manifest_over_an_input_bound_is_refused_before_a_file_is_read",
+          "building_a_manifest_refuses_a_file_over_the_per_file_bound"
+        ]
+      }
+    },
+    {
+      "name": "crates/workflow",
+      "package": "foe-workflow",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/workflow/src/bind_test.rs": [
+          "a_value_above_its_input_bound_is_refused_naming_the_bound"
+        ]
+      }
+    }
+  ],
+  "integration": {
+    "test_packages": [
+      "foe-contract"
+    ],
+    "lint_packages": [
+      "foe-context",
+      "foe-contract",
+      "foe-evidence",
+      "foe-workflow"
+    ],
+    "test": "every_bound_a_crate_names_is_the_one_the_table_gives_that_crate"
+  },
+  "sentences": {
+    "docs/design.md": [
+      "every input a crate reads from outside the process is bounded, and a crate that reads one refuses an input above the bound and names the bound in the refusal.",
+      "a crate enforces no bound the table lacks and states no bound name the table gives another crate."
+    ]
+  }
+}

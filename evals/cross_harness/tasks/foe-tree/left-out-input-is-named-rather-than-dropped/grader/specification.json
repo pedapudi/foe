@@ -1,0 +1,53 @@
+{
+  "task": "left-out-input-is-named-rather-than-dropped",
+  "units": [
+    {
+      "name": "crates/evidence",
+      "package": "foe-evidence",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/evidence/src/lib_test.rs": [
+          "a_retained_file_no_fact_rests_on_is_named"
+        ]
+      }
+    },
+    {
+      "name": "crates/telemetry",
+      "package": "foe-telemetry",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/telemetry/tests/emission.rs": [
+          "an_unreadable_line_is_named_by_its_number_and_refuses_the_emission"
+        ]
+      }
+    },
+    {
+      "name": "crates/workflow",
+      "package": "foe-workflow",
+      "python_tests": [],
+      "hidden_test_names": {
+        "crates/workflow/src/bind_test.rs": [
+          "an_argument_that_binds_nothing_is_named_rather_than_passed_on"
+        ]
+      }
+    }
+  ],
+  "integration": {
+    "test_packages": [
+      "foe-log"
+    ],
+    "lint_packages": [
+      "foe-evidence",
+      "foe-log",
+      "foe-telemetry",
+      "foe-workflow"
+    ],
+    "test": "every_kind_a_crate_reports_is_the_one_the_table_gives_that_crate"
+  },
+  "sentences": {
+    "docs/design.md": [
+      "a value derived from a log or a bundle states what it left out of the input it was derived from.",
+      "a crate reports no kind the table lacks and states no kind the table gives another crate."
+    ]
+  }
+}

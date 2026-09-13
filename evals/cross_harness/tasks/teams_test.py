@@ -11,14 +11,23 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contracts"))
 
 import feature_removal as removal  # noqa: E402
+import graphs  # noqa: E402
 import protocol  # noqa: E402
 import teams  # noqa: E402
 from protocol import COMPLETED, Reported  # noqa: E402
+
+# Where the emitted task directories stand. A test that reads a construction's
+# own recorded base tree reads the commit the emitted directory records, and
+# skips when that directory is absent, so the suite states what the recorded
+# tasks rest on rather than what the branch happens to hold.
+TASK_TREE = Path(__file__).resolve().parent / "foe-tree"
 
 GIT = ["/usr/bin/git", "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
 
@@ -326,9 +335,6 @@ class Units(Repositories):
         self.assertTrue(teams.grantable(teams.Unit("docs", ("docs/a.md",), ("docs/a.md",), (), None), workspace))
 
     def test_the_unit_ceiling_is_the_worker_episodes_the_teams_graph_declares(self) -> None:
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contracts"))
-        import graphs  # noqa: PLC0415
-
         self.assertEqual(teams.UNIT_MAX, graphs.WORKER_EPISODES)
         self.assertEqual(teams.UNIT_MAX, graphs.units_report()["properties"]["units"]["maxItems"])
 
@@ -766,6 +772,316 @@ class CommandLine(Repositories):
             status = teams.main(["verify", "--task", str(out / "errors"), "--scratch", str(out / "scratch"), "--timeout", "60"])
         self.assertEqual(status, 0, stdout.getvalue())
         self.assertIn("corruption:unlisted-items: held (expected to fail, failed)", stdout.getvalue())
+
+
+class ConstructedDivision(unittest.TestCase):
+    """What separates a constructed fan-out from the coherent controls: a division a delegation can hand out."""
+
+    def constructions(self) -> list[tuple[str, teams.Construction]]:
+        return sorted(teams.CONSTRUCTIONS.items())
+
+    def test_two_constructions_are_defined_and_each_states_what_it_changes(self) -> None:
+        self.assertEqual(len(teams.CONSTRUCTIONS), 2)
+        for name, construction in self.constructions():
+            with self.subTest(name):
+                self.assertEqual(construction.name, name)
+                self.assertTrue(construction.subject and construction.subject[0].isupper())
+                teams.check_construction(construction)
+
+    def test_every_unit_is_a_directory_no_other_unit_writes(self) -> None:
+        for name, construction in self.constructions():
+            with self.subTest(name):
+                roots = [unit.name for unit in construction.units]
+                self.assertEqual(sorted(set(roots)), sorted(roots))
+                self.assertGreaterEqual(len(roots), 2)
+                for one in roots:
+                    for other in roots:
+                        if one != other:
+                            self.assertFalse(one.startswith(f"{other}/"), f"{one} lies under {other}")
+                for unit in construction.units:
+                    for path in unit.files:
+                        self.assertTrue(path.startswith(f"{unit.name}/"), f"{path} lies outside {unit.name}")
+
+    def test_the_units_fit_the_workers_one_delegation_runs(self) -> None:
+        for name, construction in self.constructions():
+            with self.subTest(name):
+                self.assertLessEqual(len(construction.units), teams.UNIT_MAX)
+        self.assertEqual(teams.UNIT_MAX, graphs.WORKER_EPISODES)
+
+    def test_no_unit_holds_the_shared_element(self) -> None:
+        for name, construction in self.constructions():
+            with self.subTest(name):
+                self.assertTrue(construction.interface_paths)
+                for path in construction.interface_paths:
+                    self.assertIsNone(construction.unit_of(path))
+                    self.assertIn(path, {edit.path for edit in construction.oracle_edits})
+
+    def test_every_unit_carries_a_verdict_of_its_own(self) -> None:
+        for name, construction in self.constructions():
+            appended = dict(construction.test_appends)
+            for unit in construction.units:
+                with self.subTest(f"{name}:{unit.name}"):
+                    self.assertIn(unit.test_file, appended)
+                    self.assertTrue(removal.test_names(appended[unit.test_file]))
+                    self.assertTrue(any(edit.path in unit.files for edit in construction.oracle_edits))
+
+    def test_every_unit_writes_more_than_the_floor_delegating_it_costs(self) -> None:
+        for name, construction in self.constructions():
+            for unit in construction.units:
+                with self.subTest(f"{name}:{unit.name}"):
+                    self.assertGreaterEqual(teams.unit_lines(construction, unit), teams.UNIT_LINES_MIN)
+
+    def test_a_construction_whose_units_overlap_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        first = construction.units[0]
+        overlapping = replace(construction, units=(first, replace(first, name="crates")))
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(overlapping)
+        self.assertIn("overlap", str(raised.exception))
+
+    def test_a_construction_with_one_unit_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, units=construction.units[:1]))
+        self.assertIn("two or more units", str(raised.exception))
+
+    def test_a_unit_without_a_hidden_test_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        unit = construction.units[0]
+        without = replace(construction, units=(replace(unit, test_file="crates/context/src/absent_test.rs"), *construction.units[1:]))
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(without)
+        self.assertIn("not measured", str(raised.exception))
+
+    def test_a_change_that_reaches_outside_every_unit_and_the_interface_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        stray = teams.Edit("crates/team/src/lib.rs", "a", "b")
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, oracle_edits=(*construction.oracle_edits, stray)))
+        self.assertIn("lies in no unit", str(raised.exception))
+
+    def test_a_unit_whose_change_is_a_few_lines_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        unit = construction.units[0]
+        thin = teams.Edit(unit.files[0], "// nothing", "// one line")
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, oracle_edits=(thin, *(e for e in construction.oracle_edits if e.path not in unit.files))))
+        self.assertIn("costs more than doing", str(raised.exception))
+
+
+class SandboxScope(unittest.TestCase):
+    """The whole-change check runs inside a kernel sandbox, so it names the crates whose suites pass there."""
+
+    def test_every_construction_is_judged_over_sandbox_safe_packages_alone(self) -> None:
+        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
+            with self.subTest(name):
+                self.assertTrue(construction.packages)
+                for package in construction.packages:
+                    self.assertIn(package, teams.SANDBOX_SAFE_PACKAGES)
+
+    def test_a_construction_naming_a_package_a_sandbox_breaks_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, interface_package="foe-core"))
+        self.assertIn("do not pass inside a kernel sandbox", str(raised.exception))
+
+    def test_the_kernel_and_the_socket_crates_are_left_out_of_the_safe_set(self) -> None:
+        for package in ("foe-core", "foe-code", "foe-transport", "foe-view", "foe"):
+            self.assertNotIn(package, teams.SANDBOX_SAFE_PACKAGES)
+
+    def test_a_package_whose_one_test_a_sandbox_breaks_is_left_out_by_name(self) -> None:
+        for package, skipped in teams.SANDBOX_SKIPPED_TESTS.items():
+            with self.subTest(package):
+                self.assertIn(package, teams.SANDBOX_SAFE_PACKAGES)
+                for construction in teams.CONSTRUCTIONS.values():
+                    if package in construction.packages:
+                        self.assertEqual(construction.check_skip, skipped)
+                        self.assertTrue(construction.check_skip_reason)
+
+    def test_a_construction_that_runs_such_a_package_without_the_skip_is_refused(self) -> None:
+        construction = teams.CONSTRUCTIONS["left-out-input-is-named-rather-than-dropped"]
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, check_skip="", check_skip_reason=""))
+        self.assertIn("leaves out nothing", str(raised.exception))
+
+    def test_a_check_that_leaves_a_test_out_states_why(self) -> None:
+        construction = teams.CONSTRUCTIONS["input-bound-named-in-refusal"]
+        with self.assertRaises(ValueError) as raised:
+            teams.check_construction(replace(construction, check_skip="some_test"))
+        self.assertIn("states why", str(raised.exception))
+
+    def test_the_visible_check_leaves_the_named_test_out_with_its_reason(self) -> None:
+        script = teams.workspace_checks_script(("foe-log",), "one_test", "the sandbox denies what it sets up")
+        self.assertIn("cargo test -p foe-log -- --skip one_test\n", script)
+        self.assertIn("# the sandbox denies what it sets up\n", script)
+
+    def test_the_visible_check_runs_the_named_packages_alone(self) -> None:
+        script = teams.workspace_checks_script(("foe-log", "foe-telemetry"))
+        self.assertIn("cargo test -p foe-log -p foe-telemetry\n", script)
+        self.assertIn("cargo clippy -p foe-log -p foe-telemetry --all-targets -- -D warnings\n", script)
+        self.assertIn("scripts/loc.sh\n", script)
+        self.assertNotIn("--workspace", script)
+
+    def test_a_task_naming_no_package_is_judged_over_the_whole_workspace(self) -> None:
+        self.assertIn("cargo test --workspace\n", teams.WORKSPACE_CHECKS_SCRIPT)
+        self.assertIn("cargo clippy --workspace -- -D warnings\n", teams.WORKSPACE_CHECKS_SCRIPT)
+
+    def test_the_grade_reads_the_packages_and_the_judging_test_from_the_specification(self) -> None:
+        script = teams.FAN_OUT_GRADE_SCRIPT
+        self.assertIn('specification.get("integration")', script)
+        self.assertIn('integration.get("test_packages", [])', script)
+        self.assertIn('integration.get("lint_packages", [])', script)
+        self.assertIn('integration.get("test")', script)
+        self.assertIn('judges the units against each other and did not run', script)
+
+
+class ConstructedText(unittest.TestCase):
+    """The task text specifies the change and leaves the division to the survey."""
+
+    def texts(self) -> list[tuple[str, str]]:
+        return [(name, teams.construction_text(construction)) for name, construction in sorted(teams.CONSTRUCTIONS.items())]
+
+    def test_the_text_sits_in_the_band_and_closes_with_the_closing_sentence(self) -> None:
+        for name, text in self.texts():
+            with self.subTest(name):
+                self.assertGreaterEqual(len(text), teams.CONSTRUCTED_TEXT_MIN)
+                self.assertLessEqual(len(text), teams.CONSTRUCTED_TEXT_MAX)
+                self.assertTrue(text.endswith(protocol.CLOSING))
+
+    def test_the_text_states_no_division_into_workers(self) -> None:
+        # A fan-out measures whether an arm finds the division; a text that
+        # states it would measure whether the arm can read.
+        for name, text in self.texts():
+            lowered = text.lower()
+            for word in ("worker", "delegate", "delegation", "spawn", "write root", "in parallel", "subtask", "unit"):
+                with self.subTest(f"{name}:{word}"):
+                    self.assertNotIn(word, lowered)
+
+    def test_the_text_names_the_shared_element_the_interface_node_writes(self) -> None:
+        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
+            with self.subTest(name):
+                for path in construction.interface_paths:
+                    self.assertIn(path, construction.text)
+
+    def test_the_text_uses_no_contraction_and_no_rhetorical_question(self) -> None:
+        for name, text in self.texts():
+            with self.subTest(name):
+                self.assertNotIn("?", text)
+                for contraction in ("don't", "can't", "won't", "it's", "doesn't", "isn't"):
+                    self.assertNotIn(contraction, text.lower())
+
+
+class ConstructedBaseTree(unittest.TestCase):
+    """Every edit of a construction applies to the tree the emitted task records, and the hidden tests are new there."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.repository = protocol.repository_of(Path(__file__))
+
+    def recorded_commit(self, name: str) -> str | None:
+        path = TASK_TREE / name / protocol.TASK_FILE
+        if not path.is_file():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))["metadata"][protocol.SOURCE_KEY]["commit"]
+
+    def tree(self, commit: str, paths: set[str]) -> Path:
+        root = Path(tempfile.mkdtemp(prefix="teams-base-"))
+        for path in sorted(paths):
+            destination = root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(removal.show_file(self.repository, commit, path))
+        return root
+
+    def test_every_fixture_and_oracle_edit_applies_to_the_recorded_base_tree(self) -> None:
+        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
+            commit = self.recorded_commit(name)
+            if commit is None:
+                self.skipTest(f"{TASK_TREE / name} is absent, so no base tree is recorded")
+            edits = (*construction.ceilings, *construction.fixture_edits, *construction.oracle_edits)
+            root = self.tree(commit, {edit.path for edit in edits} | {path for path, _ in construction.test_appends})
+            try:
+                for edit in edits:
+                    with self.subTest(f"{name}:{edit.path}"):
+                        edit.apply(root)
+                for path, appended in construction.test_appends:
+                    source = (root / path).read_text(encoding="utf-8")
+                    for edit in (edit for edit in construction.test_edits if edit.path == path):
+                        with self.subTest(f"{name}:test:{path}"):
+                            self.assertEqual(source.count(edit.old), 1)
+                        source = source.replace(edit.old, edit.new)
+                    with self.subTest(f"{name}:hidden:{path}"):
+                        self.assertNotIn(appended.strip(), source)
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
+
+    def test_every_specification_sentence_stands_in_the_fixture_document(self) -> None:
+        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
+            commit = self.recorded_commit(name)
+            if commit is None:
+                self.skipTest(f"{TASK_TREE / name} is absent, so no base tree is recorded")
+            edits = (*construction.ceilings, *construction.fixture_edits)
+            root = self.tree(commit, {edit.path for edit in edits})
+            try:
+                for edit in edits:
+                    edit.apply(root)
+                for path, sentences in construction.sentences.items():
+                    document = teams.normalized_sentence((root / path).read_text(encoding="utf-8"))
+                    for sentence in sentences:
+                        with self.subTest(f"{name}:{sentence[:40]}"):
+                            self.assertIn(teams.normalized_sentence(sentence), document)
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
+
+
+class ConstructedTaskDirectory(unittest.TestCase):
+    """What an emitted constructed fan-out records, read from the tree rather than authored again."""
+
+    def tasks(self) -> list[tuple[str, dict]]:
+        found = []
+        for name in sorted(teams.CONSTRUCTIONS):
+            path = TASK_TREE / name / protocol.TASK_FILE
+            if path.is_file():
+                found.append((name, json.loads(path.read_text(encoding="utf-8"))))
+        return found
+
+    def test_the_task_declares_the_fan_out_and_the_division(self) -> None:
+        recorded = self.tasks()
+        if not recorded:
+            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
+        for name, task in recorded:
+            with self.subTest(name):
+                self.assertEqual((task["family"], task["class_name"]), (teams.FAMILY, teams.FAN_OUT))
+                division = task["metadata"]["division"]
+                self.assertTrue(division["separable"])
+                self.assertEqual(sorted(division["write_roots"]), sorted(task["metadata"]["units"]))
+                self.assertEqual(task["metadata"]["n"], len(division["write_roots"]))
+
+    def test_the_recorded_specification_names_every_unit_and_the_judging_test(self) -> None:
+        recorded = self.tasks()
+        if not recorded:
+            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
+        for name, task in recorded:
+            with self.subTest(name):
+                construction = teams.CONSTRUCTIONS[name]
+                specification = json.loads((TASK_TREE / name / protocol.GRADER / removal.SPECIFICATION_FILE).read_text(encoding="utf-8"))
+                self.assertEqual([unit["name"] for unit in specification["units"]], [unit.name for unit in construction.units])
+                self.assertEqual(specification["integration"]["test"], construction.integration_test)
+                self.assertEqual(specification["integration"]["lint_packages"], construction.packages)
+                self.assertEqual(specification["integration"]["test_packages"], [construction.interface_package])
+                for unit in specification["units"]:
+                    self.assertTrue(any(names for names in unit["hidden_test_names"].values()))
+
+    def test_the_check_suite_of_the_regenerated_workspace_names_the_same_packages(self) -> None:
+        recorded = self.tasks()
+        if not recorded:
+            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
+        for name, _ in recorded:
+            with self.subTest(name):
+                construction = teams.CONSTRUCTIONS[name]
+                patch = (TASK_TREE / name / protocol.GRADER / protocol.WORKSPACE_PATCH).read_text(encoding="utf-8")
+                for package in construction.packages:
+                    self.assertIn(f"-p {package}", patch)
+                self.assertNotIn("cargo test --workspace", patch)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,29 @@
+{
+  "outside": {
+    "grader/corruptions/rename-shared-element/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/rename-shared-element/edits.json": "d987ae6e75e876c3ba0d82f4053e8a43d8ceafe21842e590b5b2ea1f3c171a6c",
+    "grader/corruptions/revert-one-unit/apply.py": "1c8cb3b31fdd0ef92d835c7a6cd4232af1b64a88870923c74003650ff477dba4",
+    "grader/corruptions/revert-one-unit/edits.json": "88f4675b68ada96208a16dfbbcaf8fe4d7c444f5ed35cb78f65a18cf06276f3d",
+    "grader/grade": "97f1655942e83a6763491526663090dd529a1a719065617628130e8b7ee900cf",
+    "grader/grade.py": "3756d92dacec738f4a4ba5734f86b8fbd0791eb19cb8072c29ba4ac935d77cb6",
+    "grader/oracle/workspace/crates/evidence/src/lib.rs": "a872afba5be516f15939468900e1a160ac40f0a7a3929bb29d8356d874bda42e",
+    "grader/oracle/workspace/crates/log/src/lib.rs": "298bcaea497f0849483b8fb50ef8a31cdd8d1f92904c26d6d4b039ea1c3cb980",
+    "grader/oracle/workspace/crates/telemetry/src/capture.rs": "ac229689653781c8b53c6cefe67ee004d2ce6a37fdd12d4c393c9cf80061cb01",
+    "grader/oracle/workspace/crates/telemetry/src/lib.rs": "d53c41d635af7c870f6c5acbadb5414b3f3ad67faa4c9cc5a767ad8300ef1df3",
+    "grader/oracle/workspace/crates/telemetry/tests/emission.rs": "f10d7da289665c2adad9493d9b96e28ebda17a191d8edaa21226219e5da82d53",
+    "grader/oracle/workspace/crates/workflow/src/bind.rs": "80e8d1987f7c2a0d8d11cbfcfdf1d121340fa9e8a9cae1900cd6d7a23109e563",
+    "grader/oracle/workspace/crates/workflow/src/bind_test.rs": "6bf94295791638cc0041cf593c88376410a066c959e011ef6577577c0315a76d",
+    "grader/specification.json": "6aa28b556c2d1828a547013400887c14aa6d426d7d3ba4b8018c5b737796aeed",
+    "grader/tests/crates/evidence/src/lib_test.rs": "374a3164293727e318d70da90a5b64968936ef664fd9ca4e11945ede95bfb6e8",
+    "grader/tests/crates/log/src/fold_test.rs": "d5baed5b0fb0f4bd7c700b80e8203ea4c858765b4267972f8a83443849f51d46",
+    "grader/tests/crates/telemetry/tests/emission.rs": "1ea63654ee4bd7294f7f78d4e0427f08467ee8abe0865f649227b9c05b6f245c",
+    "grader/tests/crates/workflow/src/bind_test.rs": "0462e4731f25a37443857d5792d057224d72769b360f6101d6545e9d9a21932f",
+    "grader/workspace.patch": "388d19a509fac285f43eeb0423b80fb1c91c340c4b8d83d23b0c7c44965386f9",
+    "task.json": "b2e09a3a7cf4ceb9a86a62ee539a7b80f4919c6d59e77822bc64ee1096b7efb2"
+  },
+  "workspace": {
+    "AGENTS.md": "a8190faa2e5a15ce45d0dafbd277f38c5d161b18a3b67d6639e6bd5b6010552f",
+    "checks/run.sh": "ee0ed96d53ebc4061ef721a02ee42cc92fe6ef043a64f2730937c7f7fbabfd45",
+    "scripts/loc.sh": "322e3d4b585748005c62db7a9bc8ec2bed47660070c65d3217a31699b98c0179"
+  }
+}
