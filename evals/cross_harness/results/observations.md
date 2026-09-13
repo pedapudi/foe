@@ -384,3 +384,46 @@ The session record of a Codex attempt states its permission profile: read on
 the filesystem root, write on the workspace alone. This is the asymmetry
 that made the missing-capability class uncomparable, recorded by the harness
 itself rather than inferred from the containment matrix.
+
+## A read-only node held the tool that ends the run, and used it on solvable work
+
+On `correlation-as-inbox-source`, a task the other three arms complete, the
+configured foe arm stopped twice, once in each run, and the second time the
+cause was not the one repaired between them.
+
+The second stop came from the survey node, the first of the four, after nine
+model calls consisting of six reads and three greps. It had run nothing and
+changed nothing. It reported `missing-capability`, reasoning that the tests
+referenced an interface the production code did not define and that the tree
+was therefore inconsistent. That inconsistency is the task: the fixture
+removes the implementation and leaves the tests, and the arm is asked to put
+it back. The same graph without the tool completed the task in thirty-eight
+calls.
+
+A node's block ends the workflow here, because this document disables
+workflow recovery so that a stop is the arm's decision rather than the
+runtime's retry. So a node that had not attempted the task ended it.
+
+The rule is now that a node holds the tool when it can act on what it finds:
+the nodes that write, and the delegating node whose workers report their own
+blocks to it. The two nodes that only read do not.
+
+The precedent for this is mixed and the mixed part is worth stating. The
+shipped coding workflow withholds the tool from its assessing node, which
+only reads. The shipped team workflow gives it to a read-only surveyor. The
+difference is what happens next: that surveyor is a spawned child and its
+block reaches a lead that can respond, while a graph node's block here is the
+end of the run.
+
+This change favours foe. It removes two stops that were counted against the
+configured arm on a task it is capable of. It was made because a graph whose
+read-only node can end a solvable task measures the graph and not the
+harness, and reporting that as a foe result would be reporting my own
+construction error. The observation itself stands as a finding about
+workflow design: a stopping tool given to a node that cannot act on what it
+finds produces stops on work that was never blocked.
+
+The nine foe-configured attempts of the run are discarded and re-run under
+the corrected graph. The other arms are unaffected: the ablated variant holds
+no such tool anywhere, and neither harness of the comparison sees this
+document.

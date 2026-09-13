@@ -48,6 +48,16 @@ next worker. A delegation whose remainder is below what its concurrent
 workers ask sees the later spawns refused as exhausted, and the delegation
 report records that outcome per unit.
 
+A node holds `block` when it can act on what it finds: the nodes that write,
+and the delegating node whose workers report their own blocks to it. The two
+nodes that only read do not hold it. A node that has changed nothing has not
+attempted the task, and a block from a node ends the whole workflow here,
+because this document disables workflow recovery so that a stop is the arm's
+own and not the runtime's retry. The shipped coding workflow withholds the
+tool from its assessing node for the same reason; its team workflow gives it
+to a read-only surveyor, but that surveyor is a spawned child whose block
+reaches a lead that can respond, not a graph node whose block is the end.
+
 The ablated autonomy variant removes the `block` tool from every node and
 every verifier declaration, so a run under it can show what those two
 mechanisms contribute. The teams variant `undivided` leaves the survey only
@@ -63,6 +73,11 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 CHECK = "check"
+# The tool a node calls to end its episode with a reason instead of a result.
+# The nodes that hold it are the ones that can change the workspace: a node
+# that only reads has seen no attempt to complete the task, and the shipped
+# coding workflow withholds it from its assessing node for the same reason.
+BLOCK = "block"
 WRITE_ROOTS: tuple[str, ...] = ("crates", "docs", "examples")
 EXECUTE_ROOTS: tuple[str, ...] = ("/bin", "/usr/bin", "/usr/local/bin")
 TEAMS_VARIANTS: tuple[str, ...] = ("configured", "undivided", "sequential")
@@ -360,7 +375,7 @@ class _Shape:
         self.block = block
 
     def tools(self, names: Sequence[str]) -> list[str]:
-        return [name for name in names if self.block or name != "block"]
+        return [name for name in names if self.block or name != BLOCK]
 
     def contract(self, name: str, role: str, tools: Sequence[str], returns: dict[str, Any], **budget: int) -> dict[str, Any]:
         """A child contract in the sense of docs/config.md `child_contracts`, within this document's ceiling.
@@ -374,7 +389,9 @@ class _Shape:
             grants["write"] = list(self.write)
         contract: dict[str, Any] = {
             "name": name,
-            "instructions": _instructions(role, self.block),
+            # The instruction to stop belongs to the nodes that hold the tool,
+            # not to every node of a document that offers it anywhere.
+            "instructions": _instructions(role, BLOCK in selected),
             "tools": selected,
             "grants": grants,
             "budget": {"model_calls": NODE_CALLS, **budget},
@@ -454,7 +471,7 @@ def autonomy(
         "survey",
         "Read the task and the workspace before anything changes. Find the files the task names, the checks that cover them, "
         "and the conventions the workspace states. Report what you found and what stays uncertain. Change nothing.",
-        ("read", "grep", "bash", "block"),
+        ("read", "grep", "bash"),
         survey_report(),
     )
     implement = shape.contract(
@@ -470,7 +487,7 @@ def autonomy(
         "Inspect and test without editing any file. For behavior the task parameterizes, test materially different valid inputs "
         "through the same public interface. Choose `accept` only with evidence for every requirement and no unresolved risk. "
         "Otherwise choose `repair` and return findings a reader can reproduce.",
-        ("read", "grep", "bash", CHECK, "block"),
+        ("read", "grep", "bash", CHECK),
         assessment_report(),
     )
     repair = shape.contract(
@@ -544,7 +561,7 @@ def teams(
         "alone inside directories no other unit writes. Name each unit, the crates it covers, the directories it writes, and the "
         "shared elements two units would both touch. Choose `divide` when at least two independent units exist and each costs "
         "more than a few tool calls. Choose `alone` otherwise. Change nothing.",
-        ("read", "grep", "bash", "block"),
+        ("read", "grep", "bash"),
         units_report(),
     )
     interface = shape.contract(

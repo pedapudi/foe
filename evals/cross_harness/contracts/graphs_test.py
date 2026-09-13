@@ -28,14 +28,16 @@ BUILTIN_TEAM = REPO / "crates" / "cli" / "src" / "builtin-team.json"
 BUDGET = {"model_calls": 40, "seconds": 600, "input_tokens": 100000, "output_tokens": 20000}
 
 # The tools each node holds, as the module docstring of graphs.py describes the nodes.
+# The nodes that can change the workspace hold `block`; the two that only
+# read do not, as the shipped coding workflow has it.
 AUTONOMY_TOOLS = {
-    "survey": ["read", "grep", "bash", "block"],
+    "survey": ["read", "grep", "bash"],
     "implement": ["read", "grep", "edit", "bash", "check", "block"],
-    "assess": ["read", "grep", "bash", "check", "block"],
+    "assess": ["read", "grep", "bash", "check"],
     "repair": ["read", "grep", "edit", "bash", "check", "block"],
 }
 TEAMS_TOOLS = {
-    "survey": ["read", "grep", "bash", "block"],
+    "survey": ["read", "grep", "bash"],
     "interface": ["read", "grep", "edit", "bash", "check", "block"],
     "delegate": ["read", "grep", "bash", "block", "spawn", "wait", "steer", "cancel", "send", "team"],
     "integrate": ["read", "grep", "edit", "bash", "check", "block"],
@@ -429,11 +431,15 @@ class Shape(unittest.TestCase):
         self.assertEqual({name: node["model"]["tools"] for name, node in nodes(document).items()}, {name: [t for t in tools if t != "block"] for name, tools in AUTONOMY_TOOLS.items()})
         self.assertEqual(nodes(document)["assess"]["branches"], {"accept": [], "repair": ["repair"]})
 
-    def test_the_unablated_variant_names_block_in_every_instruction(self) -> None:
+    def test_the_instruction_to_stop_reaches_the_nodes_that_hold_the_tool(self) -> None:
+        """A node is told to stop with `block` exactly when it can: a node that
+        only reads holds neither the tool nor the sentence about it."""
         for document in (graphs.autonomy(self.workspace, self.check, BUDGET), graphs.teams(self.workspace, self.check, BUDGET)):
             for path, contract in contracts(document):
-                if path != "root":
-                    self.assertIn("`block`", json.dumps(contract["instructions"]), path)
+                if path == "root":
+                    continue
+                named = "`block`" in json.dumps(contract["instructions"])
+                self.assertEqual(named, "block" in contract["tools"], path)
 
     def test_write_grants_are_the_three_roots_or_the_workspace(self) -> None:
         document = graphs.autonomy(self.workspace, self.check, BUDGET)
