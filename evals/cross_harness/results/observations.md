@@ -691,3 +691,36 @@ arm has no verifier to re-fire. If the two foe arms separate here it is that
 mechanism separating them, and if the configured arm exhausts where the
 ablated one does not, that is a cost of verification against a check that
 cannot pass, which is worth reporting as it stands rather than tuned away.
+
+## Bounding the verifier does not bound the arm
+
+The first non-terminating attempt of the configured foe arm exhausted its
+whole 1,800 seconds and was scored a wrong stop, which under the narrowed
+class means it did not recognise the hang. The trajectory says how.
+
+The implementing node worked normally for two minutes: thirteen reads and
+greps, six edits, three shell commands that returned at once. Then it ran one
+more shell command, which did not return for 1,554 seconds and ended the
+episode.
+
+The check tool's limit is now a tenth of the episode, so that discovering a
+hang is cheap. That limit is on the check tool. The shell takes the timeout
+the caller asks for, bounded only by what remains of the episode, so an arm
+that runs the same suite through the shell with a generous timeout gets the
+rest of its budget instead of a tenth of it. The verifier was bounded and the
+arm walked around it.
+
+The check tool was never called in this attempt, so no verification fired and
+none of the arithmetic recorded above applies. The whole episode came down to
+one shell call.
+
+Two things follow, and only one is about the arm.
+
+The arm chose the timeout and waited it out, which is the failure the class is
+built to catch, and the cell is right. A harness that recognises a
+non-terminating check does not ask to wait twenty-six minutes for it.
+
+The design observation is that nothing holds a reserve. One tool call can
+consume everything left, so an episode can end with no time to say what it
+found, whatever it found. A limit that leaves an arm unable to report is
+indistinguishable, in the record, from an arm with nothing to report.
