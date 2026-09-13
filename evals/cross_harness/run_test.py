@@ -491,6 +491,10 @@ class Planning(Harness):
         with mock.patch.object(run.Path, "cwd", return_value=self.root):
             status, _, err = self.main([str(self.document(harnesses=None))])
         self.assertEqual(status, run.NOTHING_LAUNCHED)
+        # The premise is that no ancestor of the scratch directory holds a git entry. A stray one in
+        # the system temporary directory has broken this test twice; name it rather than fail obscurely.
+        stray = next((d for d in Path(self.root).parents if (d / run.GIT_ENTRY).exists()), None)
+        self.assertIsNone(stray, f"{stray} holds a {run.GIT_ENTRY} entry, so a scratch directory beneath it looks like a checkout")
         self.assertIn("key harnesses.foe is absent, and neither the document's directory", err)
 
     def test_the_family_is_read_from_the_tasks_and_a_mixed_selection_is_refused(self) -> None:
@@ -1270,16 +1274,19 @@ class Running(Harness):
         self.assertIsNone(record["trajectory"])
         self.assertEqual(json.loads(out.strip().splitlines()[-1])["infrastructure_failures"], 1)
 
-    def test_the_grader_is_absent_while_the_arm_runs_and_is_recorded_when_the_arm_names_it(self) -> None:
+    def test_nothing_beside_the_workspace_answers_the_task_while_the_arm_runs(self) -> None:
         self.behave("peek-at-grader")
         status, _, err = self.main(self.argv("--confirm-spend"))
         self.assertEqual(status, run.EVALUATED, err)
         record = self.record("foe-configured")
         root = Path(record["paths"]["root"])
-        # The arm looked for the grader beside its workspace and found nothing there, and the root beside it
-        # held the workspace and the task alone: no baseline of what the damage judgement protects.
+        # The arm looked beside its workspace and found the workspace alone. The grader is not there,
+        # and neither is the task file, which names the class this task belongs to, the statuses and
+        # codes it accepts, and for a task built by reverting a commit the commit holding the answer.
+        # An arm whose sandbox reads past its workspace would otherwise read all of that, and an arm
+        # confined to its grants would not, so the two would not be answering the same question.
         peeked = (Path(record["paths"]["workspace"]) / "peek.txt").read_text(encoding="utf-8").splitlines()
-        self.assertEqual(peeked, ["False", f"{run.protocol.TASK_FILE} {run.protocol.WORKSPACE}"])
+        self.assertEqual(peeked, ["False", run.protocol.WORKSPACE])
         # The grade then ran against a grader materialized after the arm had exited.
         self.assertTrue((root / run.protocol.GRADER / run.protocol.GRADE_SCRIPT).is_file())
         self.assertFalse((root / run.protocol.PROTECTED_FILE).exists())

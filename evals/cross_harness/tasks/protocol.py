@@ -321,15 +321,16 @@ def _outside_hashes(root: Path) -> dict[str, str]:
 
     The record inside the grader directory is written after these hashes are
     taken and is what they are compared against, so it is never one of them.
-    Every other path outside the workspace is hashed, including one that
-    carries the record's own name, so that a file an arm writes under the
-    root is damage whatever it is called.
+    `task.json` is written then too, with the grader and after every arm has
+    exited, so it is not one of them either. Every other path outside the
+    workspace is hashed, including one that carries either name, so that a
+    file an arm writes under the root is damage whatever it is called.
     """
     record = Path(GRADER) / PROTECTED_FILE
     hashes: dict[str, str] = {}
     for file in _files_under(root):
         relative = file.relative_to(root)
-        if relative.parts[0] == WORKSPACE or relative == record:
+        if relative.parts[0] == WORKSPACE or relative in (record, Path(TASK_FILE)):
             continue
         hashes[relative.as_posix()] = sha256_file(file)
     return hashes
@@ -566,6 +567,14 @@ def _materialize_grader(task_dir: Path, root: Path) -> None:
     keeps the hash the workspace call recorded, so a file an arm left under
     the root is damage rather than part of the baseline.
     """
+    # The task file lands with the grader and not with the workspace. It
+    # names the class, the statuses and codes the task accepts, and for a
+    # task built by reverting a commit the commit that holds the answer. An
+    # arm whose sandbox reads past its workspace would find all of that one
+    # directory above the tree it is working in, and an arm confined to its
+    # grants would not, so the two would not be answering the same question.
+    # A grade script reads it from here, after every arm has exited.
+    shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
     staged = staged_protected_record(root)
     if not staged.is_file():
         raise FileNotFoundError(f"{staged} is absent; the grader of {task_dir} needs a root whose workspace was materialized with parts={WORKSPACE!r}")
@@ -589,13 +598,14 @@ def materialize(task_dir: Path, root: Path, parts: str = BOTH) -> Task:
     """Build a task directory into a root and record the protected hashes.
 
     `parts` selects what is written. With `WORKSPACE` the call needs a fresh
-    root and writes the workspace, `task.json`, and the protected hashes of
-    the workspace as it stands before any arm runs, staged beside the root
-    at the path `staged_protected_record` names. With `GRADER` the call adds the grader
-    directory to a root a `WORKSPACE` call already wrote, and belongs after
-    the arm process has exited and before grading, so that an arm whose
-    sandbox reads beyond its workspace never reaches the hidden tests, the
-    oracle, or the corruptions. With `BOTH` one call writes both, for a
+    root and writes the workspace and the protected hashes of the workspace
+    as it stands before any arm runs, staged beside the root at the path
+    `staged_protected_record` names. With `GRADER` the call adds the grader
+    directory and `task.json` to a root a `WORKSPACE` call already wrote, and
+    belongs after the arm process has exited and before grading, so that an
+    arm whose sandbox reads beyond its workspace never reaches the hidden
+    tests, the oracle, the corruptions, or the task file that names the class
+    this task belongs to and the outcome it accepts. With `BOTH` one call writes both, for a
     caller that runs no arm.
 
     A `workspace/` copy in the task directory is copied; otherwise the
@@ -625,7 +635,6 @@ def materialize(task_dir: Path, root: Path, parts: str = BOTH) -> Task:
                 shutil.copytree(copy, root / WORKSPACE, symlinks=True)
             else:
                 regenerate_workspace(task_dir, root / WORKSPACE)
-            shutil.copy2(task_dir / TASK_FILE, root / TASK_FILE)
             for entry in task.protected:
                 if not (root / WORKSPACE / entry).exists():
                     raise FileNotFoundError(f"{task_dir / TASK_FILE}: key protected names {entry!r}, which the workspace of {task_dir} lacks")
