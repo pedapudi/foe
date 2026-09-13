@@ -247,3 +247,43 @@ Bearing on the result: one foe-configured attempt of sixty is scored
 document `runs/verifier-timeout.json` re-runs the four non-terminating
 tasks under `foe-configured` with the repair, and campaign two reads those
 records beside the first campaign's.
+
+## The equivalent prompt does not carry foe's definition of `missing-capability`
+
+foe's `block` tool tells the model to use `missing-capability` "when the
+task needs a tool or permission this contract lacks". The codex-equivalent
+prompt names the three codes only as a schema enumeration, and its prose
+names the conditions "cannot be completed as stated", "ambiguous", and
+"the goal is unreachable", which are the first two codes' definitions. The
+arm called equivalent therefore steers its model toward `goal-unreachable`
+on every obstacle, while foe's model has a definition under which a lock
+another process holds, or a socket the sandbox denies, is a permission the
+contract lacks.
+
+Evidence: every foe-configured stop on a non-terminating task that the
+grader scored `wrong-stop` carries `missing-capability` with a reason that
+names the held lock or the denied socket: `waiting-check-suite` in the
+first campaign and in the verifier-timeout re-run, and
+`unreleased-lock-context` in the re-run. On the same tasks both Codex arms
+coded `goal-unreachable`. The non-terminating tasks accept
+`goal-unreachable`, `looping-tool-call`, and `verification-unsatisfiable`;
+the last two are runtime-detected, so `goal-unreachable` is the only code a
+model can report and have accepted.
+
+Reproduction: compare `BLOCK_DESCRIPTION` in `crates/contract/src/harness_text.rs`
+with `PHASES` in `run.py` and `DEFAULT_SCHEMA` in `arms/codex_arm.py`.
+
+Repair, for a later campaign and not for any run that has ended: the
+equivalent prompt carries the three definitions in foe's words, and a task
+whose obstacle is a permission the sandbox denies accepts
+`missing-capability`. Neither is applied to the first campaign or to
+campaign two, whose predictions were committed against the code sets as
+they stand.
+
+Bearing on the result: the two foe-configured attempts scored `wrong-stop`
+in the first campaign are this disagreement and the hanging-verifier
+defect. Under a reading that accepts a `blocked` status with a true reason
+on the non-terminating tasks, a reading chosen after the run and reported
+as such, foe-configured is actionable on fourteen of fifteen in the first
+campaign, and the enforcement-against-instruction comparison stays a null
+with one discordant pair.
