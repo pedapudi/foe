@@ -20,7 +20,7 @@ index 0000000..e948bfa
 +held by the evidence documentation build
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..edeafec
+index 0000000..3243d06
 --- /dev/null
 +++ b/checks/run.sh
 @@ -0,0 +1,16 @@
@@ -35,7 +35,7 @@ index 0000000..edeafec
 +/usr/bin/bash scripts/loc.sh
 +echo "step 2: wait for the release of checks/evidence.lock"
 +/usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ step 2 (wait for the release of checks/evidence.lock) began' >> checks-wait.log
-+/usr/bin/python3 checks/wait_for_lock.py checks/evidence.lock 3600
++/usr/bin/python3 checks/wait_for_lock.py checks/evidence.lock inf
 +echo "step 3: the tests of foe-evidence"
 +cargo test -p foe-evidence --quiet
 +echo "step 4: clippy with warnings denied on foe-evidence"

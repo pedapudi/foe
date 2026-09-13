@@ -20,7 +20,7 @@ index 0000000..97b7247
 +held by the context documentation build
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..8289f4b
+index 0000000..1d4e4c2
 --- /dev/null
 +++ b/checks/run.sh
 @@ -0,0 +1,16 @@
@@ -35,7 +35,7 @@ index 0000000..8289f4b
 +/usr/bin/bash scripts/loc.sh
 +echo "step 2: wait for the release of checks/context.lock"
 +/usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ step 2 (wait for the release of checks/context.lock) began' >> checks-wait.log
-+/usr/bin/python3 checks/wait_for_lock.py checks/context.lock 3600
++/usr/bin/python3 checks/wait_for_lock.py checks/context.lock inf
 +echo "step 3: the tests of foe-context"
 +cargo test -p foe-context --quiet
 +echo "step 4: clippy with warnings denied on foe-context"
