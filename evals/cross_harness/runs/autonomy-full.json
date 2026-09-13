@@ -1,7 +1,6 @@
 {
   "tasks": "../tasks/foe-tree",
   "select": [
-    "bazel-lock-regeneration",
     "carry-home-to-child",
     "ceiling-bound-feature",
     "ceiling-bound-feature-telemetry",

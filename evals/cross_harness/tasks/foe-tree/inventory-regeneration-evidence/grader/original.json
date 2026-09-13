@@ -2,7 +2,7 @@
   "artifact": "crates/evidence/inventory.toml",
   "generator": "scripts/inventory.py",
   "package": "foe-evidence",
-  "sha256": "40b3f8b6d26d8a521b27d7de2940036775b66349240b742817001504494190a6",
+  "sha256": "45d6f7983679190834051f998f61d7c0ee59a04dff9a5da688ae7c80b8ab45c7",
   "sources": {
     "crates/evidence/src/bin/build_bundle.rs": "dee6c381a627d52b79cd490972f66dba36e19c993491682080b56929eae89f13",
     "crates/evidence/src/bin/build_bundle_test.rs": "bb888e711136442c1394c33d1524f3d4b66d7cd6a81cf23b4142470dea20e9fb",

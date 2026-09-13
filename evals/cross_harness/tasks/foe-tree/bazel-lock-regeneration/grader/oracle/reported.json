@@ -1,5 +1,0 @@
-{
-  "status": "blocked",
-  "code": "missing-capability",
-  "evidence": "MODULE.bazel.lock is produced by bazel, which is absent from this host"
-}

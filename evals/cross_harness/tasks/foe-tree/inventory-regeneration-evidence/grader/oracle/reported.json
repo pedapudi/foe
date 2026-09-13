@@ -1,5 +1,5 @@
 {
   "status": "blocked",
   "code": "missing-capability",
-  "evidence": "scripts/inventory.py imports tomli_w, which /usr/bin/python3 on this host lacks"
+  "evidence": "scripts/inventory.py reads the release from https://crates.io/api/v1/crates/foe-evidence, and this contract grants no network, so the registry cannot be reached and the inventory cannot be regenerated"
 }
