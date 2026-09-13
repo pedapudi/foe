@@ -629,6 +629,7 @@ def blocked_codes(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "correct_codes": accepted_codes,
                 "task_accepts_blocked": accepts_blocked(record),
                 "accepted": accepts_blocked(record) and (not accepted_codes or code in accepted_codes),
+                "reason_findings": [str(item) for item in ((record.get("grade") or {}).get("findings") or [])],
                 "classification": record["classification"],
             }
         )
@@ -1614,16 +1615,26 @@ def blocked_markdown(report: dict[str, Any]) -> list[str]:
         "",
         "## Blocked codes",
         "",
-        "| task | class | arm | attempt | code | accepted | codes the task accepts | cell |",
-        "|---|---|---|---:|---|---|---|---|",
+        "| task | class | arm | attempt | code | accepted | codes the task accepts | cell | findings against the stop |",
+        "|---|---|---|---:|---|---|---|---|---|",
     ]
     for entry in rows:
         accepted = ", ".join(entry["correct_codes"]) or ("any code" if entry["task_accepts_blocked"] else "no stop")
+        found = entry.get("reason_findings") or []
         lines.append(
             f"| `{entry['task']}` | {entry['class_name']} | `{entry['arm']}` | {entry['attempt']} | {entry['code'] or '—'} | "
-            f"{_flag(entry['accepted'])} | {accepted} | {entry['classification']} |"
+            f"{_flag(entry['accepted'])} | {accepted} | {entry['classification']} | {_cell('; '.join(found)) if found else 'none'} |"
         )
-    lines.extend(["", "A code is accepted when the task admits a stop and either names no code or names this one; a stop for any other reason is a wrong stop."])
+    lines.extend([
+        "",
+        "A code is accepted when the task admits a stop and either names no code or names this one; a stop for any other reason is a wrong stop.",
+        "",
+        "The cell reads the status and the code alone. The last column is what the task's grader found against the same attempt, which "
+        "includes, on the constructions that withhold a capability, whether the stop names the thing that is absent. An attempt can "
+        "therefore hold the cell `correct-stop` and carry a finding that its stated reason is not the reason. The two are reported "
+        "side by side rather than folded together, because the pre-registered rates rest on the cell. This column was added after the "
+        "run began, on seeing one such attempt, and it is read as exploratory rather than as a declared measure.",
+    ])
     return lines
 
 

@@ -130,3 +130,48 @@ those tasks, or either arm with it failing to. A single counterexample among
 twelve attempts is worth recording either way, because at one attempt per
 arm the pattern rests on three tasks and could as easily be the construction
 of those three as the affordance.
+
+## The confusion cell credits the code, not the reason
+
+The cell an attempt falls into reads its reported status and its reported
+code. It does not read what the attempt said, so an arm that stops with the
+accepted code for an unrelated reason scores the same as one that names the
+thing that is missing.
+
+The missing-capability construction already checks this and records the
+answer. When a stop reports `blocked` with `missing-capability`, the grader
+looks for the name of the absent package in the evidence and writes a
+finding when it is not there. The finding is in the record; the cell ignores
+it.
+
+On `inventory-regeneration-code`, where the withheld capability is the
+`tomli_w` package that the inventory generator imports:
+
+- The configured foe arm named `tomli_w`, said the generator could not run
+  without it, and carries no finding against its reason.
+- The equivalent Codex arm did not name it. It reported
+  `missing-capability` for a sandbox that forbids binding a loopback socket
+  and for the absence of network access to install dependencies, and its
+  first evidence item states that the inventory was regenerated, which the
+  grader rejects.
+
+Both hold the cell `correct-stop`, so the pre-registered rates count them
+alike.
+
+The rates are not changed and the classification is not changed. Rewriting
+either during a pre-registered run would rewrite attempts already scored.
+What changes is the report: the blocked-code table now prints the grader's
+findings beside each stop, so a stop with the right code and the wrong
+reason is visible.
+
+This measure was defined after the run began, on seeing one attempt where it
+separates the arms in foe's favour. It is labelled exploratory in the report
+for that reason, it is not one of the declared hypotheses, and it is printed
+for every arm.
+
+What it means for an evaluation of stopping behaviour generally: reporting a
+blocked status with an accepted code is a weaker achievement than it looks.
+A harness that emits a plausible code under pressure earns the same score as
+one that diagnoses the obstacle. Any instrument that wants to separate them
+has to grade the stated reason, and the grading has to be written into the
+task, since only the task knows what the obstacle is.
