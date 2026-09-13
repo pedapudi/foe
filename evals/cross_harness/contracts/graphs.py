@@ -81,6 +81,14 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 CHECK = "check"
+# What a check suite writes while it runs, under the workspace: the build
+# directory a compiler puts its output in, and the private temporary
+# directory the check wrapper makes. A node that runs a check must be able to
+# write these or the check cannot finish, whatever the node is allowed to
+# change. Granting them is not granting the source: a node without `edit`
+# still cannot touch a file the task is about, so a node that only reads can
+# still run the tests it is asked to run.
+CHECK_WRITES: tuple[str, ...] = ("target", ".check-tmp")
 # The tool a node calls to end its episode with a reason instead of a result.
 # The nodes that hold it are the ones that can change the workspace: a node
 # that only reads has seen no attempt to complete the task, and the shipped
@@ -382,6 +390,26 @@ class _Shape:
         self.execute = [str(root) for root in execute]
         self.block = block
 
+    def root_write(self) -> list[str]:
+        """The document's write grant: the task's write roots and the directories a check writes into."""
+        return self.with_check_writes(list(self.write))
+
+    def with_check_writes(self, roots: list[str]) -> list[str]:
+        """`roots` plus each directory a check writes that no root already covers.
+
+        The runtime refuses a grant that lies inside another grant of the same
+        contract or of its parent, so a task whose write root is the workspace
+        needs nothing added: the check's directories are already inside it.
+        """
+        covered = [Path(root) for root in roots]
+        extra = []
+        for name in CHECK_WRITES:
+            path = self.workspace / name
+            if str(path) in roots or any(path.is_relative_to(root) for root in covered):
+                continue
+            extra.append(str(path))
+        return roots + extra
+
     def tools(self, names: Sequence[str]) -> list[str]:
         return [name for name in names if self.block or name != BLOCK]
 
@@ -393,8 +421,11 @@ class _Shape:
         """
         selected = self.tools(tools)
         grants: dict[str, Any] = {"read": [str(self.workspace)], "execute": list(self.execute)}
-        if "edit" in selected:
-            grants["write"] = list(self.write)
+        write: list[str] = list(self.write) if "edit" in selected else []
+        if CHECK in selected:
+            write = self.with_check_writes(write)
+        if write:
+            grants["write"] = write
         contract: dict[str, Any] = {
             "name": name,
             # The instruction to stop belongs to the nodes that hold the tool,
@@ -428,7 +459,9 @@ class _Shape:
             "instructions": {"10-role": role},
             "tools": selected,
             "tool_defs": {CHECK: _check_def(self.check, self.limits["seconds"])},
-            "grants": {"read": [str(self.workspace)], "write": list(self.write), "execute": list(self.execute)},
+            # The root grants what a check writes as well, because a child
+            # contract may not grant more than the document it sits in.
+            "grants": {"read": [str(self.workspace)], "write": self.root_write(), "execute": list(self.execute)},
             "budget": {**self.limits, "max_episodes": 1 + fires, **budget},
         }
         if self.block:
@@ -611,8 +644,10 @@ def teams(
         max_concurrent=max_concurrent,
     )
     # The delegating node's write grant is the ceiling each spawn narrows;
-    # the node itself holds no tool that writes.
-    delegate["grants"]["write"] = list(shape.write)
+    # the node itself holds no tool that writes. It carries what a check
+    # writes because its workers run checks, and a child may not be granted
+    # what its parent lacks.
+    delegate["grants"]["write"] = shape.with_check_writes(list(shape.write))
     delegate["grants"]["spawn"] = [WORKER]
     delegate["child_contracts"] = {WORKER: worker}
     integrate = shape.contract(

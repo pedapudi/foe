@@ -1161,6 +1161,22 @@ def check_command(task: protocol.Task, workspace: Path) -> list[str]:
     raise ValueError(f"task {task.name!r}: the workspace {workspace} has neither {CHECK_SUITE} nor a {TESTS_DIR} directory, and metadata names no {METADATA_CHECK}")
 
 
+# What a check suite writes while it runs: a compiler's output directory and
+# the wrapper's private temporary directory. Both are created before an arm
+# starts, for two reasons. A grant names a directory, and a directory that
+# does not exist cannot be granted; and creating one inside the workspace
+# needs write on the workspace, which a node that only reads does not have,
+# so a node asked to run the tests could not run them. Creating them here
+# leaves the same workspace to every arm.
+CHECK_DIRECTORIES: tuple[str, ...] = ("target", CHECK_SCRATCH_DIR)
+
+
+def make_check_directories(workspace: Path) -> None:
+    """Create the directories a check suite writes into, before any arm runs."""
+    for name in CHECK_DIRECTORIES:
+        (workspace / name).mkdir(parents=True, exist_ok=True)
+
+
 def write_check_script(path: Path, workspace: Path, command: list[str], search_path: Sequence[str] = ()) -> Path:
     """An executable that runs the check command from the workspace and prints findings.
 
@@ -1760,6 +1776,7 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         record["infrastructure_error"] = f"the task did not materialize: {exc}"
         record["ended_ms"] = foe_arm.now_ms()
         return record
+    make_check_directories(workspace)
     before = snapshot(workspace)
     try:
         result = run_arm(settings, arm, task, workspace, attempt_dir)

@@ -51,6 +51,11 @@ def materialize(root: Path) -> tuple[Path, Path]:
     workspace = root / "workspace"
     for name in graphs.WRITE_ROOTS:
         (workspace / name).mkdir(parents=True)
+    # The directories a check writes into exist before an arm starts, because
+    # a grant names a directory and the runtime refuses one that is absent.
+    # The runner creates them for a real attempt; this stands in for that.
+    for name in graphs.CHECK_WRITES:
+        (workspace / name).mkdir(parents=True, exist_ok=True)
     (workspace / "docs" / "notes.txt").write_text("The workspace holds nothing the task changes.\n", encoding="utf-8")
     check = workspace / "checks" / "run.sh"
     check.parent.mkdir()
@@ -367,7 +372,7 @@ class Shape(unittest.TestCase):
         delegate = graph["delegate"]["model"]
         self.assertNotIn("edit", delegate["tools"])
         self.assertEqual(delegate["grants"]["spawn"], ["worker"])
-        self.assertEqual(delegate["grants"]["write"], ["/w/crates", "/w/docs", "/w/examples"], "the ceiling a spawn narrows")
+        self.assertEqual(delegate["grants"]["write"], ["/w/crates", "/w/docs", "/w/examples", "/w/target", "/w/.check-tmp"], "the ceiling a spawn narrows")
         worker = delegate["child_contracts"]["worker"]
         self.assertEqual(worker["tools"], WORKER_TOOLS)
         self.assertEqual(worker["budget"]["model_calls"], graphs.worker_calls(document["budget"]["model_calls"], 4))
@@ -459,18 +464,25 @@ class Shape(unittest.TestCase):
 
     def test_write_grants_are_the_three_roots_or_the_workspace(self) -> None:
         document = graphs.autonomy(self.workspace, self.check, BUDGET)
-        self.assertEqual(document["grants"]["write"], ["/w/crates", "/w/docs", "/w/examples"])
+        self.assertEqual(document["grants"]["write"], ["/w/crates", "/w/docs", "/w/examples", "/w/target", "/w/.check-tmp"])
         self.assertEqual(document["grants"]["read"], ["/w"])
         self.assertEqual(document["grants"]["execute"], list(graphs.EXECUTE_ROOTS))
         graph = nodes(document)
         self.assertEqual(graph["implement"]["model"]["grants"]["write"], document["grants"]["write"])
         self.assertNotIn("write", graph["survey"]["model"]["grants"])
-        self.assertNotIn("write", graph["assess"]["model"]["grants"])
+        # The assessing node runs the check and must be able to write what a
+        # check writes, and nothing else: it holds no source root, so it can
+        # run the tests it is asked to run without touching a file the task
+        # is about.
+        self.assertEqual(graph["assess"]["model"]["grants"]["write"], ["/w/target", "/w/.check-tmp"])
+        # A task that writes the workspace needs nothing added: the check's
+        # directories already lie inside it, and the runtime refuses a grant
+        # inside another grant of the same contract.
         root_files = graphs.autonomy(self.workspace, self.check, BUDGET, root_files=True)
         self.assertEqual(root_files["grants"]["write"], ["/w"])
         self.assertEqual(nodes(root_files)["repair"]["model"]["grants"]["write"], ["/w"])
         narrowed = graphs.autonomy(self.workspace, self.check, BUDGET, write_roots=["src", "tools/gen"], execute=["/usr/bin"])
-        self.assertEqual(narrowed["grants"]["write"], ["/w/src", "/w/tools/gen"])
+        self.assertEqual(narrowed["grants"]["write"], ["/w/src", "/w/tools/gen", "/w/target", "/w/.check-tmp"])
         self.assertEqual(nodes(narrowed)["implement"]["model"]["grants"]["execute"], ["/usr/bin"])
 
     def test_a_write_root_outside_or_covering_the_workspace_is_refused(self) -> None:
@@ -544,7 +556,14 @@ class Shape(unittest.TestCase):
                 calls = contract["budget"]["model_calls"]
                 self.assertTrue(calls == graphs.NODE_CALLS or calls <= root["budget"]["model_calls"], f"{path}: {calls!r}")
                 for key in ("read", "write", "execute", "spawn"):
-                    self.assertTrue(set(contract["grants"].get(key, [])) <= set(root["grants"].get(key, [])), f"{path}: grants.{key}")
+                    granted = root["grants"].get(key, [])
+                    for entry in contract["grants"].get(key, []):
+                        # A child's grant lies within the root's when it names
+                        # the same path or one beneath it. A node that only
+                        # runs a check is granted the check's own directories,
+                        # which sit under the root's grant rather than equal it.
+                        within = entry in granted or any(Path(entry).is_relative_to(Path(root_entry)) for root_entry in granted)
+                        self.assertTrue(within, f"{path}: grants.{key}: {entry}")
                 if "check" in contract["tools"]:
                     self.assertEqual(contract["tool_defs"]["check"], root["tool_defs"]["check"], path)
                 else:
