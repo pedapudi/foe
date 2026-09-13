@@ -1551,7 +1551,11 @@ class Running(Harness):
             # The workspace is the wrong value: a toolchain manager would look for
             # its installation there, find none, and attempt a denied download.
             self.assertNotIn(f"HOME={shlex.quote(str(workspace))}", text)
-            self.assertIn("export PATH LANG HOME TMPDIR", text)
+            self.assertIn("export PATH LANG HOME", text)
+            # The private temporary directory is a convenience. When the
+            # sandbox refuses to prepare it the suite still runs, without one.
+            self.assertIn("unset TMPDIR", text)
+            self.assertNotIn("cannot be created", text)
             printed = subprocess.run(
                 ["/bin/sh", "-c", f"{shlex.quote(str(script))} >/dev/null 2>&1; :"], capture_output=True, text=True, check=False
             )

@@ -1192,9 +1192,19 @@ def write_check_script(path: Path, workspace: Path, command: list[str], search_p
             "LANG=C.UTF-8",
             f"HOME={shlex.quote(pwd.getpwuid(os.getuid()).pw_dir)}",
             f"TMPDIR={scratch}",
-            "export PATH LANG HOME TMPDIR",
+            "export PATH LANG HOME",
             f"cd {shlex.quote(str(workspace))} || {{ echo {shlex.quote(f'the workspace {workspace} cannot be entered')}; exit 0; }}",
-            f"mkdir -p {scratch} && printf '%s\\n' {shlex.quote(CACHE_TAG_SIGNATURE)} > {scratch}/{CACHE_TAG_FILE} || {{ echo {shlex.quote(f'the scratch directory {workspace / CHECK_SCRATCH_DIR} cannot be created')}; exit 0; }}",
+            # A private temporary directory is a convenience, not a
+            # requirement: the suite runs without one. Ending the check
+            # because the directory could not be prepared reports no finding
+            # about the workspace and hides whatever the suite would have
+            # said, which is what happened when a sandbox refused the cache
+            # tag inside a directory it had just allowed to be created.
+            f"if mkdir -p {scratch} && printf '%s\\n' {shlex.quote(CACHE_TAG_SIGNATURE)} > {scratch}/{CACHE_TAG_FILE} 2>/dev/null; then",
+            "  export TMPDIR",
+            "else",
+            "  unset TMPDIR",
+            "fi",
             f"output=$({joined} 2>&1)",
             "status=$?",
             f'if [ "$status" -eq {COMMAND_NOT_FOUND_STATUS} ]; then',
