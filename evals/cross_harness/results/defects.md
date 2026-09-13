@@ -114,6 +114,19 @@ it. The refusal happened 55 times across the two foe arms of one task in the
 run, and the other harness, whose sandbox grants write on the same workspace,
 was refused zero times.
 
+The sharper form of it, from the check tool rather than from cargo: a
+subprocess creates a directory under the granted write root successfully and
+is then refused creating a file inside the directory it just created.
+
+```
+mkdir -p <workspace>/.check-tmp            succeeds
+printf ... > <workspace>/.check-tmp/CACHEDIR.TAG   Permission denied
+```
+
+The refusal is not permanent within an episode: a later run of the same
+check suite in the same workspace exits zero. What triggers it is not
+established.
+
 What this is not, each checked rather than assumed:
 
 - Not the file mode. The same file in the other harness's workspace has the
@@ -130,5 +143,12 @@ other harness does not spend. On the one task where both foe arms and both
 of the other harness's arms have completed, foe spent 59 and 38 model calls
 against 36 and 19. Any comparison of cost carries this until it is closed.
 
-Reproduction: grant write on a directory, populate it with a cargo target
-directory, and run a build through the `bash` tool.
+Reproduction: grant write on a directory and, from a subprocess, create a
+directory beneath it and then a file inside that directory.
+
+Bearing on the result: while the check script treated a refused scratch
+directory as fatal, this defect stopped the check suite from running at all
+under every foe arm, so the verifier the configured arm is built around
+produced nothing. The script no longer treats it as fatal. What remains is
+a check that sometimes reports this refusal as a finding, which costs the
+arm a repair cycle it did not earn.
