@@ -495,12 +495,19 @@ calls the tool with an argument object that binds the complete candidate to
 that parameter. The tool returns a list of finding strings. An error result
 means that the verifier failed to judge the candidate.
 
-A nonzero exit status, an end by signal, or a timeout means that the
-executable verifier failed to judge the candidate. The episode ends as
-`failed` with the exit code and both output streams as its error. A
-general-purpose linter therefore needs a wrapper that reads the candidate,
-runs the linter, prints its findings, and exits with status zero whether it
-accepts the candidate or reports findings.
+A nonzero exit status or an end by signal means that the executable
+verifier failed to judge the candidate. The episode ends as `failed` with
+the exit code and both output streams as its error. A general-purpose linter
+therefore needs a wrapper that reads the candidate, runs the linter, prints
+its findings, and exits with status zero whether it accepts the candidate or
+reports findings.
+
+A verifier that outlives its `timeout_seconds` is killed and its run counts
+as one finding: the candidate could not be verified within the bound. The
+finding reaches the model like any other, so a check suite that waits on a
+resource the workspace never provides is something the model can report
+rather than something that ends the episode; after `retries` such findings
+the episode ends `blocked` with `verification-unsatisfiable`.
 
 A `returns` schema may declare a member that is an array of objects whose
 items must carry an integer `seq`. Each such `seq` cites the supporting event

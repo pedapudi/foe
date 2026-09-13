@@ -293,6 +293,8 @@ pub struct FakeExecutor {
     /// Written to standard output in place of the echoed input, for a
     /// verifier whose findings are the subject.
     pub stdout: Option<String>,
+    /// Reports every run as killed at its timeout.
+    pub timed_out: bool,
 }
 
 impl Executor for FakeExecutor {
@@ -303,7 +305,7 @@ impl Executor for FakeExecutor {
         };
         let stderr = req.args.join(" ").into_bytes();
         self.requests.lock().unwrap().push(req);
-        let exit_code = Some(self.exit_code);
-        Ok(ExecResult { exit_code, stdout, stderr, timed_out: false, duration: Duration::from_millis(3) })
+        let exit_code = if self.timed_out { None } else { Some(self.exit_code) };
+        Ok(ExecResult { exit_code, stdout, stderr, timed_out: self.timed_out, duration: Duration::from_millis(3) })
     }
 }
