@@ -1,0 +1,33 @@
+{
+  "tasks": "../tasks/foe-tree",
+  "select": [
+    "small-obstacle-log",
+    "small-obstacle-contract"
+  ],
+  "arms": [
+    "foe-configured",
+    "foe-lean",
+    "codex-equivalent",
+    "codex-default"
+  ],
+  "attempts": 2,
+  "resume": true,
+  "model": {
+    "route": "subscription",
+    "name": "gpt-5.6-sol",
+    "effort": "medium"
+  },
+  "budget": {
+    "input_tokens": 4000000,
+    "output_tokens": 400000,
+    "seconds": 1200,
+    "model_calls": 200
+  },
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ],
+  "out": "~/.local/state/foe/cross-harness/small-obstacle"
+}

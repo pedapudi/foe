@@ -491,6 +491,7 @@ def autonomy(
     budget: Mapping[str, Any],
     ablated: bool = False,
     *,
+    lean: bool = False,
     root_files: bool = False,
     write_roots: Sequence[str] = WRITE_ROOTS,
     execute: Sequence[str] = EXECUTE_ROOTS,
@@ -503,9 +504,11 @@ def autonomy(
     widens the write grant from the listed `write_roots`, each a relative
     path to a directory below the workspace, to the workspace itself.
     `ablated` removes `block` from every node and every verifier
-    declaration, including the root's. `task` is the task text; the run that
-    uses the document supplies it, so the default is a placeholder that
-    states as much.
+    declaration, including the root's. `lean` drops the survey node: the
+    implementing node reads the workspace itself, which saves one episode's
+    cold start at the price of the survey's separate report. `task` is the
+    task text; the run that uses the document supplies it, so the default is
+    a placeholder that states as much.
     """
     shape = _shape(workspace, check, budget, root_files, write_roots, execute, block=not ablated)
     survey = shape.contract(
@@ -517,8 +520,13 @@ def autonomy(
     )
     implement = shape.contract(
         "implement",
-        "Implement the task in the workspace, using the survey. Make the smallest sufficient change. "
-        "Report every changed path, the validation you observed, unresolved risks, and cited evidence.",
+        (
+            "Read the task and the workspace before anything changes: the files the task names, the checks that cover them, "
+            "and the conventions the workspace states. Then implement the task. Make the smallest sufficient change. "
+            if lean
+            else "Implement the task in the workspace, using the survey. Make the smallest sufficient change. "
+        )
+        + "Report every changed path, the validation you observed, unresolved risks, and cited evidence.",
         ("read", "grep", "edit", "bash", CHECK, "block"),
         change_report(),
     )
@@ -541,14 +549,15 @@ def autonomy(
         change_report(unresolved_max=0),
     )
     nodes = {
-        "survey": shape.node(survey, ["task"]),
-        "implement": shape.node(implement, ["task", "survey"], verified=True),
+        "implement": shape.node(implement, ["task"] if lean else ["task", "survey"], verified=True),
         # The root verifier re-fires the node that completed the workflow, which on the accept path is the assessing node.
         "assess": shape.node(assess, ["task", "implement"], branches={"accept": [], "repair": ["repair"]}, max_fires=TERMINAL_FIRES),
         "repair": shape.node(repair, ["task", "implement", "assess"], verified=True, terminal=True, max_fires=TERMINAL_FIRES),
     }
+    if not lean:
+        nodes = {"survey": shape.node(survey, ["task"]), **nodes}
     return shape.document(
-        "autonomy-ablated" if ablated else "autonomy",
+        "autonomy-ablated" if ablated else "autonomy-lean" if lean else "autonomy",
         "Run the declared workflow against the task in the workspace.",
         ("read", "grep", "edit", "bash", CHECK, "block"),
         nodes,

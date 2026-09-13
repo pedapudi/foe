@@ -9,6 +9,7 @@ family has its own arms, and an arm is one harness in one configuration:
 
     autonomy   foe-configured   the survey, implement, assess, repair graph of contracts/graphs.py
                foe-ablated      the same graph without the `block` tool and without verifiers
+               foe-lean         the same graph without the survey node; the implementing node reads the workspace itself
                foe-as-shipped   the built-in coding workflow, `--config builtin:coding`
                codex-equivalent Codex CLI with the graph's four phases stated in the prompt
                codex-default    Codex CLI with the task text alone
@@ -394,6 +395,7 @@ ARMS: dict[str, tuple[Arm, ...]] = {
     "autonomy": (
         Arm("foe-configured", "foe", "document", "configured"),
         Arm("foe-ablated", "foe", "document", "ablated"),
+        Arm("foe-lean", "foe", "document", "lean"),
         Arm("foe-as-shipped", "foe", "builtin", "builtin:coding"),
         Arm("codex-equivalent", "codex", "codex", "equivalent"),
         Arm("codex-default", "codex", "codex", "default"),
@@ -1361,7 +1363,16 @@ def foe_document(arm: Arm, task: protocol.Task, workspace: Path, check: Path, to
     # The workspace is executable because a check suite runs the build scripts and test binaries its build wrote there.
     execute = [*tools, str(workspace)]
     if task.family == "autonomy":
-        document = graphs.autonomy(workspace, check, budget, ablated=arm.variant == "ablated", root_files=root_files, write_roots=roots or graphs.WRITE_ROOTS, execute=execute)
+        document = graphs.autonomy(
+            workspace,
+            check,
+            budget,
+            ablated=arm.variant == "ablated",
+            lean=arm.variant == "lean",
+            root_files=root_files,
+            write_roots=roots or graphs.WRITE_ROOTS,
+            execute=execute,
+        )
     else:
         document = graphs.teams(
             workspace,
