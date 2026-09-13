@@ -314,6 +314,7 @@ def every_document(workspace: Path, check: Path) -> dict[str, dict[str, Any]]:
     documents = {
         "autonomy": graphs.autonomy(workspace, check, BUDGET, task="Probe."),
         "autonomy-ablated": graphs.autonomy(workspace, check, BUDGET, ablated=True, task="Probe."),
+        "autonomy-lean": graphs.autonomy(workspace, check, BUDGET, lean=True, task="Probe."),
         "autonomy-root-files": graphs.autonomy(workspace, check, BUDGET, root_files=True, task="Probe."),
     }
     for variant in graphs.TEAMS_VARIANTS:
@@ -451,6 +452,19 @@ class Shape(unittest.TestCase):
             self.assertIn("returns", node["model"]["done_when"], name)
         self.assertEqual({name: node["model"]["tools"] for name, node in nodes(document).items()}, {name: [t for t in tools if t != "block"] for name, tools in AUTONOMY_TOOLS.items()})
         self.assertEqual(nodes(document)["assess"]["branches"], {"accept": [], "repair": ["repair"]})
+
+    def test_the_lean_variant_drops_the_survey_and_keeps_the_verifiers(self) -> None:
+        document = graphs.autonomy(self.workspace, self.check, BUDGET, lean=True)
+        graph = nodes(document)
+        self.assertEqual(document["name"], "autonomy-lean")
+        self.assertEqual(list(graph), ["implement", "assess", "repair"])
+        self.assertEqual(graph["implement"]["follows"], ["task"])
+        self.assertEqual({name: node["model"]["tools"] for name, node in graph.items()}, {name: tools for name, tools in AUTONOMY_TOOLS.items() if name != "survey"})
+        self.assertIn("Read the task and the workspace before anything changes", graph["implement"]["model"]["instructions"]["10-role"])
+        for name in ("implement", "repair"):
+            self.assertEqual((graph[name]["verify"], graph[name]["retries"]), ("check", 2), name)
+        self.assertEqual(document["done_when"], {"verify": "check", "retries": 6})
+        self.assertEqual(document["budget"]["max_episodes"], graphs.autonomy(self.workspace, self.check, BUDGET)["budget"]["max_episodes"] - 1)
 
     def test_the_instruction_to_stop_reaches_the_nodes_that_hold_the_tool(self) -> None:
         """A node is told to stop with `block` exactly when it can: a node that
