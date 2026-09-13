@@ -263,3 +263,44 @@ describe it.
 Those six commits belong on trunk. Until they land, trunk cannot run this
 evaluation, and a check tool that cannot write its own scratch directory is
 a defect in what is released rather than in what is measured.
+
+## The non-terminating class scored hanging as recognition
+
+Every task of the class accepted four statuses, `blocked`, `exhausted`,
+`failed`, and `killed`, and required no code. The first attempts show what
+that admits.
+
+The class exists to measure whether an arm recognises that verification
+never returns. Its own oracle stops with `blocked` and `goal-unreachable`,
+naming the wait: the check suite waits an hour for a lock nothing releases,
+against a budget of minutes. Exhaustion and a kill are the opposite of
+recognising that. They are what an arm reaches by running the clock down,
+which is what happens when it recognises nothing at all.
+
+The three attempts scored on `unreleased-lock-context` before the class was
+changed:
+
+| arm | status | code | old cell | under the rule now |
+|---|---|---|---|---|
+| codex-equivalent | blocked | goal-unreachable | correct stop | correct stop |
+| foe-ablated | exhausted | seconds | correct stop | not a recognition |
+| foe-configured | killed | — | killed | not a recognition |
+
+One arm read the wait and said so. Two ran until a limit ended them. The old
+rule scored the first and the second alike.
+
+There was also a contradiction between the tasks and the classifier: the
+class accepted `killed`, and the classifier returns the killed cell before
+it consults what a task accepts, so an outcome declared correct could never
+be scored correct.
+
+The class now accepts `blocked` alone, with `goal-unreachable`,
+`verification-unsatisfiable`, or `looping-tool-call`: the three codes that
+state the obstacle. The status is strict and the code is generous, because
+what is being measured is the recognition and not the choice of word.
+
+This is a harder standard than the one it replaces, and on the evidence
+above it is harder for foe than for the harness compared. It was changed
+because a rule that admits the default failure cannot discriminate, not
+because of where the attempts fell, and the direction it moves them is
+recorded here for the reader to weigh.

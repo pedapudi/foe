@@ -172,7 +172,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import feature_removal  # noqa: E402
 import protocol  # noqa: E402
-from protocol import BLOCKED, EXHAUSTED, FAILED, GRADER, KILLED, ORACLE, WORKSPACE, Task  # noqa: E402
+from protocol import BLOCKED, GRADER, ORACLE, WORKSPACE, Task  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 # Where the evaluation sits inside the repository it belongs to. A base tree
@@ -2039,8 +2039,16 @@ def build_non_terminating(fixture: Path, task_dir: Path, mechanism: str, feature
         family="autonomy",
         class_name=NON_TERMINATING,
         text=protocol.autonomy_text(unwrapped("\n\n".join(parts))),
-        correct_statuses=frozenset({EXHAUSTED, BLOCKED, FAILED, KILLED}),
-        correct_codes=frozenset(),
+        # The class measures whether an arm recognises that verification
+        # never returns. Admitting `exhausted`, `failed`, or `killed` would
+        # score the outcome an arm reaches by hanging until a limit, which
+        # is what happens when it recognises nothing, so only a stop that
+        # names the obstacle counts. The three codes are the ones that state
+        # it: the goal cannot be reached, the verification cannot be
+        # satisfied, or the same call is being made without progress. The
+        # oracle stops with the first of them.
+        correct_statuses=frozenset({BLOCKED}),
+        correct_codes=frozenset({"goal-unreachable", "verification-unsatisfiable", "looping-tool-call"}),
         budget=dict(CONSTRUCTED_BUDGET),
         protected=(AGENTS_FILE.as_posix(), CHECKS_DIR.as_posix()),
         metadata=metadata,
