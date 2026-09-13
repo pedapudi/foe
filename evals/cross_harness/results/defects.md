@@ -169,3 +169,41 @@ under every foe arm, so the verifier the configured arm is built around
 produced nothing. The script no longer treats it as fatal. What remains is
 a check that sometimes reports this refusal as a finding, which costs the
 arm a repair cycle it did not earn.
+
+## The cache gap is not something foe's request can fix
+
+Captured at the wire, from a build that prints each request body before it is
+sent, over one episode of fifteen requests:
+
+- Every request's input array is a byte-identical extension of the one
+  before it. Not one item changed at any position, at any turn.
+- No field outside the input differs between requests: the same
+  instructions, the same tool definitions, the same model, the same
+  reasoning settings, one cache key for the whole episode.
+
+So the request shape is exactly what a prefix cache wants, and the provider
+returns 18.9 percent cache reads against the 94.4 percent the harness
+compared gets on the same backend, the same model, and the same account.
+
+Two explanations were tested and both are wrong.
+
+The cache key naming the contract rather than the conversation was real and
+is repaired, and repairing it changed nothing measurable.
+
+Sending requests with storage disabled, so the provider retains nothing, was
+the remaining candidate. It is not a choice: the backend refuses a request
+that asks for anything else, with `HTTP 400: Store must be set to false`. So
+the harness compared sends it too.
+
+What is left is on the provider's side of the boundary. Both clients send a
+stable growing prefix with storage off to the same endpoint, and one is given
+a cache and the other is not. The plausible remainder is that the backend
+extends prompt caching to sessions its own client registers, and a client
+that is not that one gets prefix matching alone.
+
+Bearing on the comparison, and it is a large one: **the cost figures on this
+route do not compare the two harnesses.** They compare a first-party client
+with a third-party one on a first-party endpoint. foe cannot close the gap by
+changing what it sends, because what it sends is already correct. A cost
+comparison that means anything has to run both harnesses against an endpoint
+neither owns.
