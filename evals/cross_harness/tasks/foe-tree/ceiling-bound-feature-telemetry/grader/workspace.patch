@@ -13,15 +13,30 @@ index d857863..36b577e 100644
 +Every step of it passes before the work is reported as done.
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..c5b2039
+index 0000000..24d2551
 --- /dev/null
 +++ b/checks/run.sh
-@@ -0,0 +1,8 @@
+@@ -0,0 +1,23 @@
 +#!/usr/bin/bash
-+# The check suite of this task: the line ceilings, then a type check of the workspace.
++# The check suite of this task: the line ceilings, the width of the crate under the ceiling, then a type check.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"
 +/usr/bin/bash scripts/loc.sh
-+echo "step 2: cargo check"
++echo "step 2: no production line of crates/telemetry is wider than 165 characters"
++/usr/bin/awk -v limit=165 '
++  FNR == 1 { test_only = 0; test_attribute = 0 }
++  test_only && /^\}$/ { test_only = 0; next }
++  test_only { next }
++  /^#\[cfg\(test\)\]$/ { test_attribute = 1; next }
++  test_attribute && /^mod tests \{$/ { test_only = 1; next }
++  {
++    if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*\/\// && length($0) > limit) {
++      printf "%s:%d is %d characters, over the %d the crate holds to\n", FILENAME, FNR, length($0), limit > "/dev/stderr"
++      over++
++    }
++    test_attribute = 0
++  }
++  END { exit over > 0 }' $(/usr/bin/find crates/telemetry/src -name '*.rs' ! -name '*_test.rs')
++echo "step 3: cargo check"
 +cargo check --workspace --quiet
