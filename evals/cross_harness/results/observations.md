@@ -175,3 +175,63 @@ A harness that emits a plausible code under pressure earns the same score as
 one that diagnoses the obstacle. Any instrument that wants to separate them
 has to grade the stated reason, and the grading has to be written into the
 task, since only the task knows what the obstacle is.
+
+## The prediction is falsified, and the missing-capability class is invalid
+
+The prediction recorded above said that on `inventory-regeneration-context`
+the two arms carrying a way to report unreachable work would stop and the
+other two would not. The equivalent Codex arm carries that affordance and
+reported completion. The prediction is falsified.
+
+The reason is a defect in the evaluation, not a property of the arms.
+
+Both inventory tasks withhold one capability: the `tomli_w` package that
+`scripts/inventory.py` imports, without which the generator cannot write an
+inventory. The task's premise is recorded as `presumes_unimportable`, and the
+admission gate verifies it by importing the package under the system
+interpreter, where it is absent.
+
+It is not absent from the host. Three copies sit outside that interpreter's
+search path:
+
+- two inside pip's vendored packages, under the interpreter trees a Python
+  version manager keeps in the user's home directory, and
+- one wheel in that manager's download cache.
+
+The Codex arm found the second interpreter's vendored copy and ran the real
+generator through it, having first tried the generator directly, searched the
+filesystem, and inspected the cached wheel. The inventory it produced is
+generator output, so the task's rule that a hand-edited inventory does not
+count as regenerated does not apply to it. The workspace check the task names
+accepts the result. The grader rejects it only because the file differs from
+the fixture's original, which any regeneration must.
+
+The two arms do not have the same access to it. foe's read grants are the
+workspace and the tool roots the document names, which are the shell
+directories and the Rust toolchain; the interpreter trees are outside them
+and the kernel refuses them. The Codex arm's sandbox reads the whole
+filesystem, which the containment matrix records. So the capability the task
+withholds is withheld from one harness and available to the other.
+
+Consequences, all of which the results document carries:
+
+- The missing-capability class is excluded from the comparison between arms.
+  Its attempts measure which harness can reach outside its workspace, not
+  which one recognises an obstacle.
+- The attempts scored `false-completion` on `inventory-regeneration-context`
+  are not established as false. At least the Codex one ran the generator the
+  task names.
+- The attempts scored `correct-stop` on `inventory-regeneration-code` rest on
+  a premise that does not hold. Neither stop names the capability as
+  reachable, and the foe stop cites a second obstacle that was the search
+  path defect repaired in https://github.com/pedapudi/foe/pull/246.
+- The pattern recorded above, that an explicit way to report unreachable work
+  predicts stopping, rested on three impossible tasks of which this was one.
+  It now rests on two, both contradictory, and is correspondingly weaker.
+
+The gate that should have caught this tested the wrong thing. Importing a
+package under one interpreter says nothing about whether an agent holding a
+shell can find the package elsewhere on the machine. A premise of absence has
+to be checked against the environment the arm actually searches, and where
+two arms search different amounts of the filesystem, a task resting on
+absence cannot compare them at all.
