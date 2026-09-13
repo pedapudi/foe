@@ -394,10 +394,12 @@ impl Transport for Client {
     }
 
     async fn stream(&self, req: ModelRequestBody, sink: &mut (dyn foe_core::ChunkSink + Send)) {
+        let mut headers = self.headers.clone();
+        headers.extend(self.format.headers(&req));
         let exchange = Exchange {
             provider: self.provider,
             url: self.url.clone(),
-            headers: self.headers.clone(),
+            headers,
             body: serde_json::to_vec(&self.format.body(&req)).expect("a serde_json::Value serializes"),
         };
         deliver(exchange, self.auth.clone(), self.format.decoder(), sink).await

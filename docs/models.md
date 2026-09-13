@@ -316,11 +316,15 @@ The first two cover the head that is fixed for the episode; the third covers
 the conversation, which is what grows, so each step reads the prefix the step
 before it wrote. The Responses format names the cache rather than marking it:
 every request carries `prompt_cache_key`, a digest over the episode
-identifier. The name routes the whole prefix, and the prefix is the
-conversation one episode grows, so each episode reaches a cache of its own
-and no two of them evict one another. The
-other two formats send neither, so a server that caches a repeated prefix
-there decides to on its own; `usage.cache_read` reports whether it did.
+identifier in the form of a UUID. The name routes the whole prefix, and the
+prefix is the conversation one episode grows, so each episode reaches a cache
+of its own and no two of them evict one another. The Codex backend reads the
+conversation's identity from the `session-id` request header rather than from
+the body, and routes a request that lacks it without regard to where its
+prefix is cached; the `openai-codex` route therefore sends the same value as
+`session-id` and `thread-id` on every request. The other two formats send
+neither, so a server that caches a repeated prefix there decides to on its
+own; `usage.cache_read` reports whether it did.
 
 | credential source | module | what it reads |
 |---|---|---|
