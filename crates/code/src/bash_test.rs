@@ -2,6 +2,7 @@ use super::*;
 use crate::testing::{ctx, ctx_with_executor, FakeExecutor, Fixture, ProcessGroupExecutor};
 use foe_core::ExecResult;
 use std::sync::Arc;
+use std::time::Instant;
 
 fn result(code: i32, stdout: &str, stderr: &str) -> ExecResult {
     ExecResult {
@@ -244,4 +245,29 @@ async fn a_long_command_is_cut_before_its_status_is() {
     let subject = v.subject.unwrap();
     assert!(subject.ends_with("\u{2026} \u{2013} exit 0 in 1.50s"), "{subject}");
     assert!(subject.chars().count() <= foe_core::SUBJECT_MAX, "{subject}");
+}
+
+/// A command may take half of what remains and no more, so an episode never
+/// ends inside one tool call with nothing left to report from. The caller is
+/// told the arithmetic in the result, before the time is spent rather than
+/// after, which is what lets it choose differently.
+#[tokio::test]
+async fn a_command_takes_half_of_what_remains_and_the_caller_is_told() {
+    let fx = Fixture::new();
+    let exec = Arc::new(FakeExecutor::new(result(0, "", "")));
+    let mut c = ctx_with_executor(&fx, exec.clone());
+    c.deadline = Some(Instant::now() + Duration::from_secs(1000));
+    Bash::new().call(json!({"command": "sleep 3600", "timeout_seconds": 3600}), &c).await;
+    let given = exec.last().unwrap().timeout.as_secs();
+    assert!((480..=500).contains(&given), "half of the thousand seconds left, not {given}");
+
+    let value = Bash::new().call(json!({"command": "sleep 3600", "timeout_seconds": 3600}), &c).await;
+    let rendered = value.rendered.unwrap_or_default();
+    assert!(rendered.contains("asked for 3600s"), "{rendered}");
+    assert!(rendered.contains("was given"), "{rendered}");
+
+    // A request that already fits is passed through untouched and unremarked.
+    let value = Bash::new().call(json!({"command": "true", "timeout_seconds": 5}), &c).await;
+    assert_eq!(exec.last().unwrap().timeout, Duration::from_secs(5));
+    assert!(!value.rendered.unwrap_or_default().contains("asked for"), "a request that fits says nothing");
 }
