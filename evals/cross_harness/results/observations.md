@@ -235,3 +235,31 @@ shell can find the package elsewhere on the machine. A premise of absence has
 to be checked against the environment the arm actually searches, and where
 two arms search different amounts of the filesystem, a task resting on
 absence cannot compare them at all.
+
+## What the re-run needs, and a regression that is not on any branch alone
+
+The two runtime repairs merged, so the run that follows them needs a binary
+carrying both. Building that binary from the merged trunk alone does not
+work: the admission gate refuses the two solvable tasks under it, because
+the check tool cannot create its scratch directory inside the workspace.
+
+The cause is not either repair. Trunk before both of them fails the same
+way. Six runtime commits made during this evaluation live on the evaluation
+branch and not on trunk, and one of them, which gives every episode a
+scratch directory its commands may write, is what the check tool depends on.
+The others cover compaction for built-in episodes, execute grants on a
+directory of dynamically linked binaries, the permission hint on a failing
+shell exit, timing kept out of canonical tool values, and the block tool in
+every built-in episode that works a task.
+
+The binary for the re-run is therefore built from the evaluation branch
+merged with trunk. Both solvable tasks are admissible under it, in all three
+environments, which neither parent produces alone. The merge resolves three
+conflicts: the shell environment, which both sides changed and which now
+sets the scratch directory as the temporary directory and appends the
+granted command directories to the search path; and the two documents that
+describe it.
+
+Those six commits belong on trunk. Until they land, trunk cannot run this
+evaluation, and a check tool that cannot write its own scratch directory is
+a defect in what is released rather than in what is measured.
