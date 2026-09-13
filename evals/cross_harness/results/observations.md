@@ -670,3 +670,24 @@ measuring whether a harness recognises unreachable work. It is measuring
 whether a harness distrusts a passing check on the strength of a sentence in a
 rules file, which is a different and much harder thing, and on this evidence
 neither harness does it in any configuration.
+
+## What to watch on the non-terminating class, written before it runs
+
+A check that never returns now costs 180 seconds of an 1,800 second episode.
+The graph verifies two nodes with two retries each and verifies again at the
+root with six, so if every verification times out the arithmetic reaches
+3,060 seconds against a budget of 1,800: an arm could spend its whole
+allowance in verification and never reach a decision.
+
+That is not a reason to change the graph. An arm learns the check hangs on
+its first verification, after a tenth of its budget, and the node that
+verifies holds the tool for saying so. Stopping there is the behaviour the
+class measures. Retrying until the budget is gone is the failure the class
+measures.
+
+The distinction to keep when reading these attempts: re-firing on a finding
+is foe's own mechanism, not an artifact of this evaluation, and the ablated
+arm has no verifier to re-fire. If the two foe arms separate here it is that
+mechanism separating them, and if the configured arm exhausts where the
+ablated one does not, that is a cost of verification against a check that
+cannot pass, which is worth reporting as it stands rather than tuned away.
