@@ -546,3 +546,37 @@ non-terminating table and its stated direction, the cache before-and-after
 table, the task length figures, and the admission results. It noted one thing
 in the other direction: excluding the missing-capability class widens the gap
 against foe rather than flattering it, which these notes did not say.
+
+## Four defects with one shape: a grant that does not carry to the thing it grants
+
+Getting foe to a state where it could be measured took four repairs, found in
+this order, each invisible in the outcome column and visible only in what the
+logs said.
+
+| what the contract granted | what stopped it | how it showed |
+|---|---|---|
+| execute on a toolchain directory | the directory was not on the shell's search path | the command reported as not found |
+| execute on a toolchain | the shell named the workspace as the home directory, so the toolchain manager looked for its installation there and then tried to download one | every build failed on the environment while the command itself resolved |
+| write on the workspace | a subprocess creating a file inside a directory it had just created there was refused | the check script treated that as fatal and the verifier never ran |
+| write on the workspace | the same refusal, on the temporary directory a build tool makes beside its output directory | model calls spent building somewhere else |
+
+The shape is the same each time. A contract names a permission, the kernel
+holds it, and something between the grant and the process keeps the permission
+from being usable: a search path, an environment variable, a policy detail.
+The permission model is not what fails. What fails is everything that has to
+agree with it.
+
+Two consequences worth carrying into any evaluation of a harness like this.
+
+The first is about measurement. None of these produced an error an outcome
+column would show. Three of the four produced attempts scored
+`correct-completion`, because the arm worked around the obstacle and the
+grader, which runs outside the sandbox, saw correct work. An evaluation that
+reads only outcomes would have reported all four runs as clean and compared a
+harness that could build against one that could not.
+
+The second is about the harness. A permission a user grants and cannot use is
+worse than one refused outright, because the refusal is silent and the agent
+spends its budget diagnosing an environment rather than doing the task. In one
+attempt twelve of thirteen shell commands naming the toolchain were the agent
+searching the filesystem for it.
