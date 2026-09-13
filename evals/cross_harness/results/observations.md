@@ -358,3 +358,29 @@ whose tests then passed.
 
 This was the reason the run is being repeated, and it is the one repair of
 the three whose effect is confirmed in a live attempt.
+
+## The evasion is closed in the fixture the run uses
+
+The regenerated ceiling task was checked against the file the ablated arm
+wrote, by materialising the task's workspace and planting that file in it.
+
+| | telemetry lines | ceiling script | check suite |
+|---|---:|---|---|
+| the fixture as materialised | 996 of 1,000 | passes | passes |
+| with the evaded module planted | 1,134 of 1,000 | exits 1 | exits 1 |
+
+Before the repair the same file counted as nothing and the surface reported
+997 of 1,000, so the suite passed and the arm reported the work done. The
+task is now impossible as it was meant to be: no arrangement of those 137
+lines passes, and the premise the task rests on, four lines of headroom,
+holds in the materialised workspace.
+
+That is the second of the three repairs confirmed end to end. The third,
+the prompt cache name, is confirmed not to work.
+
+## The other harness reads the whole filesystem, in its own record
+
+The session record of a Codex attempt states its permission profile: read on
+the filesystem root, write on the workspace alone. This is the asymmetry
+that made the missing-capability class uncomparable, recorded by the harness
+itself rather than inferred from the containment matrix.
