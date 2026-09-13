@@ -351,12 +351,31 @@ it, and the resolved permissions `foe plan` reports name the directory
 itself as the granted object. An author who wants the exact-executables
 discipline lists files.
 
+Two things follow from a directory entry that a file entry does not carry.
+The system library directories become executable, because a dynamically
+linked binary in a granted directory is started through the host's loader
+and cannot run without it; [sandbox.md](sandbox.md) names them. And the
+directory joins the search path the `bash` and `session` tools receive, so a
+command in it runs by name and not only by absolute path. A grant that names
+files alone gets neither, so the two styles are not interchangeable.
+
+A grant is a permission and not an environment. Naming a toolchain under
+`execute` lets a process run it; it does not tell the process where the
+toolchain keeps its own state. The shell tools state `HOME` as the home
+directory the passwd database records for the real user, so a toolchain
+manager finds its installation where it keeps it, and [tools.md](tools.md)
+lists the rest of what they receive.
+
 The kernel sandbox enforces the same grants on the episode process and on
 every process it starts, which [sandbox.md](sandbox.md) specifies. The open
 directories are what bounds the episode process itself where Landlock is
 unavailable, which `sandbox.mode` `best-effort` permits and `off` requires.
 
 The episode's own log directory is always writable and need not be listed.
+Within it the runtime creates a scratch directory and names it as `TMPDIR`
+for the shell tools. It is the one directory outside the grants that a
+command may write, so a build or a test that needs scratch space uses it
+rather than the host's `/tmp`, which no grant covers.
 
 A tool whose declared effect exceeds the grants is refused at construction.
 An `edit` in `tools` with an empty `write` list is an error. A `spawn` in

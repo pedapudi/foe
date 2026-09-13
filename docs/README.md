@@ -18,7 +18,9 @@ to find the relevant specification, report, or guide.
 | [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model backend |
 | [tools.md](tools.md) | what each built-in tool does and how executables and host tools become tools |
 | [sandbox.md](sandbox.md) | how grants become kernel restrictions and what happens when the kernel lacks them |
+| [telemetry.md](telemetry.md) | the metrics an episode emits, what each counts, and where they are written |
 | [viewer.md](viewer.md) | what the viewer shows and how it is served and exported |
+| [viewer-study.md](viewer-study.md) | the options weighed for reading a run before the viewer took its present shape |
 | [landscape.md](landscape.md) | what other agent runtimes do and where foe differs |
 | [deferred.md](deferred.md) | the features with reserved event types or keys and no implementation |
 | [workflow.md](workflow.md) | how a declared graph of nodes runs, where the model keeps its judgment inside it, and how failures are recovered |
