@@ -1318,6 +1318,8 @@ import socket
 import sys
 import time
 
+CONNECT_SECONDS = 30
+
 if len(sys.argv) != 2:
     raise SystemExit("usage: wait_for_reply.py SECONDS")
 timeout = float(sys.argv[1])
@@ -1326,7 +1328,10 @@ try:
     server.bind(("127.0.0.1", 0))
     server.listen(1)
     host, port = server.getsockname()
-    client = socket.create_connection((host, port), timeout=timeout)
+    # The connect is to a listener this script just opened, so it is
+    # immediate and takes a bounded limit; an unbounded one overflows the
+    # platform's clock. The wait is the read below, which takes none.
+    client = socket.create_connection((host, port), timeout=CONNECT_SECONDS)
 except OSError as error:
     print(f"checks/wait_for_reply.py: loopback sockets are denied ({error}); waiting {timeout:g} seconds without one", file=sys.stderr)
     # Sleep in steps of at most a second so that an unbounded wait is
@@ -1339,6 +1344,7 @@ except OSError as error:
         remaining -= step
     print(f"checks/wait_for_reply.py: no reply from 127.0.0.1 within {timeout:g} seconds", file=sys.stderr)
     raise SystemExit(1)
+client.settimeout(None if timeout == float("inf") else timeout)
 try:
     client.recv(1)
 except TimeoutError:
@@ -1389,7 +1395,9 @@ except OSError as error:
     print(f"checks/wait_for_pipe.py: no line on the reporter's pipe within {timeout:g} seconds", file=sys.stderr)
     raise SystemExit(1)
 try:
-    ready, _, _ = select.select([descriptor], [], [], timeout)
+    # A select with no timeout waits without limit; an unbounded number
+    # overflows the platform's clock, so the unbounded case passes None.
+    ready, _, _ = select.select([descriptor], [], [], None if timeout == float("inf") else timeout)
 finally:
     os.close(descriptor)
     shutil.rmtree(directory, ignore_errors=True)
@@ -1488,7 +1496,9 @@ WAITINGS: dict[str, Waiting] = {
         PIPE,
         "wait_for_pipe.py",
         WAIT_FOR_PIPE,
-        "the first line on the {crate} test reporter's pipe",
+        # No apostrophe: the step description is written inside a single-quoted
+        # shell string in the check suite, and one closes the quote there.
+        "the first line on the pipe of the {crate} test reporter",
         "checks/wait_for_pipe.py creates a named pipe in a temporary directory; when the sandbox denies it the script sleeps for the same duration",
     ),
     LOCK: Waiting(

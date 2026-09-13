@@ -1,0 +1,18 @@
+{
+  "digests": {
+    "python/foe/__init__.py": "2964ee6661f43c26c7ad7d6e141c6bc57da917d5d4f560c00cb3024ce86f9aa7",
+    "python/foe/_builtin.py": "35e1da3ce9e1772f897c9c866abe9a8264ab7f805ad651114d88e1a014c6ad7f",
+    "python/foe/_capabilities.py": "45cd3d3ad799a1db476c2b30017b80cc9266806f614e70ed49c2299e7c23620b",
+    "python/foe/_errors.py": "dea7cae630594c2fb01c6e9d954e3af673b9032fdef22eb0da14bfa2d05b4977",
+    "python/foe/_host.py": "661af50b695126a78b4f90c2e4801d6b9d1df3478dffdd0d2850793641e02b41",
+    "python/foe/_outcome.py": "0d8c35eab56cc4d77023da4cd277e93e3121a43ed34bd01976bca5175ebd3786",
+    "python/foe/_schema.py": "1037bf40f8eebc3d73fce00d5505cbdf93f2b4bef3a4a9709fec03681e41e349",
+    "python/foe/_tools.py": "00fb91f277be7a8b8b84f9a708d0673d9d96ab39c65205ea1c49f0006f395132",
+    "python/foe/_versions.py": "6d8e4150e85a4926e67c3cca2331fdecd72ec1f86aa3b95999ee1523948da7d8",
+    "python/foe/adapters/__init__.py": "d38eee559d65c8fafc650da5fa7cb1607d3851103f41bcc0bca8cdd87d03bbdf",
+    "python/foe/adapters/litellm.py": "e53d793990a73b3a080bfdecd71b219edd888fa6e7ea3a80fbb74d789a23e188",
+    "python/foe/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "module": "python/foe/_contract.py",
+  "root": "python/foe"
+}

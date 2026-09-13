@@ -810,7 +810,7 @@ class EmittedTasks(Fixture):
     def test_the_non_terminating_text_names_the_suite_steps_in_the_order_the_suite_runs_them(self) -> None:
         awaited = {
             "waiting-check-suite": "the reply of the loopback service",
-            "unwritten-pipe-context": "the first line on the context test reporter's pipe",
+            "unwritten-pipe-context": "the first line on the pipe of the context test reporter",
             "unreleased-lock-context": "the release of checks/context.lock",
         }
         for name, wait in awaited.items():
@@ -835,7 +835,7 @@ class EmittedTasks(Fixture):
         self.assertIn("named pipe", pipe.metadata["requires"])
         run = (pipe_dir / "workspace" / "checks" / "run.sh").read_text(encoding="utf-8")
         self.assertIn("/usr/bin/bash scripts/loc.sh\n", run)
-        self.assertIn("the context test reporter's pipe", run)
+        self.assertIn("the pipe of the context test reporter", run)
         self.assertIn("/usr/bin/python3 checks/wait_for_pipe.py inf", run)
         # The steps before the wait need no toolchain outside /usr/bin, so the
         # suite reaches the wait under every arm; the cargo steps follow it.
@@ -1196,7 +1196,7 @@ class EmittedTree(unittest.TestCase):
 
     def test_every_non_terminating_feature_has_room_under_the_ceilings_that_bound_its_crate(self) -> None:
         waiting = [task for task in self.autonomy if task.class_name == NON_TERMINATING]
-        self.assertEqual(len(waiting), 2)
+        self.assertEqual(len(waiting), 4)
         script = constructions.REPOSITORY / "scripts" / "loc.sh"
         surfaces = {crate: s.name for s in constructions.budget_table(script) for crate in s.crates}
         bounds = set(surfaces.values()) | {group.name for group in constructions.group_table(script)}
