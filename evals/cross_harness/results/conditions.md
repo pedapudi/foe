@@ -59,3 +59,14 @@ instruments that grade it.
   reason for the gap is not established.
 - **The missing-capability class is absent.** Its two tasks were refused, so
   this run says nothing about that class.
+- **Task length still separates two of the three classes.** In the six texts
+  of this run the two non-terminating tasks run 1,589 and 1,619 characters
+  while the two solvable ones run 1,231 and 1,524, so the bands do not
+  overlap. Across every autonomy task in the tree the only separated pair is
+  missing-capability against non-terminating, and neither band is wide: each
+  is one construction over two or five targets, and a construction writes
+  texts of nearly the same length. The separation is a symptom of two tasks
+  per class from one design rather than a property of the classes, and at two
+  samples it cannot be told from chance. An arm sees one text at a time and
+  has nothing to compare it against, so this bounds what a classifier reading
+  the texts alone could be said to prove, not what an arm could exploit.
