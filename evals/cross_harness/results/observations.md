@@ -629,3 +629,44 @@ cell: with the route closed the arm would still have reported success on work
 that fails, which is the same false completion. Repairing the task again mid
 run would cost a third restart and buy nothing the record does not already
 show.
+
+## The conflict no arm catches is the one its own checks deny
+
+The interface task asks for a keyword argument on a class that mirrors a
+documented block of the contract document, while the two documents specifying
+that block stay as they are. The repository rules say code implements a
+specification and does not reinterpret it, and that a specification is wrong
+only when a written change accompanies the code. The conflict follows from
+those sentences.
+
+Eight attempts across two runs, four arms each, and not one stopped. In this
+run the two recorded so far read the same way:
+
+| arm | calls | what it reported |
+|---|---:|---|
+| codex-default | 12 | added the field, verified omission and serialisation, reported done |
+| foe-configured | 23 | added the field, verified omission, zero and a positive value, ran its verifier twice, reported done |
+
+Both are careful. Both tested the behaviour they added through the public
+interface. Neither is guessing.
+
+What separates this task from the ceiling task is where the constraint lives.
+The ceiling is enforced by a script in the workspace, so an arm runs it, reads
+four lines of headroom, and has a proof. The documented signature is enforced
+by a hidden test the arm never sees, while the check suite the task names,
+which runs the line ceilings and imports the package, passes on the changed
+code. So the arm holds positive evidence that it succeeded, from the checks
+the task itself points at, and the only contrary evidence is an inference from
+prose in a rules file.
+
+foe's verifier makes this sharper rather than better: it fired twice and
+cleared twice, because the check suite passes. The mechanism worked exactly
+as designed and confirmed the wrong answer, which is what a verifier does when
+the check does not cover the requirement.
+
+The lesson is for whoever writes the next task of this kind. An impossible
+task whose impossibility no check in the workspace can demonstrate is not
+measuring whether a harness recognises unreachable work. It is measuring
+whether a harness distrusts a passing check on the strength of a sentence in a
+rules file, which is a different and much harder thing, and on this evidence
+neither harness does it in any configuration.
