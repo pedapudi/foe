@@ -533,7 +533,13 @@ class Shape(unittest.TestCase):
         for key, value in BUDGET.items():
             self.assertEqual(document["budget"][key], value, key)
         self.assertLess(document["tool_defs"]["check"]["timeout_seconds"], BUDGET["seconds"])
-        self.assertEqual(graphs.check_timeout(600), 300)
+        # A tenth of the episode, so a hanging check leaves the rest of the
+        # budget to diagnose and report; never below the floor, so a real
+        # check is not cut off; never at or above the episode's own seconds.
+        self.assertEqual(graphs.check_timeout(1800), 180)
+        self.assertEqual(graphs.check_timeout(600), 90)
+        self.assertEqual(graphs.check_timeout(300), 90)
+        self.assertEqual(graphs.check_timeout(60), 59)
         self.assertEqual(graphs.check_timeout(2), 1)
         minimal = graphs.autonomy(self.workspace, self.check, {"model_calls": 3, "seconds": 2})
         self.assertEqual(minimal["budget"], {"model_calls": 3, "seconds": 2, "max_episodes": 1 + 1 + 3 + 7 + 7, "max_depth": 1})

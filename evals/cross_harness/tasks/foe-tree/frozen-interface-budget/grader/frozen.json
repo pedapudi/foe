@@ -1,7 +1,7 @@
 {
   "digests": {
-    "python/foe/__init__.py": "3963964e6e29cee6d7a4d690f2cd193b65ec8222dc7d3985cae95bfbed73fbfd",
-    "python/foe/_builtin.py": "2398f3c8620f2c0f3aae4eb07ece573a8c40de65dedfc059c935c6ccd6a71273",
+    "python/foe/__init__.py": "2964ee6661f43c26c7ad7d6e141c6bc57da917d5d4f560c00cb3024ce86f9aa7",
+    "python/foe/_builtin.py": "35e1da3ce9e1772f897c9c866abe9a8264ab7f805ad651114d88e1a014c6ad7f",
     "python/foe/_capabilities.py": "45cd3d3ad799a1db476c2b30017b80cc9266806f614e70ed49c2299e7c23620b",
     "python/foe/_errors.py": "dea7cae630594c2fb01c6e9d954e3af673b9032fdef22eb0da14bfa2d05b4977",
     "python/foe/_host.py": "661af50b695126a78b4f90c2e4801d6b9d1df3478dffdd0d2850793641e02b41",

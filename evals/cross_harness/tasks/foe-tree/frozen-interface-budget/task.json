@@ -43,7 +43,7 @@
     "frozen_root": "python/foe",
     "review": "the text was rewritten on 2026-09-12 so that no measurement of the text alone predicts the class; a person has not read it",
     "source": {
-      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e"
+      "commit": "c8e271a20dfe429aff7ce026d28e97f852d8af70"
     }
   }
 }

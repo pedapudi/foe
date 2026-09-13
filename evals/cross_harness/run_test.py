@@ -472,7 +472,11 @@ class Planning(Harness):
         binary.parent.mkdir(parents=True)
         shutil.copy2(self.foe, binary)
         self.assertEqual(run.checkout_root(checkout / "evals" / "runs"), checkout)
-        self.assertIsNone(run.checkout_root(self.root))
+        # A directory beside the checkout does not resolve to it. Asserting
+        # None here instead would depend on no ancestor of the scratch
+        # directory holding a .git entry, which the temporary directory of a
+        # shared host does not guarantee.
+        self.assertNotEqual(run.checkout_root(self.root), checkout)
         document = self.document(directory=checkout / "evals" / "runs", harnesses=None)
         status, out, err = self.main([str(document)])
         self.assertEqual(status, run.NOTHING_LAUNCHED, err)

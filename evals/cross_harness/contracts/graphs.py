@@ -257,9 +257,26 @@ def _budget(budget: Mapping[str, Any]) -> dict[str, int]:
     return limits
 
 
+# The floor under the check timeout, in seconds. Across the checks that
+# returned in a measured run the slowest took 19 seconds, so this is roughly
+# five times the slowest real check and leaves room for a cold build.
+CHECK_TIMEOUT_FLOOR = 90
+
+
 def check_timeout(seconds: int) -> int:
-    """The wall-clock limit of one check run: half the episode's seconds, so a check that hangs leaves time to report."""
-    return max(1, seconds // 2)
+    """The wall-clock limit of one check run: a tenth of the episode's seconds, and never below CHECK_TIMEOUT_FLOOR.
+
+    A check that hangs costs the arm this much before it learns anything, so
+    the limit sets what discovering a hang is worth. Half the episode, which
+    this was, means an arm that verifies after doing some work has almost
+    nothing left to diagnose and report with: in a measured run a check
+    timed out at 300 seconds of a 600 second episode and the episode ended
+    120 seconds later, before the arm could say what it had found. A tenth
+    leaves the rest of the budget for the report. The floor keeps a real
+    check from being cut off on a run whose budget is small, and the result
+    is held below the episode's own seconds so a check can never outlast it.
+    """
+    return max(1, min(seconds - 1, max(CHECK_TIMEOUT_FLOOR, seconds // 10)))
 
 
 def worker_calls(model_calls: int, max_concurrent: int) -> int:

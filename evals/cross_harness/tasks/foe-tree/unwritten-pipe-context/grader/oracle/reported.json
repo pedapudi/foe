@@ -1,5 +1,0 @@
-{
-  "status": "blocked",
-  "code": "goal-unreachable",
-  "evidence": "checks/run.sh step 2 (wait for the first line on the context test reporter's pipe) waits 3600 seconds for what no process provides; the budget is 900 seconds"
-}

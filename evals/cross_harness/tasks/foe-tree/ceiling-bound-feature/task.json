@@ -26,20 +26,20 @@
     "crate": "core",
     "crates": {
       "log": 1366,
-      "core": 5084
+      "core": 5095
     },
     "frozen_crates": [
       "log",
       "core"
     ],
     "export_line": "pub mod invariants;",
-    "ceiling": 6450,
-    "lines": 6450,
-    "spare": 0,
+    "ceiling": 6470,
+    "lines": 6461,
+    "spare": 9,
     "lines_needed_at_least": 40,
     "review": "the text was rewritten on 2026-09-12 so that no measurement of the text alone predicts the class; a person has not read it",
     "source": {
-      "commit": "7a8a62286a834940f2388973a7e6d361e7062e5e"
+      "commit": "c8e271a20dfe429aff7ce026d28e97f852d8af70"
     }
   }
 }
