@@ -448,9 +448,16 @@ produced; an emitted rendering is never rewritten.
 ### `bash`
 
 The tool runs `/bin/bash -c COMMAND` through the executor with the first
-read root as the working directory and a fixed environment: `PATH` is
-`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`, `HOME` is
-the working directory, and `LANG` is `C.UTF-8`. Standard input is `/dev/null`.
+read root as the working directory and an environment the runtime builds
+rather than inherits: `PATH` is
+`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` followed by
+the directories holding the executables `grants.execute` names, so a granted
+toolchain outside the system directories runs by name and not only by
+absolute path; `HOME` is the working directory; and `LANG` is `C.UTF-8`. The
+granted directories come last, so a name a system directory resolves keeps
+resolving there, and each appears once. The search path adds no permission:
+a directory reaches it only because the contract already permits executing
+what is in it. `session` builds the same environment. Standard input is `/dev/null`.
 Outbound network access is closed; a process the command starts may bind
 the TCP ports `grants.bind` lists, and no others where the kernel enforces
 it ([sandbox.md](sandbox.md)).

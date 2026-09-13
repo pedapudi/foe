@@ -554,6 +554,7 @@ impl Episode {
             lock(&self.p.pool).note_request();
             let body = ModelRequestBody {
                 request_id: request_id.clone(),
+                episode_id: self.p.start.id.clone(),
                 system: header.system,
                 tools: header.tools,
                 messages,

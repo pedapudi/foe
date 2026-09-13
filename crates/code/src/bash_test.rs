@@ -35,6 +35,24 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert_eq!(req.env["HOME"], fx.root().display().to_string());
 }
 
+/// A granted toolchain is runnable by name. The search path is the system
+/// directories first, so a granted directory never shadows a system command,
+/// followed by each directory the contract grants execute on, deduplicated
+/// against what the system directories already cover.
+#[tokio::test]
+async fn the_search_path_ends_with_the_directories_the_contract_grants() {
+    let fx = Fixture::new();
+    let granted = vec![PathBuf::from("/opt/toolchain/bin"), PathBuf::from("/usr/bin")];
+    let exec = Arc::new(FakeExecutor::new(result(0, "", "")).granting(granted));
+    let c = ctx_with_executor(&fx, exec.clone());
+    Bash::new().call(json!({"command": "cargo test"}), &c).await;
+    assert_eq!(
+        exec.last().unwrap().env["PATH"],
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/toolchain/bin",
+        "the grant is appended once and /usr/bin is not repeated"
+    );
+}
+
 /// docs/tools.md `bash`: exit 126 with the shell's permission diagnostic
 /// remains an ordinary result and explains the relevant configuration key.
 #[tokio::test]

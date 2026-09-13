@@ -186,7 +186,7 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 
 | surface | line ceiling |
 |---|---:|
-| kernel (`log` and `core`) | 6,450 |
+| kernel (`log` and `core`) | 6,470 |
 | execution contracts | 1,575 |
 | coding tools | 1,900 |
 | team coordination | 940 |
@@ -198,7 +198,7 @@ Eleven line budgets bound the Rust source, excluding tests and generated code.
 | telemetry | 1,000 |
 | evidence | 500 |
 
-Coding tools and team coordination together stay under 2,765 lines. The
+Coding tools and team coordination together stay under 2,780 lines. The
 separate budgets keep growth in one surface from enlarging another.
 `scripts/loc.sh` enforces all eleven ceilings and the combined one, and
 fails when this table, `AGENTS.md`, or `docs/design.md` quotes a ceiling it

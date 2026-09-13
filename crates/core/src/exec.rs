@@ -19,7 +19,7 @@ use nix::unistd::Pid;
 use std::io::{Read, Write};
 use std::os::fd::AsFd;
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -51,6 +51,19 @@ impl LocalExecutor {
 }
 
 impl Executor for LocalExecutor {
+    /// `delegated_exec` is the contract's own `grants.execute`, which is
+    /// what a subprocess of a shell may still execute. A grant naming a
+    /// directory is that directory; a grant naming one file is the
+    /// directory holding it.
+    fn granted_command_directories(&self) -> Vec<PathBuf> {
+        let holder =
+            |path: &PathBuf| if path.is_dir() { Some(path.clone()) } else { path.parent().map(Path::to_path_buf) };
+        let mut directories: Vec<PathBuf> = self.policy.delegated_exec.iter().filter_map(holder).collect();
+        directories.sort();
+        directories.dedup();
+        directories
+    }
+
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
