@@ -10,8 +10,12 @@
 # quote the same ceilings, and the second half of this script fails when any
 # of them quotes a different number, so a ceiling changes in one commit that
 # touches all four files.
+#
+# What counts as a production line is in production_lines.awk beside this
+# script, where scripts/loc_test.py exercises it.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+here="$(cd "$(dirname "$0")" && pwd)"
+cd "$here/.."
 
 # surface | ceiling | README table row label | crates whose lines are summed
 budgets='
@@ -41,18 +45,12 @@ rows() {
   printf '%s\n' "$1" | sed -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*|[[:space:]]*/\t/g' -e 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
+# count SURFACE: the production lines of the crates that make up one surface.
+# production_lines.awk holds the counting rule and scripts/loc_test.py
+# exercises it.
 count() {
   find "crates/$1/src" -name '*.rs' ! -path '*/tests/*' ! -name '*_test.rs' ! -name 'generated*' \
-      -exec awk '
-          FNR == 1 { test_only = 0; test_attribute = 0 }
-          test_only { next }
-          /^#\[cfg\(test\)\]$/ { test_attribute = 1; next }
-          test_attribute && /^mod tests \{$/ { test_only = 1; next }
-          {
-            if ($0 !~ /^[[:space:]]*$/ && $0 !~ /^[[:space:]]*\/\//) lines++
-            test_attribute = 0
-          }
-          END { print lines + 0 }' {} +
+      -exec awk -f "$here/production_lines.awk" {} +
 }
 
 # report NAME COUNT CEILING: prints one row stating the lines still available
