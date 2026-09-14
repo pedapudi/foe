@@ -417,11 +417,7 @@ impl Episode {
             if let Some(outcome) = self.compact().await? {
                 return Ok(outcome);
             }
-            let final_request = {
-                let pool = lock(&self.p.pool);
-                pool.exhausted().is_none() && pool.remaining().model_calls == Some(1)
-            };
-            if final_request {
+            if lock(&self.p.pool).funds_one_more_request() {
                 self.append_inbox(InboxSource::System, text::FINAL_REQUEST)?;
             }
             post_session_exits(&self.p.log, self.p.sessions.as_ref())?;
