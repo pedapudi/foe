@@ -1,0 +1,412 @@
+[
+ {
+  "task": "input-bound-named-in-refusal",
+  "arm": "codex-multi",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 1962112,
+   "commands": 20,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 4508,
+   "input_tokens": 2073566,
+   "max_depth": 0,
+   "model_calls": 28,
+   "output_tokens": 18513,
+   "reasoning_tokens": 5083,
+   "responses_with_usage": 28,
+   "tool_calls": 20,
+   "tool_calls_by_name": {
+    "command_execution": 20
+   },
+   "wall_ms": 467334
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/workflow test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-workflow` exited 101:    | | help: consider importing this constant |    | |  1 + use crate::NODE_ARGUMENTS; |    | | help: if you import `NODE_ARGUMENTS`, refer to it directly |    | | 76 -         refused.contains(super::NODE_ARGUM",
+    "integration clippy: `/home/sunil/.cargo/bin/cargo clippy --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-context -p foe-contract -p foe-evidence -p foe-workflow --all-targets -- -D warnings` exited 101:    | | help: consider importing this constant |    | |  1 + use crate::NODE_ARGUMENTS; |    | | help: if you import `NODE_ARGUMENTS`, refer "
+   ],
+   "units": {
+    "crates/context": true,
+    "crates/evidence": true,
+    "crates/workflow": false
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/input-bound-named-in-refusal/codex-multi/01.json"
+ },
+ {
+  "task": "input-bound-named-in-refusal",
+  "arm": "codex-single",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 3591296,
+   "commands": 34,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 8640,
+   "input_tokens": 3887819,
+   "max_depth": 0,
+   "model_calls": 43,
+   "output_tokens": 20547,
+   "reasoning_tokens": 5794,
+   "responses_with_usage": 43,
+   "tool_calls": 34,
+   "tool_calls_by_name": {
+    "command_execution": 34
+   },
+   "wall_ms": 513984
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/context test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-context` exited 101:     |                                          ------ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `u64` |     |                                          | |     |                                   ",
+    "unit crates/evidence test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-evidence` exited 101:     |                                                   |          expected `usize`, found `u64` |     |                                                   arguments to this function are incorrect |     | | note:",
+    "unit crates/workflow test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-workflow` exited 101: note: closure parameter defined here |   --> crates/workflow/src/bind_test.rs:57:18 |    | | 57 |     let sized = |bytes: usize| Value::String(\"x\".repeat(bytes - 2)); |    |                  ^^^^^^^^^^^^ | help:",
+    "integration clippy: `/home/sunil/.cargo/bin/cargo clippy --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-context -p foe-contract -p foe-evidence -p foe-workflow --all-targets -- -D warnings` exited 101:     |                                                   |          expected `usize`, found `u64` |     |                                    "
+   ],
+   "units": {
+    "crates/context": false,
+    "crates/evidence": false,
+    "crates/workflow": false
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/input-bound-named-in-refusal/codex-single/01.json"
+ },
+ {
+  "task": "input-bound-named-in-refusal",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "model_calls"
+  },
+  "totals": {
+   "agents": 9,
+   "cache_read_tokens": 2550144,
+   "commands": 40,
+   "compactions": 0,
+   "denials": 16,
+   "file_changes": 3488,
+   "input_tokens": 2907622,
+   "max_depth": 2,
+   "model_calls": 120,
+   "output_tokens": 39459,
+   "reasoning_tokens": null,
+   "responses_with_usage": 120,
+   "tool_calls": 256,
+   "tool_calls_by_name": {
+    "ask": 3,
+    "bash": 40,
+    "check": 3,
+    "edit": 30,
+    "grep": 63,
+    "read": 96,
+    "return": 4,
+    "send": 3,
+    "spawn": 8,
+    "team": 1,
+    "verification/result": 1,
+    "wait": 4
+   },
+   "wall_ms": 724453
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/evidence test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-evidence` exited 101: test tests::policy_predecessor_must_match_the_record_and_proposal_root ... ok | test tests::an_attested_candidate_must_be_retained_as_canonical_json ... ok | test tests::building_a_manifest_refuses_a_file_over_t",
+    "unit crates/workflow test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-workflow` exited 101:            candidate #1: `RangeBounds` |            candidate #2: `bitflags::traits::Flags` |            candidate #3: `ipnet::ipnet::Contains` | help: some of the expressions' fields have a method of the same n",
+    "integration clippy: `/home/sunil/.cargo/bin/cargo clippy --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-context -p foe-contract -p foe-evidence -p foe-workflow --all-targets -- -D warnings` exited 101:            candidate #1: `bitflags::traits::Flags` |            candidate #2: `ipnet::ipnet::Contains` |            candidate #3: `std::ops:"
+   ],
+   "units": {
+    "crates/context": true,
+    "crates/evidence": false,
+    "crates/workflow": false
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/input-bound-named-in-refusal/foe-configured/01.json"
+ },
+ {
+  "task": "input-bound-named-in-refusal",
+  "arm": "foe-undivided",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 1811456,
+   "commands": 11,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 3717,
+   "input_tokens": 2004862,
+   "max_depth": 1,
+   "model_calls": 38,
+   "output_tokens": 18099,
+   "reasoning_tokens": null,
+   "responses_with_usage": 38,
+   "tool_calls": 108,
+   "tool_calls_by_name": {
+    "bash": 11,
+    "check": 1,
+    "edit": 20,
+    "grep": 12,
+    "read": 60,
+    "return": 2,
+    "verification/result": 2
+   },
+   "wall_ms": 644148
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/workflow test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-workflow` exited 101:    | | help: consider importing this constant |    | |  1 + use crate::NODE_ARGUMENTS; |    | | help: if you import `NODE_ARGUMENTS`, refer to it directly |    | | 76 -         refused.contains(super::NODE_ARGUM",
+    "integration clippy: `/home/sunil/.cargo/bin/cargo clippy --target-dir /home/sunil/.local/state/foe/cross-harness/build/input-bound-named-in-refusal/target -p foe-context -p foe-contract -p foe-evidence -p foe-workflow --all-targets -- -D warnings` exited 101:    | | help: consider importing this constant |    | |  1 + use crate::NODE_ARGUMENTS; |    | | help: if you import `NODE_ARGUMENTS`, refer "
+   ],
+   "units": {
+    "crates/context": true,
+    "crates/evidence": true,
+    "crates/workflow": false
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/input-bound-named-in-refusal/foe-undivided/01.json"
+ },
+ {
+  "task": "left-out-input-is-named-rather-than-dropped",
+  "arm": "codex-multi",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 2268544,
+   "commands": 19,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 5628,
+   "input_tokens": 2372447,
+   "max_depth": 0,
+   "model_calls": 31,
+   "output_tokens": 14546,
+   "reasoning_tokens": 4452,
+   "responses_with_usage": 31,
+   "tool_calls": 19,
+   "tool_calls_by_name": {
+    "command_execution": 19
+   },
+   "wall_ms": 360795
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/telemetry test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/left-out-input-is-named-rather-than-dropped/target -p foe-telemetry` exited 101: test emission_appends_one_object_per_episode ... ok | test emission_runs_against_every_real_viewer_fixture ... ok | failures: | ---- an_unreadable_line_is_named_by_its_number_and_refuses_the_emi"
+   ],
+   "units": {
+    "crates/evidence": true,
+    "crates/telemetry": false,
+    "crates/workflow": true
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/left-out-input-is-named-rather-than-dropped/codex-multi/01.json"
+ },
+ {
+  "task": "left-out-input-is-named-rather-than-dropped",
+  "arm": "codex-single",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 1766016,
+   "commands": 31,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 3203,
+   "input_tokens": 1878687,
+   "max_depth": 0,
+   "model_calls": 25,
+   "output_tokens": 16010,
+   "reasoning_tokens": 3587,
+   "responses_with_usage": 25,
+   "tool_calls": 31,
+   "tool_calls_by_name": {
+    "command_execution": 31
+   },
+   "wall_ms": 366033
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/telemetry test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/left-out-input-is-named-rather-than-dropped/target -p foe-telemetry` exited 101: test emission_appends_one_object_per_episode ... ok | test emission_runs_against_every_real_viewer_fixture ... ok | failures: | ---- an_unreadable_line_is_named_by_its_number_and_refuses_the_emi"
+   ],
+   "units": {
+    "crates/evidence": true,
+    "crates/telemetry": false,
+    "crates/workflow": true
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/left-out-input-is-named-rather-than-dropped/codex-single/01.json"
+ },
+ {
+  "task": "left-out-input-is-named-rather-than-dropped",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "child-blocked"
+  },
+  "totals": {
+   "agents": 8,
+   "cache_read_tokens": 2990336,
+   "commands": 54,
+   "compactions": 0,
+   "denials": 20,
+   "file_changes": 5278,
+   "input_tokens": 3287924,
+   "max_depth": 2,
+   "model_calls": 118,
+   "output_tokens": 40355,
+   "reasoning_tokens": null,
+   "responses_with_usage": 118,
+   "tool_calls": 277,
+   "tool_calls_by_name": {
+    "ask": 2,
+    "bash": 54,
+    "block": 1,
+    "check": 4,
+    "edit": 32,
+    "grep": 56,
+    "read": 103,
+    "return": 10,
+    "send": 1,
+    "spawn": 9,
+    "team": 1,
+    "verification/result": 1,
+    "wait": 3
+   },
+   "wall_ms": 924014
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/telemetry test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/left-out-input-is-named-rather-than-dropped/target -p foe-telemetry` exited 101: test emission_appends_one_object_per_episode ... ok | test emission_runs_against_every_real_viewer_fixture ... ok | failures: | ---- an_unreadable_line_is_named_by_its_number_and_refuses_the_emi"
+   ],
+   "units": {
+    "crates/evidence": true,
+    "crates/telemetry": false,
+    "crates/workflow": true
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/left-out-input-is-named-rather-than-dropped/foe-configured/01.json"
+ },
+ {
+  "task": "left-out-input-is-named-rather-than-dropped",
+  "arm": "foe-undivided",
+  "attempt": "01",
+  "cell": "false-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 2721408,
+   "commands": 11,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 4159,
+   "input_tokens": 2868826,
+   "max_depth": 1,
+   "model_calls": 52,
+   "output_tokens": 21224,
+   "reasoning_tokens": null,
+   "responses_with_usage": 52,
+   "tool_calls": 120,
+   "tool_calls_by_name": {
+    "bash": 11,
+    "check": 1,
+    "edit": 26,
+    "grep": 20,
+    "read": 58,
+    "return": 2,
+    "verification/result": 2
+   },
+   "wall_ms": 594682
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "unit crates/telemetry test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/left-out-input-is-named-rather-than-dropped/target -p foe-telemetry` exited 101: test emission_appends_one_object_per_episode ... ok | test emission_runs_against_every_real_viewer_fixture ... ok | failures: | ---- an_unreadable_line_is_named_by_its_number_and_refuses_the_emi"
+   ],
+   "units": {
+    "crates/evidence": true,
+    "crates/telemetry": false,
+    "crates/workflow": true
+   }
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/teams-fan-out/records/left-out-input-is-named-rather-than-dropped/foe-undivided/01.json"
+ }
+]

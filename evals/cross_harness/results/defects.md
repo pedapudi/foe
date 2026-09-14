@@ -347,3 +347,38 @@ change that can take that step.
 Bearing on the result: the budget-bounded prediction for foe stays
 falsified at the level of the outcome. The repair in `63cdb65f` moved the
 report into the log, not into what the caller receives.
+
+## A spawned worker cannot run the check it is told to run
+
+The delegating node of the teams graph spawns each worker with `write`
+limited to the directories its unit writes. The check suite builds, and
+the build writes `target` under the workspace, which no unit's directories
+cover, so a worker's check fails before it tests anything: cargo cannot
+open `target/debug/.cargo-lock`. The failure reaches the worker as a
+finding line, and the worker's instruction to "run the checks that cover
+your unit" cannot be followed.
+
+Evidence: 85 occurrences of `failed to open: .../workspace/target/debug/.cargo-lock`
+across the worker episodes of `left-out-input-is-named-rather-than-dropped`
+under `foe-configured` in the doubled-ceiling teams run, and the same
+across the other three team attempts. The integrating node, whose grant is
+the workspace, ran the same check and it passed.
+
+Reproduction: any teams document from `contracts/graphs.py` before the
+delegate's instruction named the check's directories; spawn a worker and
+call `check` from it.
+
+Repair: the delegate's instruction names the directories the check writes
+beside the unit's own, so a spawn includes them; the delegating node's own
+grant already holds them. A test holds the instruction to the paths.
+Carried on the branch after the teams runs ended, so no teams record was
+produced under it; the repair is unvalidated by a run.
+
+Bearing on the result: in every team attempt the workers verified nothing
+and the lead's claim rested on the integrating node's check alone. The
+teams results are read with that in view. This is the third time the
+evaluation found a grant that permitted the work and not what the work's
+check needs, after the autonomy check grant and the executable search
+path; a runtime that derived the check's directories from the check
+itself, for every node that holds the tool, would have prevented all
+three.

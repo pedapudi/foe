@@ -1,0 +1,263 @@
+[
+ {
+  "task": "correlation-as-inbox-source",
+  "arm": "codex-equivalent",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 358784,
+   "commands": 12,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 1294,
+   "input_tokens": 417604,
+   "max_depth": 0,
+   "model_calls": 10,
+   "output_tokens": 3484,
+   "reasoning_tokens": 793,
+   "responses_with_usage": 10,
+   "tool_calls": 12,
+   "tool_calls_by_name": {
+    "command_execution": 12
+   },
+   "wall_ms": 91866
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/correlation-as-inbox-source/codex-equivalent/01.json"
+ },
+ {
+  "task": "correlation-as-inbox-source",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 331392,
+   "commands": 8,
+   "compactions": 0,
+   "denials": 3,
+   "file_changes": 1934,
+   "input_tokens": 405878,
+   "max_depth": 1,
+   "model_calls": 17,
+   "output_tokens": 7305,
+   "reasoning_tokens": null,
+   "responses_with_usage": 17,
+   "tool_calls": 48,
+   "tool_calls_by_name": {
+    "bash": 8,
+    "edit": 3,
+    "grep": 9,
+    "read": 27,
+    "return": 1
+   },
+   "wall_ms": 199652
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/correlation-as-inbox-source/foe-configured/01.json"
+ },
+ {
+  "task": "duplicate-grant-roots",
+  "arm": "codex-equivalent",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 380416,
+   "commands": 7,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 803,
+   "input_tokens": 445360,
+   "max_depth": 0,
+   "model_calls": 10,
+   "output_tokens": 4984,
+   "reasoning_tokens": 2063,
+   "responses_with_usage": 10,
+   "tool_calls": 7,
+   "tool_calls_by_name": {
+    "command_execution": 7
+   },
+   "wall_ms": 135271
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "loc: `/home/sunil/.local/state/foe/cross-harness/build/duplicate-grant-roots/grades/codex-equivalent/20260913T174230-fwuo18us/copy/scripts/loc.sh` exited 1: log        1267 | core       5431 | kernel     6698  (budget 6700) | contract   1576  (budget 1575) | tools      1825  (budget 1825) | workflow   1009  (budget 1050) | context     273  (budget 500) | view        411  (budget 600) | cli        "
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/duplicate-grant-roots/codex-equivalent/01.json"
+ },
+ {
+  "task": "duplicate-grant-roots",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 349312,
+   "commands": 8,
+   "compactions": 0,
+   "denials": 3,
+   "file_changes": 1009,
+   "input_tokens": 418009,
+   "max_depth": 1,
+   "model_calls": 19,
+   "output_tokens": 6791,
+   "reasoning_tokens": null,
+   "responses_with_usage": 19,
+   "tool_calls": 54,
+   "tool_calls_by_name": {
+    "bash": 8,
+    "edit": 6,
+    "grep": 10,
+    "read": 29,
+    "return": 1
+   },
+   "wall_ms": 209089
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/duplicate-grant-roots/foe-configured/01.json"
+ },
+ {
+  "task": "question-identifier-in-message-text",
+  "arm": "codex-equivalent",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 1,
+   "cache_read_tokens": 350592,
+   "commands": 9,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 1460,
+   "input_tokens": 418212,
+   "max_depth": 0,
+   "model_calls": 13,
+   "output_tokens": 4961,
+   "reasoning_tokens": 1829,
+   "responses_with_usage": 13,
+   "tool_calls": 9,
+   "tool_calls_by_name": {
+    "command_execution": 9
+   },
+   "wall_ms": 119573
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "loc: `/home/sunil/.local/state/foe/cross-harness/build/question-identifier-in-message-text/grades/codex-equivalent/20260913T174435-5gyovrtu/copy/scripts/loc.sh` exited 1: team          929  (budget 925, 4 over) | scripts/loc.sh: team has 929 lines; the ceiling is 925 | workflow     1016  (budget 1050, 34 spare) | context       272  (budget 500, 228 spare) | view          878  (budget 900, 22 spare"
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/question-identifier-in-message-text/codex-equivalent/01.json"
+ },
+ {
+  "task": "question-identifier-in-message-text",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 344320,
+   "commands": 7,
+   "compactions": 0,
+   "denials": 3,
+   "file_changes": 0,
+   "input_tokens": 406353,
+   "max_depth": 1,
+   "model_calls": 11,
+   "output_tokens": 3394,
+   "reasoning_tokens": null,
+   "responses_with_usage": 11,
+   "tool_calls": 45,
+   "tool_calls_by_name": {
+    "bash": 7,
+    "grep": 12,
+    "read": 25,
+    "return": 1
+   },
+   "wall_ms": 101771
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/question-identifier-in-message-text/target -p foe-team` exited 101: test tests::waiting_reads_the_log_in_place_and_never_copies_it ... ok | test tests::wait_until_matches_unconsumed_arrivals_by_source_child_and_session ... ok | test tests::bare_wait_keeps_its_all_children_meaning ... ok | failure",
+    "docs/design.md lacks the sentence: a model receives the rendered result of its own call and the content of an item that reaches it, and no other field of either, so the result of ask names the identity in its text and the question carries that identity in its own content.",
+    "docs/log-format.md lacks the sentence: its message_id is the identifier ask returned to the asker, and its content ends with a text block naming that identifier, because a model receives the content of an item and none of its other fields.",
+    "docs/tools.md lacks the sentence: sends content as a question to a member of the parent-led team selected by roster to, and returns the question's message_id, which the result text also names.",
+    "docs/tools.md lacks the sentence: the question arrives as a request item whose text ends with a line naming that identifier, so the member answering it can name the question in reply_to."
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": "codex-cli 0.154.0"
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded/records/question-identifier-in-message-text/foe-configured/01.json"
+ }
+]

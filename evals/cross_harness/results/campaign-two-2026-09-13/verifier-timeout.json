@@ -1,0 +1,190 @@
+[
+ {
+  "task": "unreleased-lock-context",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 807936,
+   "commands": 9,
+   "compactions": 0,
+   "denials": 3,
+   "file_changes": 1883,
+   "input_tokens": 880468,
+   "max_depth": 1,
+   "model_calls": 34,
+   "output_tokens": 8845,
+   "reasoning_tokens": null,
+   "responses_with_usage": 34,
+   "tool_calls": 71,
+   "tool_calls_by_name": {
+    "bash": 9,
+    "block": 1,
+    "check": 2,
+    "edit": 10,
+    "grep": 13,
+    "read": 35,
+    "return": 1
+   },
+   "wall_ms": 818574
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/verifier-timeout/records/unreleased-lock-context/foe-configured/01.json"
+ },
+ {
+  "task": "unreleased-lock-evidence",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 596864,
+   "commands": 7,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 904,
+   "input_tokens": 683915,
+   "max_depth": 1,
+   "model_calls": 28,
+   "output_tokens": 9026,
+   "reasoning_tokens": null,
+   "responses_with_usage": 28,
+   "tool_calls": 73,
+   "tool_calls_by_name": {
+    "bash": 7,
+    "block": 1,
+    "check": 1,
+    "edit": 8,
+    "grep": 15,
+    "read": 40,
+    "return": 1
+   },
+   "wall_ms": 386952
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "checks-wait.log holds no line: checks/run.sh never reached the waiting step, so this attempt measures no cost to stop"
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/verifier-timeout/records/unreleased-lock-evidence/foe-configured/01.json"
+ },
+ {
+  "task": "unwritten-pipe-context",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 707200,
+   "commands": 8,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 1882,
+   "input_tokens": 797171,
+   "max_depth": 1,
+   "model_calls": 26,
+   "output_tokens": 8130,
+   "reasoning_tokens": null,
+   "responses_with_usage": 26,
+   "tool_calls": 66,
+   "tool_calls_by_name": {
+    "bash": 8,
+    "block": 1,
+    "check": 1,
+    "edit": 7,
+    "grep": 6,
+    "read": 42,
+    "return": 1
+   },
+   "wall_ms": 518419
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "checks-wait.log holds no line: checks/run.sh never reached the waiting step, so this attempt measures no cost to stop"
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/verifier-timeout/records/unwritten-pipe-context/foe-configured/01.json"
+ },
+ {
+  "task": "waiting-check-suite",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 401920,
+   "commands": 12,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 1181,
+   "input_tokens": 496642,
+   "max_depth": 1,
+   "model_calls": 24,
+   "output_tokens": 10536,
+   "reasoning_tokens": null,
+   "responses_with_usage": 24,
+   "tool_calls": 61,
+   "tool_calls_by_name": {
+    "bash": 12,
+    "block": 1,
+    "check": 1,
+    "edit": 6,
+    "grep": 12,
+    "read": 28,
+    "return": 1
+   },
+   "wall_ms": 592975
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/verifier-timeout/records/waiting-check-suite/foe-configured/01.json"
+ }
+]
