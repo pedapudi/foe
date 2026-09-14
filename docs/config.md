@@ -440,10 +440,12 @@ and the crossing ends the episode afterwards. Completion is checked before
 exhaustion, so a response that finishes the task on the crossing request
 completes the episode. Cached input remains part of `input_tokens`.
 
-When the pool leaves one model call for an ordinary episode request, the
-runtime includes a system inbox warning in that request. The warning directs
-the model toward the highest-priority unfinished work and the configured
-completion signal. It changes no allowance or completion rule.
+When the pool leaves one model call for an ordinary episode request, or
+leaves fewer input tokens than twice the last request's input, so that the
+request after the next could not be paid for, the runtime includes a system
+inbox warning in that request. The warning directs the model toward the
+highest-priority unfinished work and the configured completion signal. It
+changes no allowance or completion rule.
 
 For a provider that accepts a per-request output cap, the runtime clamps the
 cap to the remaining `output_tokens`. This applies to ordinary requests,
