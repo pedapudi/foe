@@ -453,6 +453,14 @@ class Shape(unittest.TestCase):
         self.assertEqual({name: node["model"]["tools"] for name, node in nodes(document).items()}, {name: [t for t in tools if t != "block"] for name, tools in AUTONOMY_TOOLS.items()})
         self.assertEqual(nodes(document)["assess"]["branches"], {"accept": [], "repair": ["repair"]})
 
+    def test_the_delegate_is_told_to_grant_workers_the_directories_the_check_writes(self) -> None:
+        """A worker spawned with its unit's directories alone cannot run the check, whose build writes `target`."""
+        document = graphs.teams(self.workspace, self.check, BUDGET)
+        role = nodes(document)["delegate"]["model"]["instructions"]["10-role"]
+        self.assertIn("plus the directories the check writes, `/w/target` and `/w/.check-tmp`, which every worker needs to run it", role)
+        whole = graphs.teams(self.workspace, self.check, BUDGET, root_files=True)
+        self.assertIn("plus the directories the check writes, `/w/target` and `/w/.check-tmp`", nodes(whole)["delegate"]["model"]["instructions"]["10-role"])
+
     def test_the_lean_variant_drops_the_survey_and_keeps_the_verifiers(self) -> None:
         document = graphs.autonomy(self.workspace, self.check, BUDGET, lean=True)
         graph = nodes(document)

@@ -340,6 +340,14 @@ def check_budget(budget: Mapping[str, Any]) -> dict[str, int]:
     return _budget(budget)
 
 
+def _joined_paths(paths: Sequence[str]) -> str:
+    """Paths as an instruction names them: each in backticks, joined with commas and `and`."""
+    quoted = [f"`{path}`" for path in paths]
+    if len(quoted) <= 1:
+        return "".join(quoted)
+    return ", ".join(quoted[:-1]) + " and " + quoted[-1]
+
+
 def _absolute(path: Path, key: str) -> Path:
     if not Path(path).is_absolute():
         raise ValueError(f"{key} is {str(path)!r}; expected an absolute path")
@@ -638,10 +646,12 @@ def teams(
         ("read", "grep", "edit", "bash", CHECK, "block"),
         change_report(),
     )
+    check_dirs = _joined_paths(shape.with_check_writes([]))
     delegate = shape.contract(
         "delegate",
         "Give each unit the survey named to one worker with `spawn`, with `fresh` context and `write` limited to the directories "
-        "that unit writes, which must exist and must not overlap another unit's. Add every unit before waiting; `wait` with no "
+        "that unit writes, which must exist and must not overlap another unit's, plus the directories the check writes, "
+        f"{check_dirs}, which every worker needs to run it. Add every unit before waiting; `wait` with no "
         "arguments returns when all have settled. Answer a worker's question with `send`, carrying the question's `message_id` "
         "in `reply_to`. You hold no edit tool: a change a worker reports as needed outside its grant goes into your report for "
         "the integrating node. Return each unit's board task identifier, its outcome, the worker's episode, and the sequence of "
