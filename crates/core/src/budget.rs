@@ -19,6 +19,9 @@ pub struct Pool {
     requests: u64,
     /// Provider-reported input tokens this episode consumed.
     input_tokens: u64,
+    /// Input tokens of the most recent request, the cost the next one is
+    /// judged against.
+    last_input: u64,
     /// Provider-reported output tokens this episode consumed.
     output_tokens: u64,
     /// Reservations of children that have not settled, by child id.
@@ -36,6 +39,7 @@ impl Pool {
             restored: false,
             requests: 0,
             input_tokens: 0,
+            last_input: 0,
             output_tokens: 0,
             active: BTreeMap::new(),
             children_spent: BudgetAmount::default(),
@@ -75,7 +79,25 @@ impl Pool {
 
     pub fn note_usage(&mut self, usage: Usage) {
         self.input_tokens = self.input_tokens.saturating_add(usage.input);
+        self.last_input = usage.input;
         self.output_tokens = self.output_tokens.saturating_add(usage.output);
+    }
+
+    /// Whether the next ordinary request is the last this pool can fund:
+    /// one model call remains, or the input allowance left is under twice
+    /// what the last request cost, so the request after this one could not
+    /// be paid for. A request carries the whole conversation, so its cost
+    /// grows step by step and the last request's cost is a floor for the
+    /// next one's.
+    pub fn funds_one_more_request(&self) -> bool {
+        if self.exhausted().is_some() {
+            return false;
+        }
+        let remaining = self.remaining();
+        remaining.model_calls == Some(1)
+            || remaining
+                .input_tokens
+                .is_some_and(|left| self.last_input > 0 && left < self.last_input.saturating_mul(2))
     }
 
     /// The instant the `seconds` limit elapses, when there is one.

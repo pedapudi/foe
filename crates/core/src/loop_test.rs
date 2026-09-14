@@ -542,6 +542,39 @@ async fn the_last_available_request_carries_a_budget_warning() {
     assert!(serde_json::to_string(&requests[2].messages).unwrap().contains(text::FINAL_REQUEST));
 }
 
+/// docs/config.md `budget`: the warning also precedes the last request the
+/// input allowance can fund. The fake transport reports 100 input tokens a
+/// request; under 350 the third request fits and the fourth would not, so
+/// the third carries the warning and the first two do not.
+#[tokio::test]
+async fn the_last_request_the_input_allowance_funds_carries_the_warning() {
+    let fx = Fixture::new(
+        "loop-final-request-input-warning",
+        |v| {
+            v["budget"]["input_tokens"] = json!(350);
+            v["tools"] = json!(["p"]);
+        },
+        vec![
+            turn("inspect", vec![call("a", "p", "{}")]),
+            turn("change", vec![call("b", "p", "{}")]),
+            turn("evidence supports completion", vec![]),
+        ],
+    );
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("evidence supports completion") });
+    let requests: Vec<_> = events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::ModelRequest(request) => Some(request),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(requests.len(), 3);
+    let carries = |i: usize| serde_json::to_string(&requests[i].messages).unwrap().contains(text::FINAL_REQUEST);
+    assert!(!carries(0) && !carries(1), "the first two requests leave room for another");
+    assert!(carries(2), "the third request is the last 350 input tokens fund at 100 a request");
+}
+
 /// docs/config.md `budget`: a child receives the warning before its final
 /// call from its bounded pool.
 #[tokio::test]

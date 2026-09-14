@@ -516,8 +516,9 @@ itself is the first inbox item.
 | `system` | the runtime, for text it must show the model, such as a budget warning |
 | `session` | the runtime, when it observes that a process session's process has ended |
 
-When the current pool has one model call left for an ordinary request, the
-runtime appends one `system` item before deriving that request. The content
+When the current pool has one model call left for an ordinary request, or
+fewer input tokens left than twice the last request's input, the runtime
+appends one `system` item before deriving that request. The content
 directs the model toward the highest-priority unfinished work and the
 configured completion signal. The request records the item's sequence in
 `consumed`. The item changes no budget and completes no episode.
