@@ -126,6 +126,21 @@ then reports `completed`.
 
 Attempts: one per task, four in all.
 
+### Teams fan-out at a doubled ceiling
+
+The two fan-out tasks carry their own ceiling of 120 model calls, and the
+four-worker graph gives each worker 15 of them. The first attempt of the
+run above, foe-configured on `input-bound-named-in-refusal`, spent the 120
+across nine agents and ended `exhausted` with one unit of three passing,
+before any decision the case is meant to observe. The run
+`runs/teams-fan-out-generous.json` repeats the eight attempts at 240 model
+calls, 8,000,000 input tokens, and 360,000 output tokens, with the same
+3,600-second wall clock, from the build that carries the token-ceiling
+warning. Declared here before it launches; the run above is reported as
+it stands.
+
+Prediction: the one for the teams fan-out case, read on this run.
+
 ## What stays fixed
 
 The model, effort, route, budget defaults, tool roots, and grader are the
