@@ -315,3 +315,35 @@ leaves behind when the budget ends the work. The foe attempts recorded
 under the earlier build measure this defect; the case is re-run for
 foe-configured under `runs/budget-bounded-warning.json` from the repaired
 build, and both sets of records are reported.
+
+## A workflow that ends on its ceiling carries none of what its nodes produced
+
+With the token-ceiling warning in place, the implementing node of
+`duplicate-grant-roots` under a 400,000-token ceiling received the warning,
+finished, and returned its change report: the paths it changed and what it
+established. The assessing node then started on the remainder, spent it
+in its first requests before its own warning could fire, and the workflow
+ended `exhausted`. The episode's outcome is the limit's name alone, and the
+record's evidence is the runtime's one line; the change report sits in the
+child's `workflow/node-end` event, where an operator reading the log finds
+it and the caller reading the outcome does not.
+
+Evidence: `budget-bounded-warning/records/duplicate-grant-roots/foe-configured/01.json`
+against `attempts/.../log/ep_18ed3ce8/children/ep_2b6eaa2a/episode.jsonl`.
+
+Two causes. A fresh child judges the warning against its own last request,
+and has none before its first, so a child spawned onto a small remainder
+gets no warning. And an `exhausted` outcome carries only the limit, so a
+workflow that produced values before the ceiling reports none of them.
+
+Repair, proposed and not carried: an `exhausted` or `failed` workflow
+outcome carries the rendered value of every node that completed, under a
+`produced` member, and a child spawned onto a remainder smaller than twice
+its parent's last request receives the warning on its first request. The
+first is a change to the outcome's shape in `docs/log-format.md` and
+`docs/protocol.md`, which a version step should carry, so it is left to a
+change that can take that step.
+
+Bearing on the result: the budget-bounded prediction for foe stays
+falsified at the level of the outcome. The repair in `63cdb65f` moved the
+report into the log, not into what the caller receives.
