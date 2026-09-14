@@ -287,3 +287,31 @@ on the non-terminating tasks, a reading chosen after the run and reported
 as such, foe-configured is actionable on fourteen of fifteen in the first
 campaign, and the enforcement-against-instruction comparison stays a null
 with one discordant pair.
+
+## An episode ending on its token ceiling reported nothing
+
+The loop warned the model before its last request only when one model call
+remained. An episode ending on its input-token ceiling received no warning
+and ended `exhausted` with the runtime's one line, "the input_tokens budget
+was exhausted", and nothing the model had learned.
+
+Evidence: `duplicate-grant-roots` under `foe-configured` in the
+budget-bounded case of campaign two, a 400,000-token ceiling below what
+every arm spent on the task in the first campaign. The episode ended after
+19 requests and 418,009 input tokens, with the work under way and no report
+of what was done or what remained. The pre-registered prediction for the
+case named a report; the runtime could not produce one.
+
+Reproduction: any episode whose `budget.input_tokens` is below what its
+work needs, from a build before `63cdb65f`.
+
+Repair: the final-request warning also precedes a request when the input
+allowance left is under twice the last request's input, so the model is
+told to report before the ceiling ends the episode. Carried in `63cdb65f`;
+`docs/config.md` and `docs/log-format.md` state the rule.
+
+Bearing on the result: the budget-bounded case measures what each harness
+leaves behind when the budget ends the work. The foe attempts recorded
+under the earlier build measure this defect; the case is re-run for
+foe-configured under `runs/budget-bounded-warning.json` from the repaired
+build, and both sets of records are reported.
