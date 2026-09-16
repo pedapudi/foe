@@ -2,6 +2,7 @@ use super::*;
 use crate::testing::{ctx, ctx_with_executor, FakeExecutor, Fixture, ProcessGroupExecutor};
 use foe_core::ExecResult;
 use std::sync::Arc;
+use std::time::Instant;
 
 fn result(code: i32, stdout: &str, stderr: &str) -> ExecResult {
     ExecResult {

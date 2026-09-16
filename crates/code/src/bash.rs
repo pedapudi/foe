@@ -15,7 +15,7 @@ use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub struct Bash {
     spec: ToolSpec,
