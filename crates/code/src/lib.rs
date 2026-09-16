@@ -138,8 +138,8 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
 /// nothing, so the shell needs a search path to find commands; `HOME` is
-/// the working directory, and `TMPDIR` is the episode's scratch directory,
-/// the one directory outside the grants that a command may write.
+/// the real user's home directory, and `TMPDIR` is the episode's scratch
+/// directory, the one directory outside the grants that a command may write.
 ///
 /// The search path is the system directories followed by the directories
 /// holding the executables the contract grants, so that a granted toolchain
@@ -147,6 +147,15 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 /// grants come last, so a name a system directory already resolves keeps
 /// resolving there. Nothing here widens a grant: a directory reaches the
 /// path only because the contract already permits executing what is in it.
+///
+/// `HOME` is a path and not a permission for the same reason: the grants
+/// decide what is readable, and a home directory the contract does not grant
+/// stays unreachable. Naming the working directory instead sends a toolchain
+/// manager looking for its installation inside the workspace, where it finds
+/// none, cannot create one because the write grants name directories under
+/// the workspace rather than the workspace itself, and falls back to a
+/// download the sandbox refuses. Where the passwd database holds no entry
+/// for the user the working directory stands in.
 #[cfg(feature = "exec")]
 pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::BTreeMap<String, String> {
     let mut path = SYSTEM_SEARCH_PATH.to_owned();
@@ -160,7 +169,7 @@ pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::
     }
     std::collections::BTreeMap::from([
         ("PATH".to_owned(), path),
-        ("HOME".to_owned(), cwd.display().to_string()),
+        ("HOME".to_owned(), foe_core::exec::real_home().unwrap_or_else(|| cwd.to_path_buf()).display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
         ("TMPDIR".to_owned(), scratch_dir(ctx).display().to_string()),
     ])
