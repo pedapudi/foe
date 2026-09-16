@@ -1388,7 +1388,7 @@ threads whose counts depend on the active tools and children.
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 6,470 lines,
+sandbox, and spawning — and its Rust source stays under 6,500 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a contract is lives in `crates/contract`, which is budgeted
