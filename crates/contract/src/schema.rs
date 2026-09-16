@@ -114,7 +114,9 @@ fn check_value(schema: &Value, value: &Value, path: String) -> Result<(), String
     }
     if let Some(options) = obj.get("anyOf").and_then(Value::as_array) {
         if options.iter().all(|option| check_value(option, value, path.clone()).is_err()) {
-            return fail(&path, format!("matches none of the {} alternatives in `anyOf`", options.len()));
+            let why: Vec<String> = options.iter().filter_map(|o| check_value(o, value, path.clone()).err()).collect();
+            let listed = why.join("; ");
+            return fail(&path, format!("matches none of the {} alternatives in `anyOf`: {listed}", why.len()));
         }
     }
     bounded(obj, value, &path)?;
