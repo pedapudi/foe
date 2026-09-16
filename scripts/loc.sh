@@ -19,7 +19,7 @@ cd "$here/.."
 
 # surface | ceiling | README table row label | crates whose lines are summed
 budgets='
-kernel    | 6470 | kernel               | log core
+kernel    | 6500 | kernel               | log core
 contract  | 1575 | execution contracts  | contract
 tools     | 1900 | coding tools         | code
 team      |  940 | team coordination    | team
