@@ -73,7 +73,7 @@ The runtime implements these assertions and no others.
 | `type` | any value | one type name, or a list of them; an integer satisfies `number` |
 | `enum` | any value | the value is one of the listed values |
 | `const` | any value | the value equals the listed value |
-| `anyOf` | any value | the value satisfies at least one of the listed subschemas |
+| `anyOf` | any value | the value satisfies at least one of the listed subschemas; a refusal includes the failing field and reason from each alternative |
 | `required` | an object | every named property is present |
 | `properties` | an object | each named property is checked against its subschema |
 | `additionalProperties` | an object | `false` closes the object to the properties `properties` names; a subschema types every property outside them |
