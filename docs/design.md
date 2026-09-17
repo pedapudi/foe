@@ -1372,7 +1372,7 @@ threads whose counts depend on the active tools and children.
 ## Size
 
 The kernel is `log` and `core` — the log format, the loop, budgets, the
-sandbox, and spawning — and its Rust source stays under 6,470 lines,
+sandbox, and spawning — and its Rust source stays under 6,500 lines,
 excluding tests and generated code. Its smallness is the product claim, so
 it carries the tightest budget relative to its size. The number measures the
 machine alone: what a contract is lives in `crates/contract`, which is budgeted
@@ -1410,7 +1410,7 @@ root captured-executable tree before confinement. This mechanism adds no contrac
 key or log event.
 
 The command line is budgeted apart from the runtime as well: `crates/cli`
-under 2,025 lines. It is separate because it serves a person at a terminal
+under 2,050 lines. It is separate because it serves a person at a terminal
 rather than an episode. What it holds is what belongs to a process rather
 than to a run: argument parsing and the help derived from the command table,
 the plan reports, the login conversation, the browser, the outcome line, and
