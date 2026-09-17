@@ -91,11 +91,9 @@ impl Format for Responses {
         request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), tier, req)
     }
 
-    /// The Codex backend keys cache affinity on the `session-id` request
-    /// header, so a request that names the conversation only in the body
-    /// is routed without regard to where its prefix is cached. Its own
-    /// client sends the same identity as `session-id`, `thread-id`, and
-    /// `prompt_cache_key`; this route does the same.
+    /// The subscription route carries the conversation identity in both
+    /// routing headers and the request body. Cache usage remains a backend
+    /// decision reported by the response.
     fn headers(&self, req: &ModelRequestBody) -> Vec<(String, String)> {
         if self.provider != "openai-codex" {
             return Vec::new();
@@ -147,13 +145,9 @@ pub fn request_body(
     body
 }
 
-/// Names the conversation a request belongs to, for the cache key and for
-/// the headers a backend keys affinity on. The prefix is the conversation an
-/// episode grows, so the episode names it. Naming it after anything two
-/// episodes share, such as the system prompt and tool set a contract fixes,
-/// sends unrelated conversations to one cache, where each evicts the prefix
-/// the last one wrote. The value is the episode's digest in the 8-4-4-4-12
-/// form of a UUID, which is the form the Codex backend's own client sends.
+/// A stable routing identity for one episode, shared by its request body
+/// and headers. Distinct episodes receive distinct digest-derived hints;
+/// the backend still controls cache placement and eviction.
 fn conversation_id(req: &ModelRequestBody) -> String {
     let hex = foe_log::digest::sha256_hex(req.episode_id.as_bytes());
     format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
