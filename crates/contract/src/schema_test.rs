@@ -78,6 +78,56 @@ fn any_of_accepts_a_value_matching_one_alternative() {
     assert!(conforms(&schema, &json!(7)).unwrap_err().contains("2 alternatives"));
 }
 
+/// docs/design.md "Tools": the error a model receives names the property, so
+/// an `anyOf` whose alternatives all fail reports what each one wanted. Every
+/// alternative states the field it refused, at the depth it refused it.
+#[test]
+fn a_failing_any_of_reports_why_each_alternative_refused() {
+    let object = json!({
+        "type": "object",
+        "required": ["title", "count"],
+        "properties": { "title": { "type": "string" }, "count": { "type": "integer" } }
+    });
+    let optional = json!({ "anyOf": [object, { "type": "null" }] });
+    assert_eq!(
+        conforms(&optional, &json!({ "heading": "x" })).unwrap_err(),
+        "value: matches none of the 2 alternatives in `anyOf`: \
+         value: lacks required property `title`; value: expected type null, found object"
+    );
+    let nested = json!({ "type": "object", "properties": { "item": optional.clone() } });
+    assert_eq!(
+        conforms(&nested, &json!({ "item": { "heading": "x" } })).unwrap_err(),
+        "value.item: matches none of the 2 alternatives in `anyOf`: value.item: lacks required \
+         property `title`; value.item: expected type null, found object"
+    );
+    let arguments = arguments_conform(&optional, &json!({ "heading": "x" })).unwrap_err();
+    assert!(arguments.contains("arguments: lacks required property `title`"), "{arguments}");
+}
+
+/// docs/design.md "Tools": an alternative that refuses a value below its own
+/// root keeps the deeper path, so the property the model has to correct is
+/// named at the depth it sits rather than at the root of the `anyOf`.
+#[test]
+fn an_alternative_refusing_a_nested_field_names_that_field() {
+    let inner = json!({ "type": "object", "properties": { "count": { "type": "integer" } } });
+    let optional = json!({ "anyOf": [inner, { "type": "null" }] });
+    let reported = conforms(&optional, &json!({ "count": "seven" })).unwrap_err();
+    assert!(reported.contains("value.count: expected type integer, found string"), "{reported}");
+}
+
+/// docs/config.md "JSON Schema subset": accepting one alternative still
+/// enforces sibling assertions, and an empty list accepts no value.
+#[test]
+fn any_of_keeps_sibling_assertions_and_empty_list_refusals() {
+    let schema = json!({ "anyOf": [{ "type": "null" }, { "type": "string" }], "minLength": 3 });
+    assert_eq!(conforms(&schema, &json!("x")).unwrap_err(), "value: is 1 characters long, outside `minLength` 3");
+    assert!(conforms(&schema, &json!("abc")).is_ok());
+    assert_eq!(
+        conforms(&json!({ "anyOf": [] }), &json!(null)).unwrap_err(),
+        "value: matches none of the 0 alternatives in `anyOf`"
+    );
+}
+
 /// docs/design.md "Tools": a failing argument reads as its own path, so the
 /// error the model receives names the property rather than the call.
 #[test]
