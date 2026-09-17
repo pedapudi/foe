@@ -36,7 +36,7 @@ evidence  |  500 | evidence             | evidence
 # uses to name the group. A group ceiling is stated in prose rather than in
 # the README table, so the same phrase locates it in all three documents.
 groups='
-tools+team | 2800 | tools team | Coding tools and team coordination together
+tools+team | 2780 | tools team | Coding tools and team coordination together
 '
 
 # rows TABLE: prints TABLE with each field trimmed, one row per line, fields
