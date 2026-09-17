@@ -113,10 +113,15 @@ fn check_value(schema: &Value, value: &Value, path: String) -> Result<(), String
         return fail(&path, format!("is not the constant {}", obj["const"]));
     }
     if let Some(options) = obj.get("anyOf").and_then(Value::as_array) {
-        if options.iter().all(|option| check_value(option, value, path.clone()).is_err()) {
-            let why: Vec<String> = options.iter().filter_map(|o| check_value(o, value, path.clone()).err()).collect();
-            let listed = why.join("; ");
-            return fail(&path, format!("matches none of the {} alternatives in `anyOf`: {listed}", why.len()));
+        let why: Vec<String> = options
+            .iter()
+            .map(|o| check_value(o, value, path.clone()))
+            .take_while(Result::is_err)
+            .filter_map(Result::err)
+            .collect();
+        if why.len() == options.len() {
+            let listed = if why.is_empty() { String::new() } else { format!(": {}", why.join("; ")) };
+            return fail(&path, format!("matches none of the {} alternatives in `anyOf`{listed}", why.len()));
         }
     }
     bounded(obj, value, &path)?;

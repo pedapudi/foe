@@ -115,6 +115,19 @@ fn an_alternative_refusing_a_nested_field_names_that_field() {
     assert!(reported.contains("value.count: expected type integer, found string"), "{reported}");
 }
 
+/// docs/config.md "JSON Schema subset": accepting one alternative still
+/// enforces sibling assertions, and an empty list accepts no value.
+#[test]
+fn any_of_keeps_sibling_assertions_and_empty_list_refusals() {
+    let schema = json!({ "anyOf": [{ "type": "null" }, { "type": "string" }], "minLength": 3 });
+    assert_eq!(conforms(&schema, &json!("x")).unwrap_err(), "value: is 1 characters long, outside `minLength` 3");
+    assert!(conforms(&schema, &json!("abc")).is_ok());
+    assert_eq!(
+        conforms(&json!({ "anyOf": [] }), &json!(null)).unwrap_err(),
+        "value: matches none of the 0 alternatives in `anyOf`"
+    );
+}
+
 /// docs/design.md "Tools": a failing argument reads as its own path, so the
 /// error the model receives names the property rather than the call.
 #[test]
