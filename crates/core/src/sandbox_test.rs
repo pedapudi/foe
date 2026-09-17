@@ -228,6 +228,11 @@ fn executable_policy_keeps_the_scratch_directory_beneath_the_log() {
     episode.add_executable(Path::new("/bin/sh"), "test shell".into()).unwrap();
     let tool = episode.for_executable(Path::new("/bin/sh"), false).unwrap();
     assert_eq!(tool.log_dir, Some(scratch.clone()));
+    let access = tool.resolved_permissions();
+    for entries in [&access.read, &access.write] {
+        assert!(entries.iter().any(|entry| entry.path == scratch.to_string_lossy()));
+        assert!(entries.iter().all(|entry| entry.path != log.to_string_lossy()));
+    }
     let write = |path: &Path| {
         let mut cmd = Command::new("/bin/sh");
         cmd.arg("-c").arg(format!("echo x > '{}'", path.display())).env_clear();
