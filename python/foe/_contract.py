@@ -36,6 +36,8 @@ BUILTIN_TOOLS: frozenset[str] = frozenset(
         "spawn",
         "wait",
         "steer",
+        "cancel",
+        "ask",
         "notify",
         "send",
         "team",

@@ -141,11 +141,11 @@ request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
 runtime's default applies. `context` is the compaction block
 [compaction.md](compaction.md) specifies; when None the key is omitted and
-the runtime compacts nothing. A built-in document reaches the package with
-`foe.Context()` on every contract when `model` names a model the provider
-table knows, because that is what the binary prints; without `model` the
-host answers every request, no window is known, and `foe.builtin` drops the
-block, as construction would otherwise refuse the document.
+the runtime compacts nothing. A built-in document can carry automatic compaction for the binary's
+default model. The package retains that configuration when the selected
+model has the same backend and model name. A replacement model or a host
+backend receives no automatic context block; configure `Context` with the
+appropriate window when compaction is required.
 
 `workflow` is the workflow declaration [workflow.md](workflow.md) specifies,
 given as the object the document carries. The package models the contract

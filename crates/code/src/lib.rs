@@ -9,10 +9,11 @@
 
 #![forbid(unsafe_code)]
 
-use foe_core::{CallCtx, Tool};
+#[cfg(feature = "exec")]
+use foe_core::CallCtx;
+use foe_core::Tool;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 #[cfg(feature = "exec")]
 mod bash;
@@ -56,40 +57,6 @@ pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
 
-/// What one command may take of the episode's remaining wall clock.
-///
-/// A call bounded only by the deadline can consume everything left, and an
-/// episode that ends inside a tool call has no turn in which to say what it
-/// found: in the log it is indistinguishable from an episode with nothing to
-/// say. Holding a call to half of what remains leaves the caller the other
-/// half, whatever it asked for, and the halves keep coming, so a command that
-/// legitimately needs a long time still gets it across turns while a command
-/// that will never return costs one turn's patience rather than the episode.
-pub const SHARE_OF_REMAINING: u32 = 2;
-
-/// The limit one command runs under, and the sentence to add when the caller
-/// asked for longer than it may have.
-///
-/// The caller learns the arithmetic at the moment it matters. The other
-/// information it needs, that the request exceeded what remains, is the same
-/// signal a harness gets by being cut off, delivered before the time is spent
-/// rather than after.
-#[cfg(feature = "exec")]
-pub(crate) fn command_timeout(requested: Duration, deadline: Option<Instant>) -> (Duration, Option<String>) {
-    let Some(deadline) = deadline else { return (requested, None) };
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    let allowed = remaining / SHARE_OF_REMAINING;
-    if requested <= allowed {
-        return (requested, None);
-    }
-    let note = format!(
-        "[the command asked for {}s; {}s of this episode remain, so it was given {}s, and the rest is left to report with]",
-        requested.as_secs(),
-        remaining.as_secs(),
-        allowed.as_secs()
-    );
-    (allowed, Some(note))
-}
 /// Process sessions the `session` tool may hold alive at once.
 pub const SESSION_MAX_ALIVE: usize = 8;
 /// Absolute path of the interpreter the `compose_tools` tool starts.
@@ -159,29 +126,20 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 #[cfg(feature = "exec")]
 pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::BTreeMap<String, String> {
     let mut path = SYSTEM_SEARCH_PATH.to_owned();
-    let granted = ctx.executor.as_ref().map(|e| e.granted_command_directories()).unwrap_or_default();
-    for directory in granted {
+    for directory in ctx.executor.as_ref().map(|e| e.granted_command_directories()).unwrap_or_default() {
         let directory = directory.display().to_string();
         if !path.split(':').any(|present| present == directory) {
             path.push(':');
             path.push_str(&directory);
         }
     }
+    let scratch = ctx.spill_dir.with_file_name(foe_core::sandbox::SCRATCH_DIR);
     std::collections::BTreeMap::from([
         ("PATH".to_owned(), path),
         ("HOME".to_owned(), foe_core::exec::real_home().unwrap_or_else(|| cwd.to_path_buf()).display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
-        ("TMPDIR".to_owned(), scratch_dir(ctx).display().to_string()),
+        ("TMPDIR".to_owned(), scratch.display().to_string()),
     ])
-}
-
-/// The scratch directory the kernel policy opens to executables: `tmp`
-/// beside the `spill` directory, both directly under the episode's log
-/// directory, which is the layout docs/log-format.md "Directory layout"
-/// fixes. The runtime creates it at launch.
-#[cfg(feature = "exec")]
-pub(crate) fn scratch_dir(ctx: &foe_core::CallCtx) -> std::path::PathBuf {
-    ctx.spill_dir.with_file_name(foe_core::sandbox::SCRATCH_DIR)
 }
 
 /// Every built-in coding tool, in the order `foe plan` lists them.

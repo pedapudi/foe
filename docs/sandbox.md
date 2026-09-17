@@ -48,7 +48,7 @@ source cannot change the run.
 | each credential file resolved by a reachable `model` block | read that file before confinement and reserve it for a descendant that inherits this domain |
 | the episode's own log directory | read and write |
 | the `tmp` directory beneath that log directory | read and write, the one part of the log directory every executable of the episode keeps; the shell tools name it as `TMPDIR` |
-| the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read; also execute when any execute grant names a directory, because the kernel starts every dynamically linked binary under that directory through the host's loader, which lives here |
+| the library directories `/lib`, `/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/libexec`, `/usr/local/lib` | read |
 | the episode's cgroup boundary and, when the contract grants `task_session`, the invocation task cgroup | runtime-only read and write for process ownership; configured executables receive no access |
 | the invocation cgroup directory, for a root episode | runtime-only read and removal for cleanup; the shared manager directory above it carries directory removal alone |
 | the parent cgroup's `cgroup.procs`, for a root episode | runtime-only write so the runtime can leave its episode boundary before cleanup |

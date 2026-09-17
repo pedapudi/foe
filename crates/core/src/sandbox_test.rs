@@ -193,9 +193,9 @@ fn executable_policy_keeps_explicit_subprocess_grants() {
 }
 
 /// docs/sandbox.md "Executables": a directory execute grant runs the
-/// dynamically linked binaries beneath it, which the kernel starts through
-/// the host's loader under a library directory; without such a grant the
-/// library directories stay read-only and an ungranted binary is denied.
+/// dynamically linked binaries beneath it when their loader is admitted
+/// for the selected shell. Library directories remain readable; the exact
+/// loader grant does not authorize an unrelated executable.
 #[test]
 fn a_directory_execute_grant_runs_dynamically_linked_binaries() {
     let Some(s) = sandbox() else { return };

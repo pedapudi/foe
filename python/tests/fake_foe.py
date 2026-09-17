@@ -44,7 +44,7 @@ RUNTIME_VERSION = "0.2.0"
 
 BUILTIN_SCHEMAS: dict[str, dict[str, Any]] = {
     name: {"name": name, "description": f"built-in {name}", "parameters": {"type": "object"}}
-    for name in ("read", "grep", "edit", "bash", "block", "spawn", "wait", "steer", "notify", "send", "team")
+    for name in ("read", "grep", "edit", "bash", "block", "spawn", "wait", "steer", "cancel", "ask", "notify", "send", "team")
 }
 
 

@@ -260,12 +260,9 @@ impl Registry {
     /// status other than zero, or a tool returned an error. The episode then
     /// ends as `failed`.
     ///
-    /// An executable that outlives its timeout is judged, not failed: the
-    /// candidate could not be verified within the bound, which is one
-    /// finding the node acts on like any other. A verifier that hangs is a
-    /// condition of the work, such as a check suite waiting on a resource,
-    /// and the model is the party that can say so; an episode ended
-    /// `failed` here would report the hang and nothing the model learned.
+    /// A timeout yields one finding that verification did not finish.
+    /// It establishes no defect in the candidate. The ordinary retry bound
+    /// lets the model investigate the timeout or report a blocking condition.
     pub async fn verify_with(
         &self,
         name: &str,

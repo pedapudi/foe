@@ -351,13 +351,11 @@ it, and the resolved permissions `foe plan` reports name the directory
 itself as the granted object. An author who wants the exact-executables
 discipline lists files.
 
-Two things follow from a directory entry that a file entry does not carry.
-The system library directories become executable, because a dynamically
-linked binary in a granted directory is started through the host's loader
-and cannot run without it; [sandbox.md](sandbox.md) names them. And the
-directory joins the search path the `bash` and `session` tools receive, so a
-command in it runs by name and not only by absolute path. A grant that names
-files alone gets neither, so the two styles are not interchangeable.
+The `bash` and `session` search path includes granted executable directories
+and the parent directories of granted files. Exact file grants also admit
+the loader or interpreter required to start each file. Library directories
+remain readable; execute permission follows the declared grants and those
+exact support files ([sandbox.md](sandbox.md)).
 
 A grant is a permission and not an environment. Naming a toolchain under
 `execute` lets a process run it; it does not tell the process where the
@@ -373,9 +371,9 @@ unavailable, which `sandbox.mode` `best-effort` permits and `off` requires.
 
 The episode's own log directory is always writable and need not be listed.
 Within it the runtime creates a scratch directory and names it as `TMPDIR`
-for the shell tools. It is the one directory outside the grants that a
-command may write, so a build or a test that needs scratch space uses it
-rather than the host's `/tmp`, which no grant covers.
+for the shell tools. A build or test can use this directory without a write grant on the host's
+`/tmp`. Configured executables receive an empty environment and must name
+the scratch directory explicitly when they need it.
 
 A tool whose declared effect exceeds the grants is refused at construction.
 An `edit` in `tools` with an empty `write` list is an error. A `spawn` in
@@ -440,12 +438,10 @@ and the crossing ends the episode afterwards. Completion is checked before
 exhaustion, so a response that finishes the task on the crossing request
 completes the episode. Cached input remains part of `input_tokens`.
 
-When the pool leaves one model call for an ordinary episode request, or
-leaves fewer input tokens than twice the last request's input, so that the
-request after the next could not be paid for, the runtime includes a system
-inbox warning in that request. The warning directs the model toward the
-highest-priority unfinished work and the configured completion signal. It
-changes no allowance or completion rule.
+When the pool leaves one model call for an ordinary episode request, the
+runtime includes a system inbox warning in that request. The warning directs
+the model toward the highest-priority unfinished work and the configured
+completion signal. It changes no allowance or completion rule.
 
 For a provider that accepts a per-request output cap, the runtime clamps the
 cap to the remaining `output_tokens`. This applies to ordinary requests,
@@ -508,8 +504,10 @@ A verifier that outlives its `timeout_seconds` is killed and its run counts
 as one finding: the candidate could not be verified within the bound. The
 finding reaches the model like any other, so a check suite that waits on a
 resource the workspace never provides is something the model can report
-rather than something that ends the episode; after `retries` such findings
-the episode ends `blocked` with `verification-unsatisfiable`.
+rather than ending the episode immediately. If findings remain after the
+permitted retries, the episode ends `blocked` with
+`verification-unsatisfiable`. A timeout establishes that verification did
+not finish; it does not establish a defect in the candidate.
 
 A `returns` schema may declare a member that is an array of objects whose
 items must carry an integer `seq`. Each such `seq` cites the supporting event

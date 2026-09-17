@@ -457,9 +457,7 @@ absolute path; `HOME` is the home directory the passwd database records for
 the real user, and the working directory where it records none; `LANG` is
 `C.UTF-8`; and `TMPDIR` is the `tmp` directory under the episode's log
 directory, which the runtime creates at launch and which the kernel policy
-opens to every executable of the episode ([sandbox.md](sandbox.md)). No grant
-covers the host's `/tmp`, so a command that needs scratch space uses
-`TMPDIR`. The granted directories come last on the search path, so a name a
+opens to every executable of the episode ([sandbox.md](sandbox.md)). A command can use `TMPDIR` without a write grant on the host's `/tmp`. The granted directories come last on the search path, so a name a
 system directory resolves keeps resolving there, and each appears once.
 Neither the search path nor the home directory adds a permission: each is a
 path the grants still decide access to. Naming the workspace as the home
@@ -469,16 +467,13 @@ there, where it finds none and falls back to a download the sandbox refuses.
 Outbound network access is closed; a process the command starts may bind
 the TCP ports `grants.bind` lists, and no others where the kernel enforces
 it ([sandbox.md](sandbox.md)).
-`timeout_seconds` defaults to 120 and is held to half of the episode's
-remaining wall clock, whatever is asked for. A command bounded only by the
-deadline can consume everything left, and an episode that ends inside a tool
-call has no turn in which to report what it found, which in the log cannot be
-told from an episode with nothing to report. Half leaves the caller the other
-half, and the halves keep coming, so a command that legitimately needs a long
-time still gets it across turns while one that will never return costs a
-turn's patience rather than the episode. A request that is held back says so
-in the result, naming what was asked for, what remains, and what was given,
-so the caller can choose differently before the time is spent.
+`timeout_seconds` defaults to 120. With a wall-clock budget, one synchronous
+command receives at most half of the time remaining when it starts. This
+reserves time for subsequent work but cannot guarantee another model response.
+A command that needs more uninterrupted time may time out under this rule.
+The result reports the requested limit, the remaining time at launch, and
+the applied limit after the command finishes. Without a wall-clock budget,
+the requested command limit applies unchanged.
 
 A `bash` command or a `session` start command containing a literal U+0000
 character is rejected before process execution. Process arguments cannot
@@ -512,8 +507,9 @@ A non-zero exit whose standard error contains `Permission denied` or
 write, or an external command. Foe cannot prove the cause because the shell
 and the commands it ran own that exit status and diagnostic. The canonical
 value sets `permission_denial` to `possible`, and the rendering explains
-that the path must be under `grants.read`, `grants.write`, or
-`grants.execute` as the operation requires. Other results set the field to
+that the caller should check file ownership, file modes, and the applicable
+`grants.read`, `grants.write`, or `grants.execute` entry. The diagnostic
+does not establish whether the sandbox caused the denial. Other results set the field to
 null. A `session` poll applies the same rule after the session shell exits.
 The built-in `read`, `grep`, and `edit` tools need no such inference: a
 path outside their grants is refused in process and recorded as a

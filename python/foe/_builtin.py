@@ -114,6 +114,9 @@ def builtin(
     model request, which is what `run_config` requires of a document with no
     `model` block; the `context` block the binary printed is dropped with it,
     because compaction needs a known window and the host's model has none.
+    Automatic compaction is retained only when `model` names the same backend
+    and model as the printed document. A replacement model requires an explicit
+    `Context` configuration with its own window.
 
     Raises `ConfigError` carrying the binary's message when the binary
     carries no document of that name, and `BinaryError` when the binary
@@ -123,17 +126,17 @@ def builtin(
         raise ConfigError(f"retries: {retries} is negative")
     directory = _directory(root)
     document = _planned_document(name, directory, binary)
+    planned_model = document.get("model") or {}
+    same_model = model is not None and (model.provider, model.model) == (
+        planned_model.get("provider"), planned_model.get("model")
+    )
     for contract in _contracts(document):
         grants = contract.setdefault("grants", {})
         execute = list(grants.get("execute") or ())
         grants["execute"] = execute + [str(directory)]
         contract.pop("model", None)
-        # docs/design.md "The command line": a built-in document compacts
-        # only when the model's window is known. Without `model` the host
-        # answers every request and no window is known, so the block the
-        # binary printed under its own default model is dropped, as
-        # construction would otherwise refuse the document.
-        if model is None:
+        # A replacement model cannot inherit the default model's window.
+        if not same_model:
             contract.pop("context", None)
     fields = _fields(document, "")
     fields["model"] = model

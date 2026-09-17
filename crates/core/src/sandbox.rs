@@ -218,6 +218,9 @@ impl Policy {
         };
         policy.record_declared();
         policy.record_implicit_reads();
+        if let Some(scratch) = policy.log_dir.clone() {
+            policy.record_read_write(scratch, "episode scratch directory", None);
+        }
         policy
     }
 
@@ -499,10 +502,6 @@ impl Sandbox {
         // The crate's read set includes execute; a read root grants reading alone.
         let read = AccessFs::from_read(abi) & !AccessFs::Execute;
         let write = AccessFs::from_write(abi);
-        // A directory grant names binaries the kernel starts through the
-        // host's ELF loader, which lives under the library directories; an
-        // exact-file grant admits its own loader through `add_executable`.
-        let loaders = if policy.exec.iter().any(|path| path.is_dir()) { read | AccessFs::Execute } else { read };
         let mut write_paths = policy.write.clone();
         if let Some(bound) = &policy.bound_write {
             write_paths.retain(|path| !bound.roots().contains(path));
@@ -516,7 +515,7 @@ impl Sandbox {
             (policy.read_files.clone(), BitFlags::from(AccessFs::ReadFile)),
             (policy.log_dir.iter().cloned().collect(), read | write),
             (policy.runtime_control.clone(), read | write),
-            (LIBRARY_DIRS.iter().map(PathBuf::from).collect(), loaders),
+            (LIBRARY_DIRS.iter().map(PathBuf::from).collect(), read),
             (SYSTEM_READ_DIRS.iter().map(PathBuf::from).collect(), read),
             (DEVICE_FILES.iter().map(PathBuf::from).collect(), AccessFs::ReadFile | AccessFs::WriteFile),
         ];

@@ -69,7 +69,7 @@ pub(crate) fn render(
     let denied = stderr.contains("Permission denied") || stderr.contains("Operation not permitted");
     let permission_denial = exit_code.is_some_and(|code| code != 0) && denied;
     if permission_denial {
-        rendered.push_str("[permission guidance] The process reported a possible permission denial. A read, write, or execute the kernel refused is outside this contract's grants: add the path to grants.read, grants.write, or grants.execute as the operation requires, or expose the command as a configured tool.\n");
+        rendered.push_str("[permission guidance] The process reported a possible permission denial. Check file ownership, file modes, and grants.read, grants.write, or grants.execute for the affected path. This diagnostic alone does not identify the cause.\n");
     }
     let line_count = stdout.lines().count() + stderr.lines().count();
     ProcessOutput { stdout, stderr, rendered, truncated, spill, line_count, permission_denial }

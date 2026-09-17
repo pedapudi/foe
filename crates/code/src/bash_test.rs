@@ -251,10 +251,8 @@ async fn a_long_command_is_cut_before_its_status_is() {
     assert!(subject.chars().count() <= foe_core::SUBJECT_MAX, "{subject}");
 }
 
-/// A command may take half of what remains and no more, so an episode never
-/// ends inside one tool call with nothing left to report from. The caller is
-/// told the arithmetic in the result, before the time is spent rather than
-/// after, which is what lets it choose differently.
+/// docs/tools.md `bash`: a command receives at most half of the remaining
+/// time, and its result explains the limit applied at launch.
 #[tokio::test]
 async fn a_command_takes_half_of_what_remains_and_the_caller_is_told() {
     let fx = Fixture::new();
@@ -267,11 +265,11 @@ async fn a_command_takes_half_of_what_remains_and_the_caller_is_told() {
 
     let value = Bash::new().call(json!({"command": "sleep 3600", "timeout_seconds": 3600}), &c).await;
     let rendered = value.rendered.unwrap_or_default();
-    assert!(rendered.contains("asked for 3600s"), "{rendered}");
-    assert!(rendered.contains("was given"), "{rendered}");
+    assert!(rendered.contains("requested 3600s"), "{rendered}");
+    assert!(rendered.contains("limited to"), "{rendered}");
 
     // A request that already fits is passed through untouched and unremarked.
     let value = Bash::new().call(json!({"command": "true", "timeout_seconds": 5}), &c).await;
     assert_eq!(exec.last().unwrap().timeout, Duration::from_secs(5));
-    assert!(!value.rendered.unwrap_or_default().contains("asked for"), "a request that fits says nothing");
+    assert!(!value.rendered.unwrap_or_default().contains("command timeout:"), "a request that fits says nothing");
 }

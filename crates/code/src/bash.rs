@@ -7,15 +7,15 @@
 //! rather than as a tool error.
 
 use crate::{
-    command_timeout, parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS,
-    OUTPUT_MAX_LINES, SHELL, SHELL_COMMAND_NUL_ERROR,
+    parse_args, process_output, shell_environment, BASH_DEFAULT_TIMEOUT_SECS, OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES,
+    SHELL, SHELL_COMMAND_NUL_ERROR,
 };
 use foe_contract::{Effect, ToolSpec};
 use foe_core::{CallCtx, ExecRequest, Tool, ToolValue, SUBJECT_MAX};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub struct Bash {
     spec: ToolSpec,
@@ -82,8 +82,9 @@ impl Tool for Bash {
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
             return ToolValue::unavailable("bash: no read root to use as the working directory");
         };
-        let (timeout, clamped) =
-            command_timeout(Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS)), ctx.deadline);
+        let requested = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
+        let remaining = ctx.deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        let timeout = remaining.map_or(requested, |left| requested.min(left / 2));
         let req = ExecRequest {
             command: PathBuf::from(SHELL),
             captured_executable: None,
@@ -107,11 +108,12 @@ impl Tool for Bash {
             (false, None) => format!("killed by a signal after {secs:.2}s"),
         };
         let mut output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
-        // A caller that asked for longer than it may have is told so here,
-        // where it reads the result, rather than being left to infer it from
-        // a timeout it did not choose.
-        if let Some(note) = clamped {
-            output.rendered = format!("{}\n{note}", output.rendered.trim_end());
+        if timeout < requested {
+            let asked = requested.as_secs();
+            let left = remaining.unwrap().as_secs();
+            let given = timeout.as_secs();
+            output.rendered +=
+                &format!("\n[command timeout: requested {asked}s; {left}s remained at launch; limited to {given}s]");
         }
         ToolValue::ok(
             json!({
