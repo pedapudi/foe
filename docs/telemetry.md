@@ -324,9 +324,10 @@ error, and `ERROR` otherwise.
 
 `foe.tool.permission_denial` is absent when the log contains no denial
 evidence. `enforced` means the runtime returned the typed
-`capability-denied` failure. `possible` means a shell exited with status 126
-and wrote `Permission denied` to standard error. The possible classification
-does not assert that the kernel sandbox caused the exit.
+`capability-denied` failure. `possible` means a shell command failed and
+wrote `Permission denied` or `Operation not permitted` to standard error.
+The possible classification does not assert that the kernel sandbox caused
+the exit.
 
 ### Completion provenance
 

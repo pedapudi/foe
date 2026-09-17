@@ -108,6 +108,23 @@ def test_to_json_round_trips_to_the_expected_document() -> None:
     assert json.loads(make_contract().to_json()) == EXPECTED
 
 
+def test_context_writes_the_compaction_block_and_omits_defaults() -> None:
+    """docs/config.md `context`: a stated field is written and a field left
+    None is omitted so the runtime's default applies; without the block the
+    document carries no `context` key."""
+    contract = foe.ExecutionContract(
+        name="p",
+        instructions={"role": "r"},
+        tools=["read"],
+        grants=foe.Grants(read=["/src"]),
+        budget=foe.Budget(model_calls=1),
+        context=foe.Context(window_tokens=128_000, keep_recent_tokens=12_000),
+    )
+    assert contract.to_dict()["context"] == {"compact": True, "window_tokens": 128_000, "keep_recent_tokens": 12_000}
+    assert foe.Context().to_dict() == {"compact": True}
+    assert "context" not in make_contract().to_dict()
+
+
 def test_host_tools_entry_has_the_four_specified_fields() -> None:
     @foe.tool(instruction="Call it once per mutation point.")
     def count_refs(symbol: str, fs: foe.ReadFS, limit: int = 20) -> dict[str, int]:

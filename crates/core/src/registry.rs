@@ -259,6 +259,10 @@ impl Registry {
     /// judged: it could not run, a `tool_defs` executable exited with a
     /// status other than zero, or a tool returned an error. The episode then
     /// ends as `failed`.
+    ///
+    /// A timeout yields one finding that verification did not finish.
+    /// It establishes no defect in the candidate. The ordinary retry bound
+    /// lets the model investigate the timeout or report a blocking condition.
     pub async fn verify_with(
         &self,
         name: &str,
@@ -276,6 +280,13 @@ impl Registry {
             req.stdin = Some(serde_json::to_vec(candidate).map_err(|e| e.to_string())?);
             let result =
                 run_blocking(executor, req).await.map_err(|e| format!("verifier `{name}` failed to run: {e}"))?;
+            if result.timed_out {
+                return Ok(vec![format!(
+                    "verifier `{name}` did not finish within {} seconds and was killed; the candidate could not be verified \
+                     within that bound",
+                    exec.def.timeout_seconds
+                )]);
+            }
             if result.exit_code != Some(0) {
                 return Err(format!("verifier `{name}` failed: {}", exec.render(&result)));
             }
@@ -402,7 +413,6 @@ impl Tool for ExecTool {
                 let value = json!({
                     "exit_code": result.exit_code, "stdout": String::from_utf8_lossy(&result.stdout),
                     "stderr": String::from_utf8_lossy(&result.stderr), "timed_out": result.timed_out,
-                    "duration_ms": result.duration.as_millis() as u64,
                 });
                 ToolValue { value, rendered: Some(self.render(&result)), is_error: false, failure: None, subject: None }
             }

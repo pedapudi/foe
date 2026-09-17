@@ -528,9 +528,10 @@ def check_case(expected: dict[str, Any], results: dict[str, dict[str, Any]], val
 def check_bash_denial(results: dict[str, dict[str, Any]]) -> list[str]:
     """The sandbox-refused external command keeps the guidance shape.
 
-    A kernel-sandbox denial is exit 126 with `Permission denied` on standard
-    error; the result is not a tool error, `permission_denial` is `possible`,
-    and the rendering names grants.execute as the key to change.
+    A kernel-sandbox denial of an external command is exit 126 with
+    `Permission denied` on standard error; the result is not a tool error,
+    `permission_denial` is `possible`, and the rendering names grants.execute
+    among the keys to change.
     """
     result = results.get("bash-denied-executable")
     if result is None:

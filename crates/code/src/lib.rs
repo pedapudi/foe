@@ -9,7 +9,9 @@
 
 #![forbid(unsafe_code)]
 
-use foe_core::{CallCtx, Tool};
+#[cfg(feature = "exec")]
+use foe_core::CallCtx;
+use foe_core::Tool;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -54,6 +56,7 @@ pub const EDIT_DIFF_MAX_LINES: usize = 200;
 pub const READ_BUFFER_BYTES: usize = 64 * 1024;
 /// Seconds `bash` waits when the call names no `timeout_seconds`.
 pub const BASH_DEFAULT_TIMEOUT_SECS: u64 = 120;
+
 /// Process sessions the `session` tool may hold alive at once.
 pub const SESSION_MAX_ALIVE: usize = 8;
 /// Absolute path of the interpreter the `compose_tools` tool starts.
@@ -102,7 +105,8 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 /// The complete environment of the shell, identical for `bash` and
 /// `session`. The runtime sets exactly what it is given and inherits
 /// nothing, so the shell needs a search path to find commands; `HOME` is
-/// the working directory, since the tools have no other writable location.
+/// the real user's home directory, and `TMPDIR` is the episode's scratch
+/// directory, the one directory outside the grants that a command may write.
 ///
 /// The search path is the system directories followed by the directories
 /// holding the executables the contract grants, so that a granted toolchain
@@ -110,21 +114,31 @@ pub(crate) const SYSTEM_SEARCH_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr
 /// grants come last, so a name a system directory already resolves keeps
 /// resolving there. Nothing here widens a grant: a directory reaches the
 /// path only because the contract already permits executing what is in it.
+///
+/// `HOME` is a path and not a permission for the same reason: the grants
+/// decide what is readable, and a home directory the contract does not grant
+/// stays unreachable. Naming the working directory instead sends a toolchain
+/// manager looking for its installation inside the workspace, where it finds
+/// none, cannot create one because the write grants name directories under
+/// the workspace rather than the workspace itself, and falls back to a
+/// download the sandbox refuses. Where the passwd database holds no entry
+/// for the user the working directory stands in.
 #[cfg(feature = "exec")]
 pub(crate) fn shell_environment(cwd: &Path, ctx: &CallCtx) -> std::collections::BTreeMap<String, String> {
     let mut path = SYSTEM_SEARCH_PATH.to_owned();
-    let granted = ctx.executor.as_ref().map(|e| e.granted_command_directories()).unwrap_or_default();
-    for directory in granted {
+    for directory in ctx.executor.as_ref().map(|e| e.granted_command_directories()).unwrap_or_default() {
         let directory = directory.display().to_string();
         if !path.split(':').any(|present| present == directory) {
             path.push(':');
             path.push_str(&directory);
         }
     }
+    let scratch = ctx.spill_dir.with_file_name(foe_core::sandbox::SCRATCH_DIR);
     std::collections::BTreeMap::from([
         ("PATH".to_owned(), path),
-        ("HOME".to_owned(), cwd.display().to_string()),
+        ("HOME".to_owned(), foe_core::exec::real_home().unwrap_or_else(|| cwd.to_path_buf()).display().to_string()),
         ("LANG".to_owned(), "C.UTF-8".to_owned()),
+        ("TMPDIR".to_owned(), scratch.display().to_string()),
     ])
 }
 

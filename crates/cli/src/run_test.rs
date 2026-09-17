@@ -337,9 +337,9 @@ fn builtin_oneshot_takes_the_verifier_and_the_sandbox_mode() {
 /// document.
 #[rustfmt::skip]
 const RECORDED_BUILTIN_FINGERPRINTS: [(&str, &str); 3] = [
-    ("coding", "sha256:a74279905bafaf52b8eeb9dfbefbb9b77efc3971ed05ede5ccc4703b00a5ec3d"),
-    ("oneshot", "sha256:b9e403c07de9d458145f576e89f792faaf2c62ad46babe37ab85e5a42fb69e8e"),
-    ("team",    "sha256:25c8e59ece337ece5d6c257ecf204849a23b05cb16baae37492358ce6ad7b71d"),
+    ("coding", "sha256:03f5d4818ce4ad9f92a69b65097df87eafc674aeaa8bd1e8bdd57d01dc550ead"),
+    ("oneshot", "sha256:1c8a7306f9865f7b1c1f133dd8a7ebfa48436ecad811831ea5032a67524f77f4"),
+    ("team",    "sha256:f691357bbf90452b3b739d9b9b641f2a993f22f9e024ca00943a693bcd01af29"),
 ];
 
 /// The runtime the recorded fingerprints were computed under. The real one
@@ -648,11 +648,67 @@ fn builtin_coding_declares_its_general_shell_command_surface() {
 #[test]
 fn builtin_coding_can_retrieve_shortened_tool_results() {
     let config = coding("task".into(), ModelConfig::new("example", "m"), None, None).unwrap();
-    assert_eq!(config.tools, ["read", "grep", "edit", "bash"]);
+    assert_eq!(config.tools, ["read", "grep", "edit", "bash", "block"]);
     for node in config.workflow.as_ref().unwrap().nodes.values() {
         assert!(node.model.as_ref().unwrap().tools.iter().all(|tool| tool != "retrieve"));
     }
     assert!(extra_builtin_specs().iter().any(|spec| spec.name == foe_core::retrieval::NAME));
+}
+
+/// docs/design.md "The command line": every built-in episode compacts its
+/// context when the provider table knows the model's window, and none does
+/// for a model outside the table, which construction would refuse.
+#[test]
+fn builtin_documents_compact_when_the_model_window_is_known() {
+    let compacts = |context: &Option<foe_contract::ContextConfig>| context.as_ref().is_some_and(|c| c.compact);
+    let known = ModelConfig::new("openai", "gpt-5.6-sol");
+    let workflow = coding("task".into(), known.clone(), None, None).unwrap();
+    resolve(&workflow).expect("the coding workflow resolves with compaction on");
+    assert!(compacts(&workflow.context));
+    for node in workflow.workflow.as_ref().unwrap().nodes.values() {
+        assert!(compacts(&node.model.as_ref().unwrap().context));
+    }
+    assert!(compacts(&oneshot("task".into(), known.clone(), None, None).unwrap().context));
+    let team = builtin_contract_document(BUILTIN_TEAM, "task".into(), Some(known), None, None).unwrap();
+    resolve(&team).expect("the team document resolves with compaction on");
+    assert!(compacts(&team.context));
+    let worker = &team.child_contracts["worker"];
+    assert!(compacts(&worker.context) && compacts(&team.child_contracts["surveyor"].context));
+    assert!(compacts(&worker.child_contracts["worker"].context));
+    assert!(compacts(&worker.child_contracts["surveyor"].context));
+
+    let unknown = ModelConfig::new("example", "m");
+    let workflow = coding("task".into(), unknown.clone(), None, None).unwrap();
+    assert!(!compacts(&workflow.context));
+    for node in workflow.workflow.as_ref().unwrap().nodes.values() {
+        assert!(!compacts(&node.model.as_ref().unwrap().context));
+    }
+    assert!(!compacts(&oneshot("task".into(), unknown.clone(), None, None).unwrap().context));
+    let team = builtin_contract_document(BUILTIN_TEAM, "task".into(), Some(unknown), None, None).unwrap();
+    assert!(!compacts(&team.context) && !compacts(&team.child_contracts["worker"].context));
+}
+
+/// docs/design.md "The command line": every built-in episode that works a
+/// task may report a blocking condition, so a task that cannot be done ends
+/// blocked with a code from the fixed vocabulary rather than completing on
+/// a guess. The assessment episode judges and does not block.
+#[test]
+fn builtin_documents_offer_block_to_every_working_episode() {
+    let model = ModelConfig::new("example", "m");
+    let has_block = |tools: &[String]| tools.iter().any(|tool| tool == "block");
+    let coding = coding("task".into(), model.clone(), None, None).unwrap();
+    let nodes = &coding.workflow.as_ref().unwrap().nodes;
+    assert!(has_block(&nodes["implement-task"].model.as_ref().unwrap().tools));
+    assert!(has_block(&nodes["repair-task"].model.as_ref().unwrap().tools));
+    assert!(!has_block(&nodes["assess-task"].model.as_ref().unwrap().tools));
+    assert!(has_block(&oneshot("task".into(), model.clone(), None, None).unwrap().tools));
+    let team = builtin_contract_document(BUILTIN_TEAM, "task".into(), Some(model), None, None).unwrap();
+    resolve(&team).expect("the team document resolves before an episode starts");
+    assert!(has_block(&team.tools));
+    let worker = &team.child_contracts["worker"];
+    assert!(has_block(&worker.tools));
+    assert!(has_block(&team.child_contracts["surveyor"].tools));
+    assert!(has_block(&worker.child_contracts["worker"].tools));
 }
 
 /// docs/config.md `done_when`: an invalid host verifier is rejected before

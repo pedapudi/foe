@@ -351,12 +351,29 @@ it, and the resolved permissions `foe plan` reports name the directory
 itself as the granted object. An author who wants the exact-executables
 discipline lists files.
 
+The `bash` and `session` search path includes granted executable directories
+and the parent directories of granted files. Exact file grants also admit
+the loader or interpreter required to start each file. Library directories
+remain readable; execute permission follows the declared grants and those
+exact support files ([sandbox.md](sandbox.md)).
+
+A grant is a permission and not an environment. Naming a toolchain under
+`execute` lets a process run it; it does not tell the process where the
+toolchain keeps its own state. The shell tools state `HOME` as the home
+directory the passwd database records for the real user, so a toolchain
+manager finds its installation where it keeps it, and [tools.md](tools.md)
+lists the rest of what they receive.
+
 The kernel sandbox enforces the same grants on the episode process and on
 every process it starts, which [sandbox.md](sandbox.md) specifies. The open
 directories are what bounds the episode process itself where Landlock is
 unavailable, which `sandbox.mode` `best-effort` permits and `off` requires.
 
 The episode's own log directory is always writable and need not be listed.
+Within it the runtime creates a scratch directory and names it as `TMPDIR`
+for the shell tools. A build or test can use this directory without a write grant on the host's
+`/tmp`. Configured executables receive an empty environment and must name
+the scratch directory explicitly when they need it.
 
 A tool whose declared effect exceeds the grants is refused at construction.
 An `edit` in `tools` with an empty `write` list is an error. A `spawn` in
@@ -476,12 +493,21 @@ calls the tool with an argument object that binds the complete candidate to
 that parameter. The tool returns a list of finding strings. An error result
 means that the verifier failed to judge the candidate.
 
-A nonzero exit status, an end by signal, or a timeout means that the
-executable verifier failed to judge the candidate. The episode ends as
-`failed` with the exit code and both output streams as its error. A
-general-purpose linter therefore needs a wrapper that reads the candidate,
-runs the linter, prints its findings, and exits with status zero whether it
-accepts the candidate or reports findings.
+A nonzero exit status or an end by signal means that the executable
+verifier failed to judge the candidate. The episode ends as `failed` with
+the exit code and both output streams as its error. A general-purpose linter
+therefore needs a wrapper that reads the candidate, runs the linter, prints
+its findings, and exits with status zero whether it accepts the candidate or
+reports findings.
+
+A verifier that outlives its `timeout_seconds` is killed and its run counts
+as one finding: the candidate could not be verified within the bound. The
+finding reaches the model like any other, so a check suite that waits on a
+resource the workspace never provides is something the model can report
+rather than ending the episode immediately. If findings remain after the
+permitted retries, the episode ends `blocked` with
+`verification-unsatisfiable`. A timeout establishes that verification did
+not finish; it does not establish a defect in the candidate.
 
 A `returns` schema may declare a member that is an array of objects whose
 items must carry an integer `seq`. Each such `seq` cites the supporting event

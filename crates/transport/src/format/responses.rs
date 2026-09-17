@@ -91,6 +91,17 @@ impl Format for Responses {
         request_body(&self.model, max_tokens, self.reasoning_effort.as_deref(), tier, req)
     }
 
+    /// The subscription route carries the conversation identity in both
+    /// routing headers and the request body. Cache usage remains a backend
+    /// decision reported by the response.
+    fn headers(&self, req: &ModelRequestBody) -> Vec<(String, String)> {
+        if self.provider != "openai-codex" {
+            return Vec::new();
+        }
+        let id = conversation_id(req);
+        vec![("session-id".into(), id.clone()), ("thread-id".into(), id)]
+    }
+
     fn decoder(&self) -> Box<dyn Decoder> {
         Box::new(StreamDecoder { provider: self.provider, ..Default::default() })
     }
@@ -114,7 +125,7 @@ pub fn request_body(
         "parallel_tool_calls": true,
         // Requests reach the same cache only when they name it, and the
         // name routes the whole prefix rather than the head alone.
-        "prompt_cache_key": cache_key(req),
+        "prompt_cache_key": conversation_id(req),
     });
     if !req.system.trim().is_empty() {
         body["instructions"] = json!(req.system);
@@ -134,13 +145,12 @@ pub fn request_body(
     body
 }
 
-/// Names the cache a request's prefix belongs to. The prefix is the
-/// conversation an episode grows, so the episode names the cache. Naming it
-/// after anything two episodes share, such as the system prompt and tool set
-/// a contract fixes, sends unrelated conversations to one cache, where each
-/// evicts the prefix the last one wrote.
-fn cache_key(req: &ModelRequestBody) -> String {
-    foe_log::digest::sha256_hex(req.episode_id.as_bytes())
+/// A stable routing identity for one episode, shared by its request body
+/// and headers. Distinct episodes receive distinct digest-derived hints;
+/// the backend still controls cache placement and eviction.
+fn conversation_id(req: &ModelRequestBody) -> String {
+    let hex = foe_log::digest::sha256_hex(req.episode_id.as_bytes());
+    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
 }
 
 fn tools_json(tools: &[ToolSchema]) -> Vec<Value> {
@@ -514,7 +524,7 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["tools"][0]["name"], "read");
         assert_eq!(body["tools"][0]["strict"], false);
-        assert_eq!(body["prompt_cache_key"].as_str().map(str::len), Some(64), "a digest names the cache");
+        assert_eq!(body["prompt_cache_key"].as_str().map(str::len), Some(36), "a UUID-form digest names the cache");
     }
 
     /// The cache name follows the conversation. Every step of one episode
@@ -537,14 +547,28 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
             max_output_tokens: None,
         };
         let user = |text: &str| Message::User { content: vec![ContentBlock::Text { text: text.into() }] };
-        let first = cache_key(&body("ep_one", vec![user("one")], vec![schema("read")]));
-        let later = cache_key(&body("ep_one", vec![user("one"), user("two")], vec![schema("read")]));
-        let grown = cache_key(&body("ep_one", vec![user("one")], vec![schema("read"), schema("edit")]));
-        let other = cache_key(&body("ep_two", vec![user("one")], vec![schema("read")]));
+        let first = conversation_id(&body("ep_one", vec![user("one")], vec![schema("read")]));
+        let later = conversation_id(&body("ep_one", vec![user("one"), user("two")], vec![schema("read")]));
+        let grown = conversation_id(&body("ep_one", vec![user("one")], vec![schema("read"), schema("edit")]));
+        let other = conversation_id(&body("ep_two", vec![user("one")], vec![schema("read")]));
         assert_eq!(first, later, "a later step of the same episode names the same cache");
         assert_eq!(first, grown, "a changed tool set is the same conversation");
         assert_ne!(first, other, "another episode running the same contract names another cache");
-        assert_eq!(first.len(), 64, "a digest names the cache");
+        assert_eq!(first.len(), 36, "a UUID-form digest names the cache");
+        assert_eq!(first.matches('-').count(), 4);
+    }
+
+    /// The Codex backend reads the conversation's identity from request
+    /// headers, so the route sends the cache key as `session-id` and
+    /// `thread-id` too. The public endpoint reads it from the body alone.
+    #[test]
+    fn codex_backend_receives_the_conversation_in_headers() {
+        let req = request();
+        let codex = Responses::new("openai-codex", "gpt-5.6-sol".into(), None, None, None);
+        let headers = codex.headers(&req);
+        let key = codex.body(&req)["prompt_cache_key"].as_str().unwrap().to_string();
+        assert_eq!(headers, vec![("session-id".to_string(), key.clone()), ("thread-id".to_string(), key)]);
+        assert!(Responses::new("openai", "gpt-5".into(), None, None, None).headers(&req).is_empty());
     }
 
     #[tokio::test]

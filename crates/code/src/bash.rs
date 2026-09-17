@@ -82,10 +82,9 @@ impl Tool for Bash {
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
             return ToolValue::unavailable("bash: no read root to use as the working directory");
         };
-        let mut timeout = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
-        if let Some(deadline) = ctx.deadline {
-            timeout = timeout.min(deadline.saturating_duration_since(Instant::now()));
-        }
+        let requested = Duration::from_secs(a.timeout_seconds.unwrap_or(BASH_DEFAULT_TIMEOUT_SECS));
+        let remaining = ctx.deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+        let timeout = remaining.map_or(requested, |left| requested.min(left / 2));
         let req = ExecRequest {
             command: PathBuf::from(SHELL),
             captured_executable: None,
@@ -108,13 +107,19 @@ impl Tool for Bash {
             (false, Some(code)) => format!("exit {code} in {secs:.2}s"),
             (false, None) => format!("killed by a signal after {secs:.2}s"),
         };
-        let output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
+        let mut output = process_output::render(ctx, &status, res.exit_code, &res.stdout, &res.stderr, "bash");
+        if timeout < requested {
+            let asked = requested.as_secs();
+            let left = remaining.unwrap().as_secs();
+            let given = timeout.as_secs();
+            output.rendered +=
+                &format!("\n[command timeout: requested {asked}s; {left}s remained at launch; limited to {given}s]");
+        }
         ToolValue::ok(
             json!({
                 "command": a.command,
                 "exit_code": res.exit_code,
                 "timed_out": res.timed_out,
-                "duration_ms": res.duration.as_millis() as u64,
                 "stdout": output.stdout,
                 "stderr": output.stderr,
                 "truncated": output.truncated,

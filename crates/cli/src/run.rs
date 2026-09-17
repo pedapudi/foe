@@ -635,6 +635,23 @@ pub(crate) fn builtin_contract_document(
     }
 }
 
+/// Compaction for the contracts of a built-in document at the JSON pointers
+/// named, so a long run continues under a continuation state rather than
+/// ending exhausted on the context window. The key is set only when the
+/// provider table knows the model's window: construction refuses `compact`
+/// for a model with no known window and no `window_tokens`, and a built-in
+/// document has no place to state one.
+fn enable_builtin_compaction(document: &mut serde_json::Value, model: Option<&ModelConfig>, contracts: &[&str]) {
+    if model.and_then(known_window).is_none() {
+        return;
+    }
+    for pointer in contracts {
+        if let Some(contract) = document.pointer_mut(pointer) {
+            contract["context"] = serde_json::json!({ "compact": true });
+        }
+    }
+}
+
 /// The task `foe plan` gives a built-in document, whose own `task` key is
 /// required. A run replaces it with the task on its command line.
 const BUILTIN_PLAN_TASK: &str = "Placeholder task. A run of a built-in document takes its task from the command line.";
@@ -694,6 +711,13 @@ pub(crate) fn coding_contract_document(
         contract["grants"] = grants.clone();
         contract["budget"]["model_calls"] = serde_json::json!(calls);
     }
+    let nodes = [
+        "",
+        "/workflow/nodes/implement-task/model",
+        "/workflow/nodes/assess-task/model",
+        "/workflow/nodes/repair-task/model",
+    ];
+    enable_builtin_compaction(&mut document, model.as_ref(), &nodes);
     document["workflow"]["nodes"]["assess-task"]["model"]["model"] = serde_json::json!(assessment_model);
     document["workflow"]["nodes"]["repair-task"]["model"]["model"] = serde_json::json!(repair_model);
     if let Some(mode) = sandbox {
@@ -793,10 +817,16 @@ pub(crate) fn team_contract_document(
     // level that does not: the same contract with the delegating tools, the
     // spawn grant, and those two kinds under it. The kinds under it hold
     // neither, which is what ends the tree.
+    enable_builtin_compaction(
+        &mut document,
+        model.as_ref(),
+        &["", "/child_contracts/worker", "/child_contracts/surveyor"],
+    );
     let leaves = document["child_contracts"].clone();
     let worker = &mut document["child_contracts"]["worker"];
-    worker["tools"] =
-        serde_json::json!(["read", "grep", "edit", "bash", "spawn", "wait", "cancel", "send", "ask", "notify", "team"]);
+    worker["tools"] = serde_json::json!([
+        "read", "grep", "edit", "bash", "block", "spawn", "wait", "cancel", "send", "ask", "notify", "team"
+    ]);
     worker["grants"]["spawn"] = serde_json::json!(["worker", "surveyor"]);
     worker["child_contracts"] = leaves;
     worker["budget"] = serde_json::json!({
@@ -871,6 +901,7 @@ pub(crate) fn oneshot_contract_document(
     document["grants"] = serde_json::json!({ "read": [root], "write": [root], "execute": BUILTIN_EXECUTE_ROOTS });
     document["budget"] =
         serde_json::json!({ "model_calls": BUILTIN_IMPLEMENTATION_CALLS, "max_episodes": 1, "max_concurrent": 1 });
+    enable_builtin_compaction(&mut document, model.as_ref(), &[""]);
     document["task"] = serde_json::json!(task);
     if let Some(mode) = sandbox {
         document["sandbox"] = sandbox_block(mode)?;
@@ -991,6 +1022,8 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
             .map_err(|e| format!("child-launch.json fork_source {}: {e}", source.display()))?;
     }
     let log_dir = log_dir.canonicalize().map_err(|e| format!("{}: {e}", log_dir.display()))?;
+    let scratch = log_dir.join(foe_core::sandbox::SCRATCH_DIR);
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("{}: {e}", scratch.display()))?;
     let sandbox = Arc::new(Sandbox::new(contract.sandbox.mode).map_err(|e| e.to_string())?);
     let process = ProcessOwnership::enter(contract.sandbox.mode, &launch.episode_id, launch.process_boundary.clone())
         .map_err(|e| e.to_string())?;

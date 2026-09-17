@@ -105,6 +105,7 @@ when the binary asks.
 | `foe.ReadFS`, `foe.WriteFS`, `foe.Exec` | capability handles a host tool may request |
 | `foe.Grants`, `foe.Budget`, `foe.ToolDef`, `foe.Model` | the `grants`, `budget`, `tool_defs`, and `model` keys |
 | `foe.Verified`, `foe.Returns` | the `done_when` key |
+| `foe.Context` | the `context` key: whether and how the context is compacted |
 | `foe.Completed`, `foe.Blocked`, `foe.Exhausted`, `foe.Failed` | the outcome union |
 | `foe.Event` | one log event, as delivered to `on_event` |
 | `foe.Runtime` | the version and build hash the binary states |
@@ -127,6 +128,7 @@ foe.ExecutionContract(
     model: foe.Model | None = None,
     sandbox: str | None = None,
     workflow: Mapping[str, Any] | None = None,
+    context: foe.Context | None = None,
 )
 ```
 
@@ -137,7 +139,13 @@ its own `model` when it declares one. `model` configures the endpoint the
 binary calls; when None the key is omitted and the host answers every model
 request. `sandbox` is
 `best-effort`, `required`, or `off`; when None the key is omitted and the
-runtime's default applies.
+runtime's default applies. `context` is the compaction block
+[compaction.md](compaction.md) specifies; when None the key is omitted and
+the runtime compacts nothing. A built-in document can carry automatic compaction for the binary's
+default model. The package retains that configuration when the selected
+model has the same backend and model name. A replacement model or a host
+backend receives no automatic context block; configure `Context` with the
+appropriate window when compaction is required.
 
 `workflow` is the workflow declaration [workflow.md](workflow.md) specifies,
 given as the object the document carries. The package models the contract

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 from ._capabilities import PathLike
-from ._contract import Budget, DoneWhen, ExecutionContract, Grants, Model, Returns, ToolDef, Verified
+from ._contract import Budget, Context, DoneWhen, ExecutionContract, Grants, Model, Returns, ToolDef, Verified
 from ._errors import BinaryError, ConfigError
 from ._tools import HostTool
 
@@ -52,8 +52,9 @@ _TASK_SOURCE = "task"
 
 _CONTRACT_KEYS = frozenset(
     ("name", "instructions", "tools", "tool_defs", "host_tools", "grants", "budget")
-    + ("done_when", "sandbox", "child_contracts", "workflow")
+    + ("done_when", "sandbox", "child_contracts", "workflow", "context")
 )
+_CONTEXT_KEYS = frozenset({"compact", "window_tokens", "reserve_tokens", "keep_recent_tokens", "margin_tokens"})
 _GRANT_KEYS = frozenset({"read", "write", "execute", "spawn", "bind", "task_session"})
 _BUDGET_KEYS = (
     "model_calls",
@@ -111,7 +112,11 @@ def builtin(
     the document are dropped, so the one block applies throughout. Without
     `model` the document carries no block at all and the host answers every
     model request, which is what `run_config` requires of a document with no
-    `model` block.
+    `model` block; the `context` block the binary printed is dropped with it,
+    because compaction needs a known window and the host's model has none.
+    Automatic compaction is retained only when `model` names the same backend
+    and model as the printed document. A replacement model requires an explicit
+    `Context` configuration with its own window.
 
     Raises `ConfigError` carrying the binary's message when the binary
     carries no document of that name, and `BinaryError` when the binary
@@ -121,11 +126,18 @@ def builtin(
         raise ConfigError(f"retries: {retries} is negative")
     directory = _directory(root)
     document = _planned_document(name, directory, binary)
+    planned_model = document.get("model") or {}
+    same_model = model is not None and (model.provider, model.model) == (
+        planned_model.get("provider"), planned_model.get("model")
+    )
     for contract in _contracts(document):
         grants = contract.setdefault("grants", {})
         execute = list(grants.get("execute") or ())
         grants["execute"] = execute + [str(directory)]
         contract.pop("model", None)
+        # A replacement model cannot inherit the default model's window.
+        if not same_model:
+            contract.pop("context", None)
     fields = _fields(document, "")
     fields["model"] = model
     if verify is not None:
@@ -203,7 +215,9 @@ def _fields(document: Mapping[str, Any], where: str) -> dict[str, Any]:
     children = document.get("child_contracts") or {}
     done_when = document.get("done_when")
     sandbox = document.get("sandbox") or {}
+    context = document.get("context")
     return {
+        "context": None if context is None else _context(context, where),
         "name": document.get("name", ""),
         "instructions": instructions,
         "tools": list(document.get("tools") or ()),
@@ -246,6 +260,14 @@ def _budget(block: Mapping[str, Any], where: str) -> Budget:
         raise ConfigError(f'{where}budget.model_calls: a number or "unlimited"')
     stated = {key: block[key] for key in _BUDGET_KEYS if block.get(key) is not None}
     return Budget(**stated)
+
+
+def _context(block: Mapping[str, Any], where: str) -> Context:
+    for key in sorted(block):
+        if key not in _CONTEXT_KEYS:
+            raise ConfigError(f"{where}context.{key}: the package models no context key of that name")
+    stated = {key: block[key] for key in sorted(_CONTEXT_KEYS) if block.get(key) is not None}
+    return Context(**stated)
 
 
 def _tool_def(entry: Mapping[str, Any], where: str) -> ToolDef:

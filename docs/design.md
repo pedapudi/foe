@@ -129,6 +129,7 @@ A running foe is a tree of processes sharing one directory tree of logs.
                         <episode-dir>/
                           episode.jsonl
                           spill/
+                          tmp/
                           children/ep_9c21/episode.jsonl
 ```
 
@@ -398,11 +399,12 @@ never made.
 The runtime recognizes two forms of lack of progress without model judgment.
 
 - The same tool call, with identical arguments and an identical result,
-  issued in three consecutive steps ends the episode with `looping-tool-call`.
-- Three consecutive assistant turns with identical text end the episode with
+  issued in eight consecutive steps ends the episode with `looping-tool-call`.
+- Eight consecutive assistant turns with identical text end the episode with
   `looping-reasoning`.
 
-Both thresholds are configurable in `budget`. The model reports the
+Eight is the default of `budget.loop_threshold`, and one value sets both
+thresholds. The model reports the
 conditions it can recognize and the runtime cannot, such as an ambiguous task
 or a missing capability, by calling the built-in `block` tool with a code
 from the closed vocabulary. A contract that lists `spawn` and has a non-empty
@@ -826,9 +828,11 @@ ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
 becomes an execute rule on that exact file. The episode's log directory
 becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. Denied accesses are captured from the audit log and written to
-the episode log as `sandbox/denied` events. A blocked attempt therefore
-becomes evidence in the record.
+executables. The kernel reports a denial only to a privileged audit reader,
+so the runtime records none as an event of its own; a denied access reaches
+the log as the tool's result, which the built-in tools type as
+`capability-denied` and the shell marks as a possible denial
+([sandbox.md](sandbox.md#denied-accesses)).
 
 `sandbox.mode` controls behavior when Landlock is unavailable. `best-effort`,
 the default, applies what the kernel supports and records which version it
@@ -1029,7 +1033,10 @@ cannot touch one file, and there is no merge and no lock.
 
 A unit that answers rather than changes goes to a surveyor, the second
 delegate kind. A surveyor reads, searches, and runs commands, declares no
-tool that could change a file, and is granted no write root. The two kinds
+tool that could change a file, and is granted no write root. The lead and
+both delegate kinds hold `block`, so a unit that cannot be done ends with a
+code from the fixed vocabulary, which the lead accounts for in what it
+returns. The two kinds
 exist because a grant is a narrowing and not a subtraction of tools: a write
 grant of no roots would leave a worker's `edit` with nothing it may write,
 and the spawn is refused rather than the child left to die at construction.
@@ -1090,12 +1097,21 @@ coding workflow receives; a finding re-fires inside the episode, so the
 episode count stays at one. The two documents state the implementation once
 between them and fingerprint apart, so a log names which of them ran.
 
-The implementation and repair episodes have `read`, `grep`, `edit`, and
-`bash`. The assessment episode has `read`, `grep`, and `bash`. It has no edit
-tool. All three episodes may read and write the current directory because
+The implementation and repair episodes have `read`, `grep`, `edit`, `bash`,
+and `block`, so an episode that finds the task unreachable, ambiguous, or
+beyond the capabilities it was granted ends blocked with that code rather
+than completing on a guess. The assessment episode has `read`, `grep`, and
+`bash`. It has no edit tool and no block tool: it judges the workspace and
+returns its findings. All three episodes may read and write the current directory because
 builds and checks can create outputs. Each episode has a 60-call backstop. The
 root holds their additive 180-call allowance. A run without a verifier has a
-four-episode lifetime cap, including the root.
+four-episode lifetime cap, including the root. Every episode of a built-in
+document compacts its context when the provider table knows the model's
+window, so a long run continues under the continuation state
+[compaction.md](compaction.md) specifies rather than ending exhausted on the
+window. A model outside the table gets no compaction, because construction
+refuses `compact` without a window and a built-in document has no place to
+state one; a document in a file states `context.window_tokens` itself.
 
 `--verify PATH` names an executable verifier for the built-in workflow.
 The path is canonicalized and becomes a `tool_defs` entry named `check`

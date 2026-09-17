@@ -2,6 +2,7 @@ use super::*;
 use crate::testing::{ctx, ctx_with_executor, FakeExecutor, Fixture, ProcessGroupExecutor};
 use foe_core::ExecResult;
 use std::sync::Arc;
+use std::time::Instant;
 
 fn result(code: i32, stdout: &str, stderr: &str) -> ExecResult {
     ExecResult {
@@ -22,7 +23,6 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(!v.is_error, "{v:?}");
     assert_eq!(v.value["exit_code"], 2);
     assert_eq!(v.value["timed_out"], false);
-    assert_eq!(v.value["duration_ms"], 1500);
     assert_eq!(v.rendered.as_deref(), Some("[exit 2 in 1.50s]\nout\n--- stderr ---\nerr\n"));
     let req = exec.last().unwrap();
     assert_eq!(req.command, PathBuf::from("/bin/bash"));
@@ -32,7 +32,33 @@ async fn builds_the_request_and_reports_a_non_zero_exit_as_a_result() {
     assert!(req.stdin.is_none());
     assert!(!req.network);
     assert_eq!(req.env["PATH"], "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin");
-    assert_eq!(req.env["HOME"], fx.root().display().to_string());
+    // HOME is the real user's home, not the workspace, so a toolchain
+    // manager finds its installation where it keeps it. The grants still
+    // decide what is readable there.
+    let home = foe_core::exec::real_home().unwrap_or_else(|| fx.root());
+    assert_eq!(req.env["HOME"], home.display().to_string());
+    // docs/tools.md `bash`: the scratch directory is `tmp` beside `spill`.
+    assert_eq!(req.env["TMPDIR"], c.spill_dir.with_file_name("tmp").display().to_string());
+    assert_eq!(req.env.len(), 4, "the environment is exactly these four variables");
+}
+
+/// docs/tools.md `bash` and docs/design.md "Blocking conditions the runtime
+/// detects": the canonical value carries no timing, so the same command
+/// with the same output yields an identical value however long it ran, and
+/// a command repeated without progress counts toward `looping-tool-call`.
+#[tokio::test]
+async fn the_canonical_value_is_identical_across_run_durations() {
+    let fx = Fixture::new();
+    let mut slow = result(0, "same\n", "");
+    slow.duration = Duration::from_millis(9000);
+    let quick = Bash::new()
+        .call(json!({"command": "true"}), &ctx_with_executor(&fx, Arc::new(FakeExecutor::new(result(0, "same\n", "")))))
+        .await;
+    let slow =
+        Bash::new().call(json!({"command": "true"}), &ctx_with_executor(&fx, Arc::new(FakeExecutor::new(slow)))).await;
+    assert_eq!(quick.value, slow.value);
+    assert!(quick.value.get("duration_ms").is_none(), "{:?}", quick.value);
+    assert_ne!(quick.rendered, slow.rendered, "the rendering still states the duration");
 }
 
 /// A granted toolchain is runnable by name. The search path is the system
@@ -65,6 +91,29 @@ async fn possible_external_command_denial_is_recorded_and_explained() {
     let rendered = v.rendered.unwrap();
     assert!(rendered.contains("possible permission denial"), "{rendered}");
     assert!(rendered.contains("grants.execute"), "{rendered}");
+}
+
+/// docs/tools.md `bash`: a denied read or write is marked the same way as a
+/// denied command, on any failing exit status, and a failure whose
+/// diagnostic is not the kernel's is not.
+#[tokio::test]
+async fn possible_read_and_write_denials_are_marked_on_any_failing_exit() {
+    let fx = Fixture::new();
+    for (code, stderr) in [
+        (1, "cat: /etc/shadow: Permission denied\n"),
+        (1, "cp: cannot create regular file '/usr/lib/x': Permission denied\n"),
+        (2, "bash: line 1: /tmp/out: Operation not permitted\n"),
+    ] {
+        let exec = Arc::new(FakeExecutor::new(result(code, "", stderr)));
+        let v = Bash::new().call(json!({"command": "cmd"}), &ctx_with_executor(&fx, exec)).await;
+        assert_eq!(v.value["permission_denial"], "possible", "{stderr}");
+        assert!(v.rendered.unwrap().contains("grants.read, grants.write, or grants.execute"), "{stderr}");
+    }
+    for (code, stderr) in [(0, "Permission denied is a substring of this successful output\n"), (1, "no such file\n")] {
+        let exec = Arc::new(FakeExecutor::new(result(code, "", stderr)));
+        let v = Bash::new().call(json!({"command": "cmd"}), &ctx_with_executor(&fx, exec)).await;
+        assert!(v.value["permission_denial"].is_null(), "{stderr}");
+    }
 }
 
 #[tokio::test]
@@ -200,4 +249,27 @@ async fn a_long_command_is_cut_before_its_status_is() {
     let subject = v.subject.unwrap();
     assert!(subject.ends_with("\u{2026} \u{2013} exit 0 in 1.50s"), "{subject}");
     assert!(subject.chars().count() <= foe_core::SUBJECT_MAX, "{subject}");
+}
+
+/// docs/tools.md `bash`: a command receives at most half of the remaining
+/// time, and its result explains the limit applied at launch.
+#[tokio::test]
+async fn a_command_takes_half_of_what_remains_and_the_caller_is_told() {
+    let fx = Fixture::new();
+    let exec = Arc::new(FakeExecutor::new(result(0, "", "")));
+    let mut c = ctx_with_executor(&fx, exec.clone());
+    c.deadline = Some(Instant::now() + Duration::from_secs(1000));
+    Bash::new().call(json!({"command": "sleep 3600", "timeout_seconds": 3600}), &c).await;
+    let given = exec.last().unwrap().timeout.as_secs();
+    assert!((480..=500).contains(&given), "half of the thousand seconds left, not {given}");
+
+    let value = Bash::new().call(json!({"command": "sleep 3600", "timeout_seconds": 3600}), &c).await;
+    let rendered = value.rendered.unwrap_or_default();
+    assert!(rendered.contains("requested 3600s"), "{rendered}");
+    assert!(rendered.contains("limited to"), "{rendered}");
+
+    // A request that already fits is passed through untouched and unremarked.
+    let value = Bash::new().call(json!({"command": "true", "timeout_seconds": 5}), &c).await;
+    assert_eq!(exec.last().unwrap().timeout, Duration::from_secs(5));
+    assert!(!value.rendered.unwrap_or_default().contains("command timeout:"), "a request that fits says nothing");
 }

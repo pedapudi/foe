@@ -104,16 +104,20 @@ def _fires(log_dir: Path, node: str) -> int:
 
 
 def test_the_contract_is_the_document_the_binary_carries_over_the_root(tmp_path: Path) -> None:
-    """The package adds the root to the execute grants and changes nothing else.
+    """The package adds the root to the execute grants, drops the compaction
+    block the binary printed under its own default model, and changes nothing
+    else.
 
     docs/config.md "Fingerprint summary" states that the counts in `grants`
-    participate in the fingerprint while the concrete paths and the `model`
-    block do not. The document `foe plan` prints therefore fingerprints
-    differently once the root joins the execute grant of the document and of
-    every workflow node, which is the grant `foe init` writes. Applying that
-    one change to the printed document reproduces the fingerprint of the
-    contract the package returns, so every instruction, tool, budget, and
-    workflow node came from the binary unchanged.
+    and the `context` block participate in the fingerprint while the concrete
+    paths and the `model` block do not. The document `foe plan` prints
+    therefore fingerprints differently once the root joins the execute grant
+    of the document and of every workflow node, which is the grant `foe init`
+    writes, and once the compaction block goes, which it must without a
+    model whose window is known. Applying those two changes to the printed
+    document reproduces the fingerprint of the contract the package returns,
+    so every instruction, tool, budget, and workflow node came from the
+    binary unchanged.
     """
     root = _root(tmp_path)
     contract = foe.builtin("coding", root, binary=BINARY)
@@ -122,6 +126,7 @@ def test_the_contract_is_the_document_the_binary_carries_over_the_root(tmp_path:
     document = printed["contract"]
     for part in _contracts(document):
         part["grants"]["execute"] = [*part["grants"]["execute"], str(root)]
+        part.pop("context", None)
     document["version"] = foe.CONFIG_VERSION
     document["task"] = "fingerprint"
     rooted = tmp_path / "rooted.json"
@@ -256,6 +261,45 @@ def test_an_absent_root_and_a_relative_verifier_are_refused(tmp_path: Path) -> N
         foe.builtin("coding", root, binary=BINARY, verify="verify")
 
 
+def test_the_team_document_reaches_the_package_with_every_delegate_tool(tmp_path: Path) -> None:
+    """docs/design.md "The command line": the team lead holds `cancel` and a
+    worker holds `ask`; the package models both, so the document the binary
+    carries parses and writes the same tool lists back."""
+    root = _root(tmp_path)
+    contract = foe.builtin("team", root, binary=BINARY)
+    assert "cancel" in contract.tools and "spawn" in contract.tools
+    worker = contract.child_contracts["worker"]
+    assert "ask" in worker.tools and "notify" in worker.tools
+    assert "ask" in worker.child_contracts["worker"].tools
+    printed = _plan("builtin:team", root)["contract"]
+    written = json.loads(contract.to_json())
+    assert written["tools"] == printed["tools"]
+    assert written["child_contracts"]["worker"]["tools"] == printed["child_contracts"]["worker"]["tools"]
+
+
+def test_the_context_block_the_binary_prints_reaches_every_contract(tmp_path: Path) -> None:
+    """docs/design.md "The command line": a built-in document compacts when
+    the provider table knows the model's window, and the package carries the
+    block the binary printed on the document and on every child contract."""
+    root = _root(tmp_path)
+    document = _plan("builtin:coding", root)["contract"]
+    planned = document.get("model") or {"provider": "compatible-http", "model": "unknown-window"}
+    known = foe.Model(provider=planned["provider"], model=planned["model"])
+    contract = foe.builtin("coding", root, binary=BINARY, model=known)
+    expected = None if "context" not in document else foe.Context(**document["context"])
+    assert contract.context == expected
+    written = json.loads(contract.to_json())
+    assert written.get("context") == document.get("context")
+    for name, node in document["workflow"]["nodes"].items():
+        assert written["workflow"]["nodes"][name]["model"].get("context") == node["model"].get("context")
+    # Without a model the host answers every request, no window is known,
+    # and the block goes with the model block, from the document and from
+    # every node.
+    hosted = json.loads(foe.builtin("coding", root, binary=BINARY).to_json())
+    assert "context" not in hosted
+    assert all("context" not in node["model"] for node in hosted["workflow"]["nodes"].values())
+
+
 def test_the_oneshot_document_is_the_implementation_episode_over_the_root(tmp_path: Path) -> None:
     """The one-shot document reaches the package as the binary carries it.
 
@@ -268,6 +312,7 @@ def test_the_oneshot_document_is_the_implementation_episode_over_the_root(tmp_pa
     contract = foe.builtin("oneshot", root, binary=BINARY)
     document = _plan("builtin:oneshot", root)["contract"]
     document["grants"]["execute"] = [*document["grants"]["execute"], str(root)]
+    document.pop("context", None)
     document["version"] = foe.CONFIG_VERSION
     document["task"] = "fingerprint"
     rooted = tmp_path / "rooted-oneshot.json"
@@ -391,3 +436,13 @@ def _smallest(schema: dict[str, Any], cited: int) -> Any:
     if kind == "boolean":
         return False
     return "The repository needs no change."
+
+
+def test_an_unknown_selected_model_does_not_inherit_default_compaction(tmp_path: Path) -> None:
+    """docs/design.md: automatic compaction requires the selected model's window."""
+    root = _root(tmp_path)
+    model = foe.Model("compatible-http", "unknown-window", options={"base_url": "http://127.0.0.1:9"})
+    contract = foe.builtin("coding", root, binary=BINARY, model=model)
+    document = json.loads(contract.to_json())
+    assert all("context" not in node for node in _contracts(document))
+    contract.fingerprint(BINARY)

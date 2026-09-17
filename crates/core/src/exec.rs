@@ -28,6 +28,23 @@ use std::time::{Duration, Instant};
 /// Bytes of one output stream kept in the result.
 pub const CAPTURE_LIMIT: usize = 1 << 20;
 
+/// The home directory of the real user, from the passwd database, or None
+/// when the database holds no entry for the user.
+///
+/// A process the runtime starts inherits no environment, so the runtime
+/// states `HOME` itself. A toolchain manager keeps its installation under
+/// the home directory and reads it there; naming anything else sends it
+/// looking for an installation that is not present and then to the network
+/// for one, which the sandbox refuses. This is a path, not a permission:
+/// the grants decide what is readable, and a home directory the contract
+/// does not grant stays unreadable.
+pub fn real_home() -> Option<PathBuf> {
+    match nix::unistd::User::from_uid(nix::unistd::getuid()) {
+        Ok(Some(user)) if user.dir.is_absolute() => Some(user.dir),
+        _ => None,
+    }
+}
+
 /// Time between SIGTERM and SIGKILL when a process group is ended, and the
 /// longest wait for an output pipe to close after the group is gone.
 pub const TERM_GRACE: Duration = Duration::from_secs(2);
