@@ -11,7 +11,7 @@ rust_binary(
     crate_name = "foe",
     crate_root = "src/main.rs",
     edition = crate_edition(),
-    version = "0.2.0",
+    version = "0.2.1",
     visibility = ["//visibility:public"],
     deps = [
         "//crates/contract:foe_contract",
