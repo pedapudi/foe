@@ -18,7 +18,7 @@ rust_library(
     crate_name = "foe_code",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
-    version = "0.2.0",
+    version = "0.2.1",
     visibility = ["//visibility:public"],
     deps = [
         "//crates/contract:foe_contract",

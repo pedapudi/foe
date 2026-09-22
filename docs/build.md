@@ -59,7 +59,7 @@ machine and uploads what it built, so a release costs no
 continuous-integration minutes.
 
 ```sh
-scripts/release.sh 0.2.0
+scripts/release.sh 0.2.1
 ```
 
 `.cargo/config.toml` packs the binary's relative relocations into a bitmap

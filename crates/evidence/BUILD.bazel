@@ -9,7 +9,7 @@ rust_binary(
     ],
     crate_root = "src/bin/build_bundle.rs",
     edition = crate_edition(),
-    version = "0.2.0",
+    version = "0.2.1",
     visibility = ["//visibility:public"],
     deps = [
         ":foe_evidence",
@@ -23,7 +23,7 @@ rust_binary(
     srcs = ["src/bin/verify_bundle.rs"],
     crate_root = "src/bin/verify_bundle.rs",
     edition = crate_edition(),
-    version = "0.2.0",
+    version = "0.2.1",
     visibility = ["//visibility:public"],
     deps = [":foe_evidence"] + all_crate_deps(normal = True),
     proc_macro_deps = all_crate_deps(proc_macro = True),
@@ -35,7 +35,7 @@ rust_library(
     crate_name = "foe_evidence",
     crate_root = "src/lib.rs",
     edition = crate_edition(),
-    version = "0.2.0",
+    version = "0.2.1",
     visibility = ["//visibility:public"],
     deps = [
         "//crates/contract:foe_contract",

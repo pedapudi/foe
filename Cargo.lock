@@ -256,7 +256,7 @@ checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
 
 [[package]]
 name = "foe"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "foe-code",
  "foe-context",
@@ -279,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "foe-code"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "foe-contract",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "foe-context"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "foe-contract",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "foe-contract"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "foe-log",
  "hex",
@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "foe-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "cap-std",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "foe-evidence"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "foe-contract",
  "foe-log",
@@ -356,7 +356,7 @@ dependencies = [
 
 [[package]]
 name = "foe-log"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "foe-team"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "foe-contract",
@@ -380,7 +380,7 @@ dependencies = [
 
 [[package]]
 name = "foe-telemetry"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "foe-log",
  "hex",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "foe-transport"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "base64",
@@ -422,7 +422,7 @@ dependencies = [
 
 [[package]]
 name = "foe-view"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "foe-log",
  "miniz_oxide",
@@ -436,7 +436,7 @@ dependencies = [
 
 [[package]]
 name = "foe-workflow"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "foe-contract",
