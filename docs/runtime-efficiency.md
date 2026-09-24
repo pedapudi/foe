@@ -1,6 +1,7 @@
 # Shared runtime mechanics reduce repeated work
 
-Status: proposed
+Status: proposed. Team state is already maintained incrementally, which item 3
+of the execution plan describes; every other item remains a proposal.
 
 This document proposes an internal architecture that reduces repeated runtime
 work. Any implementation must preserve the behavior specified by
@@ -17,11 +18,15 @@ rules.
 
 Several runtime paths repeat work as an episode grows.
 
-- Team operations clone the event list and recompute the complete team state
-  from that copy.
-- Some runtime waits check state on fixed intervals.
+- Some runtime waits check state on fixed intervals: settlement and team waits
+  sleep `SETTLE_POLL`, 20 milliseconds, between checks (`crates/core/src/loop_.rs`,
+  `crates/team/src/lib.rs`); the workflow scheduler, holding deferred work
+  with nothing running, rechecks it every 50 milliseconds
+  (`crates/workflow/src/run.rs`); and one-shot commands
+  poll for exit every 10 milliseconds (`crates/core/src/exec.rs`).
 - Each direct model request opens a separate network connection and performs
-  another secure-connection handshake.
+  another secure-connection handshake: the HTTP client connects per request
+  and sends `connection: close` (`crates/transport/src/http.rs`).
 - One-shot commands and process sessions implement overlapping launch,
   output, deadline, cancellation, and process-group behavior.
 - Workflow and team schedulers make related capacity decisions through
@@ -36,6 +41,11 @@ Repeated scans, timer checks, connection setup, and resending unchanged tool
 results consume more resources as logs, conversations, and child counts grow.
 Fixed-interval checks also make progress depend on periodic observation rather
 than a recorded state change.
+
+Team state no longer repeats this work. Each `Team` keeps its projection and
+the number of events it has applied, and a state query applies only the
+events appended since, through a borrowed view of the log
+(`Team::state` in `crates/team/src/lib.rs`).
 
 The proposal must reduce repeated work while preserving the append-only log,
 deterministic coordination, explicit authority, and repository line budgets.
@@ -188,11 +198,11 @@ derived state from one event. This function is its reducer. The reducer stores
 its state and the next expected sequence. It applies each unseen event once
 and advances that sequence. Replay from a complete log uses the same function.
 
-The proposal splits the team crate's existing full-log fold into
-initialization and single-event application. Each `Team` caches the resulting
-board, roster, message queue, delivery set, and next expected sequence. Every
-team inspection or scheduling operation advances this cache from unseen
-events while holding the lock that serializes team operations.
+The team crate already follows this rule. Each `Team` caches its board,
+roster, message queue, and delivery set with the count of events applied, and
+every inspection advances the cache from the unseen suffix under a lock. The
+cache restarts from the seeded state when a seeded prefix covers the events it
+had applied.
 
 The proposal retains borrowed access to ordered events for model-message
 derivation and loop detection. An index for either operation requires its own
@@ -523,15 +533,14 @@ when its tests and implementation form a smaller independent change.
    runtime code.
 
 2. **Publish event and budget revisions.** Extend the in-process log and
-   budget pool with monotonic change receivers. Add borrowed suffix access to
-   events. Preserve the file and mirror ordering rules. Prove recovery from a
+   budget pool with monotonic change receivers. The log already lends its
+   events by borrow. Preserve the file and mirror ordering rules. Prove recovery from a
    process stop between file append and projection update.
 
-3. **Make team state incremental.** Split the full team fold into
-   initialization and per-event application. Protect the cached team
-   projection with the existing operation lock. Before inspection, message
-   delivery, scheduling, or wait evaluation, apply the unseen event suffix
-   under that lock. Remove full-log clones from the team path.
+3. **Make team state incremental.** Implemented: the team projection applies
+   only the unseen event suffix under its lock, and the team path clones no
+   event list. What remains of this item is its benchmark row, recorded under
+   item 1, so that the change has a measured baseline.
 
 4. **Reuse endpoint connections.** Add a reusable endpoint client that uses
    the existing wire-codec and credential-source interfaces. Add local
