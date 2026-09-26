@@ -75,10 +75,10 @@ Its one user message holds, first, the summary written at the previous
 compaction when there was one, under the heading `# Earlier summary`, and
 then the span being summarized under `# Transcript`. The span is rendered
 as labeled plain text rather than as a conversation: each entry is
-`[user]`, `[assistant]`, or `[result <tool>]` followed by its text, and a
-tool call appears inside its assistant entry as `[call <name> <args>]`. An
-image block renders as its media type. Nothing in the text has the shape
-of a turn the model could continue.
+`[user]`, `[assistant]`, `[result <tool>]`, or `[result <tool> error]`
+followed by its text, and a tool call appears inside its assistant entry as
+`[call <name> <args>]`. An image block renders as `(image <media type>)`.
+Nothing in the text has the shape of a turn the model could continue.
 
 ## What the summary contains
 
