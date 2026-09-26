@@ -1,10 +1,13 @@
 # Starlark confinement spike
 
-docs/tool-composition.md records the earlier `code` tool whose child contracts ran in a confined
-Starlark evaluator. The design forbids the runtime from taking an
-evaluator dependency before a spike demonstrates five properties: fuel
-accounting, memory accounting, cancellation, a disabled module loader,
-and the absence of ambient imports. This crate is that spike. It wraps the Rust Starlark
+This crate is a historical record. docs/tool-composition.md, under "The
+Starlark alternative", describes an earlier design of tool composition that
+ran model-written sources in an embedded Starlark evaluator. The shipped
+design runs them in a confined subprocess instead. The earlier design
+forbade the runtime from taking an evaluator dependency before a spike
+demonstrated five properties: fuel accounting, memory accounting,
+cancellation, a disabled module loader, and the absence of ambient imports.
+This crate is that spike. It wraps the Rust Starlark
 implementation (the `starlark` crate, version 0.14.2, from
 github.com/facebook/starlark-rust, Apache-2.0) and carries the confinement
 test suite in `tests/confinement.rs`. The empty `[workspace]` table in
@@ -83,7 +86,7 @@ Each item names the tests that demonstrate it.
   an error and the dispatcher never runs, which implements the contract's
   rule that inner dispatch is unavailable while the evaluator loads the
   source (`dispatch_is_disabled_during_module_load`).
-- **Outer call contract.** The worked contract from docs/tool-composition.md runs
+- **Outer call contract.** The worked contract from the earlier design runs
   unchanged: struct field access on the result, `is_error` inspection,
   and a narrowed JSON return value (`a_contract_narrows_a_tool_result`,
   `a_contract_inspects_an_inner_error_and_continues`). `fail(message)`
@@ -124,8 +127,9 @@ Each item names the tests that demonstrate it.
   (`opt-level = "z"`, fat LTO, `panic = "abort"`, stripped), is 4,274,376
   bytes. The same binary without the `starlark` dependency
   (`../size-baseline`) is 302,208 bytes. The evaluator therefore adds
-  about 3.97 MB. The repository's release binary measures 5,417,656
-  bytes, so adoption would grow it by roughly 73 percent.
+  about 3.97 MB. The repository's release binary measured 5,417,656
+  bytes when the spike ran, so adoption would have grown it by roughly 73
+  percent.
 - **Dependency tree.** The spike's lockfile resolves 173 crates; 119 of
   their names are absent from the repository's lockfile. The additions
   include the four Starlark crates themselves (`starlark`,

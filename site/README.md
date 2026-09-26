@@ -10,17 +10,25 @@ The build reads the repository rather than restating it: the brand lockup and
 the favicon come from `docs/brand`, the colour tokens from two of the themes
 in `view/src/tokens.css` along with the eight colours that name an agent, and
 every log line, event row, figure and number on
-the page from the fixtures in `view/fixtures`. Nothing on the page is invented,
-and a change to a fixture changes the page.
+the page from the fixtures in `view/fixtures`. The declared graphs come from
+`crates/cli/src/builtin-coding.json` and
+`examples/self-extension/workflow-config.json`, and the team from
+`examples/team/config.json`. Nothing on the page is invented, and a change to
+one of those sources changes the page.
 
 ## What the build writes
 
 | file | what it is |
 |---|---|
 | `public/index.html` | the whole page: markup, stylesheet and scripts in one file |
+| `public/artifact.html` | the same page as one file, with the fonts inline and no document skeleton |
 | `public/favicon.svg` | the brand mark, drawn in the brand accent |
 | `public/*.woff2` | the typeface the page sets, copied from `view/fonts` |
-| `public/install.sh` | a copy of the repository's installer, which is what the page's install command fetches |
+
+Two files in `public` are sources that the build leaves untouched.
+`public/install.sh` is the installer that the page's install command fetches,
+and [docs/build.md](../docs/build.md) "Install" describes it. `public/CNAME`
+names the custom domain.
 
 The page fetches nothing. Every style, script, font and image is either inline
 or a file beside it, so it renders the same offline as on the network.
@@ -40,14 +48,14 @@ The typeface defaults to `technical-inconsolata`, which sets Inconsolata for
 prose, data and code alike. `technical-ia-writer` is the other one the build
 knows: iA Writer Mono for prose and JetBrains Mono for data and code. Only the
 faces `view/fonts` carries can be chosen, because the page performs no network
-fetch, and every one of them draws the box-drawing characters the transcripts
+fetch. `view/fonts` carries Inconsolata alone, so a build that selects
+`technical-ia-writer` fails until its font files are added there. Every
+self-hosted face draws the box-drawing characters the transcripts
 use at the same advance as its letters, so the connector column stays aligned.
 
 ## Publishing
 
-`site/public` is the published tree. GitHub Pages serves it from the branch and
-folder named in the repository's Pages settings. No workflow builds or deploys
-it; a person runs the build and pushes the result.
-
-Run `site/publish.sh` to build the page and push the result to the `gh-pages`
-branch, which is the tree Pages serves.
+GitHub Pages serves the root of the `gh-pages` branch. `site/publish.sh` runs
+the build, then copies `index.html`, `favicon.svg`, `install.sh`, `CNAME`, and
+the font files from `site/public` to that root and pushes the branch. No
+workflow builds or deploys the page; a person runs the script.
