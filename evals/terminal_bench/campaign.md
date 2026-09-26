@@ -11,6 +11,12 @@ Results below from retired protected sets remain as historical evidence. They
 do not satisfy the confirmation, calibration, or holdout criteria defined in
 this record.
 
+Evidence paths in this record name ignored local directories on the recording
+host. Paths under `/home/sunil/git/foe-*` belonged to campaign worktrees that
+no longer exist there, so those raw jobs are unavailable. A relative
+`target/` path resolves against the worktree that ran the command, and this
+checkout holds none of them.
+
 ## Campaign objective
 
 The campaign must produce one frozen Foe release that converts at least three
@@ -237,10 +243,13 @@ holdout opens.
 
 Credential-safe assessed concurrency starts with at most two trials. An
 eight-gibibyte task runs alone. Two concurrent trials may declare at most
-eight gibibytes of memory in total. The scheduler starts a cohort only when
-the host has at least fourteen gibibytes of available memory and one hundred
-gibibytes of free disk. It stops admission after memory pressure, swap-out,
-an out-of-memory termination, or less than ten gibibytes of available memory.
+eight gibibytes of memory and four CPUs in total. The scheduler starts a
+cohort only when available memory covers the cohort's declared reservations
+plus four gibibytes of host headroom, and free disk is at least one hundred
+gibibytes. Memory pressure, swap-out, or an out-of-memory termination makes
+every later task serial. The run stops before an execution group whose
+reservations plus headroom exceed available memory, or when free disk falls
+below one hundred gibibytes.
 
 Every concurrent cohort records its cap, task membership, resource
 reservations, host resource snapshots, process starts, makespan, and
@@ -803,6 +812,22 @@ quality benefit from a separate audit stage.
 
 ## Self-improvement contract
 
+Correction: this section records the contract as the campaign ran it. The
+runner in this directory, `run_self_improvement.py`, differs in five ways:
+
+- The workflow has two model nodes. The coding node has no typed handoff,
+  and its `check` verifier owns completion. No separate source-audit node
+  exists.
+- The structured verifier summary keeps test counts, failure classes, up to
+  four bounded failure messages, an omitted-failure count, and the report
+  digest. It records no assertion loci or locus completeness counts.
+- The diagnosis cites episodes inside one typed causal contrast. The
+  validator does not require contrast, report, or locus digests.
+- The trajectory corpus and the collector admit only the development and
+  capability-search groups of `cases.json`.
+- The evidence bundle is built and checked by the evidence crate, as the
+  last paragraph of this section states.
+
 The self-improvement workflow has at most three model nodes. A Sol diagnosis
 node reads the bounded trajectory digest and returns a typed causal
 intervention. It has no source-tree inspection tool or access.
@@ -905,12 +930,11 @@ promotion remains an external evaluation decision. A failed artifact sets
 `direct_implementation_required`. The campaign then proceeds with a direct
 implementation.
 
-The runner records every accepted candidate as a digest-addressed adoption
-bundle completed through the adoption crate's `build-adoption-bundle`
-binary, whose adoption record cites the accepted verifier result and the
-predecessor contract fingerprint, in the layout
-[`docs/adoption.md`](../../docs/adoption.md) specifies and
-`verify-adoption-bundle` checks. Every adoption materializes the contract
+The runner records every accepted candidate as a digest-addressed evidence
+bundle. The `foe-evidence` crate's `build-evidence-bundle` binary completes
+it. Its adoption record cites the accepted verifier result and the
+predecessor contract fingerprint. [`docs/evidence.md`](../../docs/evidence.md)
+specifies the layout, and `verify-evidence-bundle` checks it. Every adoption materializes the contract
 document that will run under it.
 
 ## Recorded capability conversion and diagnosis sufficiency

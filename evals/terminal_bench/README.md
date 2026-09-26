@@ -44,13 +44,14 @@ Install Harbor with `uv`:
 uv tool install harbor==0.22.0
 ```
 
-Authenticate Foe once:
+Authenticate Foe once, then list the configured credential paths:
 
 ```sh
+bazel run //:foe -- login openai-codex
 bazel run //:foe -- login --status
 ```
 
-The runner copies `openai-codex.json` to
+The runner copies `~/.config/foe/credentials/openai-codex.json` to
 `~/.cache/foe/terminal-bench/openai-codex.json`. A serial trial receives this
 private working copy and can return a refreshed credential before the next
 trial. The original login file remains unchanged. The runner holds a file lock
@@ -371,7 +372,7 @@ planning average and prices each model route separately.
 
 ## Run the staged task sets
 
-The development target contains six tasks with inspected trajectories:
+The development target contains twelve tasks with inspected trajectories:
 
 - `cancel-async-tasks`
 - `git-multibranch`
@@ -379,6 +380,12 @@ The development target contains six tasks with inspected trajectories:
 - `sqlite-db-truncate`
 - `sanitize-git-repo`
 - `large-scale-text-editing`
+- `gpt2-codegolf`
+- `fix-ocaml-gc`
+- `path-tracing-reverse`
+- `regex-chess`
+- `model-extraction-relu-logits`
+- `dna-assembly`
 
 Preview or run one attempt per development task:
 
@@ -394,8 +401,8 @@ bazel run //evals/terminal_bench:foe-development -- \
   --confirm-spend
 ```
 
-The capability-search target contains twelve development tasks. Opening a result
-makes that task development evidence:
+The capability-search target contains five other inspected tasks for
+diagnostic work. Opening a result makes that task development evidence:
 
 ```sh
 bazel run //evals/terminal_bench:foe-capability-search
@@ -405,8 +412,8 @@ bazel run //evals/terminal_bench:foe-capability-search -- \
   --confirm-spend
 ```
 
-The confirmation target contains four tasks that stay closed until a candidate
-and acceptance rule are frozen. Run two attempts per task:
+The confirmation target contains eight tasks that stay closed until a
+candidate and acceptance rule are frozen. Run two attempts per task:
 
 ```sh
 bazel run //evals/terminal_bench:foe-confirmation
