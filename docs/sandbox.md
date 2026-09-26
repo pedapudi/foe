@@ -64,7 +64,8 @@ executable before confinement. An ELF executable names its dynamic loader in
 a `PT_INTERP` program header. A script names its interpreter in the first
 line. The policy grants execute access to that exact loader or interpreter.
 Library directories remain readable because the loader searches them for
-shared objects. They carry no execute permission.
+shared objects. They carry execute permission only when an execute grant
+names a directory, as the table above states.
 
 An execute grant on a directory permits executable files below that
 directory. The runtime does not enumerate a mutable directory to infer
@@ -134,7 +135,7 @@ recorded as 7. Version 0 means Landlock is absent or disabled.
 | 1 | 5.13 | filesystem access by path: read, write, create, remove, and execute, as listed above |
 | 2 | 5.19 | renaming and linking across directories is part of write access |
 | 3 | 6.2 | truncation is part of write access |
-| 4 | 6.7 | TCP: an executable with `network: false` can neither bind nor connect; an episode without a `model` block cannot connect |
+| 4 | 6.7 | TCP: a process binds only the ports its policy lists, and connects only when its policy permits outbound TCP; an executable with `network: false` cannot connect |
 | 5 | 6.10 | device control calls (`ioctl`) on device files are part of write access |
 | 6 | 6.12 | a sandboxed process cannot signal a process outside its sandbox and cannot connect to abstract Unix sockets created outside it |
 | 7 | 6.15 | the kernel logs each denied access to the audit subsystem, including denials inside executables the episode starts |
@@ -205,7 +206,9 @@ The episode keeps:
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
   a viewer, on the viewer's port, which the command line adds to the policy
   before applying it;
-- no outbound TCP when a host process supplies the model backend.
+- no outbound TCP when a host process supplies the model backend and no
+  reachable contract declares a `model` block or a configured tool with
+  `network: true`.
 
 ## Process ownership
 
@@ -286,7 +289,9 @@ held inode. Construction tries the parent of the episode log directory, `/tmp`, 
 `/var/tmp`, in that order. Each attempt combines directory creation with the
 filesystem checks for that directory. A filesystem mounted with `noexec` is
 skipped. Construction fails when no writable, executable location can be
-separated from the declared write roots.
+separated from the declared write roots. A write grant on `/` waives that
+separation, because no directory lies outside it and the episode could reach
+the store wherever it was put.
 
 The captured executable has no write bits, and the runtime retains a read-only descriptor
 for its inode. Construction checks its mode, mount flags, and stored bytes.
@@ -325,8 +330,8 @@ reachable through spawn grants and workflow nodes. Descriptor remapping
 preserves standard input, standard output, standard error, and every source
 descriptor when source and target numbers overlap.
 
-A spawn refused because the file is busy is tried again, ten times at twenty
-milliseconds. A fork copies the whole descriptor table, so a process forking
+A spawn refused because the file is busy is attempted up to ten times in
+all, twenty milliseconds apart. A fork copies the whole descriptor table, so a process forking
 anywhere in the runtime holds every writable descriptor open until it execs
 its own image, and while it does the kernel refuses to execute a file one of
 those descriptors names. The condition is another process's exec away from
@@ -346,8 +351,9 @@ The enclosing task environment owns process cleanup, as
 
 One request may replace the derived narrowing with a policy of its own.
 The built-in `compose_tools` tool is the one caller. Its interpreter runs with
-read on `/usr` alone, execute on the interpreter, write on nothing, and no
-network, in place of the episode's roots. [tool-composition.md](tool-composition.md)
+read on `/usr`, execute on the interpreter, write on nothing, and no network,
+in place of the episode's roots. The library, system, and device paths apply
+to it as to every process. [tool-composition.md](tool-composition.md)
 specifies that confinement.
 
 Each executable also runs in its own process group. When its timeout
@@ -417,7 +423,8 @@ enforced.
 `best-effort` records a number rather than a list of features, because the
 list is a function of the number, given in the table above. A reader of the
 log who sees `landlock_abi: 4` knows that the filesystem and TCP were
-enforced and that signals and audit logging were not.
+enforced, and that device control calls, signal and abstract-socket scoping,
+and audit logging were not.
 
 `required` requires Landlock. Process ownership has a separate recorded
 guarantee because the execution contract has no key that requires cgroup
@@ -430,7 +437,7 @@ reason explains why cgroup ownership was unavailable.
 ## Denied accesses
 
 The log format defines a `sandbox/denied` event for an access the kernel
-refused. The runtime does not yet emit it. From version 7 the kernel writes
+refused. The runtime does not emit it. From version 7 the kernel writes
 one audit record per denial, but an unprivileged process cannot read them:
 the audit socket requires the `CAP_AUDIT_READ` capability, and the audit
 daemon's log file is readable by the superuser alone. The runtime enables
