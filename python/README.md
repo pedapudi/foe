@@ -1,8 +1,8 @@
 # foe, the Python package
 
 A host for the foe runtime. The package builds the configuration document,
-runs the `foe` binary, answers the host protocol over the binary's standard
-input and standard output, and returns a typed outcome. When a contract omits
+runs the `foe` binary, answers the host protocol over two pipes that it names
+to the binary with `--protocol-fds`, and returns a typed outcome. When a contract omits
 the `model` block, the host supplies a model backend callback. A `model` block
 directs the binary to call the configured endpoint. Host tool calls are routed
 to callables the embedding contract supplies.

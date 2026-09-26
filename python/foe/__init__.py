@@ -2,7 +2,8 @@
 
 The package builds the configuration document docs/config.md specifies,
 runs the `foe` binary, answers the host protocol docs/protocol.md specifies
-over the binary's standard input and output, and returns a typed outcome.
+over two pipes the binary receives with `--protocol-fds`, and returns a typed
+outcome.
 It executes no tool of its own: a host tool is routed to the callable the
 embedding contract supplies. The host supplies a model backend when the
 document has no `model` block. When the document has a `model` block, the

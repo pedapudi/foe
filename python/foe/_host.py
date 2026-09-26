@@ -128,7 +128,8 @@ class Handle:
 
     `wait` returns the outcome. `steer` appends to the episode's inbox with
     source `parent`. `cancel` asks the runtime to stop and returns the
-    outcome it records, which is `Failed("cancelled")`.
+    outcome it records, which is `Blocked("cancelled", "stopped by the
+    caller")`.
 
     `pid` is the process id of the binary, and `runtime` is the build
     identity that binary stated. A handle is returned only after

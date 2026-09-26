@@ -78,7 +78,7 @@ class Runtime:
 
 @dataclass(frozen=True, slots=True)
 class Event:
-    """One log event as foe wrote it to standard output.
+    """One log event as foe wrote it to the protocol pipe.
 
     `episode_id` is set when the event was forwarded from a child episode
     and is None for the root episode. `version` is the log format version,
