@@ -54,6 +54,26 @@ configuration's model, reasoning effort, service tier, and token policy.
 The corpus manifest records the source revision and runtime binary used for
 this match. Task execution, corpus snapshotting, and promotion remain
 separate operations. Autonomous cross-run promotion remains unsupported.
+[`evals/terminal_bench/README.md`](../evals/terminal_bench/README.md)
+"Use the trajectories for improvement" gives the commands.
+
+## Other evidence-guided loops
+
+Two further suites close a loop from assessed evidence to a candidate
+change.
+
+- [`evals/harness_bench/`](../evals/harness_bench/README.md) combines the
+  model-backed micro evaluation report with a Harness-Bench development
+  report into one bounded evidence file. A workflow with one evidence node
+  and two model nodes then diagnoses one runtime limitation and changes a
+  clean candidate checkout. The runner refuses a candidate whose Git tree or
+  runtime binary differs from the pair the evidence names.
+- [`evals/config_repair/`](../evals/config_repair/README.md) repairs a
+  contract rather than the runtime. A baseline run fails on a contract that
+  selects a shell tool with an empty `grants.execute`. A repair child
+  returns a corrected contract, and an unchanged external evaluator reruns
+  the task. It rejects a candidate that grants an unapproved executable,
+  widens any other grant, or weakens the sandbox.
 
 ## Workflow structure
 
@@ -171,7 +191,7 @@ A model commonly edits files, calls a checker, receives a clean result, and
 uses another model request to report completion. That last request repeats
 the full conversation and changes no artifact.
 
-foe now treats a non-error call to the declared verifier as a completion
+foe treats a non-error call to the declared verifier as a completion
 signal. The runtime invokes the verifier in its authoritative mode after the
 turn settles. A clean result completes the episode before budget exhaustion
 is applied.
@@ -237,7 +257,7 @@ explained the complete byte count. A model wrote the required phrase across
 two Markdown lines. The content was correct, but the checker reported a
 finding and caused three additional model turns.
 
-The checker now normalizes Markdown line breaks before applying the semantic
+The checker normalizes Markdown line breaks before applying the semantic
 phrase check. Its regression fixture wraps the phrase across two lines. An
 evaluator should reject incorrect meaning while accepting formatting that
 does not change meaning.
@@ -381,7 +401,7 @@ Run the deterministic workflow and its forced-correction test:
 
 ```sh
 bazel run //examples/self-extension:self-improvement-workflow
-bazel test //examples/self-extension:self_improvement_workflow_model_runner_test
+bazel test //examples/self-extension:self_improvement_workflow_test
 ```
 
 Print the provider-backed spending plan, then run three fresh attempts:
