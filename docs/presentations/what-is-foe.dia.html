@@ -516,13 +516,13 @@ li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: 
   <h2 class="dia-title">Budgets are safety floors</h2>
   <div class="dia-columns">
     <div class="dia-body">
-      <p>Model calls, tokens, wall-clock seconds, episode count, concurrency —
-      each is a declared ceiling the runtime enforces across the whole
-      episode tree.</p>
+      <p>Model calls, tokens, wall-clock seconds, depth, episode count,
+      concurrency — each is a declared ceiling the runtime enforces, and
+      all but concurrency apply across the whole episode tree.</p>
       <p>The stance matters more than the mechanism: budgets are sized
       generously so quality is never traded for thrift. A provider outage,
       for instance, is waited out with growing delays for as long as the
-      seconds budget funds the next attempt — the budget, rather than an
+      budget funds the next attempt — the budget, rather than an
       arbitrary retry count, is the bound.</p>
       <p>Capability grows through better contracts and workflows, never by
       quietly loosening the floor.</p>
@@ -630,7 +630,7 @@ li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: 
         the binary, and services host tools; the host supplies a model backend
         or the binary calls the configured endpoint.</li>
         <li><strong>Under a host</strong> — any process can drive foe over the
-        line-oriented protocol on standard input and output.</li>
+        line-oriented protocol, one pipe in each direction.</li>
       </ul>
       <p>All three doors open onto the same room: one contract, one episode,
       one log.</p>
@@ -687,7 +687,7 @@ li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: 
       <li><code>docs/design.md</code> — the guarantees, stated exactly</li>
       <li><code>docs/presentations/foe-overview.dia.html</code> — architecture and the feature set</li>
       <li><code>docs/presentations/foe-isolation-and-permissions.dia.html</code> — the authority model, why and how</li>
-      <li><code>examples/</code> — thirteen runnable episodes, from <code>minimal</code> to <code>team</code></li>
+      <li><code>examples/</code> — fourteen runnable episodes, from <code>minimal</code> to <code>team</code></li>
       <li><code>foe init --repository .</code> — a working contract for your own repository</li>
     </ul>
   </div>
