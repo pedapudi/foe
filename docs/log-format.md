@@ -16,11 +16,17 @@ changing a required field requires a new log version.
 ```
 <episode-dir>/
   episode.jsonl          the log
-  spill/                 canonical values and complete result renderings too large to inline
-    renderings/          complete renderings, named by their SHA-256 digest
+  spill/                 canonical values too large to inline, and captured process output
+    renderings/          complete renderings the turn budget shortened, named by their SHA-256 digest
   tmp/                   scratch space for the episode's executables, named as TMPDIR
   children/<child-id>/   child episodes, each with this same layout
 ```
+
+Before it launches a child, the parent writes two files into the child's
+directory: `config.json`, the child's configuration, and
+`child-launch.json`, the launch metadata that names the child and carries
+its effective budget, granted write roots, and process-boundary paths.
+Neither file enters the log.
 
 An episode directory is self-contained. Copying it copies everything needed
 to view, replay, or fork the episode and its descendants.
@@ -36,10 +42,10 @@ lock.
 
 The writer appends each event with a single write call and flushes it before
 echoing the same bytes to the host protocol channel, when a host named one.
-It forces the file to disk after `episode/start`, after every `tool/result`
-whose tool declared an effect other than `pure` or `reads`, and before
-`episode/end`. A crash between
-those points loses at most the events since the last forced write, and the
+It forces the file to disk after `episode/start` and the task item that
+follows it, after every `tool/result` whose tool declared an effect other
+than `pure` or `reads`, and both before and after `episode/end`. A crash
+between those points loses at most the events since the last forced write, and the
 seeding rules repair whatever the lost events would have closed.
 
 An append error can occur after the file or its mirror received the bytes.
@@ -120,8 +126,8 @@ nothing emits it.
       ],
       "execute": [
         {
-          "path": "/opt/tools/check",
-          "reason": "selected configured tool contract.tool_defs.check",
+          "path": "captured:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "reason": "selected configured tool contract.tool_defs.check; captured from /opt/tools/check",
           "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         }
       ],
@@ -230,7 +236,7 @@ model received and a pointer to the header in effect.
 for the first time. `messages` is the full derived message list, in the
 form defined under [Derived messages](#derived-messages).
 `max_output_tokens` is the cap the model route receives after the runtime has
-considering the remaining episode-wide output allowance. It is omitted when
+applied the remaining episode-wide output allowance. It is omitted when
 neither the configuration nor the budget supplies a cap. A provider can lack
 an equivalent request field; [models.md](models.md) records those cases.
 
@@ -385,9 +391,9 @@ settlement the runtime also writes one result with `synthetic: true` for
 each surviving process session. An episode-lifetime result records the
 implicit stop. A task-lifetime result records that the process group had a
 live member when ownership passed to the enclosing task
-environment. The group leader may already have exited. The result carries
-`lifetime: "task"`, `disposition: "released_to_task_environment"`, `pid`,
-and `process_group`. Its `call_id` names no call, so it closes nothing; see
+environment. The group leader may already have exited. The result's
+`value` carries `lifetime: "task"`,
+`disposition: "released_to_task_environment"`, `pid`, and `process_group`. Its `call_id` names no call, so it closes nothing; see
 [Open obligations](#open-obligations).
 
 `tool/rendering-archive` — implemented. The turn budget shortened one tool
@@ -523,9 +529,9 @@ configured completion signal. The request records the item's sequence in
 `consumed`. The item changes no budget and completes no episode.
 
 A `session` item is written once per session lifetime, on exit only: its
-text is the session subject line — the id, the exit status, and the
-lifetime — and `from` is the session id. The runtime observes exits before
-deriving a request, while a turn's tool calls run, and at settlement; a
+text is the session subject line — the id, the exit code or `killed`, and
+the seconds the process ran — and `from` is the session id. The runtime
+observes exits before deriving a request, while a turn's tool calls run, and at settlement; a
 session's output never enters the inbox. The value is additive to the
 frozen format: the `inbox/item` payload is unchanged, and a reader compiled
 before the value existed rejects a log that carries it, as for an added
@@ -652,17 +658,20 @@ redelivery creates one peer inbox item.
   "status": "running",
   "owner": "ep_b2",
   "blocked_by": ["task_01", "task_02"],
-  "scope": ["tests"],
+  "write": ["tests"],
   "call_id": "tc_07"
 }
 ```
 
 `status` is `queued`, `running`, `completed`, `blocked`, `exhausted`, or
-`failed`. A queued task has no owner. A running or settled task names its
-child episode in `owner`. A terminal revision carries that episode's
+`failed`. `write` lists the write roots the lead granted the task's child,
+each within the lead's own; it is omitted when the child writes nothing.
+`blocked_by` is omitted when the task has no dependencies. A queued task
+has no owner. A running or settled task names its child episode in
+`owner`. A terminal revision carries that episode's
 `outcome`. Each revision increases `revision` by one and leaves the task
-identifier, name, contract, description, context, dependencies, scope, and
-originating call unchanged.
+identifier, name, contract, description, context, dependencies, write
+roots, and originating call unchanged.
 
 The first task on every board is derived from `episode/start`. It has
 identifier `task_root`, revision zero, and the lead episode as its owner.
@@ -919,6 +928,7 @@ Given a source log and a boundary `seq` N:
 1. Write a fresh `episode/start` at `seq` 0 with a new `id` and `fork_origin`
    set to the source episode and N. As the first event of a new log, it
    states the seeding writer's format version, whatever the source stated.
+   `parent_id` and `team_id` name the new episode's own parent and lead.
    An ordinary fork copies the other fields.
    A spawned fork records the spawned child's declared contract, contract
    fingerprint, and effective runtime allowance. It copies the remaining fields.
@@ -970,12 +980,16 @@ carries is appended as a live `system` inbox item after `seed/end`,
 because rule 1 copies the `task` item and the format admits one per log.
 A run whose task the source log recorded appends nothing, because the copied
 prefix already carries that task.
-`--from SOURCE_DIR` without a boundary resumes that episode
-under the execution contract that ran it. The launch is
+`--from SOURCE_DIR` with neither a boundary nor a task resumes an episode
+that has not ended, under the execution contract that ran it. A task given
+for an episode that has not ended, or no task for one that ended, is
+refused. The launch is
 refused, with both fingerprints named, when the given configuration's
 fingerprint differs from `episode/start.contract_fingerprint`. A log ending at
-`seed/end` instead uses the execution contract recorded by its source's
-`episode/start`. A log that ends at an event
+`seed/end` skips that comparison unless a parent spawned it, because its
+`episode/start` records its source's contract. Resuming is also refused
+while an `ask` result recorded after the last `seed/end` has no `response`
+item carrying its `message_id`. A log that ends at an event
 boundary with every binding obligation closed, including one ending at
 `seed/end`, is appended to as it stands; one cut short mid-line or with a
 binding obligation open is seeded at N equal to its count of complete
@@ -1010,7 +1024,12 @@ The model reports `goal-unreachable`, `ambiguous-task`, and
 `missing-capability` by calling the built-in `block` tool with the code and a
 message. A contract that lists `spawn` and has a non-empty `grants.spawn` may
 also report `child-blocked`. The runtime detects the looping and verification
-codes. The workflow executor produces the recovery codes.
+codes, and a `cancel` line from the process that started the episode
+produces `cancelled`. The workflow executor produces the recovery codes. A
+workflow recovery decision that aborts names one of the three model-reported
+codes, `verification-unsatisfiable`, or `child-blocked`. A lead's board
+records `child-blocked` as the outcome of a task whose dependencies did not
+complete.
 
 ## Exhausted limits
 
