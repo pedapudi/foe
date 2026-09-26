@@ -233,8 +233,9 @@ The comparison below is against documented behavior of the surveyed systems.
 
 - **Contract fingerprint as a hash computed from configuration alone.** foe
   defines `fingerprint(contract)` as a SHA-256 digest over instructions, tool
-  specifications, grant policy, budget, termination condition, child contract
-  fingerprints, runtime-contributed strings, and runtime version. Computing the
+  specifications, the kinds and counts of grants, budget, termination
+  condition, child contract fingerprints, runtime-contributed strings, and
+  the runtime's version and build hash. Computing the
   fingerprint does not start an executable, access a network, or read a
   credential. No surveyed system documents a
   content-addressed fingerprint for an agent configuration. Managed Agents
@@ -281,12 +282,14 @@ The comparison below is against documented behavior of the surveyed systems.
   accounting has no documented counterpart.
 - **Termination that a parent can route on.** A2A's task lifecycle includes
   `INPUT_REQUIRED`, and Claude Code on the web lets a session ask and wait.
-  No foe episode waits for a person. Its `wait` tool holds an episode until
-  the children it started have ended, and nothing holds one for an answer
+  No foe episode waits for a person. Its `wait` tool holds an episode only
+  for events inside the episode tree: a child's outcome, a process
+  session's exit, or a team member's answer to a question, which carries a
+  deadline and a default answer. Nothing holds an episode for an answer
   from outside the tree. An episode ends in one of `Completed`, `Blocked`
   with a code from a fixed vocabulary, `Exhausted`, or `Failed`, and the
   runtime itself ends an episode that repeats a tool call or a reasoning
-  turn eight times. OpenHands headless mode and Antigravity's `/goal` also
+  turn eight times in a row, the default of `budget.loop_threshold`. OpenHands headless mode and Antigravity's `/goal` also
   omit a state that waits for a person. Among the surveyed systems, only foe
   documents a fixed blocking vocabulary for parent routing.
 
@@ -298,8 +301,11 @@ OpenHands exposes a `stuck` status. Copilot imposes a hard session cap. Each
 mechanism covers one part of foe's runtime contract. Local harnesses with
 approvals disabled provide
 unattended execution without foe's runtime contract. Claude Code on the web
-and sandbox-runtime isolate credentials through network proxies. foe isolates
-credentials by running a host-supplied model backend in a separate process.
+and sandbox-runtime isolate credentials through network proxies. foe keeps
+credentials in one of two places. A host-supplied model backend holds them
+in a separate process. With a `model` block, the episode process reads the
+credential file, and every tool process runs under a narrower ruleset that
+drops it.
 
 ## Where foe is behind
 
@@ -311,7 +317,8 @@ credentials by running a host-supplied model backend in a separate process.
   a branch, pull request, or diff. foe reports an outcome value and a log.
   Producing a branch and a pull request requires the
   caller to grant `git` and a forge CLI as configured executables and to
-  write instructions for them. No example configuration does this yet.
+  write instructions for them. No example configuration under `examples/`
+  does this.
 - **No entry points from issue trackers or chat.** Copilot, Devin, Jules,
   Codex cloud, and Kiro all accept a task from GitHub, Slack, Linear, or
   Jira. foe accepts a task from a command line or a host process.
@@ -330,16 +337,19 @@ credentials by running a host-supplied model backend in a separate process.
   attach it to foe directly.
 - **No ACP implementation.** The ACP registry lists agents available to Zed
   and JetBrains. foe is absent from the registry.
-- **No published external benchmark results.** Claude Code, Codex, Terminus,
+- **No official external benchmark results.** Claude Code, Codex, Terminus,
   Cursor CLI, and mini-SWE-agent publish Terminal-Bench 2.1 scores and costs.
-  foe has no published SWE-bench Verified or Terminal-Bench result, so its
+  foe has no SWE-bench Verified or Terminal-Bench leaderboard result. The
+  records under `evals/terminal_bench/` cover a pinned subset of
+  Terminal-Bench 2.1 and do not constitute an official score, so foe's
   success rate on broad autonomous tasks is unknown.
 - **Follow-ups fork rather than extend.** An interrupted episode resumes
-  through the running form, and `--from DIR@SEQ` seeds a fresh episode from
-  any log prefix, but a finished episode is never extended. The persistent
-  products
-  and harnesses in the survey offer a follow-up message on a finished
-  session; in foe such a follow-up is a forked new episode.
+  through the running form's `--from DIR`, and `--from DIR@SEQ` seeds a
+  fresh episode from any log prefix, but a finished episode is never
+  extended. The persistent products and harnesses in the survey offer a
+  follow-up message on a finished session. In foe, `foe "task" --from DIR`
+  on a finished episode starts a new episode with the whole conversation as
+  context.
 - **No workspace checkpoint tied to a fork.** Log-prefix seeding preserves
   model-visible history, but foe does not capture or attest the corresponding
   filesystem state. Exo snapshots and rewinds sandbox state independently of
@@ -347,20 +357,20 @@ credentials by running a host-supplied model backend in a separate process.
   restore the workspace that existed at the selected log event.
 - **No browser or computer use.** Cursor Cloud Agents and Devin give the
   agent a browser. foe's built-in coding tools are `read`, `grep`, `edit`,
-  `bash`, and `retrieve`.
+  `bash`, `session`, and `compose_tools`, and none of them drives a browser.
 - **No stable interface.** The design document states that no interface is
   stable. Every integration path below depends on CLI and protocol contracts
   that may change.
 
 ## Default coding tool surface
 
-The built-in coding contract exposes `read`, `grep`, `edit`, `bash`, and
-`retrieve`.
-These five tools cover inspection, content search, exact text replacement,
-and arbitrary local commands. The `bash` tool also provides file discovery,
-file creation, version control, builds, and tests. This dependence gives
-read-only execution contracts less file-discovery capability and makes common file
-operations harder to constrain and inspect.
+The built-in coding contract exposes `read`, `grep`, `edit`, and `bash`,
+and `block` for reporting a blocking condition. The four working tools cover
+inspection, content search, exact text replacement and file creation, and
+arbitrary local commands. The `bash` tool also provides file discovery, file
+removal and renaming, version control, builds, and tests. This dependence
+gives read-only execution contracts less file-discovery capability and makes
+common file operations harder to constrain and inspect.
 
 ### Search uses ripgrep's engine already
 
@@ -405,10 +415,11 @@ published measurements cover local latency, hash collisions, and deterministic
 behaviors. Neither repository publishes a paired comparison of completed
 coding tasks, model calls, retries, and tokens against exact-text editing.
 
-foe can borrow Oh My Pi's file-version guard without adding its patch
-language. `read` can emit one content hash for the observed file. `edit` can
-accept the hash as an expected version and reject the entire batch when the
-file has changed. The guard preserves the existing two-tool interaction.
+foe has a file-version guard of the kind Oh My Pi uses, without its patch
+language. `read` returns a `version`, the SHA-256 of the file's raw bytes.
+`edit` accepts that value as `expected_version` and refuses the whole call
+when the file has changed. The guard preserves the existing two-tool
+interaction.
 
 Line-anchored ranges should replace exact-text editing only if a paired
 evaluation shows a higher hidden-test pass rate or fewer calls at the same
@@ -427,11 +438,11 @@ the model-facing vocabulary small.
    and returns a bounded deterministic result. A read-only contract can then
    discover an empty file, a binary asset, or a filename whose contents
    contain no searchable term.
-2. **Create, remove, and rename text files.** Extend `edit` with these three
-   operations. Creation must refuse an existing path. Removal must
-   require the expected file version. Rename must refuse an existing
-   destination. Keeping these operations under `edit` preserves one mutation
-   concept and one write-effect boundary.
+2. **Remove and rename text files.** `edit` already creates a missing or
+   empty file from one edit with an empty `old_text`. Extend it with removal
+   and renaming. Removal must require the expected file version. Rename must
+   refuse an existing destination. Keeping these operations under `edit`
+   preserves one mutation concept and one write-effect boundary.
 
 Symbol navigation can improve large-repository work, but a default
 implementation would add language parsers, generated indexes, and new result
@@ -449,17 +460,18 @@ bounded episode and a fixed contract fingerprint.
    the running form's `--from`. Record a caller-supplied workspace snapshot
    or baseline identifier in the new episode. Refuse the fork when the
    restored workspace does not match that identifier.
-2. **Content-addressed spill values.** Add a content hash to every spill
-   locator. Large canonical values then retain an immutable content digest without a
-   general artifact database.
-3. **Verification-gated self-extension.** Let a child episode modify foe in a
+2. **Verification-gated self-extension.** Let a child episode modify foe in a
    separate worktree. Build and test the candidate before starting it as a
    fresh contract fingerprint. The active episode continues under its original
    binary and policy.
-4. **Enforced process resources.** Derive CPU, memory, and process-count
-   limits through Linux control groups (cgroups). Record whether the host
+3. **Enforced process resources.** foe already places each episode in a
+   cgroup v2 leaf to own and clean its process subtree when the host
+   delegates a hierarchy. Add explicit CPU, memory, and process-count limits
+   through the same control groups (cgroups). Record whether the host
    enforced each requested limit or observed it without enforcement.
-5. **History retrieval after compaction.** Add model-visible history lookup
+   [deferred.md](deferred.md) "Cgroup resource controllers" states what that
+   vocabulary requires.
+4. **History retrieval after compaction.** Add model-visible history lookup
    through the context-policy seam only when compaction is active. A
    compaction-loss evaluation must show that retrieval improves obligation or
    evidence recovery before it becomes a built-in tool.
@@ -606,8 +618,9 @@ What the person gets back:
 
 A person who delegates the same contract repeatedly keeps the contract file
 under version control. Each run records the fingerprint reported by `foe plan
---config CONTRACT.json --json`. Two runs with the same hash differ only in
-their task and model responses.
+--config CONTRACT.json --json`. Two runs with the same hash can still differ
+in their task, model route, sandbox mode, and granted paths, which the
+fingerprint excludes, and in the model's responses.
 
 ## Sandboxing options for the executor
 
@@ -657,8 +670,8 @@ Three readings of the table:
 
 The compositional reading is the practical one. The mechanisms nest:
 Flatpak pairs bubblewrap with seccomp; Kata puts containers inside VMs;
-Harbor runs foe inside Docker, where foe's own Landlock layer is
-currently disabled and the container is the boundary. foe's design
+Harbor runs foe inside Docker, where the Terminal-Bench adapter sets
+`sandbox.mode: off` and the container is the boundary. foe's design
 assumes this layering — its per-episode, per-executable sealing is the
 innermost ring, cheap enough to apply always, and whatever outer ring a
 deployment chooses adds its guarantees independently.
@@ -684,17 +697,17 @@ macOS path (the `sandbox-exec` profile language) is likewise recorded in
 The five items below are in priority order. Each names the gap it closes.
 
 1. **Complete the common file operations.** Add deterministic path discovery
-   and explicit file lifecycle operations. Add a file-version guard to
-   `read` and `edit`. Compare exact-text and hash-anchored editing on a paired
-   model evaluation before changing the default edit representation.
+   and file removal and renaming. Compare exact-text and hash-anchored
+   editing on a paired model evaluation before changing the default edit
+   representation.
 2. **Make forks reproduce workspace state.** Record a workspace snapshot or
-   baseline identifier for each `--from` launch, reject a mismatch, and hash every spilled value.
+   baseline identifier for each `--from` launch, and reject a mismatch.
    This closes the largest evidence gap revealed by Exo.
 3. **Enforce structural resource limits.** Use root-held leases for
    whole-tree episode and concurrency caps. Apply cgroup limits for CPU,
    memory, and process count. Record observed limits separately when the host
    cannot enforce them.
-4. **Publish assessed quality and cost.** Run foe's deterministic micro
+4. **Publish assessed quality and cost.** Run foe's model-backed micro
    evaluation on every release. Publish a fixed Harness-Bench or
    Terminal-Bench slice with repeated attempts, model, contract fingerprint,
    tokens, calls, wall time, and typed outcome distribution.
