@@ -19,11 +19,11 @@ to find the relevant specification, report, or guide.
 | [sdk.md](sdk.md) | how a Python application builds a configuration, runs an episode, and supplies a model backend |
 | [tools.md](tools.md) | what each built-in tool does and how executables and host tools become tools |
 | [sandbox.md](sandbox.md) | how grants become kernel restrictions and what happens when the kernel lacks them |
-| [telemetry.md](telemetry.md) | the metrics an episode emits, what each counts, and where they are written |
+| [telemetry.md](telemetry.md) | what telemetry derives from a finished episode log when enabled, the trace schema it writes, and what it never emits |
 | [viewer.md](viewer.md) | what the viewer shows and how it is served and exported |
 | [viewer-study.md](viewer-study.md) | the options weighed for reading a run before the viewer took its present shape |
 | [landscape.md](landscape.md) | what other agent runtimes do and where foe differs |
-| [deferred.md](deferred.md) | the features with reserved event types or keys and no implementation |
+| [deferred.md](deferred.md) | the anticipated features that are not implemented, what each reserves, and the features the design rejects |
 | [workflow.md](workflow.md) | how a declared graph of nodes runs, where the model keeps its judgment inside it, and how failures are recovered |
 | [compaction.md](compaction.md) | when the model's context is compacted, where the conversation is cut, what the summary carries, and what compaction loses |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
@@ -42,6 +42,6 @@ diastil editor or any text editor.
 | [presentations/foe-isolation-and-permissions.dia.html](presentations/foe-isolation-and-permissions.dia.html) | the isolation and permissions model — why authority is an allow list, and how it is enforced |
 
 The repository root holds `README.md`, an overview, and `AGENTS.md`, the
-rules for changing the repository. `examples/` holds thirteen runnable
+rules for changing the repository. `examples/` holds fourteen runnable
 programs, one per mechanism. Each uses deterministic responses and checks its
 own result; `examples/README.md` indexes them.
