@@ -186,7 +186,9 @@ a replay that has not finished.
 
 ## What the viewer shows
 
-Below the top bar the page has four regions.
+The page opens in the outline arrangement that "The unified outline"
+describes. A control in the top bar switches to the arrangement labeled
+`details`, in which the page has four regions below the top bar.
 
 - The **episodes** region, at the top of the left column, lists parent,
   child, and fork episodes as a tree.
@@ -250,15 +252,16 @@ A rebuild of the runtime changes the fingerprint because the runtime's
 version and build hash are fingerprint inputs. Two runs of one configuration separated by
 a rebuild are therefore two contract groups here, and they are drawn as two.
 
-The episodes tree gives each episode a row about 40 pixels tall: a dot
-coloured by outcome, or, for an episode that has not ended, the brand mark
-pulsing in `--foe-accent` through the eleven frames
-[brand/README.md](brand/README.md) fixes, one frame per hundred
+The episodes tree gives each episode a row about 40 pixels tall. The row
+opens with a dot coloured by outcome. For an episode that has not ended, the
+dot is replaced by the brand mark pulsing in `--foe-accent` through the eleven
+frames [brand/README.md](brand/README.md) fixes, one frame per hundred
 milliseconds, which is the drawing a terminal running the same episode makes
-on its progress line; then the contract name in that agent's identity colour at
-the page's base size, the episode
-id in mono beside it, a second line reading the outcome word with the code
-of a `blocked` outcome or the limit of an `exhausted` one, and under those a
+on its progress line. The first line of text is the contract name in that
+agent's identity colour at the page's base size, with the episode id in mono
+beside it. The second line reads the outcome word followed by the code of a
+`blocked` outcome, the limit an `exhausted` one spent, the error of a
+`failed` one, or how a `completed` one was established. Under those lines is a
 measure of what the episode spent. A spawned child hangs under its parent on
 a solid connector and a fork under its origin on a dashed one, both two
 pixels wide in `--v2-ink-faint`.
@@ -279,11 +282,14 @@ same time each hold the whole interval, so their durations sum past their
 parent's and a bar of one against another would assert a division that did
 not happen.
 
-The details region states the outcome, the model calls, input tokens, and
-output tokens consumed against the limits in
-`episode/start.contract.budget`. It also states the sandbox mode and Landlock
-ABI, the contract fingerprint, the parent, the fork origin, the event count,
-the start time, the duration, and the task. The fingerprint is set as the
+The details region states the outcome, how a completion was established,
+and the model calls, input tokens, and output tokens consumed against the
+limits in `episode/start.contract.budget`. It also states the sandbox mode
+and Landlock ABI, the process cleanup boundary, the contract fingerprint,
+the fork origin, the parent, the team, the end of a seeded prefix, the
+number of children, the team roster, the event count, the start time, the
+duration, and the task. A row appears only when its value is present, so the
+consumption rows wait for the first model call. The fingerprint is set as the
 first eight characters of its digest. Its tooltip holds the whole hash. Its
 text wraps and its numbers are tabular. The region scrolls as a whole when
 its content exceeds it. Nothing inside the region has a separate scrollbar.
@@ -340,7 +346,7 @@ count, and the duration. The finding strings expand behind the row, and
 the `verify` inbox item that carried them to the model renders as the
 user row it is.
 
-Where a message came from is one of the six words `inbox/item` allows, and
+Where a message came from is one of the nine words `inbox/item` allows, and
 the file a spilled tool value sits in under `spill/` is a name a reader
 copies, so both stay text in faint mono beside the rest of the row's
 metadata. Each tool call appears with the text the model received and the
@@ -357,7 +363,7 @@ the bundle which episodes exist and in what order.
 The trajectory draws one row per episode, in the order the tree lists them,
 indented by its depth in the episode tree. The row label is the contract name; the episode id
 stands beside it in the sidebar and in the breadcrumbs, so the row does not
-repeat it. The selected row carries the figure's one accent as a spine down
+repeat it. The selected row carries the figure's one accent as a line down
 its leading edge.
 
 A control in the region's header sets how the run is read. Its first three
@@ -441,8 +447,8 @@ down the figure. A fold is the parent taking what the child returned, so a
 lane whose episode has not settled has none: it branches, runs to the row
 the episode reached, and ends there under the pulsing mark, and its parent
 keeps no ground under it for a fold that has not come. A lane takes the lowest free column when it opens and releases it
-when the episode it draws has settled, so column is occupancy and not tree
-depth — tree depth is carried by the label's indent instead. Occupancy is
+when the episode it draws has settled, so a column records occupancy. The
+label's indent carries tree depth. Occupancy is
 measured on the clock rather than down the figure: a child's rows hang under
 the call that opened it, so three children one turn opened occupy three
 sequential row ranges, and a column released by row alone would draw them as
@@ -452,8 +458,10 @@ own marks: it reports the width its strokes take and gives each row an
 indent from wherever its reader sets the text column, so what stands
 beside the drawing is the caller's decision and not the figure's. Edges
 are cubic with their control points on the midline, except a loop, which returns to the column it left
-and bows out of it. There are no arrowheads: time runs down, so direction
-is unambiguous and a head on every edge would be noise.
+and bows out of it. A branch, merge, or loop edge carries no arrowhead,
+because time runs down and its direction is already unambiguous. A message
+edge runs across between two lanes, so it carries a small head at its
+recipient's end.
 
 The figure paints in three layers — the row highlight, the strokes, then
 the labels — so a selected row never hides a line and a line never crosses
@@ -637,9 +645,9 @@ the hierarchy at once. A control in the top bar chooses between the two,
 and the choice is stored in `localStorage` under `foe.layout` beside the
 theme, the typeface and the text size.
 
-With the outline showing the run it stands in for the episode rail, the
-trajectory region and the conversation tab together, and those are not
-drawn. The raw events, diff, workflow, tasks, and statistics tabs are other
+With the outline showing the run it stands in for the left column, which
+holds the episode rail and the details region, and for the trajectory region
+and the conversation tab. None of those is drawn. The raw events, diff, workflow, tasks, and statistics tabs are other
 readings and stay reachable below it.
 
 ### The channels of a row
@@ -730,16 +738,18 @@ covers several requests and fills `--v2-ink-soft` at 0.8; a tool call is
 usually drawn at its minimum width and fills `--v2-ink` at 0.9. On a run
 bound by the model the request bars therefore stay quiet while the tool
 ticks stay visible, which is the reverse of what an even ink would give.
-Structure that measures nothing takes `--v2-rule`: the episode-tree connectors,
-the depth rail, and the bracket over the runs of one contract.
+Structure that measures nothing takes `--v2-rule`: the parent, child, and
+fork connectors, the depth rail, and the bracket over the runs of one
+contract.
 
 The marks that do carry a direction keep it: a retry and its backoff in
 `--v2-bad`, a compaction and a recovery in `--v2-caution`, a node firing
-that ended in `--v2-good` or `--v2-bad`, and the outcome glyph. A run that
-failed is therefore the only kind of row with red in it.
+that ended in `--v2-good` or `--v2-bad`, and the outcome glyph. Red
+therefore appears only on a row where something failed: a retried request,
+a firing that ended in an error, or a failed outcome.
 
 The outcome glyph is coloured by direction: a filled dot in `--v2-good` for
-`completed`, a cross in `--v2-bad` for `failed`, a triangle in
+`completed`, a cross in `--v2-bad` for `failed`, an open triangle in
 `--v2-caution` for `exhausted`, and a flat bar in `--v2-flat` for
 `blocked`. A running episode ends in an open ring.
 
@@ -797,8 +807,8 @@ child's bar: from the model node's firing when a firing names that child,
 and from the parent's `spawn/start` mark otherwise. It drops at that x,
 turns once in the gap above the child's row, and drops into it, so it
 crosses an intervening row as a hairline rather than sweeping along it. It
-is drawn in the separator ink at 0.9 pixels against a lifetime line of full
-ink at 1.2, because structure recedes behind activity. A fork's connector
+is drawn in the separator ink at 0.9 pixels against a lifetime line of 1.2
+pixels, because structure recedes behind activity. A fork's connector
 runs from the origin's position at the fork boundary and is dashed.
 
 Depth is carried twice in the label column: each level indents the label by
@@ -1110,15 +1120,19 @@ answered step is accented. Clicking a row brings the conversation to that
 request.
 
 **Cache reads** is one proportion bar of cache-read tokens against total
-input tokens, or the absent word when no answer reported the figure.
+input tokens, or the absent word when no answer reported the figure. A
+line under the bar gives the mean, over the requests that reported both
+figures, of each request's cache reads divided by its input. That mean
+weighs every request equally, so one large request cannot hide many
+requests that read nothing from the cache.
 
 **Budget** is one row per declared limit with what the scope spent, the
 share of the limit, and a hairline mark of that share which takes
 `--v2-caution` once the limit is reached.
 
-**Tool calls** is one row per tool name with its call count, the total
-duration its results report, its error count, and a bar of that duration
-against the longest.
+**Tool calls** is one row per tool name, longest total duration first, with
+its call count, the total duration its results report, its error count, and
+a bar of that duration against the longest.
 
 **Every run** replaces the nine figures with one row per root episode: the
 contract name and episode id, the outcome, the model requests, the tokens,
@@ -1173,9 +1187,9 @@ the words `true`, `false`, and `null` in `--v2-accent`, and a string in full
 ink, because in a field list the key beside a string already says it is one.
 A string of at most 140 characters holding no line break sets on its key's
 line; a longer one sets its first line and its length over the whole text.
-Keys keep the order the log wrote them; nothing is sorted. A node opens
-without being asked when it is at most two levels down and would take at
-most twelve lines open.
+Keys keep the order the log wrote them; nothing is sorted. A field's own
+value opens without being asked when it would take at most twelve lines
+open. Every node nested under it stays closed until the reader opens it.
 
 Two properties hold whatever the payload contains. Nothing is dropped: every
 key yields a field, a field whose value does not have the shape its
@@ -1233,10 +1247,11 @@ the rule that the bundle has no dependencies.
 
 **Tool results.** The shape of a `tool/result`'s `rendered` text is decided
 from the text alone. Text carrying diff hunks renders as a diff; text that
-parses as JSON renders as pretty-printed, coloured JSON; text whose lines
-all begin with a number and a tab renders as numbered source, coloured by
-the extension of the `path` in the result's canonical value; everything
-else stays preformatted in mono.
+parses as JSON renders as pretty-printed, coloured JSON; text in which every
+line, or every line but one, begins with a number and a tab renders as
+numbered source, coloured by the extension of the `path` in the result's
+canonical value. The one line allowed without a number is the note a
+truncated read ends with. Everything else stays preformatted in mono.
 
 ## The page
 
@@ -1252,7 +1267,7 @@ the element with id `app`.
 ```
 
 In the JSON written into the page, every `<` is written as the escape
-`<`. Without that, the characters `</script>` inside a tool result or a
+`\u003c`. Without that, the characters `</script>` inside a tool result or a
 task would end the script element and the rest of the log would render as
 page text.
 
@@ -1306,11 +1321,12 @@ failure and retries, so a server started on an empty directory picks up
 each run as its log appears.
 
 An episode seeded from another log carries `fork_origin`, which names that
-log's episode. The runtime writes the seeded episode under the origin's
-own `children/` and gives it a `parent_id` as well, so the origin of a
-fork is always a log in the same tree. No index from episode id to
-directory is therefore needed, and none exists: an episode whose named
-origin is not among the logs read is drawn as a root of its own.
+log's episode. A fork that an episode makes during a run is written under
+the origin's own `children/` and carries a `parent_id` as well, so its
+origin is a log in the same tree. A fork launched with `--from` on the
+command line is written into a fresh directory and carries no `parent_id`.
+No index from episode id to directory exists: an episode whose named origin
+is not among the logs read is drawn as a root of its own.
 
 ## Live mode
 
@@ -1323,7 +1339,9 @@ foe viewer: http://127.0.0.1:41873/?token=3f9c…
 
 That line is the only place a running episode prints the token.
 `foe view DIR --serve` additionally prints the URL as the first line of its
-standard output, for the process that started it. Opening the URL loads the
+standard output, for the process that started it. `foe view` takes the
+port from `--port N` and otherwise asks for an ephemeral one; a run always
+asks for an ephemeral port. Opening the URL loads the
 page in live mode. The bundle then fetches `/episodes` every two seconds
 until every episode it knows about has ended, because a parent can spawn a
 child at any point before its own end, and it opens one event stream per
@@ -1396,7 +1414,7 @@ refuses it.
 
 `foe_view::export(dir)` returns the page as one string with every log under
 `dir` inlined as JSON arrays keyed by episode id, together with the tree.
-The binary writes that string to a file. The file makes no network request:
+`foe view DIR` writes that string to standard output. The file makes no network request:
 script, stylesheet, fonts, and events are all inside it. Its size is the
 bundle plus the fonts plus the logs, and `assistant/chunk` and
 `model/request` events make the logs several times the size of the
@@ -1406,13 +1424,16 @@ when `dir` is neither an episode directory nor a directory holding one.
 
 ## Embedding the bundle
 
-`crates/view/build.rs` copies `view/dist/viewer.js`, `view/dist/viewer.css`,
-and the six font files under `view/fonts/` into the crate's build output,
-where `include_str!` and `include_bytes!` embed them. The bundle is built
-with `pnpm install && pnpm build` in `view/`; a rebuild of `foe-view` then
-picks it up. When the script or stylesheet is absent, the build script
-writes a placeholder that renders a page naming that command, so the crate
-compiles on a machine without Node. When a font file is absent, that font
+`view/build.mjs` writes a deflated copy of the script and the stylesheet
+beside `view/dist/viewer.js` and `view/dist/viewer.css`.
+`crates/view/build.rs` copies `view/dist/viewer.js.deflate`,
+`view/dist/viewer.css.deflate`, and the two font files under `view/fonts/`
+into the crate's build output, where `include_bytes!` embeds them. The crate
+inflates the script and the stylesheet once, on the first page it builds.
+The bundle is built with `pnpm install && pnpm build` in `view/`; a rebuild
+of `foe-view` then picks it up. When the script or stylesheet is absent, the
+build script writes a placeholder that renders a page naming that command,
+so the crate compiles on a machine without Node. When a font file is absent, that font
 is left out: the server answers 404 for it, the stylesheet's reference to it
 is left as written, and the browser falls back to the next family in the
 stylesheet's font stack.
@@ -1425,6 +1446,10 @@ stylesheet's font stack.
 | `foe_view::serve(dir, port).await` | a `Server` with `addr` and `token`; `Server::wait().await` runs until the server stops |
 | `foe_view::export(dir)` | the static page as a `String` |
 
-`serve` spawns its tasks on the tokio runtime that calls it. The crate
-depends on `foe-log` and tokio and on nothing in `foe-core`; a contract that
-only needs to read and serve logs takes on nothing of the runtime.
+`serve` spawns its tasks on the tokio runtime that calls it.
+`foe_view::Bound::bind(port)` draws the token and binds the port without
+serving, so a caller can print or open the URL first; `Bound::serve(dir)`
+then starts the server. `foe_view::conversation(dir, run)` is the terminal
+display that "Terminal conversation" describes. The only crate of this
+repository that `foe-view` depends on is `foe-log`, so a program that only
+needs to read and serve logs takes on nothing of the runtime.
