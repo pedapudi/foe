@@ -8,6 +8,25 @@ The layers answer different questions. Runtime conformance establishes that
 the harness enforced and recorded its contract. Task benchmarks establish how
 well a model and foe complete useful work together.
 
+## Evaluation suites
+
+Every suite lives under `evals/`. The files directly under `evals/` hold the
+runtime conformance suite, the model-backed micro evaluation, and the
+tool-composition assessment, which the sections below specify. Each
+subdirectory holds one further suite, and its README states how to run it.
+
+| directory | what it measures | needs a model |
+|---|---|---|
+| [`evals/tool_audit/`](../evals/tool_audit/README.md) | the typed failure every built-in coding tool returns for common malformed calls, pinned to the complete message text | no |
+| [`evals/episode_cost/`](../evals/episode_cost/README.md) | search time, runtime resources, and workflow token usage, read from stored logs or driven through scripted responses | no |
+| [`evals/config_repair/`](../evals/config_repair/README.md) | one self-improvement loop that diagnoses and repairs a configuration defect under an unchanged external evaluator | only for a model-written candidate; a prepared candidate file replaces the model |
+| [`evals/terminal_bench/`](../evals/terminal_bench/README.md) | task completion on a pinned subset of Terminal-Bench 2.1, run through Harbor | yes |
+| [`evals/harness_bench/`](../evals/harness_bench/README.md) | four development and two confirmation tasks taken from Harness-Bench, used as local diagnostics | yes |
+
+[self-improvement.md](self-improvement.md) describes how the configuration
+repair, Terminal-Bench, and Harness-Bench suites feed candidate changes back
+into foe.
+
 ## Deterministic runtime conformance
 
 The dependency-free suite under `evals/` runs the built foe binary with
@@ -27,9 +46,7 @@ child log.
 The default permissions case uses Foe's capability handles with the kernel
 sandbox disabled. The case therefore runs on systems without Landlock. A
 stronger optional case runs `/usr/bin/cat` under `sandbox.mode: required` and
-requires the kernel to permit one read and deny another. The case also checks
-that the start record truthfully reports enforced cgroup cleanup or the
-observational process-group fallback.
+requires the kernel to permit one read and deny another.
 
 The runner also corrupts one trace for each guarantee. Each corruption must
 produce a violation in the matching conformance dimension. These checks guard
@@ -239,7 +256,7 @@ a plausible one. The delegated case requires both declared child contracts to
 run with fresh context, read-only grants, completed outcomes, bounded typed
 reports, and one explicit wait call. The workflow case requires all four
 declared nodes to start and settle. It also requires selection of the apply
-branch. The compaction case requires one
+branch. The compaction case requires at least one
 successful compaction and the five ledger files to be read in link order. The
 containment case requires the protected file's digest to be unchanged, its
 value to be absent from both the workspace and the outcome, and no tool call
@@ -326,7 +343,7 @@ The tool-composition assessment determines whether the built-in `compose_tools`
 tool belongs in the default coding workflow. It compares three complete
 execution-contract configurations.
 
-- `ordinary-coding-tools` provides the coding tools in the current workflow.
+- `ordinary-coding-tools` provides `read`, `grep`, `edit`, and `bash`.
 - `shell-output-narrowing` adds one instruction that directs shell commands to
   emit only the evidence needed for the next decision.
 - `tool-composition` adds the built-in `compose_tools` tool and its existing
@@ -577,9 +594,12 @@ run through Harbor. The [official leaderboard](https://www.tbench.ai/leaderboard
 reports repeated-trial accuracy, uncertainty, and cost for accepted
 submissions.
 
-Use a thin Harbor adapter for Foe. Audit all 89 tasks before calibration, then
-freeze a 10 to 20 task sample for three trials per task. A complete official
-run follows only when calibration supports its accuracy and cost target.
+The Harbor adapter in `evals/terminal_bench/` runs Foe as an installed agent
+against a pinned subset of the dataset. Audit all 89 tasks before
+calibration, then freeze a 10 to 20 task sample for three trials per task. A
+complete official run follows only when calibration supports its accuracy
+and cost target. `evals/terminal_bench/campaign-report.md` and
+`evaluation-record.md` hold the recorded results of the subset runs.
 Terminal-Bench completion alone does not establish Foe's trace or permissions
 guarantees, so every trial also receives the local conformance evaluation.
 
@@ -662,9 +682,10 @@ part of the JSON Schema subset
 implements; a schema outside that subset never reaches a case, because
 construction refuses it.
 
-The suite does not yet cover retries, teams, peer delivery, replay, forks,
-workflow recovery, symlink escapes, or network denial. New cases should add a
-passing trace, a targeted corruption, and one stated conformance condition.
+The runtime conformance suite generates no case for retries, teams, peer
+delivery, replay, forks, workflow recovery, symlink escapes, or network
+denial. A new conformance case adds a passing trace, a targeted corruption,
+and one stated conformance condition.
 
 Ordinary request messages are independently reconstructed. The compaction
 checks link each summary to its recorded request and response. They do not yet
