@@ -7,12 +7,16 @@ stay under 150 KB after gzip compression; the build fails when they exceed
 that budget. The only input the application reads is the log format defined
 in [`docs/log-format.md`](../docs/log-format.md).
 
-The compiled files are checked in. Cargo and Bazel embed them directly, so a
-person building or installing the foe binary needs no Node.js package manager.
+The build also writes a raw-deflate copy of each file,
+`dist/viewer.js.deflate` and `dist/viewer.css.deflate`. The compiled files and
+their deflated copies are checked in. Cargo and Bazel embed the deflated
+copies directly, so a person building or installing the foe binary needs no
+Node.js package manager.
 Node.js and pnpm are development requirements only when TypeScript sources or
 viewer tests change.
 
-The Rust crate `crates/view` embeds the two files into an HTML page. It does
+The Rust crate `crates/view` inflates the two files and writes them into an
+HTML page. It does
 so in two modes, described below, and both modes run the same code.
 
 ## The one dependency
@@ -43,7 +47,7 @@ Requirements: Node 22 and pnpm 10. The `packageManager` field in
 ```
 cd view
 pnpm install --frozen-lockfile
-pnpm build          # writes dist/viewer.js and dist/viewer.css, prints gzipped sizes
+pnpm build          # writes dist/viewer.{js,css} and their .deflate copies, prints gzipped sizes
 pnpm test           # bundles test/*.test.ts into .test-build/ and runs node --test
 pnpm typecheck      # tsc --noEmit
 pnpm fixtures       # regenerates fixtures/*.jsonl from fixtures/generate.mjs
@@ -55,13 +59,18 @@ into the matching element.
 
 The tests cover the derived-messages rule, the episode fold, the episode tree,
 helpers and the per-row measure, the trajectory layout, the causal model,
-the four depths it is read at and its layout, the workflow graph
-and its layout, the statistics, the pane sizes, the appearance catalogue,
+the five depths it is read at and its layout, the workflow graph
+and its layout, the statistics and the token attribution, the pane sizes,
+the appearance catalogue, the stylesheet's theme and text-size rules, the
+identity colours, the drawn marks, the JSON and payload readers of the raw
+events tab, the task sections, the team view, the joined team communication,
 the system prompt reader, the Markdown parser, the syntax tokenizer, and the
 unified diff reader. Each of those modules is pure and reads no document, so
 the tests run under `node --test` with no browser.
 
-The fixtures are twelve episode logs.
+The fixtures are twelve episode logs, and the `communication/` directory
+holds three more, recorded from one team run; its README states how they are
+made.
 
 | fixture | what it exercises |
 |---|---|
@@ -113,11 +122,10 @@ spine on the selected row, the rail that carries depth in the trajectory's
 label column, the trajectory's three ink weights over its request spans,
 node firings, and tool calls, a retry with the backoff it imposed, and a
 turn holding a diff and a fenced block. `proof-one-episode.png`
-shows a recorded run of this repository in `google-light`, with one root
-episode and no children, which is the ordinary case and the one where the
-trajectory's height is derived from a single row; its four request spans
-differ in length by a factor of seven, its thirteen tool calls stand in
-three fans of two, six, and five, and its system prompt is open.
+shows the `rich` fixture in `google-light`, with one root episode and no
+children, which is the ordinary case and the one where the trajectory's
+height is derived from a single row. Its one assistant turn holds a table,
+a fenced Rust block, and mathematics.
 
 `proof-causality-light.png` and `proof-causality-dark.png` show the
 `workflow` fixture and its three children read as causality in the same
@@ -138,11 +146,9 @@ interrupted call, the failure itself in the outcome hue. The `block` call
 carries no such line, because only the coding tools state one, so it shows
 its tool name alone. Each step's own label has fallen back to `step 1` now
 that its calls are on the page, and the child episode's rows sit under the
-call that spawned them rather than in log order. The dark one adds the last rung,
-`outputs`, so each tool's result body stands under the call that returned
-it, running the full width while the labels above it hold their column;
-the gutter is blank beside each body because the row above already named
-that event.
+call that spawned them rather than in log order. The dark one is read at `calls`,
+one rung shorter, so the model's own words drop out and each step shows the
+calls it issued.
 
 The `messages` list recorded in each `model/request` event is written by
 hand in the generator, so the tests compare it with the list the bundle
@@ -193,7 +199,7 @@ matching `assistant/message` replaces it.
 |---|---|---|
 | `GET /episodes` | `X-Foe-Token` header | `{"roots":[Node,...]}` where Node is `{"id":string,"children":[Node,...]}`; other fields are ignored |
 | `GET /events?episode=<id>` | `X-Foe-Token` header or `?token=` | a `text/event-stream` of the episode's log |
-| `GET /fonts/<name>.woff2` | `X-Foe-Token` header | one of the six font files under `fonts/`; see Design language |
+| `GET /fonts/<name>.woff2` | `X-Foe-Token` header | one of the two font files under `fonts/`; see Design language |
 
 The event stream sends one log line per message, in the form
 `id: <seq>` followed by `data: <one event as JSON>`. The `id` field lets the
@@ -214,14 +220,13 @@ id it learns about.
 The top bar carries an up control that moves to the parent or fork origin of
 the selected episode, the brand lockup and a `viewer` tag, the
 research-preview tag, breadcrumbs from the root to the selected episode, the
-colour theme picker, the typeface picker, the page scale control, and a
-status pill. The status pill shows the connection state and, in live mode,
-the number of episodes without an outcome.
+layout toggle between `outline` and `details`, the colour theme picker, the
+typeface picker, and the page scale control.
 
-Below the top bar are three regions, described in
-[`docs/viewer.md`](../docs/viewer.md): the episode tree over a details
-panel in the left column, and the trajectory over the tabs in the right
-column. Every divider is a grip that resizes the regions it separates, by
+In the `details` arrangement, four regions stand below the top bar, as
+[`docs/viewer.md`](../docs/viewer.md) describes: the episode tree over a
+details panel in the left column, and the trajectory over the tabs in the
+right column. Every divider is a grip that resizes the regions it separates, by
 drag, by the arrow keys in 16-pixel steps, or to a limit with Home and End;
 a double click returns it to whatever derives it. The trajectory's height
 is derived from the pixels its rows take until a grip sets it. `foe.panes`
@@ -231,11 +236,14 @@ The **episodes** region draws the tree as a line-art figure. A spawned
 child hangs under its `parent_id` with a solid edge; a fork hangs under its
 `fork_origin` with a dashed edge. Each row shows a dot coloured by outcome,
 the contract name, the episode id, and a second line reading the outcome
-word with a `blocked` code or an `exhausted` limit.
+word with a `blocked` code, an `exhausted` limit, a `failed` error, or how a
+`completed` outcome was established.
 
-The **details** region shows the selected episode's model calls and tokens
-consumed against the budget declared in `episode/start.contract.budget`, the
-Landlock ABI, the fork origin, parent, team, timing, and task. Its text
+The **details** region shows the selected episode's outcome, its model calls
+and tokens consumed against the budget declared in
+`episode/start.contract.budget`, the sandbox mode and Landlock ABI, the
+process cleanup boundary, the contract fingerprint, the fork origin, parent,
+team, roster, timing, and task. Its text
 wraps and the region scrolls as a whole.
 
 The **trajectory** region draws one row per episode, stacking the channels
@@ -276,8 +284,8 @@ it closes, so column is occupancy rather than tree depth; tree depth is
 carried by the label's indent instead. The layout claims no room past its
 own marks and holds no opinion about what stands beside them: it reports
 the width its strokes take and gives each row an indent, and the caller
-places the text column. Lane colour is cycled over five
-tones mixed from the theme's own tokens and distinguishes branches alone.
+places the text column. A lane takes the identity colour of the episode it
+carries, and the lane a declared graph earns stays in neutral ink.
 Hue carries the outcome, and carries it only on the marks: a ring in
 `--v2-good`, `--v2-caution` or `--v2-flat` at the foot of a lane that
 completed, exhausted its budget or was blocked, a cross in `--v2-bad` for
@@ -307,7 +315,7 @@ of a run's text. `src/render/outline.ts` draws it, over the same
 between the two arrangements and stores the choice under `foe.layout`.
 `docs/viewer.md` specifies both.
 
-The main region has five tabs.
+The main region has six tabs.
 
 - **conversation**: one row per event that contributes to the dialogue.
   The latest `request/header` appears as a collapsed system prompt row, with
@@ -320,8 +328,9 @@ The main region has five tabs.
   `tool/result` renders `rendered` by its shape, as a diff, as JSON, as
   numbered source, or as preformatted text, and keeps the canonical `value`
   behind an expander; `is_error` and `synthetic` carry marks and `spill`
-  names its file on the metadata line. `src/marks.ts` holds the four marks
-  as geometry and `src/render/mark.ts` builds one.
+  names its file on the metadata line. `src/marks.ts` holds these four
+  marks as geometry, beside the two the figures draw, and
+  `src/render/mark.ts` builds one.
   A `compaction/summary` is a system row inserted at its `first_kept_seq`,
   ahead of the rows the model still sees, stating how many dialogue rows
   the summary replaced and holding the continuation message behind an
@@ -354,6 +363,10 @@ The main region has five tabs.
   direction. Present only for an episode whose contract declares a graph.
   `src/workflow.ts` reads the graph and places it and
   `src/render/workflow.ts` draws it.
+- **tasks**: the task boards the selected episode and its descendants
+  lead, one row per task with its status, owner, dependencies, and recorded
+  transitions. `src/team.ts` folds the boards from `team/task` events and
+  `src/render/team.ts` draws them.
 - **statistics**: nine figures over the selected episode, or over that
   episode and its descendants. Every number a reader could not derive by
   eye carries a hovercard with its definition and the values behind it, and
@@ -372,7 +385,7 @@ changes.
 
 Keyboard: `j` and `k` move the cursor through the episode rows, `Enter`
 selects the cursor, `c` marks the cursor for comparison, `/` opens the raw
-events tab and focuses the filter, and `1` to `5` switch tabs in the order
+events tab and focuses the filter, and `1` to `6` switch tabs in the order
 the tab strip lists them. A focused grip answers the arrow keys, Home, and
 End.
 
@@ -433,9 +446,9 @@ a root carrying no theme, so the first paint already matches.
 
 Typefaces are a separate axis. `[data-typeface]` on the root names one of
 twelve faces, four per mode, and resolves `--v2-sans`, `--v2-mono`,
-`--n-font-head`, and `--n-font-paper`. The default face is Inconsolata in
-every role. Three families are self-hosted, both weights each: Inconsolata,
-iA Writer Mono, and JetBrains Mono. The six woff2 files under `fonts/` are
+`--n-font-head`, and `--n-font-paper`. The default face sets Source Sans 3
+for prose and Source Code Pro for data. One family is self-hosted, in both
+weights: Inconsolata. The two woff2 files under `fonts/` are
 declared in `src/tokens.css` with `font-display: swap` and the path
 `/fonts/<name>.woff2`; `fonts/README.md` records where each file came
 from. The live server
@@ -452,11 +465,11 @@ name set in its heading face. The trigger carries the same specimen. The
 three text-size controls are each set at the size they select, and they
 multiply the 13-pixel base by 1.15, 1.35, and 1.6.
 
-Theme, typeface, text size, page scale, and region sizes persist in
-`localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,
-`foe.scale`, and `foe.panes`. One function applies each, in `src/chrome.ts`
-for the four appearance settings and in `src/panes.ts` for the region
-sizes, and every control that changes a value calls that function.
+Theme, typeface, text size, page scale, layout, outline depth, and region
+sizes persist in `localStorage` under `foe.theme`, `foe.typeface`,
+`foe.fontsize`, `foe.scale`, `foe.layout`, `foe.depth`, and `foe.panes`.
+One function applies each, in `src/chrome.ts` for the six appearance and
+arrangement settings and in `src/panes.ts` for the region sizes, and every control that changes a value calls that function.
 
 ## Layout of this directory
 
@@ -476,6 +489,11 @@ src/attribution.ts            where every request's input tokens came from
 src/source.ts                 static and live event sources
 src/fold.ts                   one episode log to rows, a summary, marks, and firings
 src/messages.ts               the derived-messages rule
+src/communication.ts          team messages joined across sender and recipient logs
+src/task.ts                   a task divided into its sections
+src/team.ts                   the task boards of the tasks tab
+src/types.ts                  event shapes from the log format
+src/dom.ts                    element helpers
 src/episode-tree.ts           the tree, the shared fork prefix, the per-row measure
 src/prompt.ts                 a system prompt read back into its sections
 src/marks.ts                  the six states a row or a figure's leaf draws
@@ -497,6 +515,7 @@ src/render/raw.ts             the raw events table
 src/render/json.ts            a JSON value as a structure a reader walks
 src/render/payload.ts         one event payload, field by field
 src/render/diff.ts            two forked episodes side by side
+src/render/team.ts            the task boards
 src/render/markdown.ts        the Markdown parser
 src/render/markup.ts          elements for Markdown, code, diffs, and math
 src/render/highlight.ts       the syntax tokenizer
@@ -506,7 +525,7 @@ src/render/svg.ts             building SVG, and the two shapes a figure takes
 src/viewer.css                the stylesheet, on role tokens only
 src/tokens.css                theme, typeface, spacing, radius, and brand tokens
 vendor/                       Temml and its license
-fonts/                        the six self-hosted woff2 files and their note
+fonts/                        the two self-hosted woff2 files and their note
 fixtures/                     fixture logs and their generator
 test/                         unit tests
 ```

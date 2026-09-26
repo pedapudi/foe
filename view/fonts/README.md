@@ -9,8 +9,8 @@ embedded in the binary, and the static export inlines the same bytes as a
 there and absent here is left out, and the stylesheet's font stack falls
 back to the next family.
 
-Only the default typeface is guaranteed, because a binary carries what it
-embeds and every face costs its own bytes. Every other face the typeface
+Only Inconsolata is guaranteed, because a binary carries what it embeds and
+every face costs its own bytes. Every other face the typeface
 picker offers resolves to the machine's own copy when it has one and to a
 system fallback otherwise. `docs/design-language.md` states that rule.
 
@@ -21,8 +21,8 @@ system fallback otherwise. `docs/design-language.md` states that rule.
 
 ## Inconsolata
 
-Inconsolata is the family the default typeface mode sets, so both of its
-weights are self-hosted.
+Inconsolata is the family the `inconsolata` option of the typeface picker
+sets in every role, so both of its weights are self-hosted.
 
 The two woff2 files were converted from TrueType originals of Inconsolata
 version 3.000, whose `name` table records the following.

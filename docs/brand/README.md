@@ -12,8 +12,9 @@
 
 **foe**, lowercase, pronounced as the English word. A foe is 10<sup>51</sup>
 ergs, the unit astronomers use for the energy a core-collapse supernova
-releases: fifty-one ergs, abbreviated. One star, one event, one bounded
-release of everything it has. An episode of foe is the same shape: one task,
+releases. The word is formed from the initials of "fifty-one ergs", the
+exponent and the unit. One star, one event, one bounded release of
+everything it has. An episode of foe is the same shape: one task,
 one run, one outcome, and then it is over.
 
 The second reading, the friendly coding agent, is the one a person hears
@@ -75,9 +76,8 @@ sixteen pixels.
 baseline at `y = 84`, beginning at `x = 140`, so that the word's optical
 center sits level with the mark's. The glyphs are embedded as outlined
 paths, so the lockup renders identically on a machine with no fonts
-installed. In a running interface, the wordmark sets in the brand mono
-token, which is fixed and does not follow the user's typeface choice, so the
-mark never reflows.
+installed. The viewer's top bar draws these outlined paths, so the wordmark
+does not follow the reader's typeface choice and the lockup never reflows.
 
 ## Color
 
@@ -89,11 +89,12 @@ around it.
 | token | light | dark | role |
 |---|---|---|---|
 | ink | `currentColor` | `currentColor` | spikes, rays, shells, limit, wordmark |
-| `--foe-accent` | `#C7791A` | `#E8A43E` | the core, and nothing else |
+| `--foe-accent` | `#C7791A` | `#E8A43E` | the core, and the pulse glyph that stands for the whole mark |
 
 The accent is amber: the color of a remnant's glow, and distinct from
 zicato's green and diastil's blue so the three marks are told apart at a
-glance. It appears on the core and nowhere else. Interface chrome uses the
+glance. It appears on the core and on the pulse glyph described under
+"Rules", and nowhere else. Interface chrome uses the
 theme's own `--v2-accent` for selection and focus; the brand accent belongs
 to the mark alone.
 
@@ -116,8 +117,10 @@ the wordmark alone and the wordmark in the lockup are the same drawing. The
 wordmark sets in a single color, so it needs no mono variant the way the mark
 does.
 
-The assets are generated from the geometry table by a short script rather
-than drawn by hand, so a change to one radius regenerates every file.
+The script `generate.py` in this directory writes every asset from the
+geometry table, so a change to one radius regenerates every file. It outlines
+the wordmark from `/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf` and
+runs from this directory as `uv run --with fonttools python3 generate.py`.
 
 ## Rules
 
@@ -125,19 +128,22 @@ than drawn by hand, so a change to one radius regenerates every file.
 - The mark is never stretched, outlined, filled, given a gradient, rotated,
   or animated, with the one exception below. The dashed limit is never
   removed.
-- The accent appears on the core only. No second accent.
+- The accent appears on the core and on the pulse glyph only. No second
+  accent.
 - The wordmark is never set in a proportional face and never capitalized.
 - The mark may appear without the wordmark. The wordmark may appear without
   the mark. Neither is altered to fit.
 
-One animation is allowed. A progress indicator in a terminal may pulse a
-single-glyph text rendering of the mark through the eleven frames `·` `✶`
+One animation is allowed. A progress indicator may pulse a single-glyph
+text rendering of the mark through the eleven frames `·` `✶`
 `✷` `✸` `⊛` `◎` `⊛` `✸` `✷` `✶` `·`, one frame per redraw, in the accent
 color. The dot is the core, the stars are the spikes growing, `⊛` is the
 shell closing around them, and `◎` at the peak is the whole mark. Every
 surface that pulses the mark draws this sequence, so the pulse is the same
-drawing wherever it appears. The drawn mark of the assets above never
-moves.
+drawing wherever it appears: the terminal conversation
+(`crates/view/src/terminal.rs`), the viewer's episode tree and causality
+figure for an episode still running (`view/src/brand.ts`), and the landing
+page (`site/build`). The drawn mark of the assets above never moves.
 
 ## Voice
 
