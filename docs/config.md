@@ -188,13 +188,13 @@ version 4.
 
 ### `name`
 
-String. Required. A short name for the contract. Shown in the viewer and
-written into the log. It participates in fingerprint.
+String. Required, and not empty. A short name for the contract. Shown in
+the viewer and written into the log. It participates in fingerprint.
 
 ### `instructions`
 
 Object mapping section key to section text. Required, with at least one
-entry.
+entry. No section's text may be empty.
 
 The key is an identifier the author chooses. The runtime never interprets it.
 It exists so that a section can be addressed later: replaced, removed, or
@@ -227,6 +227,9 @@ A name resolves against three sources, checked in this order:
 3. Entries in `host_tools`.
 
 A name that resolves in two sources, or in none, is an error at construction.
+A name listed twice is an error at construction. `block` and `return` are the
+names of tools the runtime itself supplies, so neither `tool_defs` nor
+`host_tools` may define an entry with either name.
 
 `foe plan` without `--config` lists every built-in tool with its
 description. `foe plan --config FILE` reports the resolved set for a
@@ -246,7 +249,8 @@ an executable that the model may invoke.
 | `timeout_seconds` | integer | no | wall-clock limit for one invocation; default 120 |
 | `cwd` | string | no | absolute working directory; default is the first `read` root |
 
-`exec` must be absolute. The runtime never searches a path list, because
+`exec` must be absolute, and `timeout_seconds` must be greater than zero.
+The runtime never searches a path list, because
 which executable a name resolves to would then depend on the machine. A host
 that wants `ruff` resolves it once and writes the absolute path.
 
@@ -306,8 +310,8 @@ Object. Required. Names what the episode may reach.
 Paths are prefixes. A grant on `/home/user/project` covers every path below
 it. There is no pattern syntax.
 
-`foe plan` warns when a reachable contract selects `bash` or `session`, uses
-a sandbox mode, and leaves `grants.execute` empty. The warning does not make
+`foe plan` warns when a reachable contract selects `bash` or `session`, runs
+under a sandbox mode other than `off`, and leaves `grants.execute` empty. The warning does not make
 the contract invalid because shell built-ins remain useful. On a host that
 enforces the sandbox, an external command needs its absolute file or an
 enclosing directory in `grants.execute`.
@@ -415,6 +419,10 @@ allowance includes whole seconds elapsed since the recorded episode start,
 including downtime. Restoration starts the remaining timer after subtracting
 that elapsed time, so setup time is charged once. A fresh fork starts its own
 wall-clock allowance.
+
+A declared `model_calls`, `input_tokens`, `output_tokens`, or `seconds` is
+greater than zero. `max_episodes` is at least 1, and `loop_threshold` is at
+least 2.
 
 `model_calls`, `input_tokens`, `output_tokens`, `seconds`, `max_depth`, and
 `max_episodes` apply to the whole tree below this episode. A child's budget
@@ -687,8 +695,8 @@ child contributes that value and downstream work continues. The graph
 may contain at most 4,096 edge references across all nested workflows. The
 count includes every `follows` entry, branch successor, and
 `recovery.follows` entry. Construction checks this count before building
-graph indexes. The graph participates in fingerprint as workflow.md "Fingerprint"
-lists.
+graph indexes. The graph participates in fingerprint as workflow.md
+"Contract fingerprint" lists.
 
 When this field is absent, planning and viewing project one terminal
 `root-agent` node that follows the invocation task and runs in the root
@@ -698,19 +706,24 @@ child episode.
 
 ### `task`
 
-String. Required. What this episode is to do. Written into the log as the
+String. Required, and not empty. What this episode is to do. Written into the log as the
 first inbox item. The task does not participate in the fingerprint. Two episodes
 of the same contract with different tasks share a fingerprint.
 
 ## Fingerprint summary
 
-The following participate in the fingerprint: `name`, `instructions`, `tools` and
-their order, each entry of `tool_defs` including the executable's content
-hash, the kinds and counts in `grants`, `budget`, `done_when`, `context`,
-every entry of `child_contracts`, `workflow`, and the runtime's version and build.
+The following participate in the fingerprint: `name`, `instructions`, the
+specification of each tool in `tools` in list order, the kinds and counts in
+`grants`, `budget`, `done_when`, `context`, every entry of `child_contracts`,
+`workflow`, the harness texts with their version, the compaction policy
+version, and the runtime's version and build. A tool's specification is its name,
+description, instruction, parameter schema, and effect. For a `tool_defs`
+entry it adds the executable's content hash and invocation name.
 
-The following do not participate: concrete paths in `grants`, `model`,
-`sandbox`, and `task`.
+The following do not participate: concrete paths in `grants`, the `network`,
+`timeout_seconds`, and `cwd` fields of `tool_defs`, a `tool_defs` or
+`host_tools` entry that `tools` does not list, `model`, `sandbox`, and
+`task`.
 
 ## Errors
 
