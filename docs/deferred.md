@@ -4,8 +4,8 @@ This document lists features that the design anticipates and log format
 version 3 does not implement. Each section states what the feature is, that it is absent,
 and which log event types, event field values, or configuration keys are
 reserved for it. A reserved event type has a variant in `crates/log/src/lib.rs`
-so that a log format version 3 reader parses a later log. The current runtime
-emits none of these reserved events.
+so that a log format version 3 reader parses a later log. The runtime emits
+none of these reserved events.
 A feature with nothing reserved is listed so that a reader does not search
 for it. The final section lists features the design rejects, with the
 reason, so that a reader does not propose them again without new evidence.
@@ -17,9 +17,9 @@ prefix is materialized once and the branches are causally independent, and
 then selects among their outcomes. Forking itself is implemented: the
 running form's `--from SOURCE_DIR@SEQ` seeds a new episode from a
 prefix of an existing log, under "Seeding" in
-[log-format.md](log-format.md). A slate today is a caller-side loop over
+[log-format.md](log-format.md). A slate is a caller-side loop over
 that form: N launches from one source and boundary produce N independent
-episodes, each paying its own copy of the prefix. First-class support
+episodes, each paying its own copy of the prefix. Support in the runtime
 would add shared-prefix materialization paid once and selection among the
 outcomes. It waits for evidence that either is needed: a measured
 prefix-materialization cost that the per-launch copy makes significant,
@@ -44,9 +44,10 @@ configuration key is reserved for workflow continuation.
 
 An event-conditioned edge would fire a workflow node on an inbox arrival —
 a session exit, a child's report — rather than on a predecessor's value,
-so that a mechanical reaction to an event costs no model turn. Workflows
-condition firing on two things today: a branch label a node chose and the
-`skip_when_verified` guard. Event-conditioned edges are not implemented.
+so that a mechanical reaction to an event costs no model turn. A workflow node fires
+when its inputs carry fresh values, and a node with `branches` makes a
+successor's input fresh only when the chosen label lists that successor.
+Event-conditioned edges are not implemented.
 No event type or configuration key is reserved. The evidence that would
 justify building them is trajectories showing model turns spent on
 mechanical reactions — a turn whose whole content is reading an arrival
@@ -58,11 +59,24 @@ An output watermark would post a `session`-source inbox item when a
 session's accumulated output crosses a threshold or matches a pattern, so
 a model could wait on a server's readiness line instead of polling for it.
 The inbox carries a session's exit and nothing else of its lifetime;
-output reaches the model only through `poll`. Watermarks are not
+output reaches the model only through the `session` tool's `poll` action. Watermarks are not
 implemented. No event type or configuration key is reserved; the `session`
 source value carries exit items only. The evidence that would justify
 building them is measured turns wasted on sleep-then-poll cycles against
 a session that has not yet produced what the model is waiting for.
+
+## Kernel-reported sandbox denials
+
+A kernel-reported denial would record, as a log event, an access that
+Landlock refused to a process of the episode, with the process identifier,
+the command name, the path, and the access kind. The kernel reports
+Landlock denials only as audit records, which an unprivileged process cannot
+read. The runtime records none: a denied access reaches the log as the
+failing tool's result, as [sandbox.md](sandbox.md) specifies under "Denied
+accesses". The event type `sandbox/denied` is reserved, and
+[log-format.md](log-format.md) defines its payload. The event is emitted once
+a kernel interface reports denials to the restricting process without
+privilege and without an audit daemon.
 
 ## Sandbox backends beyond Landlock
 
@@ -145,9 +159,10 @@ evaluation shows that skipping the review preserves task quality.
 
 Bazel is the primary build interface: every Rust crate is a Bazel target,
 `//:foe` builds the binary, and [build.md](build.md) specifies the targets.
-The browser bundle and the Python package are not Bazel targets. The
-bundle is checked into `view/dist` and consumed as a filegroup, and the
-Python package builds through its own tooling. A reproducibility check
+No Bazel target builds the browser bundle or the Python package. The
+bundle is checked into `view/dist` and consumed as a filegroup. The Python
+package's sources are a filegroup that the examples and evaluations read,
+and the package builds through its own tooling. A reproducibility check
 comparing the Bazel and Cargo binaries is also absent. No event type or
 configuration key is reserved.
 
@@ -165,8 +180,10 @@ per root episode, with the conversation, the raw events, the diffs, the
 declared workflow, and the statistics of the selected episode beside it.
 Two further axes
 would organize the same logs differently. One is contract fingerprint, so that
-every episode of one contract is compared side by side. The other is the
-individual tool call, so that every call of one tool across episodes is
+every episode of one contract is compared side by side. The episode list
+already places root episodes that share a fingerprint next to each other
+under one bracket; a comparison across them is what is absent. The other is
+the individual tool call, so that every call of one tool across episodes is
 listed together; the statistics view already totals durations by tool name,
 and listing the calls themselves is what is absent. Neither axis is
 implemented. No event type or configuration key is reserved.
@@ -204,11 +221,12 @@ the byte-order mark, the soft hyphen, the directional marks) before any
 other layer runs, so a value split by them is matched whole. It does not
 apply compatibility normalization (NFKC), which would additionally fold
 full-width and other confusable code points onto their ASCII forms. The
-two scrubbed fields are written by tools rather than by a model and are
-ASCII in every recorded trajectory, so the folding has no input to act on
-today, and a correct implementation means taking on a Unicode data table
-dependency. NFKC folding is deferred until either field can carry
-model-authored text. No event type or configuration key is reserved.
+two scrubbed fields are a tool result's subject line, which a tool writes,
+and the outcome detail. The outcome detail is a failed episode's runtime
+error or a blocked episode's message, and a blocked episode's message is
+the text the model passed to `block`. A correct implementation of the
+folding takes on a Unicode data table dependency. NFKC folding is not
+implemented. No event type or configuration key is reserved.
 
 ## Checksum validation for provider tokens
 
