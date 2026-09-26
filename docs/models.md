@@ -27,7 +27,7 @@ The built-in coding workflow uses low reasoning effort for its implementation
 episode with `gpt-5.6-sol` through `openai` or `openai-codex`. Its independent
 assessment and conditional repair episodes use xhigh effort. An explicit
 `reasoning_effort` in the default model file applies to all three episodes.
-Execution contracts given through `--config` use their model blocks without this coding
+A contract document read from a file uses its model block without this coding
 default.
 
 ## Providers
@@ -211,7 +211,7 @@ The convention file's shape depends on the credential kind.
 | kind | contents of `~/.config/foe/credentials/<provider>.json` |
 |---|---|
 | API key | `{ "api_key": "..." }` |
-| OAuth token | `{ "access": "...", "refresh": "...", "expires": N, "account_id": "..." }`, with `expires` in milliseconds since the Unix epoch; `refresh` may be omitted |
+| OAuth token | `{ "access": "...", "refresh": "...", "expires": N, "account_id": "..." }`, with `expires` in milliseconds since the Unix epoch; `refresh` may be omitted, and `account_id` is present when the access token carries one |
 | Google credentials | `{ "credentials_file": "/abs/path", "project": "...", "location": "..." }`, pointing at the file Google's tools wrote |
 
 A file named explicitly by `api_key_file` may hold the bare key instead of
@@ -232,10 +232,11 @@ under the inherited restrictions. Tools never receive it.
 ## `foe login`
 
 ```
-foe login                      list providers with a one-line description and whether each is configured
-foe login <provider>           configure it, then set it as the default model when none is set
-foe login <provider> --model M set the default model explicitly
-foe login --status             show the default model and every configured credential path
+foe login                          list providers with a one-line description and whether each is configured
+foe login <provider>               configure it, then set it as the default model when none is set
+foe login <provider> --model M     set the default model explicitly
+foe login <provider> --key-file P  record P as the provider's credential, asking nothing
+foe login --status                 show the default model and every configured credential path
 ```
 
 Every prompt is plain text on standard error, answered on standard input.
@@ -248,7 +249,8 @@ models; OpenRouter answers a key-information request instead. The
 credentials file is written with mode 0600 only when the provider accepted
 the key. A rejected key ends with the provider's message and the
 instruction to run the command again. `compatible-http` asks for the
-server's base URL first, then accepts a key or an empty answer. It stores
+server's base URL first, then accepts a key or an empty answer. It sends no
+verification request, because the endpoint defines none. It stores
 the URL in the default model block and writes a credential file only when
 a key was entered. The default model block names that file explicitly.
 
