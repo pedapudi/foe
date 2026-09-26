@@ -68,7 +68,7 @@ pub fn export(dir: &Path) -> Result<String, Error> {
 }
 
 /// Wraps the bundle around the `window.__FOE__` boot object. `<` in the
-/// boot JSON is written as the escape `<` so that no text inside an
+/// boot JSON is written as the escape `\u003c` so that no text inside an
 /// event can close the script element.
 fn page(boot: &str) -> String {
     let (boot, css) = (boot.replace('<', "\\u003c"), css());
