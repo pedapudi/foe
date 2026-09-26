@@ -97,8 +97,8 @@ standard error as diagnostics:
 
 ```json
 {
-  "returned": { "matches": 17 },
-  "derivation": { "complete": true, "inner_calls": 2, "errors": 0, "by_tool": { "grep": 2 } },
+  "returned": { "matches": 17, "files": 4 },
+  "derivation": { "complete": true, "inner_calls": 1, "errors": 0, "by_tool": { "grep": 1 } },
   "stdout": "",
   "stderr": ""
 }
@@ -106,8 +106,9 @@ standard error as diagnostics:
 
 The rendered result opens with the call and error counts, shows the
 returned value, and appends each non-empty diagnostic stream. Its subject
-states the call count, error count, and returned byte count. The subject
-contains no text supplied by the model. The ordinary result budget and
+states the call count, error count, and returned byte count, and contains no
+text supplied by the model. A failed call's subject states the call count and
+the first line of the failure message. The ordinary result budget and
 spill rules apply.
 
 A call to `fail`, an uncaught exception, an exhausted bound, or an
@@ -135,8 +136,8 @@ Five bounds hold, each a constant in `crates/code` beside the other tool
 bounds, and the tool description states their values:
 
 - **Source size**: 64 KiB, checked before the interpreter starts.
-- **Memory**: RLIMIT_AS at 512 MiB, set by the shim's first statement as
-  both the soft and the hard limit, which a process without privilege
+- **Memory**: RLIMIT_AS at 512 MiB, set by the shim before any source
+  statement runs, as both the soft and the hard limit, which a process without privilege
   cannot raise. The shim rather than the spawner sets it because the
   runtime forbids unsafe code and therefore installs no between-fork-and-
   exec hook.
