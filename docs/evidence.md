@@ -55,8 +55,8 @@ episode/children/<episode-id>/episode.jsonl
 ```
 
 The file names for the fingerprint document, the artifact manifest, and the
-retained candidate value are caller choices. The standard self-improvement
-runner uses the names above. The adoption record selects the first two files
+retained candidate value are caller choices. The self-improvement runner
+described below uses the names above. The adoption record selects the first two files
 by their digests; the retained candidate value is selected by the
 `candidate_sha256` digest the cited verification event attests, when that
 event carries one.
@@ -240,15 +240,17 @@ It prints the verified result as one JSON object.
 
 ## Self-improvement storage
 
-The self-improvement runner writes completed bundles under
-`evidence/bundles/<manifest-digest>`. Each bundle retains the complete
+The self-improvement runner, `evals/terminal_bench/run_self_improvement.py`,
+writes completed bundles under `evidence/bundles/<manifest-digest>` in its
+run directory. Each bundle retains the complete
 proposal episode tree, the resolved candidate fingerprint document, the
 candidate artifact manifest, the value the cited verification judged as
 `candidate.json` in canonical JSON, and candidate files selected by the
 runner.
 
 The runner invokes standalone verification after moving the bundle into its
-content-addressed directory. Its policy permits the configured verifier
+content-addressed directory, with the proposal contract's fingerprint as the
+expected predecessor. Its policy permits the configured verifier
 fingerprint recorded by the proposal contract. The result records the
 verified facts and the bundle directory. The runner creates or modifies no
 runtime configuration.
