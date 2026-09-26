@@ -141,7 +141,7 @@ The eight remaining fields apply to a node of any kind.
 | `retries` | integer | how many times `verify` findings re-fire the node; default 2 |
 | `branches` | object | a choice point; see below |
 | `max_fires` | integer | how many times this node may fire in one episode; default 1 for an acyclic position, required for a node on a cycle |
-| `terminal` | boolean | completing this node completes the workflow; at least one node is terminal |
+| `terminal` | boolean | completing this node completes the workflow; default false |
 | `empty` | any JSON | the value this node contributes when recovery skips it, or when this model node's child ends blocked or exhausted; without it, both paths remain strict |
 | `recovery` | object | widens what this node's recovery decision reads; its one key is `follows`, a list of further node names. See "Recovery" below |
 
@@ -196,7 +196,9 @@ that contains the workflow.
   larger. Its description and its instruction may differ, because they
   change what the model reads rather than what the process may do.
 - A `host_tools` entry equals the containing entry of that name.
-- Read and write roots lie within the containing roots.
+- Read, write, and execute roots lie within the containing roots. Every
+  `grants.bind` port appears in the containing contract's `grants.bind`, and
+  `grants.task_session` is true only when the containing contract's is.
 - Every `grants.spawn` name appears in the containing contract's
   `grants.spawn`, and the same-named `child_contracts` entry is itself within the
   containing entry of that name.
@@ -374,12 +376,14 @@ The workflow completes when a terminal node completes, or when a chosen
 branch label has no successors. The episode's `done_when`, when present,
 verifies the terminal value: a `returns` schema it must conform to, a
 `verify` tool that must report no findings, or both. Findings re-fire the
-terminal node's nearest model ancestor with the findings attached, up to
-`done_when.retries` times; findings that remain go to recovery at the
-terminal node. When the graph has no
+nearest model node at or above the completing node, with the findings
+attached, up to `done_when.retries` times. Findings that remain go to
+recovery at the completing node. When the graph has no
 terminal node and no empty-branch path, the episode runs until its budget
 is spent and ends as `exhausted`, which is a legitimate shape for a
-supervisor loop and is reported as such by `foe plan`. A graph whose
+supervisor loop and is reported as such by `foe plan`. Such a graph can
+also end earlier as `blocked` with `recovery-exhausted`, when a node on a
+cycle would fire beyond its `max_fires`. A graph whose
 nodes have all fired without completing, with nothing left to fire, ends
 as `failed` with a message saying so.
 
@@ -413,9 +417,12 @@ content. The first is a construction-time fact; the second is the trace.
 The guarantee covers model context. It does not by itself cover the
 filesystem. Two model nodes granted write access to the same directory can
 communicate through it. A workflow that needs isolation between nodes grants
-them disjoint write roots, and `foe plan` lists every pair of model nodes
-whose write roots overlap, so that an author who wants the guarantee to
-extend to the filesystem can see where it does not.
+them disjoint write roots, and `foe plan` lists every pair of writing nodes
+whose write roots overlap. A model node writes within its own write roots.
+A tool node whose effect is `writes`, `execs`, or `spawns` may write within
+every write root of the contract that declares the graph. The report
+shows an author who wants the guarantee to extend to the filesystem where
+it does not.
 
 ## Recovery
 
@@ -432,8 +439,11 @@ proceed, and it is the second place agency lives.
 | a model node ended `failed` | yes |
 | the workflow's `done_when` findings remain | yes, at the terminal node |
 | a tool node's bound argument is absent from its predecessor's value | yes |
+| a node with `branches` produced a value that names none of its labels | yes |
+| a nested `workflow` node's graph ended `blocked` or `failed` | yes |
+| a nested `workflow` node's graph ended `exhausted` | no; the episode ends `exhausted` |
 | a model node's predecessor sections exceed the model-handoff bound | yes when an amendable model producer can fire; otherwise the failure settles |
-| the node's tool call returned a typed failure with `retryable: false` | no; the episode ends with the outcome named by its code and details |
+| the node's tool call returned a typed failure with `retryable: false` | no; the episode ends `exhausted` with the limit in the failure's details when the code is `budget-exhausted`, and `failed` with the failure's message otherwise |
 
 The producer sets `retryable` from facts available where the failure occurs.
 A denied capability, an unavailable implementation, a process-start
@@ -487,16 +497,19 @@ the trace.
 
 ### What bounds it
 
-- `recovery.max_interventions`, default 3, caps recovery actions per
-  episode.
+- `recovery.max_interventions`, default 3, caps the recovery actions of
+  one run of the graph that declares it. A nested workflow carries its own
+  `recovery` block and counts its own actions each time it runs.
 - `max_fires` caps every node, including re-fires that recovery causes
   and re-fires that `verify` findings cause. A node that may be re-fired
   declares a `max_fires` that admits the re-fires; a node at its bound is
   not offered to `retry` or `amend`.
 - The episode budget caps everything.
 
-When a bound is reached, the episode ends as `blocked` with
-`recovery-exhausted`, carrying the findings never resolved. A recovery
+When the intervention cap is reached, or a node would fire beyond its
+`max_fires`, the episode ends as `blocked` with `recovery-exhausted`. Its
+message names the failure that remained unresolved. When the budget is
+spent, the episode ends as `exhausted`. A recovery
 decision that itself fails ends the episode with `recovery-failed`: a
 request that errors, a response with no call to `recover`, or a call
 naming an action or a node that was not offered. Recovery never recurses:
@@ -551,7 +564,7 @@ gives each event's fields.
 | `workflow/node-end` | `{ node, fire, value, rendered, error?, failure?, duration_ms }` |
 | `workflow/branch` | `{ node, fire, label, successors }` |
 | `workflow/recovery` | `{ node, fire, cause, action, target?, note?, failure?, intervention }` |
-| `verification/result` | `{ step, tool, verifier_fingerprint, status, findings, error?, duration_ms }` |
+| `verification/result` | `{ step, tool, verifier_fingerprint, status, findings, error?, candidate_sha256?, duration_ms }` |
 
 A node's `verify` and the episode's `done_when.verify` each record every
 invocation as one `verification/result` in the workflow episode's own log,
@@ -572,13 +585,16 @@ that the count covers. The other inputs are every `branches` declaration,
 every tool node's `args` with bindings, and every model node's contract
 fingerprint. They also include `verify`, `retries`, `max_fires`, `terminal`,
 `empty`, every `recovery.follows` widening,
-`recovery.max_interventions`, and the runtime's recovery instruction.
+`recovery.max_interventions`, and the runtime's workflow texts: the recovery
+instruction, the `recover` tool's description, the failure template, and the
+section template. A nested workflow contributes the same document for its
+own graph.
 
 ## Relationship to the rest of foe
 
 A workflow episode is an episode. It has one log, one budget pool, one
 outcome, and one fingerprint. Its model nodes are child episodes and obey
-every rule of [subagents](design.md#subagents-and-teams). Its tool nodes
+every rule of [subagents](design.md#agent-teams). Its tool nodes
 dispatch through the ordinary registry with the ordinary effect checks.
 A parent that spawns a child whose contract carries a workflow with a model
 node reserves descendant episode capacity for that child, as it does for a
@@ -594,6 +610,6 @@ flow must be guaranteed, a loop where judgment must be free.
 
 ## Deferred within this specification
 
-Fan-out over a list (`map`), a node that fires on a timer, and a
-`workflow` node that references a workflow in another file. Each has an
-obvious place in the grammar and none is needed by the first consumer.
+Three node forms are not implemented: fan-out over a list (`map`), a node
+that fires on a timer, and a `workflow` node that references a workflow in
+another file. Construction refuses a key for any of them as an unknown key.
