@@ -1407,7 +1407,7 @@ fn a_child_tool_inherits_no_contract_tree_descriptor() {
     );
 }
 
-/// docs/design.md "Contract construction": a child receives the executable
+/// docs/design.md "Execution contracts and fingerprints": a child receives the executable
 /// snapshots needed to reconstruct its full declared fingerprint, including an
 /// ungranted descendant that the child cannot start.
 #[test]
@@ -1914,7 +1914,7 @@ fn a_projected_request_over_the_threshold_is_compacted_through_one_recorded_call
     assert!(types(&events).contains(&"compaction/end"));
 }
 
-/// docs/compaction.md "Failure keeps the previous context": a failed
+/// docs/compaction.md "When it fails": a failed
 /// summarization is recorded and the episode continues with the context
 /// it had.
 #[test]
@@ -2013,7 +2013,7 @@ fn plan(config: &Path) -> Value {
     serde_json::from_str(&line).unwrap()
 }
 
-/// docs/design.md "Subagents and teams": `foe plan` reports each distinct
+/// docs/design.md "Agent teams": `foe plan` reports each distinct
 /// tool definition throughout the reachable tree, even when names repeat,
 /// and omits a contract no `grants.spawn` entry reaches.
 #[test]
@@ -2865,7 +2865,7 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
     );
 }
 
-/// docs/design.md "Subagents and teams": a spawned fork validates the
+/// docs/design.md "Agent teams": a spawned fork validates the
 /// declared child fingerprint before it writes the seeded child start.
 #[test]
 fn a_spawned_fork_records_child_contract_evidence() {

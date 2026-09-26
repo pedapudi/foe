@@ -215,7 +215,7 @@ fn reported_input_can_cross_the_allowance_before_the_next_request() {
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
 }
 
-/// docs/compaction.md "How it is recorded": the summary response's
+/// docs/compaction.md "How it is logged": the summary response's
 /// `assistant/message` is the usage account. `compaction/end` repeats the
 /// usage as evidence and must not debit either allowance again.
 #[test]

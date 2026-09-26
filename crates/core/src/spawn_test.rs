@@ -604,7 +604,7 @@ fn child_fingerprint_is_stable_across_different_runtime_allowances() {
     }
 }
 
-/// docs/design.md "Contract construction": a child receives the executable
+/// docs/design.md "Execution contracts and fingerprints": a child receives the executable
 /// bytes committed before its source changes.
 #[test]
 fn launch_does_not_reopen_a_descendant_executable_after_construction() {
@@ -651,7 +651,7 @@ fn launch_does_not_reopen_a_descendant_executable_after_construction() {
     assert!(handle.dir.is_dir());
 }
 
-/// docs/design.md "Subagents and teams": a spawned fork leaves seeding to
+/// docs/design.md "Agent teams": a spawned fork leaves seeding to
 /// the child so that the child can validate its fingerprint first.
 #[tokio::test]
 async fn forked_child_launch_records_the_source_and_boundary() {

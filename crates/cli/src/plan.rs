@@ -4,7 +4,7 @@
 //! roots overlap, whether a terminal node exists, and every tool
 //! definition the contract's reachable tree can invoke. See
 //! docs/workflow.md "Firing" and "The flow guarantee, stated exactly", and
-//! docs/design.md "Subagents and teams".
+//! docs/design.md "Agent teams".
 
 use crate::run;
 use foe_contract::document::ResolvedContract;

@@ -851,7 +851,7 @@ fn a_subordinate_episode_refuses_a_task_from_the_command_line() {
     assert!(!dir.join(foe_log::fold::LOG_FILE).exists(), "the refusal precedes the log");
 }
 
-/// docs/design.md "Contract construction": a child resumed without its
+/// docs/design.md "Execution contracts and fingerprints": a child resumed without its
 /// inherited executable descriptors validates the recorded fingerprint.
 #[test]
 fn independently_resumed_child_rejects_a_changed_executable() {

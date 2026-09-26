@@ -39,7 +39,7 @@ fn start(contract: &ResolvedContract) -> EpisodeStart {
     }
 }
 
-/// docs/log-format.md "Team": duplicate detection and insertion are one
+/// docs/log-format.md "Teams": duplicate detection and insertion are one
 /// operation even when several deliveries arrive concurrently.
 #[test]
 fn simultaneous_peer_deliveries_append_one_inbox_item() {

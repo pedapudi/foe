@@ -145,7 +145,7 @@ fn every_workflow_rule_names_its_node() {
     assert!(serde_json::from_value::<ContractDocument>(unknown).is_err(), "unknown keys are refused");
 }
 
-/// docs/workflow.md "Fingerprint": the labels, the edges, the bindings, the
+/// docs/workflow.md "Contract fingerprint": the labels, the edges, the bindings, the
 /// model child contracts, and the runtime's recovery instruction participate.
 #[test]
 fn fingerprint_hashes_the_graph_and_the_recovery_texts() {

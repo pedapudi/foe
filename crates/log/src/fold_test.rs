@@ -857,7 +857,7 @@ fn every_event_variant_round_trips() {
     assert_eq!(seen, declared, "one of each event type, reserved ones included");
 }
 
-/// docs/log-format.md "Tool calls": logs written before typed failures
+/// docs/log-format.md "Tools": logs written before typed failures
 /// remain readable, and a typed failure survives serialization exactly.
 #[test]
 fn tool_failure_is_additive_and_round_trips() {
