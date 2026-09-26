@@ -78,7 +78,9 @@ log shows the findings entering the conversation.
 
 The verifier's own run leaves no `tool/result`, because a `done_when`
 verifier is invoked by the runtime rather than called by the model. The log
-holds no `tool/result` at all here, since no answer called a tool.
+holds no `tool/result` at all here, since no answer called a tool. Each
+verifier run is recorded instead as a `verification/result` event with status
+`findings`, one per candidate, and the model never sees those events.
 
 The last event is `episode/end` with the blocked outcome, and its message
 names the verifier and the number of retries that were spent. Raising

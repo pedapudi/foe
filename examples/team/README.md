@@ -30,8 +30,8 @@ configuration, the small project, and the complete episode tree.
 
 The runner prints a viewer command after validation. Open the tasks tab to
 see both boards, their task histories, dependencies, owners, and grants.
-The same projection is available while the run is live and from a static
-viewer export.
+The same projection is available while the run is live and in the
+self-contained page that `foe view DIR` writes without `--serve`.
 
 ## Coordination graph
 
@@ -77,8 +77,8 @@ the lead's own and enforced by the kernel. These three teammates read and
 report and are granted none, so their tasks name none: reviewing a change and
 running a check need no write access, and the lead makes every change itself.
 A lead that does partition a tree between writers gives each task a root of
-its own, and the board refuses a root that lies under or over one a task that
-has not settled still holds.
+its own. The board refuses a root that lies under or over a root that an
+unsettled task still holds.
 
 ## Peer and parent messages
 
@@ -124,7 +124,10 @@ The runner checks these invariants:
 - Integration creates and completes one task on its own board.
 - The nested auditor names integration as its parent and team lead.
 - Every roster member has a completed assigned task.
-- Every bare wait returns after the corresponding board settles.
+- The lead's bare wait returns after every root-board child has recorded its
+  `spawn/end` and `budget/release`.
+- The lead receives a report and an end notice from each of its three
+  members.
 - The changed command and the project checks pass.
 
 The episodes region shows the process tree. The trajectory shows concurrent

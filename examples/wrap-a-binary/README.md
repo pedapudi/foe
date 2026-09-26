@@ -74,6 +74,7 @@ target/release/foe plan --config target/foe-wrap-a-binary-demo.XXXXXX/config.jso
 ```text
 target/foe-wrap-a-binary-demo.XXXXXX/
 ├── config.json                the configuration with /home/user/project replaced
+├── foe.err                    the binary's standard error, naming the log directory
 ├── project/
 │   ├── src/report.py          one unused import and one line of 164 columns
 │   └── tools/style-check      the wrapped checker, copied from this directory
@@ -92,15 +93,18 @@ verifier. The runtime runs `style-check` again and returns both findings in
 an `inbox/item` with source `verify`.
 
 The next responses remove the unused import and finish. The verifier returns
-the remaining long-line finding. A later response splits the long statement and calls
-the checker again. The successful checker call proposes completion, and the
+the remaining long-line finding. A later response splits the long statement
+and calls the checker again. The successful checker call proposes completion, and the
 separate verifier run accepts it. The episode ends without another model
 request. `retries: 2` allows two sets of findings. A third set would end the
 episode as `blocked` with code `verification-unsatisfiable`.
 
 A verifier run leaves no `tool/result`, because the runtime invokes it
-separately from the model. Its findings appear in a `verify` inbox item. An
-empty result permits a completed outcome without adding an inbox item.
+separately from the model. Each run is recorded as a `verification/result`
+event with status `findings` or `accepted`, which the model never sees. The
+findings reach the model in a `verify` inbox item. An accepted run completes
+the episode without adding an inbox item, so this run records three
+`verification/result` events and two `verify` inbox items.
 
 `run.sh` then checks the log and the project:
 

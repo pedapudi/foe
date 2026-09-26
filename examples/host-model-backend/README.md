@@ -1,13 +1,14 @@
 # Host model backend
 
-A configuration with no `model` block, run by a Python application that supplies
-the model backend. When `model` is absent, foe has no credentials and no
-network; each model call is a `model/request` event written to standard
-output, and the process that launched foe answers it with `model/chunk`
-lines on standard input. The Python package in `python/` does that exchange.
+A configuration with no `model` block, run by a Python application that
+supplies the model backend. When `model` is absent, foe has no credentials
+and no network. Each model call is a `model/request` event that foe writes to
+the protocol channel, a pipe its launcher names with `--protocol-fds`. The
+process that launched foe answers it with `model/chunk` lines on the pipe in
+the other direction. The Python package in `python/` does that exchange.
 
-`run.py` gives it a model backend that plays two fixed responses. The first calls
-`read`. The second returns an object that contains the summary and its risks.
+`run.py` gives it a model backend that plays two fixed responses. The first
+calls `read`. The second returns an object that contains the summary and its risks.
 A Python host verifier receives the complete object through its `candidate`
 parameter and accepts it. The object also contains a field named `candidate`,
 which demonstrates that the runtime preserves the candidate's shape.

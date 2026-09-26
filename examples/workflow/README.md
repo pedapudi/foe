@@ -85,7 +85,7 @@ def add(left: int, right: int) -> int:
     return left + right
 ```
 
-The command exits zero and prints a completed outcome. `run.sh` then confirms
+The command exits zero and prints the completed outcome as one JSON object. `run.sh` then confirms
 the source change and the presence of `workflow/branch` and
 `workflow/node-end` events.
 
@@ -94,8 +94,10 @@ the source change and the presence of `workflow/branch` and
 The root `episode.jsonl` contains the graph events. Each model-node firing has
 a child log under `children/`.
 
-- `workflow/node-start` names the node, firing number, inputs, and child id.
-- `workflow/node-end` records the value, rendering, duration, and error field.
+- `workflow/node-start` names the node, the firing number, and the inputs.
+  A model node's start also names its child episode.
+- `workflow/node-end` records the value, its rendering, and the duration. A
+  failed firing records an `error` stating why, and its value is null.
 - `workflow/branch` records the selected label and successor node.
 - The `propose` child ends through the synthesized `return` tool.
 - The `apply` child records the `edit` call, its diff, and its final sentence.

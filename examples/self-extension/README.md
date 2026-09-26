@@ -55,9 +55,16 @@ The self-improvement workflow contains two nodes:
    output before the workflow can complete. A clean checker call completes
    the child without a separate model request.
 
+The deterministic responses edit the implementation and the test first and
+then call the checker. The checker reports the missing specification, and
+the finding reaches the node as a `verify` inbox item. The node then edits
+the specification, and its second checker call passes.
+
 The runner requires the fresh source to fail the checker. It then requires
 the final source to pass. It also requires recorded `read`, `edit`, and
-`check` tool results and a conformant workflow trace.
+`check` tool results, a `verify` inbox item, and a trace that
+`evals/trace_quality.py` accepts. Each run of this form creates
+`target/foe-self-improvement-workflow-demo.XXXXXX/`.
 
 Run the deterministic form with responses supplied by the host:
 
@@ -73,19 +80,20 @@ It keeps the same disposable source, grants, task, and verifier. The episode
 has declared limits of 24,000 input tokens, 4,000 output tokens, and eight
 model calls.
 
-The runner prints the limits and starts no episode until the command includes
-`--confirm-spend`:
+The runner prints the limits, starts no episode, and exits 2 until the
+command includes `--confirm-spend`:
 
 ```sh
 bazel run //examples/self-extension:self-extension-model
 bazel run //examples/self-extension:self-extension-model -- --confirm-spend
 ```
 
-Select another configured provider with `--model PROVIDER/MODEL`:
+Select another configured provider with `--model PROVIDER/MODEL`. Without
+the option, the runner uses the route that `run-model.sh` names:
 
 ```sh
 bazel run //examples/self-extension:self-extension-model -- \
-  --model openai/gpt-5.6-sol \
+  --model PROVIDER/MODEL \
   --confirm-spend
 ```
 

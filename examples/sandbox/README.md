@@ -66,7 +66,7 @@ denied `cat` process exits nonzero. A nonzero exit from a configured
 executable is a tool result, so the model receives the permission error and
 reports it in the next step.
 
-`run.sh` checks three facts:
+`run.sh` checks four facts:
 
 - The log contains the contents of `allowed.txt`.
 - The log contains the permission error from `denied.txt`.

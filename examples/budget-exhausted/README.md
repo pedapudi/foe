@@ -19,10 +19,10 @@ calls. The limits that end an episode this way are `model_calls`,
 
 The example needs no endpoint credential and no network. The host answers
 every request with one more `read` call from `responses.py`. Each answer reads
-a different module. A call that
-returns an identical result in `budget.loop_threshold` consecutive steps ends
-the episode as `blocked` with the code `looping-tool-call`, and this example
-is about the declared limit rather than the loop detector.
+a different module. The same call with identical arguments and an identical
+result in `budget.loop_threshold` consecutive steps ends the episode as
+`blocked` with the code `looping-tool-call`, and this example is about the
+declared limit rather than the loop detector.
 
 ## Paths to replace
 
@@ -57,7 +57,8 @@ The runner asserts what this example claims.
 four steps. Each step is a `model/request` with `step` counting from 1 and
 `attempt` 1, four `assistant/chunk` events, three of them the tool call and
 the fourth the stop the host reported, one `assistant/message` whose
-`stop` is `tool`, and one `tool/result` for the file that was read. The path in each result differs from the one before it.
+`stop` is `tool`, and one `tool/result` for the file that was read. The path
+in each result differs from the one before it.
 
 No fifth `model/request` appears. The runtime checks the budget before it
 assembles a request and again after a step settles, so the limit is reached
