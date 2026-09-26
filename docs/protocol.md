@@ -180,16 +180,20 @@ to deliver a team message.
 {"type": "inbox/item", "source": "parent", "content": [ { "type": "text", "text": "Stop after the first failing test." } ], "from": "ep_root", "message_id": null}
 ```
 
-`source` is `parent`, `child`, or `peer`. foe records the line as an
-`inbox/item` event and includes it in the next request.
+`source` is `parent`, `child`, `peer`, `request`, or `response`; any other
+source is a protocol error. foe records the line as an `inbox/item` event
+and includes it in the next request. A `peer`, `request`, or `response`
+item whose source and `message_id` match an item the log already holds is
+dropped.
 
 ### `cancel`
 
 Stops the episode. foe aborts any outstanding request, closes every
-obligation its log left open, writes `episode/end` with outcome `failed`
-and error `cancelled`, and exits. Closing the obligations records started
-tool calls as interrupted with synthetic results and sends `cancel` to
-every child, so a cancelled tree stops from the root down.
+obligation its log left open, writes `episode/end` with outcome `blocked`,
+code `cancelled`, and message `stopped by the caller`, and exits with
+code 2. Closing the obligations records started tool calls as interrupted
+with synthetic results and sends `cancel` to every child, so a cancelled
+tree stops from the root down.
 
 ```json
 {"type": "cancel"}
@@ -219,6 +223,12 @@ answer. An answer to a released registration follows the unknown-id rule above.
 After episode cleanup, the command-line process reports its outcome or
 recording error without waiting for the host to close the answer channel.
 An idle read of that channel does not extend the completed invocation.
+
+When the answer channel reaches its end before the episode does, foe stops
+waiting on the host. An outstanding or later model request the host
+answers fails without a retry, which ends the episode as `failed`. An
+outstanding or later host tool call receives an `unavailable` error result
+naming the tool.
 
 foe waits for a `model/chunk` and for a `tool/result` up to the `seconds`
 remaining in the episode's budget. When the budget's `seconds` elapse with
@@ -299,8 +309,11 @@ as one given a write root that names a file, therefore states its reason on
 its board task and in the inbox item its lead receives.
 
 An episode sends `cancel` to every child still running when it ends,
-whatever its outcome, and waits for each child's `episode/end` before
-writing its own. On a host with delegated cgroup v2, the parent also empties
+whatever its outcome, and waits up to ten seconds for those children to
+settle before writing its own `episode/end`. A child still unsettled after
+that wait is recorded as failed and its whole reservation as spent, by the
+closing events in [log-format.md](log-format.md#seeding). On a host with
+delegated cgroup v2, the parent also empties
 the child's recursive process boundary before it publishes settlement. A
 detached descendant therefore cannot outlive the child reservation.
 The lead records the task outcome after the process has exited and boundary
@@ -314,8 +327,8 @@ child enters the prepared boundary before its runtime code executes. The
 child refuses launch metadata whose episode path differs from its current
 cgroup or whose task path lies outside the invocation hierarchy.
 
-A child's `notify`, `send`, and parent-scoped `team` calls cross the host
-protocol, and the parent foe process implements them. A child resolves
+A child's `notify`, `send`, `ask`, and parent-scoped `team` calls cross the
+host protocol, and the parent foe process implements them. A child resolves
 `team` with `scope: led` inside its own process.
 A child's call to `notify` arrives at the parent as a `host/tool-call`; the
 parent appends an `inbox/item` with source `child` to its own log and
