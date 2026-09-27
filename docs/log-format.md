@@ -18,7 +18,7 @@ changing a required field requires a new log version.
   episode.jsonl          the log
   spill/                 canonical values too large to inline, and captured process output
     renderings/          complete renderings the turn budget shortened, named by their SHA-256 digest
-  tmp/                   scratch space for the episode's executables, named as TMPDIR
+  tmp/                   scratch space for the episode's executables; the shell tools name it as TMPDIR
   children/<child-id>/   child episodes, each with this same layout
 ```
 
@@ -163,8 +163,10 @@ Each filesystem entry gives the reason it is present. A captured executable
 entry may include the SHA-256 digest of its construction-time bytes.
 `connect_tcp` gives every reason outbound TCP remains available.
 
-The configured path identifies the source that Foe captured. The digest
-identifies the bytes that later invocations use. Foe does not reopen that
+A captured executable entry names the captured image as `captured:`
+followed by the digest, and its reason names the configured path, which
+identifies the source that Foe captured. The digest identifies the bytes
+that later invocations use. Foe does not reopen that
 source after contract construction.
 
 `mode` and `landlock_abi` state the filesystem and network enforcement the
