@@ -822,7 +822,7 @@ as further processes. Restrictions only narrow at each spawn.
      └─ episode    Landlock: read roots, write roots, execute roots, own log dir
           │        network: open for a configured model endpoint; closed when the host supplies the model backend
           │
-          ├─ tool  Landlock: subset of the episode's; network closed
+          ├─ tool  Landlock: subset of the episode's; network closed unless the tool declares network: true
           │
           └─ child Landlock: compiled from the child's own grants, which the
                    parent's registry already verified are a subset of its own
@@ -832,9 +832,9 @@ On Linux with Landlock available, the runtime compiles the grants into a
 ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
 becomes an execute rule on that exact file. The episode's log directory
-becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. The kernel reports a denial only to a privileged audit reader,
-so the runtime records none as an event of its own; a denied access reaches
+becomes a read-and-write rule. When the kernel supports it, TCP access is
+removed from executables that do not declare `network: true`. The kernel
+reports a denial only to a privileged audit reader, so the runtime records none as an event of its own; a denied access reaches
 the log as the tool's result, which the built-in tools type as
 `capability-denied` and the shell marks as a possible denial
 ([sandbox.md](sandbox.md#denied-accesses)).
