@@ -1,0 +1,71 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d857863..36b577e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/documented_keys.py b/checks/documented_keys.py
+new file mode 100755
+index 0000000..eb542dd
+--- /dev/null
++++ b/checks/documented_keys.py
+@@ -0,0 +1,36 @@
++#!/usr/bin/python3
++"""Fail when foe.ToolDef does not take exactly the keys docs/config.md lists for the tool_defs block."""
++
++import inspect
++import pathlib
++import re
++import sys
++
++sys.path.insert(0, "python")
++import foe
++
++BLOCK = "tool_defs"
++DOCUMENT = pathlib.Path("docs/config.md")
++
++
++def documented():
++    """The keys the document's table lists for the block, in the order it lists them."""
++    text = DOCUMENT.read_text(encoding="utf-8")
++    heading = re.search(rf"^#+ .*`{re.escape(BLOCK)}`.*$", text, re.MULTILINE)
++    if heading is None:
++        raise SystemExit(f"{DOCUMENT} has no section for the {BLOCK} block")
++    section = text[heading.end() :]
++    end = re.search(r"^#+ ", section, re.MULTILINE)
++    rows = re.findall(r"^\| `([a-z_]+)` \|", section[: end.start() if end else None], re.MULTILINE)
++    if not rows:
++        raise SystemExit(f"{DOCUMENT}: the {BLOCK} section lists no keys")
++    return rows
++
++
++taken = list(inspect.signature(getattr(foe, "ToolDef")).parameters)
++listed = documented()
++if taken != listed:
++    raise SystemExit(
++        f"foe.ToolDef takes {taken}; {DOCUMENT} lists {listed} for the {BLOCK} block. "
++        "The dataclass and the document state one set of keys."
++    )
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..4cf0ddc
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,10 @@
++#!/usr/bin/bash
++# The check suite of this task: the line ceilings, the package imports, then its keys against the document.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: line ceilings"
++/usr/bin/bash scripts/loc.sh
++echo "step 2: the Python package imports"
++/usr/bin/python3 -B -I -c 'import sys; sys.path.insert(0, "python"); import foe'
++echo "step 3: foe.ToolDef takes the keys docs/config.md lists for the tool_defs block"
++/usr/bin/python3 -B -I checks/documented_keys.py

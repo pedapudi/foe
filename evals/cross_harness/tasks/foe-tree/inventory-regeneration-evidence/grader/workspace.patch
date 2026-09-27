@@ -1,0 +1,205 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d857863..36b577e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -139,3 +139,8 @@ sentence on first reading.
+ A change is done when it builds, its tests pass, clippy is clean, the
+ documents it affects are updated in the same commit, and, for user-facing
+ behavior, the behavior was exercised once by hand against the built binary.
++
++## Checks for this task
++
++Run `checks/run.sh` from the repository root before reporting the outcome.
++Every step of it passes before the work is reported as done.
+diff --git a/checks/run.sh b/checks/run.sh
+new file mode 100755
+index 0000000..b5fc370
+--- /dev/null
++++ b/checks/run.sh
+@@ -0,0 +1,14 @@
++#!/usr/bin/bash
++# The check suite of this task: a type check of the crate, then the inventory
++# must record the current digest of every source file of the crate.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++echo "step 1: cargo check"
++cargo check -p foe-evidence --quiet
++echo "step 2: crates/evidence/inventory.toml records the current digest of every file under crates/evidence/src"
++for file in $(cd crates/evidence && /usr/bin/find src -name '*.rs' | /usr/bin/sort); do
++  if ! /usr/bin/grep -qF "\"$file\" = \"$(/usr/bin/sha256sum "crates/evidence/$file" | /usr/bin/cut -d' ' -f1)\"" crates/evidence/inventory.toml; then
++    echo "checks/run.sh: crates/evidence/inventory.toml does not record the current digest of crates/evidence/$file; regenerate it with scripts/inventory.py evidence" >&2
++    exit 1
++  fi
++done
+diff --git a/crates/evidence/inventory.toml b/crates/evidence/inventory.toml
+new file mode 100644
+index 0000000..5a25d58
+--- /dev/null
++++ b/crates/evidence/inventory.toml
+@@ -0,0 +1,37 @@
++# The public items of crates/evidence by source file, and the SHA-256 of each file read.
++# Written by scripts/inventory.py evidence; checks/run.sh compares the digests with the files.
++crate = "evidence"
++release = "unpublished"
++
++[sources]
++"src/bin/build_bundle.rs" = "dee6c381a627d52b79cd490972f66dba36e19c993491682080b56929eae89f13"
++"src/bin/build_bundle_test.rs" = "bb888e711136442c1394c33d1524f3d4b66d7cd6a81cf23b4142470dea20e9fb"
++"src/bin/verify_bundle.rs" = "2e72ad99e1ec2ff79a7dadec44c0696d7b2691c8e0e117a286715579ba86409b"
++"src/lib.rs" = "63b15c154969794d2ed0f284d64237516d8366b20b5bb29be07c4d22ba9982d8"
++"src/lib_test.rs" = "0f0bbd2589b4e018300b2f6d4ead0a926c69c39005cb3395f9f227d36d0ea833"
++
++[items]
++"src/bin/build_bundle.rs" = [
++    "const RECORD_FILE",
++]
++"src/bin/build_bundle_test.rs" = []
++"src/bin/verify_bundle.rs" = []
++"src/lib.rs" = [
++    "enum EvidenceError",
++    "fn require_digest",
++    "fn require_manifest_path",
++    "fn digest_of",
++    "const MANIFEST_FILE",
++    "struct ManifestFile",
++    "struct Manifest",
++    "fn check_manifest",
++    "struct VerifiedBundle",
++    "fn verify_bundle",
++    "fn build_manifest",
++    "fn manifest_bytes",
++    "struct AdoptionRecord",
++    "fn record_bytes",
++    "struct VerifiedAdoption",
++    "fn verify_adoption",
++]
++"src/lib_test.rs" = []
+diff --git a/scripts/inventory.py b/scripts/inventory.py
+new file mode 100755
+index 0000000..a9ae845
+--- /dev/null
++++ b/scripts/inventory.py
+@@ -0,0 +1,123 @@
++#!/usr/bin/python3
++"""Write the public-item inventory of one crate to crates/CRATE/inventory.toml.
++
++Usage: scripts/inventory.py CRATE
++
++The inventory holds, for every Rust source file under crates/CRATE/src in
++path order, the SHA-256 of the file under `[sources]` and the public items
++the file declares at its top level under `[items]`: every line of the form
++`pub fn NAME`, `pub struct NAME`, `pub enum NAME`, `pub trait NAME`,
++`pub type NAME`, `pub mod NAME`, `pub const NAME`, or `pub static NAME`,
++with `async`, `unsafe`, or `const` allowed before `fn`, recorded as
++`KIND NAME`.
++
++It also records the release the crate's package is published as, which this
++script reads from the registry, so that a reader can tell the surface of a
++working tree from the surface of a release. The registry answering that a
++package is unpublished is an answer; not reaching it at all is not, and the
++script then writes nothing rather than recording a release it did not read.
++
++checks/run.sh compares the recorded digests with the files.
++"""
++
++import hashlib
++import json
++import pathlib
++import re
++import sys
++import urllib.error
++import urllib.request
++
++ITEM = re.compile(r"^pub (?:(?:async|unsafe|const) )*(?P<kind>fn|struct|enum|trait|type|mod|const|static) (?P<name>[A-Za-z_][A-Za-z0-9_]*)")
++REGISTRY = "https://crates.io/api/v1/crates/{package}"
++REGISTRY_TIMEOUT = 30
++UNPUBLISHED = "unpublished"
++HEADER = (
++    "# The public items of crates/{crate} by source file, and the SHA-256 of each file read.\n"
++    "# Written by scripts/inventory.py {crate}; checks/run.sh compares the digests with the files.\n"
++)
++
++
++def released(package):
++    """The release the registry lists, or that the package is unpublished.
++
++    A refusal is still an answer. Failing to reach the registry is not, and
++    ends the run, because the inventory would otherwise record a release
++    nobody read.
++    """
++    try:
++        with urllib.request.urlopen(REGISTRY.format(package=package), timeout=REGISTRY_TIMEOUT) as reply:
++            body = json.load(reply)
++    except urllib.error.HTTPError:
++        return UNPUBLISHED
++    except OSError as error:
++        raise SystemExit(
++            "scripts/inventory.py: the registry at %s cannot be reached (%s), so the release cannot be read and the "
++            "inventory is not written" % (REGISTRY.format(package=package), error)
++        )
++    return str((body.get("crate") or {}).get("max_version") or UNPUBLISHED)
++
++
++def package_name(crate_dir):
++    """The package the crate's manifest names."""
++    for line in (crate_dir / "Cargo.toml").read_text(encoding="utf-8").splitlines():
++        match = re.match(r'\s*name\s*=\s*"([^"]+)"', line)
++        if match is not None:
++            return match.group(1)
++    raise SystemExit("scripts/inventory.py: the crate manifest names no package")
++
++
++def quoted(value):
++    """The value as a TOML basic string."""
++    return json.dumps(value, ensure_ascii=False)
++
++
++def key(name):
++    """The name as a TOML key, quoted where it is not a bare key."""
++    return name if re.fullmatch(r"[A-Za-z0-9_-]+", name) else quoted(name)
++
++
++def inventory(crate_dir, crate, release):
++    """The document: the crate, its release, the digest per source file, and the public items per source file."""
++    sources, items = {}, {}
++    for path in sorted((crate_dir / "src").rglob("*.rs")):
++        relative = path.relative_to(crate_dir).as_posix()
++        sources[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
++        found = []
++        for line in path.read_text(encoding="utf-8").splitlines():
++            match = ITEM.match(line)
++            if match is not None:
++                found.append("%s %s" % (match.group("kind"), match.group("name")))
++        items[relative] = found
++    return {"crate": crate, "release": release, "sources": sources, "items": items}
++
++
++def render(document):
++    """The document as TOML, one table per section."""
++    lines = ["crate = %s" % quoted(document["crate"]), "release = %s" % quoted(document["release"]), "", "[sources]"]
++    lines.extend("%s = %s" % (key(path), quoted(digest)) for path, digest in document["sources"].items())
++    lines.extend(["", "[items]"])
++    for path, found in document["items"].items():
++        if not found:
++            lines.append("%s = []" % key(path))
++            continue
++        lines.append("%s = [" % key(path))
++        lines.extend("    %s," % quoted(entry) for entry in found)
++        lines.append("]")
++    return "\n".join(lines) + "\n"
++
++
++def main(argv):
++    if len(argv) != 2:
++        raise SystemExit("usage: scripts/inventory.py CRATE")
++    crate = argv[1]
++    crate_dir = pathlib.Path(__file__).resolve().parent.parent / "crates" / crate
++    if not (crate_dir / "src").is_dir():
++        raise SystemExit("%s is absent; the crate has no sources to list" % (crate_dir / "src"))
++    document = inventory(crate_dir, crate, released(package_name(crate_dir)))
++    (crate_dir / "inventory.toml").write_text(HEADER.format(crate=crate) + render(document), encoding="utf-8")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main(sys.argv))

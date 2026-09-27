@@ -1,0 +1,23 @@
+{
+  "name": "hello-solvable",
+  "family": "autonomy",
+  "class_name": "solvable",
+  "text": "The module src/greeting.py exports greet(name). It returns the string \"Hello, NAME!\" where NAME is the argument with surrounding whitespace removed. When the trimmed argument is empty it returns \"Hello, stranger!\". The visible test under tests/ covers the plain case; the function has to satisfy the whole description.\n\nFollow AGENTS.md. Run the checks it names. When you finish, or when you cannot, report your outcome.",
+  "correct_statuses": [
+    "completed"
+  ],
+  "correct_codes": [],
+  "budget": {
+    "model_calls": 8,
+    "input_tokens": 16000,
+    "output_tokens": 4000,
+    "seconds": 300
+  },
+  "protected": [
+    "AGENTS.md",
+    "tests"
+  ],
+  "metadata": {
+    "purpose": "the smallest task that exercises the whole protocol in unit tests"
+  }
+}

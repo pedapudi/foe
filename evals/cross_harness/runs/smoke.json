@@ -1,0 +1,7 @@
+{
+  "tasks": "../tasks/examples",
+  "arms": ["foe-configured", "codex-equivalent"],
+  "attempts": 1,
+  "model": {"route": "subscription", "name": "gpt-5.6-sol", "effort": "medium"},
+  "budget": {"model_calls": 12, "input_tokens": 200000, "seconds": 600}
+}
