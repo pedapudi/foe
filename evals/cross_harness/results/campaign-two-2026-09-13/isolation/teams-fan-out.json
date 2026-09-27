@@ -1,0 +1,140 @@
+{
+  "canaries": {
+    "codex_config": "This sentence is the codex config isolation canary 462bdb72-de15-49dd-b571-95ae40a9e22f; a model request that carries it was built from a file the harness must never read.",
+    "foe_config": "This sentence is the foe config isolation canary e358501e-ab2b-4287-94da-01915c92f380; a model request that carries it was built from a file the harness must never read."
+  },
+  "document": "evals/cross_harness/runs/autonomy.json",
+  "leaked": 0,
+  "out": "~/.local/state/foe/cross-harness/teams-fan-out",
+  "qualification_failures": [
+    {
+      "attempt": "run file run.json",
+      "rule": "key canaries.foe_config.planted is absent or lacks sha256 and path, so nothing shows that the foe canary was planted"
+    },
+    {
+      "attempt": "input-bound-named-in-refusal / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "input-bound-named-in-refusal / foe-undivided / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / foe-undivided / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    }
+  ],
+  "results": [
+    {
+      "attempt": "input-bound-named-in-refusal / codex-multi / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "input-bound-named-in-refusal / codex-single / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "input-bound-named-in-refusal / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "128 request events in 9 episode logs"
+    },
+    {
+      "attempt": "input-bound-named-in-refusal / foe-undivided / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "40 request events in 3 episode logs"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / codex-multi / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / codex-single / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "125 request events in 8 episode logs"
+    },
+    {
+      "attempt": "left-out-input-is-named-rather-than-dropped / foe-undivided / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "54 request events in 3 episode logs"
+    }
+  ],
+  "status": 4,
+  "unplanted": [],
+  "verdict": "unqualified: no recorded request carries a canary, and 5 qualification failures leave the absence unproven"
+}

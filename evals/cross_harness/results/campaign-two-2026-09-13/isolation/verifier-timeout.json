@@ -1,0 +1,92 @@
+{
+  "canaries": {
+    "codex_config": "This sentence is the codex config isolation canary 3342bf28-077b-4a62-945d-fd7a9c47a807; a model request that carries it was built from a file the harness must never read.",
+    "foe_config": "This sentence is the foe config isolation canary 1cf972a8-b34b-40ea-a10f-f76b53444c45; a model request that carries it was built from a file the harness must never read."
+  },
+  "document": "evals/cross_harness/runs/verifier-timeout.json",
+  "leaked": 0,
+  "out": "~/.local/state/foe/cross-harness/verifier-timeout",
+  "qualification_failures": [
+    {
+      "attempt": "run file run.json",
+      "rule": "key canaries.foe_config.planted is absent or lacks sha256 and path, so nothing shows that the foe canary was planted"
+    },
+    {
+      "attempt": "unreleased-lock-context / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "unreleased-lock-evidence / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "unwritten-pipe-context / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "waiting-check-suite / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    }
+  ],
+  "results": [
+    {
+      "attempt": "unreleased-lock-context / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "36 request events in 3 episode logs"
+    },
+    {
+      "attempt": "unreleased-lock-evidence / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "30 request events in 3 episode logs"
+    },
+    {
+      "attempt": "unwritten-pipe-context / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "28 request events in 3 episode logs"
+    },
+    {
+      "attempt": "waiting-check-suite / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "26 request events in 3 episode logs"
+    }
+  ],
+  "status": 4,
+  "unplanted": [],
+  "verdict": "unqualified: no recorded request carries a canary, and 5 qualification failures leave the absence unproven"
+}

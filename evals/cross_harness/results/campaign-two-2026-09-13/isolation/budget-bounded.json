@@ -1,0 +1,110 @@
+{
+  "canaries": {
+    "codex_config": "This sentence is the codex config isolation canary 66a9b903-d882-4c82-b252-4c23694f2826; a model request that carries it was built from a file the harness must never read.",
+    "foe_config": "This sentence is the foe config isolation canary 7eca339b-1a26-4e5d-80cc-0d4f61222327; a model request that carries it was built from a file the harness must never read."
+  },
+  "document": "evals/cross_harness/runs/budget-bounded.json",
+  "leaked": 0,
+  "out": "~/.local/state/foe/cross-harness/budget-bounded",
+  "qualification_failures": [
+    {
+      "attempt": "run file run.json",
+      "rule": "key canaries.foe_config.planted is absent or lacks sha256 and path, so nothing shows that the foe canary was planted"
+    },
+    {
+      "attempt": "correlation-as-inbox-source / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "duplicate-grant-roots / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "question-identifier-in-message-text / foe-configured / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    }
+  ],
+  "results": [
+    {
+      "attempt": "correlation-as-inbox-source / codex-equivalent / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "correlation-as-inbox-source / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "19 request events in 3 episode logs"
+    },
+    {
+      "attempt": "duplicate-grant-roots / codex-equivalent / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "duplicate-grant-roots / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "21 request events in 3 episode logs"
+    },
+    {
+      "attempt": "question-identifier-in-message-text / codex-equivalent / 1",
+      "harness": "codex",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": true,
+      "qualification": [],
+      "searched": "2 files: every session file and the event stream"
+    },
+    {
+      "attempt": "question-identifier-in-message-text / foe-configured / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "12 request events in 2 episode logs"
+    }
+  ],
+  "status": 4,
+  "unplanted": [],
+  "verdict": "unqualified: no recorded request carries a canary, and 4 qualification failures leave the absence unproven"
+}

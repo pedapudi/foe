@@ -1,0 +1,290 @@
+{
+  "canaries": {
+    "codex_config": "This sentence is the codex config isolation canary 557219d9-311c-4adb-8af2-4757308d8bd7; a model request that carries it was built from a file the harness must never read.",
+    "foe_config": "This sentence is the foe config isolation canary 29b96e22-740a-4720-ad3f-9159881ba0c9; a model request that carries it was built from a file the harness must never read."
+  },
+  "document": "evals/cross_harness/runs/lean.json",
+  "leaked": 0,
+  "out": "~/.local/state/foe/cross-harness/lean",
+  "qualification_failures": [
+    {
+      "attempt": "run file run.json",
+      "rule": "key canaries.foe_config.planted is absent or lacks sha256 and path, so nothing shows that the foe canary was planted"
+    },
+    {
+      "attempt": "ceiling-bound-feature / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "ceiling-bound-feature-telemetry / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "correlation-as-inbox-source / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "duplicate-grant-roots / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "frozen-interface-budget / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "frozen-interface-tool-defs / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "inventory-regeneration-code / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "inventory-regeneration-context / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "inventory-regeneration-evidence / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "inventory-regeneration-workflow / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "question-identifier-in-message-text / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "unreleased-lock-context / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "unreleased-lock-evidence / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "unwritten-pipe-context / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    },
+    {
+      "attempt": "waiting-check-suite / foe-lean / 1",
+      "rule": "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+    }
+  ],
+  "results": [
+    {
+      "attempt": "ceiling-bound-feature / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "8 request events in 2 episode logs"
+    },
+    {
+      "attempt": "ceiling-bound-feature-telemetry / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "8 request events in 2 episode logs"
+    },
+    {
+      "attempt": "correlation-as-inbox-source / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "25 request events in 3 episode logs"
+    },
+    {
+      "attempt": "duplicate-grant-roots / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "30 request events in 3 episode logs"
+    },
+    {
+      "attempt": "frozen-interface-budget / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "6 request events in 2 episode logs"
+    },
+    {
+      "attempt": "frozen-interface-tool-defs / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "7 request events in 2 episode logs"
+    },
+    {
+      "attempt": "inventory-regeneration-code / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "8 request events in 2 episode logs"
+    },
+    {
+      "attempt": "inventory-regeneration-context / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "13 request events in 2 episode logs"
+    },
+    {
+      "attempt": "inventory-regeneration-evidence / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "15 request events in 2 episode logs"
+    },
+    {
+      "attempt": "inventory-regeneration-workflow / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "13 request events in 2 episode logs"
+    },
+    {
+      "attempt": "question-identifier-in-message-text / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "23 request events in 3 episode logs"
+    },
+    {
+      "attempt": "unreleased-lock-context / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "17 request events in 2 episode logs"
+    },
+    {
+      "attempt": "unreleased-lock-evidence / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "18 request events in 2 episode logs"
+    },
+    {
+      "attempt": "unwritten-pipe-context / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "16 request events in 2 episode logs"
+    },
+    {
+      "attempt": "waiting-check-suite / foe-lean / 1",
+      "harness": "foe",
+      "hits": {
+        "codex_config": [],
+        "foe_config": []
+      },
+      "launched": true,
+      "planted": null,
+      "qualification": [
+        "the record's foe_canary_present is None, so nothing shows the foe canary was in place when the attempt started"
+      ],
+      "searched": "22 request events in 2 episode logs"
+    }
+  ],
+  "status": 4,
+  "unplanted": [],
+  "verdict": "unqualified: no recorded request carries a canary, and 16 qualification failures leave the absence unproven"
+}
