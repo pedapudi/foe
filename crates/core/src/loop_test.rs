@@ -1427,7 +1427,7 @@ async fn a_session_exit_is_posted_once_and_consumed_by_the_next_request() {
     assert!(serde_json::to_string(&request.messages).unwrap().contains("session 1: exit 0 after 3s"));
 }
 
-/// docs/tools.md "wait": exits are posted while a turn's calls run, so a
+/// docs/tools.md "Built-in team tools", `wait`: exits are posted while a turn's calls run, so a
 /// `wait` on a session condition observes the arrival mid-block, returns
 /// naming the condition, and the arrival is consumed by the next request.
 #[tokio::test]
