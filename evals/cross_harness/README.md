@@ -22,20 +22,22 @@ credential, the network, or a Codex login.
 | `metering_proxy.py` | a recording, metering proxy between a harness and an OpenAI-compatible endpoint; refuses a request once an attempt's budget is spent |
 | `codex_budget_watcher.py` | follows Codex's session files during a run and stops the process tree when a token or wall-clock limit is crossed |
 | `arms/foe_arm.py`, `arms/codex_arm.py` | one harness given one task in one workspace; both return the same result record |
-| `contracts/graphs.py` | generates the bespoke foe documents: the autonomy graph, its ablation, and its lean variant without the survey node, and the teams graph in its configured, undivided, and sequential variants |
+| `contracts/graphs.py` | generates the bespoke foe documents: the autonomy graph, its variant without verifiers, its ablation without verifiers or `block`, and its lean variant without the survey node, and the teams graph in its configured, undivided, and sequential variants |
 | `tasks/protocol.py` | what a task is, how a task directory is laid out, how a task is materialized, graded, and classified into a confusion cell |
 | `tasks/policies.py` | degenerate policies that stand in for an arm, so the grader controls run without a model |
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
 | `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks; it offers more designs than `tasks/foe-tree/` holds |
 | `tasks/teams.py` | authors the teams tasks: fan-out tasks, harvested from a sweep commit or constructed over the crates of one change, and survey tasks whose answer a script computes |
 | `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
-| `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request |
+| `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request, and the requests and the planted canaries are proven present; exit status 4 means no canary was found but the evidence leaves the absence unproven |
 | `gates/hang_symmetry.py` | the non-terminating class's premise: each task's check is still running after 45 seconds on the host and under the Codex sandbox |
 | `gates/network_denied.py` | the missing-capability class's premise: no arm can reach the network the task's generator needs |
 | `gates/environment_interference.py` | counts, per attempt, the signals of an environment refusing an arm, such as a permission denial or a missing toolchain |
-| `admission.py` | decides which tasks are admissible: the oracle-solved workspace's visible check passes on the host, inside a foe episode, and under a Codex sandbox |
+| `conditions.py` | states, per attempt, whether the condition its arm's control tests was reached: the runtime verifier ran, the verifier or the stop mechanism stayed absent, or a non-terminating check entered its wait |
+| `rescore.py` | scores committed attempt records again under the current scoring version from the workspaces the attempts left, and keeps each original cell beside the new one |
+| `admission.py` | decides which tasks are admissible: the oracle-solved workspace's visible check passes on the host, inside a foe episode, and under a Codex sandbox; `--tool-root` grants the foe episode a further directory to execute |
 | `run.py` | runs every selected task under every selected arm, grades each run, and writes one record per attempt |
-| `report.py` | rates per arm, cells per task, teams coordination measures, and paired comparisons over the records |
+| `report.py` | rates per arm, cells per task, teams coordination measures, and paired comparisons over the records, with the construction as the statistical unit; `--archive` recomputes every table of the dated campaigns under `results/` |
 | `environment/` | the container an attempt runs in, its egress sink, and `build.sh`; see `environment/environment.md` |
 
 ## Tasks
@@ -47,44 +49,48 @@ holds no copy of the repository. `--keep-workspace` on an authoring tool
 keeps the generated workspace for inspection, and `.gitignore` excludes it
 and any grading build directory.
 
-`tasks/foe-tree/` holds thirty-two task directories, of which twenty-four
-are admissible and eight are suppressed. `admission.py` decides which:
-a task is admissible when its oracle-solved workspace passes the visible
-check on the host, inside a foe episode, and under a Codex sandbox. A
-non-terminating task's check is built never to return, so
-`gates/hang_symmetry.py` admits that class instead: the check must still be
-running after 45 seconds on the host and under the Codex sandbox.
+`tasks/foe-tree/` holds the fifteen autonomy tasks that `runs/autonomy.json`
+selects. `admission.py` admits a task when its oracle-solved workspace
+passes the visible check on the host, inside a foe episode, and under a
+Codex sandbox. On a host whose system programs are links into another
+directory, such as a coreutils package under `/usr/lib/cargo/bin`, the foe
+episode needs that directory named with `--tool-root`, and a run document
+names it under `tool_roots`. A non-terminating task's check is built never
+to return, so `gates/hang_symmetry.py` admits that class instead: the check
+must still be running after 45 seconds on the host and under the Codex
+sandbox.
 
-| family and class | admissible | suppressed |
-|---|---:|---:|
-| autonomy, solvable | 4 | 6 |
-| autonomy, contradictory | 4 | 0 |
-| autonomy, missing-capability | 6 | 0 |
-| autonomy, non-terminating | 4 | 0 |
-| teams, fan-out | 2 | 2 |
-| teams, survey | 2 | 0 |
-| teams, coherent | 2 | 0 |
+Eleven of the task directories are the ones the autonomy run of 2026-09-13
+ran, with the scoring and control files added since. The four
+non-terminating task directories differ from those runs in their wait step.
+Their check suites print `checks/run.sh step 2 waiting on <mechanism>` to
+standard error before the wait, and their graders read no file the
+workspace holds. The recorded runs used an earlier `grader/workspace.patch`,
+whose check suite appended a line to `checks-wait.log`. Its sha256 digests
+begin as follows:
 
-Every suppressed task runs a crate suite that a sandbox breaks. Running
-`cargo test -p <package>` for each crate under both sandboxes, on this host,
-leaves `foe-core`, `foe-code`, `foe-transport`, `foe-view`, and the
-command-line crate failing: their tests bind or connect loopback sockets,
-place a store outside a declared write root, or start an interpreter over a
-socket pair. `foe-code` fails under the Codex policy alone and `foe-log` on
-one test inside a foe episode alone. A check that runs one of the failing
-suites can pass for no arm however well the arm worked. The two harvested
-fan-outs are suppressed for that reason: each comes from a sweep commit and
-is judged by `cargo test --workspace`.
+| task | recorded `workspace.patch` sha256 |
+|---|---|
+| `unreleased-lock-context` | `c59c19f811230aae` |
+| `unreleased-lock-evidence` | `f979c3aaf7aa3525` |
+| `unwritten-pipe-context` | `fb120da456f55045` |
+| `waiting-check-suite` | `3360416ce65fc179` |
 
-The four admissible teams tasks that change code are constructed rather than
-harvested, and the two classes differ in the division alone. The two fan-outs
-put each unit in a crate directory of its own, so a delegation can grant
-directories that do not overlap, and name the crates their change touches in
-place of the workspace, so the check passes inside both sandboxes. The two
-coherent controls put the whole change in one crate directory, so no two
-workers can be given directories that do not overlap. The suppressed
-directories stay in the tree so that a later host, such as the container, can
-re-admit them.
+| class | tasks | construction |
+|---|---|---|
+| solvable | `duplicate-grant-roots`, `question-identifier-in-message-text`, `correlation-as-inbox-source` | one commit removed from this repository's history per task |
+| contradictory | `ceiling-bound-feature`, `ceiling-bound-feature-telemetry` | a change that cannot fit under a line ceiling |
+| contradictory | `frozen-interface-budget`, `frozen-interface-tool-defs` | a field that the frozen interface's document forbids |
+| missing-capability | `inventory-regeneration-code`, `inventory-regeneration-context`, `inventory-regeneration-evidence`, `inventory-regeneration-workflow` | an artifact only a generator writes, and the generator needs a network no arm has |
+| non-terminating | `unreleased-lock-context`, `unreleased-lock-evidence` | a lock nothing releases |
+| non-terminating | `unwritten-pipe-context` | a pipe nothing writes |
+| non-terminating | `waiting-check-suite` | a socket nothing answers |
+
+The fifteen tasks come from seven constructions, which is the unit
+`report.py` counts. The three non-terminating mechanisms are one
+construction, because one builder writes them with one check template, one
+first step, and one grader. `tasks/examples/hello-solvable` is one further solvable
+task that `runs/smoke.json` runs.
 
 Most task texts were written by an agent and await a person's reading;
 `metadata.review` in each `task.json` records who has read its text.
@@ -118,14 +124,25 @@ python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json
 python3 evals/cross_harness/run.py evals/cross_harness/runs/autonomy-pilot.json --confirm-spend
 python3 evals/cross_harness/report.py evals/cross_harness/runs/autonomy-pilot.json
 python3 evals/cross_harness/gates/isolation.py evals/cross_harness/runs/autonomy-pilot.json
+python3 evals/cross_harness/report.py --archive evals/cross_harness/results
 python3 evals/cross_harness/gates/label_leakage.py evals/cross_harness/runs/autonomy.json --confirm-spend
 ```
 
-`runs/smoke.json` runs the example task under one foe arm and one Codex
-arm; `runs/autonomy-pilot.json` runs the two cheapest tasks on foe's tree
-under four autonomy arms; `runs/autonomy.json` selects the fifteen autonomy
-tasks of the run reported in `results/autonomy-2026-09-13.md`. The other
-documents under `runs/` are the ones the reports under `results/` name.
+The documents under `runs/`:
+
+| document | what it runs |
+|---|---|
+| `smoke.json` | the example task under one foe arm and one Codex arm |
+| `autonomy-pilot.json` | the two cheapest tasks on foe's tree under four autonomy arms |
+| `autonomy.json` | the fifteen autonomy tasks under four arms, the run `results/autonomy-2026-09-13.md` records |
+| `autonomy-verifier.json` | the fifteen autonomy tasks under `foe-configured`, `foe-unverified`, and `codex-equivalent`, three attempts each; not yet run |
+| `verifier-timeout.json`, `lean.json`, `budget-bounded.json`, `budget-bounded-warning.json` | cases of 2026-09-13 that `results/campaign-two-2026-09-13.md` records |
+
+The small-obstacle and teams cases of that record ran tasks this tree does
+not hold, so no document under `runs/` selects them.
+`results/campaign-two-2026-09-13/run-documents/` keeps the resolved run
+document of every case of that record.
+
 A document's keys, with relative paths resolved against the document's own
 directory:
 
@@ -155,12 +172,47 @@ run for both. The runner sets one environment variable, `CODEX_HOME`, on
 the Codex child process, because Codex locates its credential and session
 files by it, and records the value.
 
+## Results
+
+`results/` holds the dated records of two exploratory campaigns, each
+opened by a section stating its status and the claims withdrawn from it.
+The committed arrays summarize every attempt, `rescored.json` and
+`rescored/` hold each attempt's cell under both scoring versions, and the
+conditions files state whether each attempt reached its condition.
+`tables.md` is what `report.py --archive` computes from them, and
+`results/archive_test.py` requires it to match. `attempt-ledger.json` reconciles the attempt counts
+with the local run directories, and `evidence-manifest.json` names each
+full record with its digest and the digest of the archive that holds them.
+`qualification-2026-09-27/` holds the grader-control, hang-symmetry,
+network-denial, and admission results recorded on that date.
+
+The committed arrays reproduce every scoring version 1 table. The scoring
+version 2 cells, the isolation results, and the conditions were computed
+from the retained attempt workspaces and the episode and session logs,
+which only the host that ran the attempts holds. `rescore.py`,
+`gates/isolation.py`, and `conditions.py` therefore reproduce those files
+only on a host that holds the run directories under
+`~/.local/state/foe/cross-harness/`. The archive `evidence-manifest.json`
+names holds the full records and omits the workspaces and logs.
+
 ## Tests
 
 ```sh
 sh evals/cross_harness/run_unit_tests.sh
+sh evals/cross_harness/run_unit_tests.sh --forbid-skips
 bazel test //evals/cross_harness:cross_harness_unit_test
 ```
 
-Tests that exercise the built binary or cargo skip, naming the reason,
-when `target/debug/foe` or cargo is absent.
+`repairs_test.py` runs scripted episodes of the generated autonomy
+documents against `target/debug/foe`. Two of its tests reach runtime
+repairs: a completion verifier killed at its timeout, and the limit on one
+`bash` call. The third checks the evaluation document's grant of the
+directories a check writes, in a workspace whose directories the runner
+creates as it does before every arm. `results/archive_test.py` recomputes
+the recorded results from the committed arrays, and every other test file
+uses synthetic records.
+
+A test that exercises the built binary, cargo, or the repository's git
+history skips with its reason when that input is absent, as it is inside
+the Bazel sandbox. `--forbid-skips` counts a skipped test as a failure, and
+continuous integration passes it.
