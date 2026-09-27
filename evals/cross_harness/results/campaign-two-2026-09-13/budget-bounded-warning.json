@@ -1,0 +1,142 @@
+[
+ {
+  "task": "correlation-as-inbox-source",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": null,
+   "commands": 5,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 1,
+   "input_tokens": null,
+   "max_depth": 1,
+   "model_calls": 17,
+   "output_tokens": null,
+   "reasoning_tokens": null,
+   "responses_with_usage": 15,
+   "tool_calls": 58,
+   "tool_calls_by_name": {
+    "bash": 5,
+    "check": 1,
+    "edit": 2,
+    "grep": 18,
+    "read": 31,
+    "return": 1
+   },
+   "wall_ms": 242652
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "63cdb65f6b4f6a08b84ca07fac716a4101251f45",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded-warning/records/correlation-as-inbox-source/foe-configured/01.json"
+ },
+ {
+  "task": "duplicate-grant-roots",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 4,
+   "cache_read_tokens": 341120,
+   "commands": 8,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 1007,
+   "input_tokens": 400756,
+   "max_depth": 1,
+   "model_calls": 21,
+   "output_tokens": 5717,
+   "reasoning_tokens": null,
+   "responses_with_usage": 21,
+   "tool_calls": 51,
+   "tool_calls_by_name": {
+    "bash": 8,
+    "check": 1,
+    "edit": 7,
+    "grep": 6,
+    "read": 26,
+    "return": 2,
+    "verification/result": 1
+   },
+   "wall_ms": 366559
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "63cdb65f6b4f6a08b84ca07fac716a4101251f45",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded-warning/records/duplicate-grant-roots/foe-configured/01.json"
+ },
+ {
+  "task": "question-identifier-in-message-text",
+  "arm": "foe-configured",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "exhausted",
+   "code": "input_tokens"
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 320256,
+   "commands": 6,
+   "compactions": 0,
+   "denials": 3,
+   "file_changes": 0,
+   "input_tokens": 403769,
+   "max_depth": 1,
+   "model_calls": 12,
+   "output_tokens": 3312,
+   "reasoning_tokens": null,
+   "responses_with_usage": 12,
+   "tool_calls": 57,
+   "tool_calls_by_name": {
+    "bash": 6,
+    "grep": 20,
+    "read": 30,
+    "return": 1
+   },
+   "wall_ms": 130810
+  },
+  "grade": {
+   "passed": false,
+   "damage": [],
+   "findings": [
+    "test: `/home/sunil/.cargo/bin/cargo test --target-dir /home/sunil/.local/state/foe/cross-harness/build/question-identifier-in-message-text/target -p foe-team` exited 101: test tests::waiting_reads_the_log_in_place_and_never_copies_it ... ok | test tests::wait_until_matches_unconsumed_arrivals_by_source_child_and_session ... ok | test tests::bare_wait_keeps_its_all_children_meaning ... ok | failure",
+    "docs/design.md lacks the sentence: a model receives the rendered result of its own call and the content of an item that reaches it, and no other field of either, so the result of ask names the identity in its text and the question carries that identity in its own content.",
+    "docs/log-format.md lacks the sentence: its message_id is the identifier ask returned to the asker, and its content ends with a text block naming that identifier, because a model receives the content of an item and none of its other fields.",
+    "docs/tools.md lacks the sentence: sends content as a question to a member of the parent-led team selected by roster to, and returns the question's message_id, which the result text also names.",
+    "docs/tools.md lacks the sentence: the question arrives as a request item whose text ends with a line naming that identifier, so the member answering it can name the question in reply_to."
+   ],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "63cdb65f6b4f6a08b84ca07fac716a4101251f45",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/budget-bounded-warning/records/question-identifier-in-message-text/foe-configured/01.json"
+ }
+]
