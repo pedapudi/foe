@@ -136,11 +136,11 @@ This opt-in display hides tool requests and responses, shows completed
 messages as they arrive, and ends with the `foe view` command for the episode.
 The browser viewer serves as usual. JSON remains the default output. See [the terminal display specification](docs/viewer.md#terminal-conversation).
 
-`examples/` holds thirteen examples, each of which runs. Every one builds a
+`examples/` holds fourteen examples, each of which runs. Every one builds a
 disposable project, uses deterministic responses, checks its own result, and
 leaves an episode to read. None needs a credential or external network
-access. Three of them end in the outcomes that are not
-success, because a contract that runs unattended has to recognise those too:
+access. Three of them end without success, two blocked and one exhausted,
+because a contract that runs unattended has to recognise those outcomes too:
 
 ```sh
 sh examples/minimal/run.sh          # any example with a run.sh
@@ -162,7 +162,7 @@ The suite requires no model credential. [docs/evaluation.md](docs/evaluation.md)
 specifies the conformance checks and the model-backed benchmark protocol.
 
 The model-backed micro evaluation runs five assessed tasks with combined
-declared limits of 44,800 input tokens and 11,200 output tokens. Each strict
+declared limits of 46,400 input tokens and 11,200 output tokens. Each strict
 success requires an accepted artifact, a completed outcome, the intended
 harness mechanism, a conformant trace, and reported usage within budget. It
 calls a real provider, so it prints the largest spend it can incur and
@@ -227,8 +227,9 @@ each boundary protects.
 | [docs/tools.md](docs/tools.md) | built-in tools, configured executables, and host tools |
 | [docs/sandbox.md](docs/sandbox.md) | how grants compile into kernel restrictions |
 | [docs/viewer.md](docs/viewer.md) | the trajectory viewer |
+| [docs/viewer-study.md](docs/viewer-study.md) | a historical record of the layouts weighed before the viewer's outline |
 | [docs/landscape.md](docs/landscape.md) | where foe sits among agent runtimes |
-| [docs/deferred.md](docs/deferred.md) | features with reserved names and no implementation |
+| [docs/deferred.md](docs/deferred.md) | anticipated features that are not implemented, what each reserves, and features the design rejects |
 | [docs/workflow.md](docs/workflow.md) | declared graphs, the judgment the model keeps inside one, and recovery |
 | [docs/compaction.md](docs/compaction.md) | when the context is compacted, where it is cut, and what the summary carries |
 | [docs/design-language.md](docs/design-language.md) | the visual language the viewer follows |

@@ -3,8 +3,9 @@
 The smallest configuration that runs an episode. It grants one directory for
 reading and writing, lists the four built-in coding tools (`read`, `grep`,
 `edit`, `bash`), and sets a budget of twenty model calls. The root `model`
-block is absent, so the host answers requests. `done_when` is absent, so the episode completes when the model
-produces a turn with no tool calls, and that turn's text is the outcome value.
+block is absent, so the host answers requests. `done_when` is absent, so the
+episode completes when the model produces a turn with no tool calls, and that
+turn's text is the outcome value.
 
 `run.sh` creates a small Python package whose `bracket_depth` function returns
 the depth left at the end of the string rather than the greatest depth it
@@ -56,6 +57,7 @@ target/release/foe plan --config target/foe-minimal-demo.XXXXXX/config.json
 ```text
 target/foe-minimal-demo.XXXXXX/
 ├── config.json               the configuration with /home/user/project replaced
+├── foe.err                   the binary's standard error, naming the log directory
 ├── project/
 │   ├── brackets.py           bracket_depth, returning the wrong depth
 │   └── test_brackets.py      three tests, of which test_nested_brackets fails

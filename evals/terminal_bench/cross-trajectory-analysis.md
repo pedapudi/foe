@@ -84,9 +84,11 @@ diagnosis calls, and Sol used ten implementation calls. Foe completed after
 15 of 66 permitted calls. The task verifier failed on semantic output, so the
 remaining defect is independent of budget admission.
 
-The product default for repeated calls is now eight. Model-backed examples
-use 40 calls and 900 seconds with measured token use. These changes reduce the
-chance that copied examples reproduce the evaluation failures.
+The product default for repeated calls became eight. Model-backed examples
+then used 40 calls and 900 seconds with measured token use. These changes
+reduced the chance that copied examples reproduce the evaluation failures.
+The loop default remains eight in `docs/config.md`. The examples no longer
+share one allowance; each example declares its own.
 
 ## Completion claims often exceed the validation evidence
 
@@ -199,7 +201,10 @@ background processes do not survive across Foe `bash` calls. The executor
 terminates the process group when each call ends. Tasks that require a local
 server, database, or concurrent client cannot rely on a daemon started by a
 prior call. Persistent process handles need an activation task and lifecycle
-tests before calibration opens tasks in those categories.
+tests before calibration opens tasks in those categories. The built-in
+`session` tool (`crates/code/src/session.rs`) now provides such a handle: a
+process it starts survives the call that started it. A `bash` call still
+ends its process group when the call ends.
 
 ## Tool-result replay is the largest measured efficiency cost
 
@@ -289,6 +294,12 @@ The campaign proceeds through the task sets frozen in
 6. Record the calibration result before opening six calibration-holdout tasks.
    At least five must pass.
 
+These gates reflect the task sets as frozen on 2026-08-24. The campaign
+record later enlarged them to eight confirmation tasks with a 14-of-16
+threshold, twenty calibration tasks with a 17-of-20 threshold, and an
+eight-task holdout with a 7-of-8 threshold. [`campaign.md`](campaign.md)
+states the gates that apply.
+
 The campaign does not run the full 89-task benchmark until these gates pass.
 Model calls and wall time serve as generous backstops. Provider-reported token
 use, estimated cost, and elapsed time remain measurements for Pareto selection
@@ -310,5 +321,6 @@ Self-improvement result records are under
 `/home/sunil/git/foe-capability-calibration/target/gpt2-codegolf-self-improvement*`
 and
 `/home/sunil/git/foe-gpt2-typed-handoff/target/current-source-gpt2-*-self-improvement-run`.
-These directories remain local. The campaign record, diagnostic schema, and
-this analysis carry the durable conclusions.
+These directories were local to the recording host. The worktrees that held
+them no longer exist there. The campaign record, diagnostic schema, and this
+analysis carry the durable conclusions.

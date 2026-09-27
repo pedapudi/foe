@@ -915,7 +915,7 @@ async fn typed_settled_failures_end_without_a_decision() {
     assert_eq!(outcome, Outcome::Exhausted { limit: foe_log::ExhaustedLimit::Episodes });
 }
 
-/// docs/workflow.md "Tool-node failures": configured process outcomes and
+/// docs/workflow.md "When it fires": configured process outcomes and
 /// ordinary tool failures have typed recovery causes.
 #[test]
 fn tool_failure_codes_drive_recovery() {

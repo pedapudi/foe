@@ -376,8 +376,9 @@ without removing a fact.
   of its own considered for the figure rather than the outline — were
   never drawn and counted. Their entries above rest on argument and on
   arithmetic over the drawn cases.
-- The prototypes themselves are not merged. Three branches hold them:
+- The prototypes themselves are not merged. Three branches held them:
   `study-nested-turns`, `study-linked-pane` and `study-structural-rail`.
+  None of the three is published on the repository's remote.
   Two of the three were built from an older state of the repository and
   carry unrelated changes. Only the captures reproduced above were taken
   from them.

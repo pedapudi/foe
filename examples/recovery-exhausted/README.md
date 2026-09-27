@@ -1,10 +1,10 @@
 # Recovery exhausted
 
 An episode that never gets an answer to its first request. The host response
-reports a retryable endpoint error every time. The
-runtime waits out with a delay that doubles from 500 milliseconds for as
-long as the seconds budget funds the next delay. The contract grants ten
-seconds, which funds five attempts; the sixth delay would not fit, so the
+reports a retryable endpoint error every time. The runtime waits out the
+failure with a delay that doubles from 500 milliseconds for as long as the
+seconds budget funds the next delay. The contract grants ten seconds, which
+funds five attempts. The delay before a sixth attempt would not fit, so the
 episode ends with the outcome `{"kind": "blocked", "code":
 "recovery-exhausted", "message": "provider unavailable through 5 attempts
 at step 1; the remaining seconds budget cannot fund another"}`, and the
@@ -16,7 +16,7 @@ bounds.
 
 `blocked` is the outcome kind for an episode the runtime stopped because it
 had no way to continue, and its `code` says which way was missing.
-[docs/log-format.md](../../docs/log-format.md) lists the nine codes; this
+[docs/log-format.md](../../docs/log-format.md) lists the ten codes; this
 example produces `recovery-exhausted`, which covers a step whose request
 retries were spent and a workflow that reached a recovery bound.
 
@@ -24,14 +24,14 @@ retries were spent and a workflow that reached a recovery bound.
 
 Three codes are the model's own report: `goal-unreachable`,
 `ambiguous-task`, and `missing-capability` reach the log because the model
-called the built-in `block` tool with that code. A fixed response can emit
-such a call, which demonstrates the fixture's choice. The runtime decides the
-remaining codes for itself.
+called the built-in `block` tool with that code. A fixed response could emit
+such a call, so a log carrying one of those codes would show only what the
+fixture chose. The runtime decides the remaining codes for itself.
 
 `recovery-exhausted` needs nothing from the model. The host assembles no
-answer, and the budget bound and the
-backoff schedule that produce the outcome are the runtime's, so the log this
-example writes is the log a real unreachable provider writes. That is also
+answer, and the budget bound and the backoff schedule that produce the
+outcome are the runtime's, so the log this example writes is the log a real
+unreachable provider writes. That is also
 the failure an operator meets most often when a run is handed to an
 unattended machine: a host name that does not resolve, an endpoint behind a
 firewall, a credential the provider rejects with a retryable status.
@@ -84,7 +84,8 @@ After each request comes one `assistant/chunk` holding the host's error
 chunk. When a further attempt is permitted, the runtime waits the delay and
 then writes one `request/retry` naming the attempt that failed, the `cause`,
 and the `delay_ms` it waited, immediately before the attempt that follows.
-The cause here is `provider`, because the contract reported an error;
+The cause here is `provider`, because the host response reported an error
+chunk;
 `transport` names a stream that ended with no final chunk, `rate-limit`
 names a message mentioning a rate limit or a 429, and `interrupted` names a
 failure after text had already arrived.

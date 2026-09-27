@@ -18,11 +18,14 @@ piece.
 | [models.md](models.md) | model endpoints, their credentials, and `foe login` |
 | [sdk.md](sdk.md) | the Python package |
 | [tools.md](tools.md) | built-in tools, configured executables, and host tools |
+| [tool-composition.md](tool-composition.md) | the `compose_tools` tool and the `tool/inner-call` event |
 | [sandbox.md](sandbox.md) | how grants compile into kernel restrictions |
 | [viewer.md](viewer.md) | the trajectory viewer |
 | [landscape.md](landscape.md) | the surrounding field of agent runtimes |
 | [evaluation.md](evaluation.md) | runtime conformance checks and the model-backed benchmark protocol |
-| [deferred.md](deferred.md) | features with reserved event types and no implementation |
+| [telemetry.md](telemetry.md) | the trace telemetry derives from a finished episode log, and what it never emits |
+| [evidence.md](evidence.md) | the evidence bundle for accepting a proposed execution contract, and its verifier |
+| [deferred.md](deferred.md) | anticipated features that are not implemented, what each reserves, and features the design rejects |
 | [workflow.md](workflow.md) | declared dataflow graphs, choice points, and recovery |
 | [compaction.md](compaction.md) | when and how the model's context is compacted, and what survives the cut |
 | [design-language.md](design-language.md) | the visual language the viewer follows |
@@ -251,9 +254,10 @@ Three rules hold in every step. Each exists because its absence loses data.
 
 Everything that happens to an episode from outside its own turns reaches
 the model one way: as an `inbox/item` in the log. The inbox is the single
-event queue and its `source` is the event's type — the task, a parent's
-steer, a child's report or ending, a peer message, verifier findings,
-runtime notices, and session exits. Items are appended the moment they
+event queue, and an item's `source` is the event's type. The sources are
+the task, a parent's steer, a child's report or ending, a peer message, a
+question from a teammate and the answer to one, verifier findings, runtime
+notices, and session exits. Items are appended the moment they
 arrive and delivered only at request boundaries: the next `model/request`
 names every newly delivered item in `consumed`, so nothing interrupts a
 request in flight, and the `consumed` lists are a reconstructable account
@@ -384,7 +388,7 @@ minute per delay, for as long as the seconds budget funds the next delay
 and the model-call budget funds the next attempt; when the remaining
 budget cannot fund another attempt, the step ends blocked with a message
 naming the budget. Waiting costs only what the budget already meters, so
-the budget, not an attempt count, is its bound. Every other cause —
+the budget bounds it rather than an attempt count. Every other cause —
 transport loss, an interrupted stream — has a fixed attempt ceiling,
 because repeating does not fix what it names.
 
@@ -422,11 +426,12 @@ separate invocation input.
 The `grants` object declares configured permissions. Contract construction
 resolves those declarations with the exact tools, captured executables,
 interpreters, loaders, credentials, and runtime paths needed for execution.
-`foe plan` opens with a readiness summary — one line each for the model,
-the granted read, write, and execute roots, the completion mechanism, the
-limits, the sandbox mode, the workflow size when one is declared, and the
-static warnings — then reports the resulting reachable tools and resolved
-permissions. Each summary line projects the same resolved objects the
+`foe plan` opens with a readiness summary and then reports the resulting
+reachable tools and resolved permissions. The summary has one line each for
+the model, the granted read, write, and execute roots, the completion
+mechanism, the limits, the sandbox mode, the execution form, and the static
+warnings. The execution form gives the workflow size when one is declared.
+Each summary line projects the same resolved objects the
 detailed report prints, so the two cannot disagree.
 The episode log records the resolved permissions with the sandbox mode,
 Landlock ABI, and process boundary that state what the host enforced.
@@ -700,7 +705,7 @@ identity of the question it answers. `ask` sends a question and returns that
 identity; `send` with `reply_to` answers the question that identity names.
 The question reaches the other member as a `request` item and the answer as a
 `response` item, so `wait` on `{reply: the identity}` returns for that answer
-and not for any other arrival. A model receives the rendered result of its own
+alone. A model receives the rendered result of its own
 call and the content of an item that reaches it, and no other field of either,
 so the result of `ask` names the identity in its text and the question carries
 that identity in its own content. A member that must have one decision from one
@@ -817,7 +822,7 @@ as further processes. Restrictions only narrow at each spawn.
      └─ episode    Landlock: read roots, write roots, execute roots, own log dir
           │        network: open for a configured model endpoint; closed when the host supplies the model backend
           │
-          ├─ tool  Landlock: subset of the episode's; network closed
+          ├─ tool  Landlock: subset of the episode's; network closed unless the tool declares network: true
           │
           └─ child Landlock: compiled from the child's own grants, which the
                    parent's registry already verified are a subset of its own
@@ -827,9 +832,9 @@ On Linux with Landlock available, the runtime compiles the grants into a
 ruleset. Read roots become read rules, write roots become write rules, and
 execute roots become read-and-execute rules. Each configured executable
 becomes an execute rule on that exact file. The episode's log directory
-becomes a write rule. When the kernel supports it, TCP access is removed from
-executables. The kernel reports a denial only to a privileged audit reader,
-so the runtime records none as an event of its own; a denied access reaches
+becomes a read-and-write rule. When the kernel supports it, TCP access is
+removed from executables that do not declare `network: true`. The kernel
+reports a denial only to a privileged audit reader, so the runtime records none as an event of its own; a denied access reaches
 the log as the tool's result, which the built-in tools type as
 `capability-denied` and the shell marks as a possible denial
 ([sandbox.md](sandbox.md#denied-accesses)).
@@ -1002,7 +1007,7 @@ and nothing else: the filesystem is whatever it is when the fork runs, so a
 fork over changed files sees the changed files. The fork's directory is a
 fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
 several forks from one prefix — is a caller-side loop over this form;
-[deferred.md](deferred.md) states what first-class support would add and
+[deferred.md](deferred.md) states what support in the runtime would add and
 the evidence that would justify it.
 
 A built-in document carries no task of its own, so `foe --from DIR` and
@@ -1037,7 +1042,7 @@ tool that could change a file, and is granted no write root. The lead and
 both delegate kinds hold `block`, so a unit that cannot be done ends with a
 code from the fixed vocabulary, which the lead accounts for in what it
 returns. The two kinds
-exist because a grant is a narrowing and not a subtraction of tools: a write
+exist because a grant narrows reach rather than subtracting tools: a write
 grant of no roots would leave a worker's `edit` with nothing it may write,
 and the spawn is refused rather than the child left to die at construction.
 A worker holds the same two kinds the lead holds, so a unit that turns out
@@ -1055,8 +1060,8 @@ twelve workers and their sub-workers may open over the run, which is a
 second round at each level after the first. The lead's ceiling is 3,420
 model calls: sixty for its own survey and integration, and the subtree
 allowance of every worker it may open. A worker's is 280, its own forty and
-its sub-workers' over two rounds. A ceiling is what a run may not exceed and
-not what it spends. `--verify` gates the lead and every worker, so a unit that broke its
+its sub-workers' over two rounds. A ceiling is what a run may not exceed rather
+than what it spends. `--verify` gates the lead and every worker, so a unit that broke its
 own ground does not reach the integration. A worker is not a coding workflow:
 breadth and verification are separate questions, and a document that answered
 both would multiply the episode count of the one it is the default instead
@@ -1140,7 +1145,7 @@ doing, so `--sandbox off` alone still holds a tool to the working directory.
 The name states what it does because a reader who has not seen it before has
 no other way to know. `--yolo` is a second spelling of it, accepted and left
 out of the help: the deterrent is meant to be the reading of the long name,
-which a reader meets once here, and not the typing of it every time. What it grants is recorded in `episode/start` like any
+which a reader meets once here, rather than the typing of it every time. What it grants is recorded in `episode/start` like any
 other contract, so a run made this way reads afterwards as exactly what it
 was rather than as an ordinary one.
 
@@ -1248,7 +1253,7 @@ root, `.git` included, because grants are additive allow lists with no
 exclusion syntax and excluding `.git` would exclude root files. The execute
 grants are the standard command directories and the root: directory
 breadth, a usable starting point to narrow later. The budget carries
-backstops in model calls, seconds, and episodes — safety floors, not
+backstops in model calls, seconds, and episodes — safety floors rather than
 targets — with token allowances unlimited and the loop threshold at its
 default. The placeholder verifier rejects every completion candidate with
 one finding naming the file a person must replace, so a run against the
@@ -1295,22 +1300,22 @@ not finished.
 
 ```
    crates/log ◄─── crates/contract ◄─── crates/core ◄──┬── crates/code
-    every event      the document,      loop,        │    read grep edit bash
+    every event      the document,      loop,        │    read grep edit bash session compose_tools
     type,            resolution,        registry,    ├── crates/transport
     serde,           tool specs,        grants,      │    model clients, credentials
-    serde_json       schema subset,     budget,      │
-                     harness text,      spawn,       ├── crates/team
+    serde_json,      schema subset,     budget,      │
+    sha2             harness text,      spawn,       ├── crates/team
                      fingerprint,       result       │    roster, messages, coordination tools
                      inspection         budget,      ├── crates/workflow
-                                        exec,        ├── crates/context
-                                        landlock,    │    projection, cut, summarization prompt
-                                        protocol,    │
-                                        context seam └── crates/view ◄── view/ (browser bundle)
-                                                          projection, HTTP, SSE, export
+                                        exec,        └── crates/context
+                                        landlock,         projection, cut, summarization prompt
+                                        protocol,
+                                        context seam
 
-                     crates/evidence ◄── contract fingerprints and proposal logs
-
-                                          crates/cli ◄── all of the above; plan reports
+   crates/log ◄── crates/view         projection, HTTP, SSE, export; embeds view/ (browser bundle)
+   crates/log ◄── crates/telemetry    OTLP traces of finished logs, scrubbing, preview
+   crates/log, crates/contract ◄── crates/evidence    bundle manifests, fingerprints, proposal logs
+   every crate above except crates/evidence ◄── crates/cli    argument parsing, help, plan reports, login
 
    python/foe    a thin host: builds config, runs the binary, serves the protocol
    examples/     one runnable example per job, each checking its own result
@@ -1318,8 +1323,8 @@ not finished.
 
 Two foundational specifications are implemented as crates that the rest of the
 repository reads. `crates/log` defines what happened. It defines every
-event type, including the reserved ones. It depends on serde, serde_json, and
-thiserror, and on no crate of this repository.
+event type, including the reserved ones. It depends on serde, serde_json,
+sha2, and thiserror, and on no crate of this repository.
 
 `crates/contract` defines what was to run: the
 contract document, the validation and resolution that turn it into the
@@ -1417,6 +1422,13 @@ because it delivers a record of a run rather than running one, so a viewer
 that grows must not force the runtime to shrink. The browser viewer's HTML,
 TypeScript, and CSS count toward that compressed size and toward no line
 budget at all.
+
+Continuous integration also limits the stripped release binary, built with
+the browser bundle embedded, to 8 MiB, and holds the Bazel-built binary to
+the same limit. The line budgets count this repository's Rust source alone.
+The binary limit also counts third-party dependencies and the embedded
+bundle, so the check fails when a dependency added to any crate carries
+the installed binary past 8 MiB.
 
 The execution-contract crate reads each reachable configured executable
 during construction.

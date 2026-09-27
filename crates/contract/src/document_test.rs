@@ -524,7 +524,7 @@ fn a_model_node_may_declare_its_own_episode_and_concurrency_counts() {
     assert!(resolve(&parse(&value.to_string()).unwrap()).is_ok());
 }
 
-/// docs/design.md "Delegation": an ordinary child contract may name tools its
+/// docs/workflow.md "Model nodes": an ordinary child contract may name tools its
 /// parent does not, because only a workflow model node carries a ceiling.
 #[test]
 fn an_ordinary_child_may_hold_tools_the_parent_does_not_use() {

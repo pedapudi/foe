@@ -12,8 +12,9 @@ the grants, the sandbox, and the log. `docs/sdk.md` documents the package
 that joins them.
 
 This directory has no `config.json`, because the configuration is Python.
-`foe.ExecutionContract` is the configuration document that `docs/config.md` specifies,
-built from typed arguments and validated before any process starts.
+`foe.ExecutionContract` is the configuration document that `docs/config.md`
+specifies, built from typed arguments and validated before any process
+starts.
 
 ## Run
 
@@ -30,16 +31,16 @@ python3 examples/embed-an-execution-contract/run.py /absolute/path/to/foe
 ```
 
 The package depends on the standard library alone, so `run.py` puts
-`python/` on the import path and needs no installation step. The model backend
-plays fixed responses, so the example needs no provider credential and makes
+`python/` on the import path and needs no installation step. The model
+backend plays fixed responses, so the example needs no provider credential and makes
 no network request. Each run creates `target/foe-embedding-demo.XXXXXX/`,
 holding the reports and one episode log per report. The runner prints a
 command that serves the viewer for the first episode.
 
 ## What the application supplies
 
-**A model backend.** `model_backend_from` returns an asynchronous callable that
-receives one request and yields chunk objects. The runtime never learns
+**A model backend.** `model_backend_from` returns an asynchronous callable
+that receives one request and yields chunk objects. The runtime never learns
 which model answered, and the log records the route as `host`/`host`. A
 model backend against a real endpoint has the same signature;
 `foe.adapters.litellm.litellm_model_backend` is one.
@@ -62,8 +63,8 @@ string names a built-in tool, and a callable is a host tool. `block` is
 listed because a contract running unattended needs the agent to be able to
 report that a task cannot be done. `done_when=foe.Returns(Triage)` derives
 the completion schema from the dataclass, so a completed episode's value is
-an object with that shape. `contract.fingerprint(binary)` is the hash of all of
-it, which the runner prints; the three episodes share it, because the task
+an object with that shape. `contract.fingerprint(binary)` is the hash of all
+of it, which the runner prints; the three episodes share it, because the task
 does not participate in the fingerprint.
 
 ## What the application decides

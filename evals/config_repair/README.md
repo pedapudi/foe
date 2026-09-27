@@ -44,10 +44,11 @@ cites the reconstructable event by episode id and log sequence, or names
   `plan.json`.
 - `enforced_permission_denials` — tool results whose typed failure code is
   `capability-denied`; the runtime itself refused the call.
-- `possible_permission_denials` — process results with exit status 126 and
-  `Permission denied` on standard error, matching the runtime's own
-  `permission_denial: "possible"` marking. The block carries its basis
-  string: this is a heuristic signal and never an established cause.
+- `possible_permission_denials` — process results that carry the runtime's
+  `permission_denial: "possible"` marking, and any other result with exit
+  status 126. The runtime marks a nonzero exit whose standard error contains
+  `Permission denied` or `Operation not permitted`. The block carries its
+  basis string: this is a heuristic signal and never an established cause.
 - `typed_failure_counts` — typed tool failures counted by
   {tool, failure code, field}, where the field is the argument a failure
   names in its details or message. The `invalid-call` rows are the

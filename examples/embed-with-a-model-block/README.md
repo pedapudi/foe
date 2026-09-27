@@ -8,8 +8,9 @@ call the model makes to it arrives in the Python process over the host
 protocol.
 
 This is the second of the two ways an application can embed foe through the
-Python package. [`../embed-an-execution-contract/`](../embed-an-execution-contract/)
-is the first: no `model` block, and the application answers every model
+Python package.
+[`../embed-an-execution-contract/`](../embed-an-execution-contract/) is the
+first: no `model` block, and the application answers every model
 request with its model backend. An application whose model abstraction
 carries plain text cannot express foe's tool calls faithfully through that
 callback, and this shape is what it uses instead. `docs/sdk.md` under "Who
@@ -68,7 +69,7 @@ starts.
 **A supervisor's view of the episode.** `start` returns once foe has
 written `episode/start`, so `handle.pid` and `handle.runtime` hold the
 process id and the build identity before the first model request. The
-runner prints all three. An application that enforces a wall-clock budget
+runner prints both, with the episode id. An application that enforces a wall-clock budget
 of its own, or records which build produced a log, reads them there.
 
 ## What to look for
@@ -96,4 +97,5 @@ the package wrote, carrying the rendering the application produced.
   result holds the text `@record_finding.render` produced, so the tool ran
   in the application's process;
 - the application's findings list holds the one finding the model recorded;
-- the outcome is `completed` with the sentence the configured endpoint produced.
+- the outcome is `completed` with the sentence the configured endpoint
+  produced.

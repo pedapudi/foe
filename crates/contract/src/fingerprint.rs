@@ -108,8 +108,9 @@ pub fn compute(
     Ok(Fingerprint { hash, document })
 }
 
-/// The workflow part of the fingerprint document: everything docs/workflow.md
-/// "Fingerprint" lists, with each model node's contract reduced to its hash.
+/// The workflow part of the fingerprint document: everything
+/// docs/workflow.md "Contract fingerprint" lists, with each model node's
+/// contract reduced to its hash.
 fn workflow_document(
     prefix: &str,
     path: &str,

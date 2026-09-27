@@ -220,6 +220,7 @@ pub struct ProcessSpawner {
     launcher: Vec<OsString>,
     connections: ProcessConnections,
     boundary: Option<Arc<ProcessBoundary>>,
+    home: Option<PathBuf>,
     next: AtomicU64,
 }
 
@@ -246,6 +247,11 @@ pub struct ChildLaunch {
     pub process_boundary: Option<crate::process_boundary::BoundaryPaths>,
     pub fork_source: Option<PathBuf>,
     pub fork_at: Option<u64>,
+    /// The home directory the parent resolved from `HOME` because the user
+    /// has no passwd entry. The child's environment is cleared, so this is
+    /// the only way the same fallback reaches it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<PathBuf>,
 }
 
 impl ProcessSpawner {
@@ -269,6 +275,7 @@ impl ProcessSpawner {
             launcher: vec![exe.into_os_string()],
             connections,
             boundary: None,
+            home: None,
             next: AtomicU64::new(0),
         })
     }
@@ -276,6 +283,12 @@ impl ProcessSpawner {
     /// Places each child and every descendant in one cgroup boundary.
     pub fn with_boundary(mut self, boundary: Option<Arc<ProcessBoundary>>) -> Self {
         self.boundary = boundary;
+        self
+    }
+
+    /// Passes a home directory resolved from `HOME` to every child.
+    pub fn with_home(mut self, home: Option<PathBuf>) -> Self {
+        self.home = home;
         self
     }
 
@@ -438,6 +451,7 @@ impl Spawner for ProcessSpawner {
             effective_budget: Some(limits),
             effective_write: req.write,
             process_boundary: boundary.as_ref().map(|boundary| boundary.paths()),
+            home: self.home.clone(),
             ..ChildLaunch::default()
         };
         if req.context == SpawnContext::Fork {
@@ -468,15 +482,6 @@ impl Spawner for ProcessSpawner {
             }
         };
         cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
-        // A child resolves its own home directory, and where the passwd
-        // database holds no entry for the user it reads `HOME` instead. The
-        // cleared environment leaves a child nothing to read, so the one
-        // variable that answer can rest on is carried across. A passwd entry
-        // still wins wherever there is one, in a child as in its parent, so
-        // this decides nothing on a host that has one.
-        if let Some(home) = std::env::var_os("HOME") {
-            cmd.env("HOME", home);
-        }
         let executable_tree = self
             .executables
             .child(&req.contract)

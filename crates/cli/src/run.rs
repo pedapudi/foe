@@ -943,14 +943,14 @@ fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String>
 pub fn run(options: Options) -> Result<ExitCode, String> {
     let channel = options.protocol_fds.map(protocol_channel).transpose()?;
     let (mut config, recorded) = load_contract_document(&options)?;
+    let launch = options.log_dir.as_deref().filter(|dir| dir.join(CHILD_LAUNCH).is_file());
+    let launch = launch.map(|dir| read_child_launch(Some(dir))).transpose()?;
+    if let Some(home) = launch.as_ref().and_then(|launch| launch.home.clone()) {
+        foe_transport::paths::inherit_home(home);
+    }
     prepare_model(&mut config)?;
     let task = Task { text: config.task.clone(), recorded };
-    let inherited = options
-        .log_dir
-        .as_deref()
-        .filter(|dir| dir.join(CHILD_LAUNCH).is_file())
-        .map(|dir| read_child_launch(Some(dir)))
-        .transpose()?
+    let inherited = launch
         .filter(|launch| launch.parent_id.is_some())
         .map(|launch| InheritedExecutables::read(&launch.episode_id))
         .transpose()?
@@ -1168,7 +1168,8 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         connections,
     )
     .map_err(|e| format!("spawner: {e}"))?
-    .with_boundary(process.boundary());
+    .with_boundary(process.boundary())
+    .with_home(foe_transport::paths::home_for_child());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
     let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel.clone());

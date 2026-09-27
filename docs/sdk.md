@@ -111,6 +111,7 @@ when the binary asks.
 | `foe.Runtime` | the version and build hash the binary states |
 | `foe.CONFIG_VERSION`, `foe.LOG_FORMAT_VERSION`, `foe.PROTOCOL_VERSION` | the versions this package speaks |
 | `foe.adapters.litellm.litellm_model_backend` | the reference model backend adapter |
+| `foe.ConfigError`, `foe.BinaryError`, `foe.ProtocolError`, `foe.CompatibilityError`, `foe.CapabilityError` | the exceptions the package raises |
 
 ### `ExecutionContract`
 
@@ -158,16 +159,23 @@ Construction validates what can be known without a process and raises
 `foe.ConfigError` with a message that names the key and the rule. The
 checks are:
 
+- `name`, `instructions`, and `tools` are not empty;
+- `sandbox`, when given, is one of the three modes;
 - every name in `tools` resolves to a built-in tool, a `tool_defs` entry,
   or a host tool, and to one source only; a host tool named `read`
-  collides with the built-in and is refused;
+  collides with the built-in and is refused, and so does a `tool_defs`
+  entry named `read`;
 - no name appears twice;
 - a host tool whose effect is `writes` needs a non-empty `grants.write`,
   and one whose effect is `execs` needs a non-empty `tool_defs`; the
   built-in `edit` needs `grants.write` and `spawn` needs `grants.spawn`;
-- every path in `grants`, `ToolDef.exec`, and `ToolDef.cwd` is absolute;
 - every name in `grants.spawn` is a key of `child_contracts`;
 - a `Verified` verifier given by name is a tool in `tools`.
+
+Serialization by `to_dict` or `to_json` raises `foe.ConfigError` as well:
+when a path in `grants`, `ToolDef.exec`, or `ToolDef.cwd` is not absolute,
+when `grants.read` is empty, or when a `Model` has an empty `provider` or
+`model`.
 
 The runtime repeats every check when it reads the document and performs
 the checks the package cannot, such as whether an executable exists.
@@ -193,9 +201,10 @@ foe.builtin(
 The binary carries documents of its own, and `builtin` returns one of them as
 an `ExecutionContract` over a root directory. `builtin("coding", root,
 binary=...)` returns the coding workflow that a command line naming no
-document runs, and `builtin("single", root, binary=...)` returns that
+document runs, and `builtin("oneshot", root, binary=...)` returns that
 workflow's implementation episode alone, which declares no workflow and so
-returns a contract whose `workflow` is `None`. The package holds no copy of
+returns a contract whose `workflow` is `None`. The binary also carries
+`team`, a document that delegates to a team of workers. The package holds no copy of
 any such document: `builtin` runs `foe plan --config builtin:NAME --json`,
 which prints the document the binary carries, so the name, the instructions,
 the tools, the budgets, and every workflow node come from the binary that
@@ -222,7 +231,7 @@ beside the verifier, which then checks the returned value.
 `retries` is how many times findings are fed back, and applies only when
 `verify` is given. [workflow.md](workflow.md) "Completion" makes a finding
 re-fire the nearest model ancestor of the node that completed the workflow,
-and "Bounds" makes `max_fires` cap those re-fires, so `builtin` raises the
+and "What bounds it" makes `max_fires` cap those re-fires, so `builtin` raises the
 bounds the printed document carries to admit them. Every node that can
 complete a workflow of the document, meaning a node marked `terminal` and a
 node carrying a branch label with no successors, contributes the nearest
@@ -233,7 +242,7 @@ runs one further episode. A workflow nested inside another receives the
 same raise on its own completing nodes.
 Without the raise, a single finding ends the run as `blocked` with
 `recovery-exhausted` rather than feeding the finding back. A document that
-declares no workflow, such as the single implementation episode, runs one
+declares no workflow, such as the `oneshot` implementation episode, runs one
 episode and feeds a finding back into that episode, so neither bound rises.
 
 `model` configures the endpoint the binary calls, and is the only model
@@ -315,8 +324,9 @@ log directory is `foe.serve`. The temporary file is removed when the binary
 exits. `on_event` receives every line the binary writes, parsed into a
 `foe.Event` with `seq`, `time`, `type`, `data`, `episode_id`, and `version`;
 the callback runs on the event loop and should return quickly.
-`max_output_tokens` is passed through to the model backend on every request;
-the package has no opinion about its value.
+`max_output_tokens` caps the output of every request the model backend
+receives. The request carries the smaller of this value and the cap the
+runtime's `model/request` states.
 
 `Handle` exposes:
 
@@ -325,7 +335,7 @@ the package has no opinion about its value.
   `parent`, a single text block, and `from` and `message_id` null; the
   runtime records it and includes it in the next request;
 - `await handle.cancel()`, which writes a `cancel` line and returns the
-  outcome the runtime records, `Failed("cancelled")`;
+  outcome the runtime records, `Blocked("cancelled", "stopped by the caller")`;
 - `handle.pid`, the process id of the binary, and `handle.runtime`, a
   `foe.Runtime` with the `version` and `build` the binary stated in
   `episode/start`; `build` is `sha256:<hex>` of the running binary, or the
@@ -366,8 +376,10 @@ including child contracts and model nodes inside nested workflows. The host
 uses the same contract traversal for tool coverage and model ownership.
 A missing implementation is an error before launch.
 
-`start_config` also accepts the keyword-only argument
-`start_new_session: bool = False`. On POSIX, setting it to `True` creates a
+`start_config` also accepts three keyword-only arguments that `run_config`
+does not: `start_new_session`, `viewer`, and `on_spawn`.
+
+`start_new_session: bool = False` controls the process session. On POSIX, setting it to `True` creates a
 session and process group whose leader is the binary. Both identifiers equal
 `handle.pid` when the call returns. The default inherits the host's session
 and process group. This launch setting belongs to the host and does not change
@@ -435,7 +447,7 @@ contract = foe.ExecutionContract(
     tools=["read", mutation_usage],
     grants=foe.Grants(read=["/gen/v37/snapshot"]),
     budget=foe.Budget(model_calls=12),
-    model=foe.Model(provider="anthropic", model="claude-opus-5"),
+    model=foe.Model(provider="compatible-http", model="served-model", options={"base_url": "http://127.0.0.1:11434/v1"}),
 )
 outcome = await contract.run(task="Propose the next experiment.", binary=binary, log_dir=log_dir)
 ```
@@ -484,6 +496,7 @@ at decoration, as is a parameter without an annotation.
 | `list[T]` | `array` with `items` from `T`; bare `list` has no `items` |
 | `dict[str, T]` | `object` with `additionalProperties` from `T`; bare `dict` has none |
 | `Optional[T]`, `T \| None` | `anyOf` of `T` and `null` |
+| `Annotated[T, ...]` | the schema of `T` |
 | `Literal[...]` | `enum` |
 | `Any` | the empty schema |
 | a dataclass | `object` with a property per field, `required` for fields without defaults, and `description` from the class docstring when the author wrote one |
@@ -504,8 +517,8 @@ the model sees. Without one, `rendered` is omitted and the runtime renders
 the value compactly. A function may also return a `foe.ToolResult(value,
 rendered, is_error)` to set all three fields itself.
 
-The decorator returns the function unchanged, so the name it is bound to
-still refers to it. `HostTool` holds the renderer privately and offers no
+The `render` decorator returns the rendering function unchanged, so the
+name it is bound to still refers to it. `HostTool` holds the renderer privately and offers no
 accessor for it, so binding the decorated function to `_` leaves the
 contract no way to call it again. A contract that needs the text the model
 saw reads the `rendered` field of the `tool/result` event from the log.
@@ -609,7 +622,7 @@ The request dict has five keys.
 | `system` | the system prompt from the `request/header` in effect |
 | `tools` | the tool schemas from that header, each `{name, description, parameters}`, in `tools` order |
 | `messages` | the derived message list from the `model/request` event, as log-format.md defines it |
-| `max_output_tokens` | the value given to `run`, or None |
+| `max_output_tokens` | the smaller of the value given to `run` and the cap in the `model/request` event; None when neither states one |
 
 The model backend yields `chunk` objects in the form protocol.md defines
 under `model/chunk`: `text`, `thinking`, `tool_call_start`,
@@ -734,7 +747,9 @@ format version or a runtime version the package does not read, which is how
 `python/` runs the package's tests against it.
 
 The tests that need the real binary are in `python/tests/test_binary.py`
-and are skipped when `target/debug/foe` has not been built. They run one
-episode with a `model` block and a Python host tool, read the process id
-and the build identity from the handle, and pin the versions the built
-binary states against the constants above.
+and are skipped when `target/debug/foe` has not been built. They check that
+the binary accepts every name in `foe.BUILTIN_TOOLS`. They run one episode
+whose host answers the model through a scripted model backend and one
+episode with a `model` block, each with a Python host tool. They read the
+process id and the build identity from the handle, and pin the versions the
+built binary states against the constants above.

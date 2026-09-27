@@ -24,15 +24,15 @@ scripts/examples.sh target/debug/foe
 ```
 
 The workflow, sandbox, and self-extension examples also have Bazel targets.
-The targets run against the release binary, and the build executes their
-deterministic forms as tests:
+The targets run against the optimized binary that Bazel builds, and the build
+executes their deterministic forms as tests:
 
 ```sh
 bazel run //examples/workflow
 bazel test //examples/...
 ```
 
-A run prints the command that opens its episode in the viewer. The sandbox
+A run prints a `foe view` command for its episode log. The sandbox
 example needs Linux with Landlock; the rest run anywhere foe builds.
 
 ## Start here
@@ -54,10 +54,10 @@ example needs Linux with Landlock; the rest run anywhere foe builds.
 
 ## When a run does not succeed
 
-An episode ends in one of four ways, and a contract that runs unattended has
-to recognise all of them. These three examples produce the ones that are not
-success, so that the log an operator will one day have to read is one they
-have seen before.
+An episode ends in one of four ways: `completed`, `exhausted`, `blocked`, or
+`failed`. A contract that runs unattended has to recognise all of them. These
+three examples produce `exhausted` and two codes of `blocked`, so that the log
+an operator will one day have to read is one they have seen before.
 
 | outcome | what it means | example |
 |---|---|---|
@@ -122,5 +122,5 @@ schema, materialize its markers, and run `foe plan`, which catches a missing
 executable, a grant that cannot hold, and a workflow graph that cannot run.
 `cargo test --workspace` runs them. `bazel test //examples/...` runs the
 workflow, sandbox, and self-extension examples themselves, so each of those
-three READMEs describes a log the build produces. Running the other ten is
-what checks that their "What to look for" sections still hold.
+three READMEs describes a log the build produces. `scripts/examples.sh` runs
+the other eleven, and each runner asserts the behavior its README describes.

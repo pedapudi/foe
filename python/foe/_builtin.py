@@ -97,7 +97,7 @@ def builtin(
     `retries` is how many times findings re-fire the work, and applies only
     when `verify` is given. docs/workflow.md "Completion" makes a finding
     re-fire the nearest model ancestor of the node that completed the
-    workflow, and "Bounds" makes `max_fires` cap those re-fires, so the
+    workflow, and "What bounds it" makes `max_fires` cap those re-fires, so the
     bounds the printed document carries are raised to admit them: every node
     that can complete a workflow of the document contributes its nearest
     model ancestor, whose `max_fires` becomes at least `retries` plus one,
@@ -367,7 +367,7 @@ def _admit_refires(fields: dict[str, Any], retries: int) -> None:
     """Raise the bounds that would stop a finding from being fed back.
 
     docs/workflow.md "Completion" re-fires the nearest model ancestor of the
-    node that completed the workflow, and "Bounds" makes `max_fires` cap
+    node that completed the workflow, and "What bounds it" makes `max_fires` cap
     those re-fires and the episode budget cap everything. A node keeps a
     bound already wide enough. A document that declares no workflow runs one
     episode and feeds a finding back into that episode, so its bounds admit

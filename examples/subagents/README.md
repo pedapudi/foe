@@ -6,8 +6,8 @@ with deterministic host responses, and checks the parent's log, both children's
 logs, and the edited files.
 
 The parent lists the `spawn` and `wait` tools, and `grants.spawn` names the
-one child contract it may start, `survey`. `child_contracts.survey` is a complete child
-configuration: its own instructions, tools, grants, and budget. It omits
+one child contract it may start, `survey`. `child_contracts.survey` is a
+complete child configuration: its own instructions, tools, grants, and budget. It omits
 `version`, `task`, `model`, and `sandbox`, which a child inherits. The
 child's grants are a subset of the parent's; construction refuses a child
 that reaches further than its parent.
@@ -51,16 +51,17 @@ The project holds two modules that read a configuration key named
 
 ## Waiting for the children
 
-`wait` is a built-in tool that takes no arguments. It returns when every
-added task has settled and no child reservation remains. The episode's
+`wait` is a built-in tool. Called with no arguments, as this parent calls
+it, `wait` returns when every added task has settled and no child reservation
+remains. Its optional `until` argument waits for one named arrival instead. The episode's
 `seconds` budget bounds the wait. One call buys the whole wait, so the parent
 spends one model call on waiting rather than one per poll.
 
 Without it a parent has no way to hold: `spawn` returns after recording and
 scheduling the task, and an assistant turn with no tool calls completes the
-parent at once. A parent that means to abandon its children still ends that way. The
-episode's teardown then asks each child still running to end and waits for
-its `spawn/end` and `budget/release`, so the log accounts for every
+parent at once. A parent that means to abandon its children still ends that
+way. The episode's teardown then asks each child still running to end and
+waits for its `spawn/end` and `budget/release`, so the log accounts for every
 reservation the episode made whichever way the parent finishes.
 
 ## The grants
@@ -79,7 +80,9 @@ the tools the child asks the binary to execute.
 Budget is one pool held by the root episode. The parent declares 40 model
 calls, 320,000 input tokens, 80,000 output tokens, and 1,800 seconds. A
 `spawn` call names no amount, so the reservation is what the child contract
-declares: 8 calls, 48,000 input tokens, and 12,000 output tokens. Both
+declares: 8 calls, 48,000 input tokens, and 12,000 output tokens. The child
+also holds one episode, and because it declares no `seconds` it holds the
+parent's remaining seconds, the one deadline the whole tree shares. Both
 reservations stand at once, so 16 of the parent's 40 calls are held for its
 children while they run. When a child settles, the runtime debits what the
 child spent and returns the rest. The pool ends the run down by 3 calls per
@@ -100,11 +103,12 @@ exhausted and records the limit in its outcome.
 Each `spawn` call first records a queued `team/task` revision. Assignment
 then produces a `budget/reserve` naming the child and the amount taken from
 the remainder. A `spawn/start` follows with `context: "fresh"` and the id of
-the tool call that added the task:
+the tool call that added the task. Sequence numbers and episode ids differ
+between runs:
 
 ```json
-{"seq": 12, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}
-{"seq": 13, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "contract": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
+{"seq": 13, "type": "budget/reserve", "data": { "child_id": "ep_ff6cef6d", "reserved": { "model_calls": 8, "input_tokens": 48000, "output_tokens": 12000, "seconds": 1800, "episodes": 1 } }}
+{"seq": 14, "type": "spawn/start", "data": { "child_id": "ep_ff6cef6d", "contract": "survey", "context": "fresh", "call_id": "tc_spawn_config" }}
 ```
 
 The child's own log is at `children/<child-id>/episode.jsonl` under the
@@ -117,7 +121,7 @@ report, a second one stating that the child ended, a `spawn/end` with the
 child's outcome, and a `budget/release` with what the child spent:
 
 ```json
-{"seq": 35, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "input_tokens": 0, "output_tokens": 0, "seconds": 0, "episodes": 1 } }}
+{"seq": 38, "type": "budget/release", "data": { "child_id": "ep_ff6cef6d", "spent": { "model_calls": 3, "input_tokens": 0, "output_tokens": 0, "seconds": 0, "episodes": 1 } }}
 ```
 
 The runner checks all of this. In the parent's log it requires two
@@ -125,8 +129,8 @@ reservations of the amount the `survey` contract declares, two `spawn/start`
 events with a fresh context, and one `wait` result that lands after all four
 settlement events. It requires two children that ended `completed`, each
 releasing less than it reserved, and four messages from children, of which
-two are reports. In each child's log it requires a
-parent id that names the root, grants without a write root and without a
+two are reports. In each child's log it requires a parent id that names the
+root, grants without a write root and without a
 spawn root, and a call budget below the parent's. It then checks that both
 modules read `timeout_seconds` and that neither still reads `timeout`.
 

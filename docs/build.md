@@ -9,8 +9,9 @@ are documented in [`view/README.md`](../view/README.md).
 
 ## Install
 
-The installer downloads the published x86-64 Linux binary. It needs `curl` or
-`wget` and nothing else: the binary is statically linked, so it runs on any
+The installer is `site/public/install.sh`, which the landing page serves as
+`foe.sh/install.sh`. It downloads the published x86-64 Linux binary. It needs
+`curl` or `wget` and nothing else: the binary is statically linked, so it runs on any
 x86-64 Linux rather than only where its builder's C library is new enough.
 
 ```sh
@@ -67,8 +68,10 @@ for this target, which is 300 KB of the published size and leaves the
 executable position-independent.
 
 It refuses a version that disagrees with `Cargo.toml`, a working tree with
-changes, and a machine without the musl target or a musl C compiler
-(`rustup target add x86_64-unknown-linux-musl` and `apt install musl-tools`).
+changes, and a machine without the musl target
+(`rustup target add x86_64-unknown-linux-musl`). The build also needs a musl
+C compiler (`apt install musl-tools`), and the script needs an authenticated
+GitHub CLI to read the continuous-integration result and create the release.
 It selects the checkout commit and requires that commit's most recent
 `ci.yml` run to have succeeded. An archive of that commit supplies the
 build source. The staged binary runs `foe plan`, the host protocol example,
@@ -109,7 +112,7 @@ install -m 755 bazel-bin/crates/cli/foe "$foe_pair_dir/bin/foe"
 uv venv "$foe_pair_dir/venv"
 uv pip install --python "$foe_pair_dir/venv/bin/python" ./python
 printf '%s\n' "$foe_commit" > "$foe_pair_dir/source-commit"
-"$foe_pair_dir/bin/foe" schema >/dev/null
+"$foe_pair_dir/bin/foe" plan >/dev/null
 "$foe_pair_dir/venv/bin/python" -c 'import foe; print(foe.__version__)'
 ```
 
@@ -137,6 +140,8 @@ bazel build //:foe
 
 The public target `//:foe` aliases the native Rust binary at
 `//crates/cli:foe`. The optimized output is `bazel-bin/crates/cli/foe`.
+`//:foe-portable` builds the same binary for x86-64 Linux against musl, which
+links it statically, and writes `bazel-bin/foe-portable`.
 
 `.bazelversion` pins Bazel 9.2.0. `MODULE.bazel` pins the Rust toolchain and
 the Bazel rules used for Rust and shell targets. `.bazelrc` applies the
@@ -175,7 +180,7 @@ bazel test //examples/...
 ```
 
 These three are the only examples with Bazel targets. `examples/` holds
-thirteen runnable programs in all, each started by its own `run.sh` or
+fourteen runnable programs in all, each started by its own `run.sh` or
 `run.py`; [`examples/README.md`](../examples/README.md) indexes them.
 
 ## Use Cargo for Rust development

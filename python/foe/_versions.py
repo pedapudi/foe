@@ -15,11 +15,11 @@ from __future__ import annotations
 CONFIG_VERSION = 4
 
 # The log format the package parses. It is `LOG_VERSION` in crates/log, and
-# docs/log-format.md "The envelope".
+# docs/log-format.md "Envelope".
 LOG_FORMAT_VERSION = 3
 
 # The log format of a log whose first event states no version. docs/log-format.md
-# "The envelope": version 3 writers are the first to state the version, so
+# "Envelope": version 3 writers are the first to state the version, so
 # absence identifies a version 3 log written before they did.
 UNSTATED_LOG_FORMAT_VERSION = 3
 

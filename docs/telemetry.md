@@ -44,8 +44,9 @@ against the home directory of the passwd database, like every other path
 under `~/.config/foe/`. The capture's directory also holds the local key.
 With the file present, `foe` emits one JSON object per episode — the root
 and every descendant under `children/` — after each run ends, and prints
-one line saying how many episodes went where. A file that exists but cannot
-be read is an error on runs and warns rather than silently disabling.
+one line saying how many episodes went where. An enablement file that
+exists but cannot be read is never ignored silently: a run warns that
+telemetry is disabled for that run, and `foe telemetry` fails with the error.
 Telemetry failures never change a run's outcome or exit code.
 
 ```
@@ -80,9 +81,10 @@ log, so nothing in the output is mistaken for what would be written.
 ## Categories
 
 The classifier reads typed log fields and nothing else: file extensions
-from `read` and `edit` path arguments and `grep` globs, the head of each
-segment of every `bash` command line, and the tool names called. Episode
-structure — spawned children, workflow nodes — casts no vote: it says how
+from the `path` and `glob` arguments of every tool other than `bash`, the
+head of each segment of every `bash` command line, and the tool names
+called. Episode structure — spawned children, workflow nodes — casts no
+vote: it says how
 the work was arranged rather than what it was about, so an episode whose
 only evidence is structure is unclassified. It never reads the task
 text, the model's output, or a tool result body. It therefore cannot be
@@ -116,7 +118,8 @@ with no more specific signal, and it wins only when the generic evidence
 outweighs every specific kind. Equal counts go to the more specific label.
 An episode no rule matched is `unclassified`.
 
-Every matched rule is emitted with its bucket and count. That list is the
+Every matched rule is emitted as its token and bucket, and `foe telemetry`
+also prints how many times each rule matched. That list is the
 whole explanation of the choice, and it is safe to emit because the tokens
 come from the shipped rules and the tool vocabulary rather than from the
 episode's content.
@@ -134,8 +137,9 @@ worth adding.
 
 Most protection comes from what the schema omits. It carries counts,
 durations, token usage, outcome terms, tool names, hashes, and category
-labels. Free text is limited to two fields, both short and written by a
-tool rather than by a model:
+labels. Free text is limited to two short fields. A tool writes the first.
+The second is an error line for a failed episode and, for a blocked
+episode, the message the model passed to `block`:
 
 - `tool/result.subject`, the one line a tool writes naming what it acted on
   and what came of it, which on a failure is the error line.
@@ -166,9 +170,9 @@ Six layers run over those two fields, in order.
    from, and the user name component of any `/home/<user>` or
    `/Users/<user>` path among them. Each value is matched in its variant
    forms — as recorded, with a trailing slash, JSON-escaped, and
-   tilde-abbreviated against the home directory. All four forms of one
-   value carry the same pseudonym, so a join over the workspace does not
-   split four ways.
+   tilde-abbreviated against the home directory. Every form of one value
+   carries the same pseudonym, so a join over the workspace does not split
+   by form.
 4. **Format detectors,** all in one pass. Key material: PEM headers, `ssh-`
    keys, JWT shape, and the token prefixes issued by cloud, source-forge,
    model, chat, package-registry, and payment providers. Identifiers and
@@ -216,12 +220,12 @@ pass would see.
 ### The local key
 
 The key is 32 bytes read from the system random source on first use and
-stored at `<out-dir>/key` with mode 0600. It is never emitted, never
+stored as `key` in the capture file's directory, with mode 0600. It is never emitted, never
 logged, and not part of the contract fingerprint.
 
 Keyed hashing is what makes a pseudonym irrecoverable: an unkeyed hash of a
 user name falls to a word list in milliseconds. The pseudonym for one value
-is stable across every episode written under one output directory, so
+is stable across every episode written under one capture directory, so
 cross-episode joins hold. It is meaningless outside that directory, so
 cross-installation joins are impossible. That is a property of the design.
 
@@ -319,8 +323,9 @@ two counts it is derived from, so a collector can chart cache efficiency
 without recomputing it, and its absence distinguishes an unmeasured spend
 from a cold cache.
 
-Span status is `OK` for a completed episode and a tool call that did not
-error, and `ERROR` otherwise.
+Span status is `OK` for a completed episode, for every model-call span, and
+for a tool call that did not error. It is `ERROR` for any other episode or
+tool call.
 
 `foe.tool.permission_denial` is absent when the log contains no denial
 evidence. `enforced` means the runtime returned the typed
@@ -385,7 +390,7 @@ line to a collector's OTLP/HTTP receiver at `/v1/traces` with
   timestamp shaped like an IPv6 address, and a commit hash are all
   replaced. Over-masking costs readability, and under-masking costs a
   secret.
-- Pseudonyms are stable within one output directory. Emitting the same
+- Pseudonyms are stable within one capture directory. Emitting the same
   episode to two directories yields two different sets of pseudonyms.
 - Scrubbing catches values the log names and values with a recognizable
   format. A personal name typed into a command line is neither, so
@@ -395,7 +400,7 @@ line to a collector's OTLP/HTTP receiver at `/v1/traces` with
 - A tool subject is already truncated by the tool that wrote it, so a long
   error line reaches telemetry cut short.
 - A single line this build's event types cannot read costs the whole log:
-  `emit` refuses it rather than emit under scrubbing it cannot vouch for.
+  emission refuses it rather than emit under scrubbing it cannot vouch for.
   Reading such a log needs a build whose event types match the runtime that
   wrote it.
 

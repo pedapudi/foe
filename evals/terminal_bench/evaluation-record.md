@@ -105,10 +105,10 @@ of three trials, so it provided no accuracy improvement. No evaluated episode
 called `retrieve`. The runs therefore establish neither an accuracy-safe
 aging policy nor an efficacy result for archived retrieval.
 
-The aging and retrieval implementation remains on
-`eval/terminal-bench-aging-retrieval`. It should remain outside `main` until a
+The aging and retrieval implementation was kept on
+`eval/terminal-bench-aging-retrieval`. It was to remain outside `main` until a
 task set activates checkpoints and retrieval in repeated trials without an
-accuracy regression.
+accuracy regression. That branch no longer exists locally or on the remote.
 
 ## Streaming repository search
 
@@ -171,18 +171,20 @@ The evidence supports three repository changes:
 3. Review streaming repository search in
    [pull request #82](https://github.com/pedapudi/foe/pull/82).
 
-All three pull requests remain unmerged. Context aging, archived retrieval,
+All three pull requests were unmerged when this record was written. Each
+merged into `main` on 2026-08-24. Context aging, archived retrieval,
 and tighter result bounds remain experimental. A subsequent efficacy study
 should use repeated cases that activate the proposed mechanism, preserve a
 hidden confirmation set, and report accepted-task cost distributions rather
 than a single aggregate.
 
-The `read` tool still allocates a complete file before selecting its bounded
-line window. Streaming `grep` removes the failure observed in the holdout
-trial. A separate windowed-reader design is required to give `read` the same
-memory bound without changing its line-offset contract.
-[Issue #83](https://github.com/pedapudi/foe/issues/83) tracks that work and its
-stream-boundary tests.
+On 2026-08-23 the `read` tool allocated a complete file before selecting its
+bounded line window. Streaming `grep` removes the failure observed in the
+holdout trial. A separate windowed-reader design was required to give `read`
+the same memory bound without changing its line-offset contract.
+[Issue #83](https://github.com/pedapudi/foe/issues/83) recorded that work and
+its stream-boundary tests. The issue is closed, and `read` now scans the file
+as a stream in fixed-size buffers (`crates/code/src/read.rs`).
 
 ## Local evidence index
 
@@ -207,7 +209,8 @@ The aggregate numbers above were recalculated from these ignored directories:
 - streaming-search confirmations:
   `target/terminal-bench-jobs/sanitize-streaming-grep-20260823T084754Z`
 
-The unmodified directories are under the adapter worktree. Candidate
-directories are under the aging and retrieval worktree. Each campaign
+The unmodified directories were under the adapter worktree. Candidate
+directories were under the aging and retrieval worktree. Neither worktree
+exists on the recording host any longer. Each campaign
 manifest records the source-tree digest, runtime-binary digest, task list,
 allowances, model route, and reasoning effort.

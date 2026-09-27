@@ -424,7 +424,7 @@ async fn ask_then_wait(team: Arc<Team>) -> ToolValue {
     by_name("wait").call(held, &ctx(None)).await
 }
 
-/// docs/tools.md "ask": a question states how long it stays open and the
+/// docs/tools.md "Built-in team tools", `ask`: a question states how long it stays open and the
 /// answer that stands when that time passes, and is refused without either.
 #[tokio::test]
 async fn a_question_without_a_deadline_and_a_default_is_refused() {
@@ -644,7 +644,7 @@ async fn send_and_ask_take_the_scope_that_selects_which_team_they_address() {
     assert_eq!(team.state().queue.len(), 4, "each accepted call queued one message");
 }
 
-/// docs/tools.md "ask": a question carries its own identity, the answer
+/// docs/tools.md "Built-in team tools", `ask`: a question carries its own identity, the answer
 /// carries the question's, and `wait` with `{reply: id}` holds for that
 /// answer alone.
 #[tokio::test]
@@ -782,7 +782,7 @@ fn inbox_event(source: InboxSource, from: Option<&str>) -> EventData {
     EventData::InboxItem(InboxItem::new(source, vec![], from.map(str::to_string), None))
 }
 
-/// docs/tools.md "wait": the bare form blocks until every team task and
+/// docs/tools.md "Built-in team tools", `wait`: the bare form blocks until every team task and
 /// child has settled. It returns at once when there is no delegated work.
 #[tokio::test]
 async fn bare_wait_keeps_its_all_children_meaning() {
@@ -798,7 +798,7 @@ async fn bare_wait_keeps_its_all_children_meaning() {
     assert_eq!((timed.is_error, timed.value), (false, serde_json::json!({ "matched": "timeout" })));
 }
 
-/// docs/tools.md "wait": an `until` wait returns when an unconsumed inbox
+/// docs/tools.md "Built-in team tools", `wait`: an `until` wait returns when an unconsumed inbox
 /// item matches a condition, naming the condition met; an item an earlier
 /// request consumed is not news, and nothing matching is a timeout.
 #[tokio::test]

@@ -35,11 +35,14 @@ sentence on first reading.
 
 - Rust 2021, toolchain pinned in `rust-toolchain.toml`. `cargo fmt` and
   `cargo clippy -- -D warnings` pass before every commit.
-- `crates/log` depends on serde, serde_json, and thiserror, and on no
-  crate of this repository. The only crate of this repository that
-  `crates/core` depends on is `crates/log`. Nothing depends on
+- `crates/log` depends on serde, serde_json, sha2, and thiserror, and on
+  no crate of this repository. `crates/contract` depends on `crates/log`
+  alone among the crates of this repository, and `crates/core` depends on
+  `crates/log` and `crates/contract` alone. Nothing depends on
   `crates/view` except the binary.
-- No environment variable is read anywhere. Configuration arrives as a file.
+- No environment variable is read, with one exception: `HOME`, in
+  `crates/transport/src/paths.rs`, when the passwd database holds no entry
+  for the user. Configuration arrives as a file.
 - No path list is searched. Executables are named by absolute path.
 - Every error names the key, event, or rule involved.
 - Tests live beside the code they test. A specification rule that can be

@@ -66,7 +66,7 @@ class Log:
 
     def emit(self, type_: str, data: dict[str, Any]) -> int:
         # The log format version is stated on the first event and absent
-        # after; docs/log-format.md "The envelope".
+        # after; docs/log-format.md "Envelope".
         event: dict[str, Any] = {"seq": self.seq, "time": int(time.time() * 1000)}
         if self.seq == 0 and self.log_version is not None:
             event["version"] = self.log_version

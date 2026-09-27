@@ -85,10 +85,10 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       <p>foe inverts it. A contract <em>declares</em> what the run may touch, and
       everything else does not exist for it:</p>
       <ul style="--dia-marker: '▸'; list-style: none;">
-        <li>no environment variable is read, anywhere,</li>
+        <li>no environment variable is read except <code>HOME</code>, and that only for a user the passwd database lacks,</li>
         <li>no search of the system path — executables by absolute path,</li>
-        <li>no network unless a grant implies it,</li>
-        <li>no file outside the declared roots.</li>
+        <li>no network unless a model endpoint or tool asks for it,</li>
+        <li>no file outside the declared roots and fixed system paths.</li>
       </ul>
     </div>
     <figure class="dia-figure">
@@ -200,10 +200,10 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       <ul style="--dia-marker: '▸'; list-style: none;">
         <li><code>required</code> — Landlock must be available, or the run refuses
         to start,</li>
-        <li><code>best-effort</code> — enforce what the kernel offers, record what
-        it could not,</li>
-        <li><code>off</code> — grants stay advisory; chosen when an outer boundary
-        (a container) is the real wall.</li>
+        <li><code>best-effort</code>, the default — enforce what the kernel offers,
+        record which level it got,</li>
+        <li><code>off</code> — no kernel rules; only the runtime's own tools check
+        grants, so an outer boundary (a container) is the real wall.</li>
       </ul>
       <p>The log records which mode held and which kernel level enforced
       it, so a reader knows what a run's walls actually were.</p>
@@ -231,7 +231,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
           <rect x="256" y="40" width="4" height="60"/><rect x="270" y="34" width="4" height="66"/><rect x="284" y="40" width="4" height="60"/>
         </g>
         <text x="272" y="116" text-anchor="middle" font-size="8.5" fill="var(--dia-ink-soft)">kernel rules</text>
-        <text x="316" y="152" text-anchor="end" font-size="8.5" fill="var(--dia-ink-faint)">open("/etc/shadow") → denied in the kernel</text>
+        <text x="316" y="152" text-anchor="end" font-size="8.5" fill="var(--dia-ink-faint)">open("/root/.netrc") → denied in the kernel</text>
         <text x="170" y="196" text-anchor="middle" font-size="10" fill="var(--dia-ink-faint)">the model is never asked to behave</text>
       </svg>
       <figcaption class="dia-caption">The declaration and the enforcement are one computation; no prose asks the code to comply.</figcaption>
@@ -252,8 +252,8 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <li>the <strong>interpreter</strong> its shebang line names — followed
         recursively if that is itself a script,</li>
         <li>the <strong>dynamic loader</strong> its ELF header names,</li>
-        <li>shared-library directories as <em>read-only</em>, because a library
-        is loaded rather than executed.</li>
+        <li>shared-library directories as <em>read-only</em>, because a
+        library is loaded rather than executed.</li>
       </ul>
       <p>A directory in <code>grants.execute</code> is honored as a declared
       subtree grant — a usable starting breadth — but the vocabulary can
@@ -513,16 +513,17 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       because they are one computation.</p>
     </div>
     <figure class="dia-figure">
-<pre class="plan">model       openai/gpt: streaming, key from file
+<pre class="plan">model       answered by the host over the protocol
 read        /home/user/project
 write       /home/user/project
-execute     /usr/bin/python3 <b>(+ interpreter, loader)</b>
-completion  verifier .foe/verify (retries 12)
-limits      600 model calls, 14400s
+execute     <b>/usr/bin/python3</b>
+completion  verifier check (retries 12)
+limits      600 model calls, 14400s, loop threshold 8
 sandbox     required
+execution   one root-bound agent node
 warnings    <b>none</b></pre>
       <figcaption class="dia-caption" style="margin-top: 8px;">A contract that selects a shell tool with nothing
-      executable warns here — <code>external-commands-unavailable (grants.execute)</code> — before a single request is spent.</figcaption>
+      executable warns here — <code>external-commands-unavailable (contract.grants.execute)</code> — before a single request is spent.</figcaption>
     </figure>
   </div>
   <div class="foot"><span class="wordmark">foe</span><span data-dia-auto="page"></span></div>

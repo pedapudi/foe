@@ -10,7 +10,6 @@ the sources are authoritative.
 | `zicato/docs/design/DESIGN-LANGUAGE.md` | the colour role contract, the sixteen themes, the twelve typefaces in three modes, the spacing scale, the top bar, the pickers, the line-art figure conventions, the render discipline |
 | `zicato/src/zicato/dashboard/static/css/console.css` | the authoritative per-theme token blocks and the typeface token map; the only place raw hex appears |
 | `zicato/src/zicato/dashboard/static/js/ui.js` and `typefacedropdown.js` | the swatch preview tuples and the picker behavior |
-| `zicato/src/zicato/dashboard/static/fonts/` | the woff2 files of the two monos the viewer self-hosts beside Inconsolata |
 | `diastil/docs/HOUSE-STYLE.md` | the drawing register for figures |
 
 ## Colour
@@ -136,11 +135,9 @@ the colour the first episode of that name took. Past the eighth episode the
 colours repeat.
 
 The causality figure draws a lane per episode, and that lane takes its
-episode's colour. Before this the lanes cycled over five tones mixed from the
-theme's tokens, which told a column from its neighbour and said nothing about
-whose column it was, so a reader had two colours for one episode and no stated
-relation between them. The lane a declared graph earns is not an agent and
-stays in neutral ink.
+episode's colour, so a reader meets one colour for one episode in the name
+and in the lane. The lane a declared graph earns is not an agent and stays in
+neutral ink.
 
 Three implementations write the same hash: `view/src/identity.ts` for the
 browser, `crates/view/src/terminal.rs` for the terminal conversation, where
@@ -204,29 +201,32 @@ sample. No option carries a specimen sentence: a sentence repeats across
 every face of a mode, so it adds width to twelve rows without separating
 any of them, and the specimen is what a reader compares.
 
-Six woff2 files are self-hosted: both weights of Inconsolata, of iA Writer
-Mono, and of JetBrains Mono, which are the families the default face and
-the other technical and display faces set. `view/fonts/README.md` records
-where each file came from. The viewer performs no network fetch for any
+Two woff2 files are self-hosted: the regular and bold weights of
+Inconsolata, which the `inconsolata` option sets in every role.
+`crates/view/build.rs` names the files the binary embeds, and
+`view/fonts/README.md` records where each came from. The viewer performs no network fetch for any
 font: every other family resolves against the machine's own copy when it has
 one and to a system fallback otherwise. This is the one departure from
 zicato, which loads those families from a font service, and it exists
 because the viewer runs on loopback and in environments with no network.
 
 The brand wordmark is drawn from outlined paths inside the lockup, so it
-does not follow the chosen typeface and never reflows. `--v2-brand-mono`
-sets any place that spells the product name as text.
+does not follow the chosen typeface and never reflows. `tokens.css` defines
+`--v2-brand-mono` for any place that spells the product name as text. No
+element of the viewer does so, because the top bar draws the lockup.
 
 The brand mark, the wordmark's construction, and the brand accent are
 specified in [brand/README.md](brand/README.md). The brand accent is a
-separate token from `--v2-accent` and appears on the mark's peak dot only.
+separate token from `--v2-accent` and appears only on the mark's core and
+on the pulsing glyph that stands for a running episode.
 
 Base size is `13px`, multiplied by the text size the S, M, L control
 selects and then by the page-scale pill. The three multipliers are 1.15,
 1.35, and 1.6, giving 15, 17.5, and 20.8 pixels. Each step is about 17
 percent over the one below it, so the three are evenly spaced on a ratio
 scale; equal pixel differences would read as a smaller step at the top of
-the range than at the bottom. The smallest is the default. Numbers in
+the range than at the bottom. The middle one is the default, because at
+the smallest a figure's secondary labels draw at 10 to 12 pixels. Numbers in
 columns or that animate use `font-variant-numeric: tabular-nums`.
 
 ## Spacing
@@ -248,7 +248,7 @@ pill is the sizing control.
 zicato's scale measures a scrolling document and its smallest step is
 sixteen pixels. The viewer's regions are panes a few hundred pixels wide
 whose interiors need steps under that, so four more tokens name them, and
-every interior spacing in the stylesheet is one of the four.
+an interior spacing in the stylesheet takes one of the four.
 
 | token | value | role |
 |---|---|---|
@@ -279,14 +279,17 @@ The top bar is sticky, blurred, and hairline-bottomed. Left to right:
 3. breadcrumbs in the body face and faint ink, from the root episode to the
    selected one;
 4. a flex spacer;
-5. the colour swatch dropdown and the typeface switch;
-6. the page-scale pill: a range input from 70% to 150% in 5% steps with a
-   percent readout and a reset control, applied by `zoom` on the root so the
-   page reflows rather than scales;
-The chrome carries no status pill. The link to the process that writes the
-logs is a property of the page, not of the run being read, and the words it
-showed — `connected`, `file` — told a reader nothing they could act on. What
-is running is said where the run is drawn: an episode that has not ended
+5. the layout toggle, a pair of buttons reading `outline` and `details`
+   that choose how the run is arranged on the page;
+6. the colour swatch dropdown and the typeface switch;
+7. the page-scale pill: a range input from 70% to 150% in 5% steps with a
+   percent readout and a reset control, applied by `zoom` on the app root so
+   the page reflows rather than scales.
+
+The chrome carries no connection status. The link to the process that writes
+the logs is a property of the page rather than of the run being read, and a
+reader can take no action on it. What is running is said where the run is
+drawn: an episode that has not ended
 draws the brand mark in place of the mark of its outcome, pulsing, in the
 episode tree and at the foot of its lane in the causality figure.
 
@@ -321,10 +324,11 @@ A region whose height follows its content opens at that height and keeps
 following it until a grip sets a size. Only sizes a grip has set are stored,
 so a region left alone stays derived.
 
-Theme, typeface, font size, page scale, and pane sizes persist in
-`localStorage` under `foe.theme`, `foe.typeface`, `foe.fontsize`,
-`foe.scale`, and `foe.panes`, and one function applies each so that every
-control that changes a value stays in step.
+Theme, typeface, font size, page scale, layout, outline depth, and pane
+sizes persist in `localStorage` under `foe.theme`, `foe.typeface`,
+`foe.fontsize`, `foe.scale`, `foe.layout`, `foe.depth`, and `foe.panes`.
+One function applies each, so every control that changes a value stays in
+step.
 
 ## Figures
 
@@ -364,7 +368,7 @@ Figures are line art in the diastil drawing register.
   than read. A control a person presses keeps its border, because a border
   is how a control states that it is pressable.
 - A mark reuses the shape the trajectory gives the same meaning, so one
-  grammar covers the timeline and the conversation. `src/marks.ts` holds
+  grammar covers the timeline and the conversation. `view/src/marks.ts` holds
   every mark as geometry in one box, and the stylesheet gives each one its
   role colour; no mark names a colour of its own. A mark stands `1.2em`
   tall in the line it joins and strokes `currentColor` at 1.2 pixels, which
@@ -381,7 +385,7 @@ Figures are line art in the diastil drawing register.
 
 ### The hovercard
 
-One card explains every mark of every figure, and `src/render/hovercard.ts`
+One card explains every mark of every figure, and `view/src/render/hovercard.ts`
 is the only place it is built. A figure that appended a tooltip of the
 browser's own would give a reader an unthemed box after a delay in the one
 place the page most needs to answer at once, so no figure does.
@@ -399,7 +403,7 @@ reader who sees one number and a bar of a different length has no way to
 tell which is the measurement. A quantity nothing measured is stated as
 absent; it is never drawn as zero.
 
-Every figure is one SVG element built by `src/render/svg.ts`, which fits it
+Every figure is one SVG element built by `view/src/render/svg.ts`, which fits it
 to its host: `width="100%"`, an explicit `viewBox`, an explicit
 `preserveAspectRatio`, and `role="img"` with a label. No figure has a fixed
 pixel width that could exceed its pane, and no pane scrolls sideways to
@@ -433,8 +437,8 @@ layout over an append-only log rather than a scrolling dashboard.
 
 - **No font is fetched.** zicato loads its editorial and display families
   from a font service. The viewer runs on loopback and from a single file,
-  so it self-hosts the six faces it guarantees and lets every other family
-  resolve against the machine's own copy or a system fallback.
+  so it self-hosts the two Inconsolata files it guarantees and lets every
+  other family resolve against the machine's own copy or a system fallback.
 - **The interior rhythm has four steps zicato does not name.** zicato's
   scale is adopted whole, and the four tokens under the "Spacing" heading
   are added below its smallest step for the interiors of panes.
@@ -450,7 +454,7 @@ layout over an append-only log rather than a scrolling dashboard.
 ## Size
 
 The chrome adds to the bundle. The JavaScript and CSS together stay under
-150 KB compressed. The six self-hosted font files are separate assets,
+150 KB compressed. The two self-hosted font files are separate assets,
 served by the live server and inlined into the static export, and are not
 counted against that budget. The static export is therefore larger than the
 bundle by the size of the fonts, and that is accepted.

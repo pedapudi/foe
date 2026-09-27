@@ -190,7 +190,7 @@ def test_the_bounds_admit_every_re_fire_a_finding_causes(tmp_path: Path) -> None
     """The gated document raises the bounds that would otherwise stop a re-fire.
 
     docs/workflow.md "Completion" re-fires the nearest model ancestor of the
-    node that completed the workflow, and "Bounds" makes `max_fires` cap
+    node that completed the workflow, and "What bounds it" makes `max_fires` cap
     those re-fires. Both coding nodes that can complete the workflow run a
     model: `assess-task` carries a branch label with no successors, and
     `repair-task` is terminal. Each re-fire runs one further episode, so the

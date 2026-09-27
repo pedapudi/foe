@@ -650,8 +650,9 @@ pub struct VerificationResult {
     pub step: u32,
     /// The verifier tool's name.
     pub tool: String,
-    /// For a configured executable, `sha256:<hex>` over its file content at
-    /// invocation; for a built-in or host tool, the runtime build hash.
+    /// For a configured executable, `sha256:<hex>` over the file content
+    /// captured when the contract was built; for a built-in or host tool, the
+    /// runtime build hash.
     pub verifier_fingerprint: String,
     pub status: VerificationStatus,
     /// The finding strings the `verify` inbox item carries; empty for

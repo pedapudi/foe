@@ -155,12 +155,12 @@ under this contract.
   vector, one element per string, with no shell in between. Quoting,
   globbing, and variable expansion do not happen.
 - **Standard input.** Connected to `/dev/null`, except when the tool is the
-  verifier named in `done_when.verify`, in which case the candidate result
-  is written to standard input as JSON.
+  verifier named in `done_when.verify` or in a workflow node's `verify`. A
+  verifier receives the candidate result on standard input as JSON.
 - **Working directory.** The entry's `cwd` when present, otherwise the first
   `read` root.
-- **Environment.** Constructed by the runtime. Nothing is inherited from
-  the process that started the episode.
+- **Environment.** Empty. Nothing is inherited from the process that
+  started the episode.
 - **Network.** Closed unless the entry sets `network` to `true`. Where the
   kernel supports it, the restriction is enforced by the sandbox.
 - **Timeout.** The entry's `timeout_seconds`, default 120. On expiry the
@@ -193,11 +193,11 @@ of those schemas keeps the one-agent request header unchanged.
 |---|---|---|
 | `spawn` | spawns | Adds a board task for a permitted child contract. Required arguments are `contract` and `task`. Optional arguments are `name`, `context` (`fresh` or `fork`), `blocked_by` (earlier task identifiers), and `write` (existing directories). The grant rules below apply before admission. |
 | `wait` | pure | With no arguments, blocks until every added board task has settled. With `until`, blocks for a matching child outcome, session exit, inbox source, or the answer to one question named by `reply`. `timeout_seconds` bounds either form. An `until` wait requires a bound, because nothing the caller does makes the arrival it waits for happen: when the episode carries no `seconds` budget, omitting `timeout_seconds` is a validation error. A `reply` condition states its own bound like every other, and the deadline the question carries is a separate decision: it says how long the question stays open, whether or not the asker is blocked on it. The bare form needs no bound, because it waits on tasks this episode created and each of those is bounded in its turn. Waiting consumes wall-clock budget and no model request. |
-| `steer` | pure | Sends `content` to a running child selected by roster `name`. The content enters the child's next request. |
-| `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
+| `steer` | pure | Sends `content` to a running child selected by its roster name in `to`. The content enters the child's next request. |
+| `cancel` | pure | Stops a running child selected by its roster name in `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
 | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
-| `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`, or to the episode leading that team when `to` is `lead`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. An answer sent after the question's deadline has passed is dropped, because the question's default answer already stands under that identifier. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
-| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, or to the episode leading that team when `to` is `lead`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
+| `send` | pure | Sends `content` to a member of the parent-led team selected by its roster name in `to`, or to the episode leading that team when `to` is `lead`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. An answer sent after the question's deadline has passed is dropped, because the question's default answer already stands under that identifier. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
+| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by its roster name in `to`, or to the episode leading that team when `to` is `lead`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. `deadline_ms` and `default` are required: they say how many milliseconds the question stays open and what answer stands when that time passes unanswered. Omitting either is a validation error, so no episode waits on another without end. Optional `scope` selects the team, as for `send`. |
 | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
 
 An `ask` deadline includes forwarding and waiting for delivery acknowledgement.
@@ -279,9 +279,9 @@ the first `read` root, and paths in results are shown relative to it.
 | `read` | reads | `path`; `offset`, the first line or directory entry to show, 1-indexed, default 1; `limit`, the maximum lines or entries to show | 2,000 lines or entries, or 51,200 characters per call, whichever comes first; binary files are refused; a file streams through a 64 KiB buffer; a directory lists sorted immediate entries | `path`, `offset`, `shown`, `truncated`; a file adds `total_lines`, `content`, `version`; a directory adds `total_entries`, `entries` with `path` and `type` |
 | `grep` | reads | `pattern`; `path`, a directory or file, default the first read root; `glob`; `ignore_case`; `literal`; `context`, lines before and after each match; `limit`, matches to render, default 100 | 8 MiB line-search buffer; 500 characters per rendered line; the search stops after 10,000 matches or 20,000 result lines; `.gitignore` and `.ignore` files apply | `pattern`, `root`, `matches`, `files`, `searched_files`, `failed_files`, `traversal_failures`, `first_failure`, `complete`, `hits`, each with `path`, `line`, `text`, `context` |
 | `edit` | writes | `path`; optional `expected_version` from `read`; `edits`, a list of `{old_text, new_text}` | each nonempty `old_text` occurs exactly once; an empty `old_text` creates a missing or empty file and requires one edit; matches do not overlap; the result differs from the original; an expected version must match the current bytes; the rendered diff shows at most 200 lines | `path`, `edits`, `added`, `removed`, `diff`, `previous_version`, `version` |
-| `bash` | execs | `command`; `timeout_seconds`, default 120 | the last 2,000 lines or 51,200 characters of output are collected; the rest is spilled | `command`, `exit_code`, `timed_out`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial` |
-| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, `name`, `lifetime`, and per action: `command`; `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial`; `bytes`; `signal` |
-| `compose_tools` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`, `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`, `stdout`, `stderr`; on error, the same fields with a `message` under `error` |
+| `bash` | execs | `command`; `timeout_seconds`, default 120 | the rendering keeps the last 2,000 lines or 51,200 characters of output, and a cut spills the combined text; `stdout` and `stderr` each hold up to 1 MiB | `command`, `exit_code`, `timed_out`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial` |
+| `session` | execs | `action`, one of `start`, `poll`, `write`, `signal`, `stop`; `command`, the line `start` runs; `lifetime`, `episode` by default or `task`; `session`, the id every other action names; `input`, bytes for `write`; `signal`, a name for `signal` | 8 sessions alive at once; a poll's output is collected and spilled by the `bash` rule; task lifetime requires `grants.task_session` | `session`, and per action: `start` adds `name`, `command`, `lifetime`; `poll` adds `name`, `alive`, `exit_code`, `seconds`, `stdout`, `stderr`, `truncated`, `spill`, `permission_denial`; `write` adds `bytes`; `signal` adds `signal`; `stop` adds `name`, `exit_code`, `seconds` |
+| `compose_tools` | execs | `source`, Python source defining a zero-argument `main`; `timeout_seconds`, default 120 | 64 KiB of source; 100 inner tool calls; 512 MiB of interpreter memory; 4,096 characters kept of each of the process's own output streams | `returned`; `derivation` with `complete`, `inner_calls`, `errors`, `by_tool`; `stdout`; `stderr`; on error, `error` holds `message`, `derivation`, `stdout`, and `stderr` |
 
 The limits in the table are constants in the crate, and every tool
 description sent to the model is formatted from the same constants.
@@ -377,9 +377,9 @@ enumerates the tree through its descriptor-held root. The rules in
 checkout, and hidden entries are skipped. Each file is streamed through the
 same reader. The line-search buffer
 has an 8 MiB ceiling. A line or context window beyond that ceiling makes the
-result incomplete and increments `failed_files`. A symbolic link that leaves
-the read roots is skipped rather than followed. Files that contain a NUL byte
-are skipped.
+result incomplete and increments `failed_files`. Symbolic links and special
+files met during the walk are skipped rather than followed. Files that
+contain a NUL byte are skipped.
 
 A directory-enumeration, ignore-file, file-open, or search failure makes
 `complete` false. `failed_files` counts open and content-search failures.
@@ -569,7 +569,7 @@ the constant the executable teardown uses.
 A session's end is also posted to the episode's inbox. When the runtime
 observes that the process group is empty, it appends one `inbox/item` with
 source `session` whose text is the subject line: the id, the exit status,
-and the lifetime. The runtime checks before deriving a request, while a
+and the seconds the session ran. The runtime checks before deriving a request, while a
 turn's tool calls run, and at settlement. One item per session lifetime,
 on exit only; output
 reaches the model through `poll` alone. The item lets a `wait` on a
@@ -628,8 +628,8 @@ remainder to the others, and the remainder is divided again until no part
 goes unused, so a turn of one large result and five small ones gives the
 large one almost the whole budget. No result is held below a floor of 4,000
 characters, so a turn of many calls may cost more than the turn budget, and
-never more than 4,000 characters times the number of calls. These three
-figures are constants in `crates/core/src/result_budget.rs`.
+never more than 4,000 characters times the number of calls. The budget and
+the floor are constants in `crates/core/src/result_budget.rs`.
 
 The budget is a bound rather than a saving. One call is already held below
 50,000 characters by the limits of `read` and `bash`, so a turn of one large
@@ -658,8 +658,8 @@ shapes carry their information in different places.
 
 - A **numbered window** is a rendering whose first line begins with a
   decimal number and a tab, which is how `read` numbers a file. It is cut to
-  its head alone, and the notice names the file line to resume at, taken
-  from the number on the last line shown. A reader who wants more of a file
+  its head alone. For a contract without `retrieve`, the notice names the
+  file line to resume at, taken from the number on the last line shown. A reader who wants more of a file
   wants the lines after the ones already shown, so a kept tail would spend
   the budget on lines nobody asked for and leave a hole in the middle. The
   notice reads:
@@ -687,7 +687,6 @@ appended, so the request that first carries the result and every request
 after it carry the same text. No earlier turn is rewritten, which lets a
 provider reuse the key-value cache of the prefix.
 
-The per-call limits of `read` and `bash` remain as bounds on what a tool
-collects into its canonical value and into the log. Parallel calls no longer
-multiply: six calls in one turn divide one budget rather than taking six
-limits.
+The per-call limits of `read` and `bash` still bound each call. Parallel
+calls do not multiply those limits: six calls in one turn divide one budget
+rather than taking six limits.
