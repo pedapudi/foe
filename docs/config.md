@@ -361,11 +361,12 @@ the loader or interpreter required to start each file. Library directories
 remain readable; execute permission follows the declared grants and those
 exact support files ([sandbox.md](sandbox.md)).
 
-A grant is a permission and not an environment. Naming a toolchain under
+A grant is a permission and sets no environment. Naming a toolchain under
 `execute` lets a process run it; it does not tell the process where the
 toolchain keeps its own state. The shell tools state `HOME` as the home
-directory the passwd database records for the real user, so a toolchain
-manager finds its installation where it keeps it, and [tools.md](tools.md)
+directory the passwd database records for the real user, and as the
+working directory where it records none. With the recorded home directory, a
+toolchain manager finds its installation where it keeps it, and [tools.md](tools.md)
 lists the rest of what they receive.
 
 The kernel sandbox enforces the same grants on the episode process and on
