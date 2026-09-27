@@ -20,6 +20,9 @@
     "checks",
     "scripts/inventory.py"
   ],
+  "preserved_on_stop": [
+    "crates/context/inventory.toml"
+  ],
   "metadata": {
     "crate": "context",
     "package": "foe-context",

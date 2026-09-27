@@ -441,6 +441,10 @@ class Authoring(Repository):
         self.assertEqual(list(specification["sentences"]), ["docs/spec.md"])
         revert = json.loads((grader / "corruptions/revert-one-crate/revert.json").read_text(encoding="utf-8"))
         self.assertEqual(revert, {"crate": "crates/alpha", "restore": ["crates/alpha/src/lib.rs"], "remove": []})
+        # The protocol module docstring: an authored corruption names the
+        # findings it targets, so its control holds only for that reason.
+        expects = protocol.expected_findings(grader / "corruptions/revert-one-crate")
+        self.assertEqual(expects, removal.CORRUPTION_EXPECTS)
         self.assertEqual(
             (grader / "corruptions/revert-one-crate/parent/crates/alpha/src/lib.rs").read_text(encoding="utf-8"),
             PARENT_FILES["crates/alpha/src/lib.rs"],
@@ -496,13 +500,17 @@ class Grading(Repository):
     def test_the_grader_controls_hold(self) -> None:
         results = removal.verify(self.out, self.scratch_dir / "controls", timeout=60)
         by_name = {timed.control.name: timed.control for timed in results}
-        self.assertEqual(sorted(by_name), ["corruption:revert-one-crate", "oracle", "untouched"])
+        self.assertEqual(sorted(by_name), ["corruption-revert-one-crate", "oracle", "untouched"])
         for name, control in by_name.items():
             self.assertTrue(control.held, f"{name}: {control.findings}")
         self.assertTrue(any("frobnicate is undefined" in finding for finding in by_name["untouched"].findings), by_name["untouched"].findings)
         self.assertTrue(any("docs/spec.md lacks the sentence" in finding for finding in by_name["untouched"].findings))
         self.assertEqual(by_name["oracle"].findings, [])
-        self.assertTrue(any("frobnicate is undefined" in finding for finding in by_name["corruption:revert-one-crate"].findings))
+        reverted = by_name["corruption-revert-one-crate"]
+        self.assertTrue(any("frobnicate is undefined" in finding for finding in reverted.findings))
+        # The protocol module docstring: a corruption with an expects file
+        # holds only through a finding the file names.
+        self.assertTrue(reverted.intended_finding_seen, reverted.findings)
         logs = sorted((self.build / "double-values/grades/control-oracle").glob("*/logs/test.log"))
         self.assertEqual(len(logs), 1, "the grade keeps each command's output under the build, by arm and grade")
         self.assertIn("test tests::frobnicate_doubles ... ok", logs[0].read_text(encoding="utf-8"))

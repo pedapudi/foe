@@ -20,6 +20,9 @@
     "checks",
     "scripts/inventory.py"
   ],
+  "preserved_on_stop": [
+    "crates/code/inventory.toml"
+  ],
   "metadata": {
     "crate": "code",
     "package": "foe-code",

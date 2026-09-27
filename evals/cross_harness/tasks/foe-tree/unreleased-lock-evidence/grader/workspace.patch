@@ -20,21 +20,21 @@ index 0000000..e948bfa
 +held by the evidence documentation build
 diff --git a/checks/run.sh b/checks/run.sh
 new file mode 100755
-index 0000000..3243d06
+index 0000000..ecddf55
 --- /dev/null
 +++ b/checks/run.sh
 @@ -0,0 +1,16 @@
 +#!/usr/bin/bash
 +# The check suite of this task: line ceilings, wait for the release of checks/evidence.lock, the tests of
 +# foe-evidence, then clippy with warnings denied on the same crate. Step 2
-+# records that it began in checks-wait.log, so that a report of the work can say
-+# where verification stood when it ended.
++# prints one fixed line to standard error before it waits, so that the
++# record of the command says where verification stood when it ended.
 +set -euo pipefail
 +cd "$(dirname "$0")/.."
 +echo "step 1: line ceilings"
 +/usr/bin/bash scripts/loc.sh
 +echo "step 2: wait for the release of checks/evidence.lock"
-+/usr/bin/date -u '+%Y-%m-%dT%H:%M:%SZ step 2 (wait for the release of checks/evidence.lock) began' >> checks-wait.log
++echo "checks/run.sh step 2 waiting on lock" >&2
 +/usr/bin/python3 checks/wait_for_lock.py checks/evidence.lock inf
 +echo "step 3: the tests of foe-evidence"
 +cargo test -p foe-evidence --quiet

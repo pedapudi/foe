@@ -15,6 +15,9 @@ field and names the key and the rule in its error. `Trajectory.totals`
 folds the tree into the counts a report states. `attribute_shell_writes`
 adds the file changes a shell command made, found by comparing workspace
 snapshots taken before and after the run against command intervals.
+`wait_entry` states whether a task's check suite entered the step that
+waits, from the trajectory alone, which is to say from the records the
+harness wrote rather than from the workspace.
 
 Every time in this schema is a millisecond count on the same clock as the
 harness's own records, and every token count is an integer or None when the
@@ -26,8 +29,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Mapping
 
 HARNESSES = ("foe", "codex")
 ROUTES = ("subscription", "compatible")
@@ -542,3 +546,189 @@ def attribute_shell_writes(trajectory: Trajectory, snapshot_before: dict[str, in
             agent.file_changes.append(FileChange(path=path, kind=kind, at_ms=at, via="shell"))
             added += 1
     return added
+
+
+# The check suite of a non-terminating task, which `tasks/constructions.py`
+# writes into every such workspace, and the line its waiting step prints to
+# standard error before it blocks, with the mechanism's name filled in. The
+# two are restated here rather than imported, so that the schema module
+# imports nothing of the task tree; the tests hold them equal.
+RUN_SCRIPT = "checks/run.sh"
+WAIT_MARKER = "checks/run.sh step 2 waiting on {mechanism}"
+# The foe tool that runs the suite, as `contracts/graphs.py` names it, and the
+# name the foe normalizer gives the runtime's own verifier invocations.
+CHECK_TOOL = "check"
+VERIFICATION_CALL = "verification/result"
+# The shortest run of the suite that can have entered the wait. Step 1 of the
+# suite is `scripts/loc.sh`, which ends in about a tenth of a second on the
+# host the tasks were authored on and in under 0.3 seconds, together with the
+# suite's own start, in the recorded runs whose wait an arm had cut. The bound
+# is rounded up tenfold so that a slower host does not count an invocation
+# stopped during step 1.
+STEP_ONE_MS = 1_000
+# The exit status `timeout(1)` gives a command it ended, and the least status
+# a shell gives a command a signal ended.
+TIMEOUT_EXIT = 124
+SIGNAL_EXIT_AT_LEAST = 128
+
+_SEGMENT = re.compile(r"\|\||&&|[;|&\n()]")
+_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Programs that run the command after their own options: a shell given a
+# script path, and the prefixes that change how a command runs.
+_PREFIXES = {"bash", "sh", "env", "exec", "nohup", "time", "command", "stdbuf"}
+
+
+def invokes_run_script(text: str) -> bool:
+    """Whether a shell command runs `checks/run.sh`, rather than naming it as an argument.
+
+    Each simple command of the text is read on its own. Leading variable
+    assignments, a shell or prefix program with its options, and `timeout`
+    with its options and duration are skipped; the command runs the suite
+    when the word left is `checks/run.sh`, `./checks/run.sh`, or a path
+    ending in `/checks/run.sh`. A command that reads, prints, or diffs the
+    script names it as an argument, and is not an invocation.
+    """
+    for segment in _SEGMENT.split(text):
+        try:
+            words = shlex.split(segment, comments=True)
+        except ValueError:
+            words = segment.split()
+        index = 0
+        while index < len(words) and _ASSIGNMENT.match(words[index]):
+            index += 1
+        while index < len(words):
+            program = words[index].rsplit("/", 1)[-1]
+            if program in _PREFIXES:
+                index += 1
+                while index < len(words) and (words[index].startswith("-") or _ASSIGNMENT.match(words[index])):
+                    index += 1
+            elif program == "timeout":
+                index += 1
+                while index < len(words) and words[index].startswith("-"):
+                    index += 1
+                index += 1
+            else:
+                break
+        if index < len(words) and (words[index] in (RUN_SCRIPT, "./" + RUN_SCRIPT) or words[index].endswith("/" + RUN_SCRIPT)):
+            return True
+    return False
+
+
+def _marker_of(marker: str | Mapping[str, Any]) -> str:
+    """The marker line itself, from the line or from a task's metadata."""
+    if isinstance(marker, str):
+        return marker
+    stated = marker.get("wait_marker")
+    if isinstance(stated, str):
+        return stated
+    mechanism = marker.get("mechanism")
+    if isinstance(mechanism, str):
+        return WAIT_MARKER.format(mechanism=mechanism)
+    return WAIT_MARKER.format(mechanism="its mechanism")
+
+
+def _ending_of_command(command: Command) -> str | None:
+    """How a command that ran the suite ended, when that ending allows the wait; None when the suite passed."""
+    if command.ended_ms is None:
+        return "has not ended"
+    if command.exit_code is None:
+        return "ended with no exit status"
+    if command.exit_code == TIMEOUT_EXIT:
+        return "ended by timeout, exit 124"
+    if command.exit_code >= SIGNAL_EXIT_AT_LEAST:
+        return f"ended by a signal, exit {command.exit_code}"
+    if command.exit_code != 0:
+        return f"ended with exit {command.exit_code}"
+    return None
+
+
+def _ending_of_call(call: ToolCall) -> str | None:
+    """How a check or verification call ended, when that ending allows the wait; None when the suite passed or the call judged nothing."""
+    if call.ended_ms is None:
+        return "has not ended"
+    summary = call.summary or ""
+    if call.name == CHECK_TOOL:
+        return "was killed at its timeout, exit none" if summary.endswith("exit none") else None
+    if summary == "failed":
+        return "failed"
+    if summary.endswith(", findings"):
+        return f"ended with {summary.split(',')[0]}"
+    return None
+
+
+def wait_entry(trajectory: Trajectory | Mapping[str, Any], marker: str | Mapping[str, Any]) -> dict[str, Any]:
+    """Whether an attempt's check suite entered its waiting step, as an inference: `{"entered": bool, "evidence": [str, ...]}`.
+
+    `trajectory` is a normalized trajectory or its dictionary form, which
+    holds only what the harness wrote: the foe episode log's `tool/result`
+    and `verification/result` events, and the Codex session's
+    `command_execution` items. Nothing is read from the workspace, which
+    every arm can write. `marker` is the line the waiting step prints, or the
+    task metadata that names it under `wait_marker`.
+
+    The direct evidence would be the marker in the recorded output of a
+    command the harness ended while it waited. Neither harness keeps that
+    output reliably, as the records of the 2026-09-13 autonomy and
+    verifier-timeout runs show. The foe arm's `check` tool runs the suite
+    through a wrapper that prints the suite's output only once the suite
+    exits, so a check killed at its timeout records empty output, and the
+    runtime's timeout finding for a verifier states the bound and none of
+    the output. Codex recorded no output, or only the echoed `^C`, for
+    several suites it interrupted minutes into the wait. The normalized
+    trajectory holds no command output at all.
+
+    The reader therefore rests on a weaker premise. The suite entered the
+    wait when one invocation of `checks/run.sh` ran for at least STEP_ONE_MS
+    and then ended without passing or had not ended when the run did. An
+    invocation is a shell command that `invokes_run_script` accepts, a call
+    of the foe `check` tool, or a runtime verification of the foe document.
+    Ending without passing is no exit status, `timeout(1)`'s 124, a
+    signal's status, any other nonzero status, a check killed at its
+    timeout, or a verification that failed or returned findings. Codex
+    reports a suite it interrupted with the shell's status, which was 1 in
+    the recorded runs, so a nonzero status counts whatever its value. The
+    premise holds on a non-terminating task because step 1 ends within its
+    own short duration whether it passes or fails, and steps 3 and 4 follow
+    a wait that no process ends.
+
+    Three limits follow from the premise. An invocation chained after other
+    commands in one shell command carries their time as well. A command that
+    discards the suite's status, such as `timeout 3s checks/run.sh; exit 0`,
+    records a pass and is not counted. A Codex command that had not ended
+    when the run did is absent from the normalized session, so only foe
+    records contribute the unended case. Each evidence string names the
+    agent, the invocation, how it ended, and how long it ran, so a reader
+    with the raw record can confirm the marker by hand where the harness
+    kept the output.
+    """
+    run = Trajectory.from_dict(dict(trajectory)) if isinstance(trajectory, Mapping) else trajectory
+    line = _marker_of(marker)
+    evidence: list[str] = []
+    entered = False
+
+    def weigh(agent: Agent, kind: str, started_ms: int, ended_ms: int | None, ending: str | None, passed: str) -> None:
+        nonlocal entered
+        end = ended_ms if ended_ms is not None else (agent.ended_ms if agent.ended_ms is not None else run.outcome.ended_ms)
+        elapsed = None if end is None else end - started_ms
+        ran = "for an unknown time" if elapsed is None else f"after {elapsed} ms"
+        if ending is None:
+            evidence.append(f"agent {agent.id} ({agent.role}): {kind} {passed} {ran}; the suite did not stop in the wait")
+            return
+        if elapsed is None or elapsed < STEP_ONE_MS:
+            evidence.append(f"agent {agent.id} ({agent.role}): {kind} {ending} {ran}, within step 1's {STEP_ONE_MS} ms")
+            return
+        entered = True
+        evidence.append(f"agent {agent.id} ({agent.role}): {kind} {ending} {ran}, past step 1's {STEP_ONE_MS} ms, so entry into {line!r} is inferred from duration and status; the marker itself was not read")
+
+    for agent in run.agents:
+        for command in agent.commands:
+            if invokes_run_script(command.text):
+                shown = command.text if len(command.text) <= 80 else command.text[:77] + "..."
+                weigh(agent, f"command `{shown}`", command.started_ms, command.ended_ms, _ending_of_command(command), "exited 0")
+        for call in agent.tool_calls:
+            if call.name in (CHECK_TOOL, VERIFICATION_CALL):
+                kind = "check call" if call.name == CHECK_TOOL else "runtime verification"
+                weigh(agent, kind, call.started_ms, call.ended_ms, _ending_of_call(call), f"ended {call.summary or 'with no summary'}")
+    if not evidence:
+        evidence.append(f"no record in the trajectory runs {RUN_SCRIPT}, so the suite never reached {line!r}")
+    return {"entered": entered, "evidence": evidence}

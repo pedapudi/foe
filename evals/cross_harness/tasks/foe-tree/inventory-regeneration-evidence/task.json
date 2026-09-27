@@ -20,6 +20,9 @@
     "checks",
     "scripts/inventory.py"
   ],
+  "preserved_on_stop": [
+    "crates/evidence/inventory.toml"
+  ],
   "metadata": {
     "crate": "evidence",
     "package": "foe-evidence",

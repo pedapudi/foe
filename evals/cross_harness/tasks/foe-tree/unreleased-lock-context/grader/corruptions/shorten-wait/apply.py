@@ -3,8 +3,8 @@
 
 The suite, the waiting scripts, and the lock all lie under `checks/`, so
 every way of shortening the wait changes a protected file, and this control
-exercises the digest rule. The `unrun-wait` control beside it exercises the
-grade script's own rule, on a file no protected root covers.
+exercises the digest rule. The `unrun-wait` control beside it removes the
+step rather than shortening it.
 """
 
 import pathlib

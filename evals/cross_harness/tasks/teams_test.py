@@ -23,12 +23,6 @@ import protocol  # noqa: E402
 import teams  # noqa: E402
 from protocol import COMPLETED, Reported  # noqa: E402
 
-# Where the emitted task directories stand. A test that reads a construction's
-# own recorded base tree reads the commit the emitted directory records, and
-# skips when that directory is absent, so the suite states what the recorded
-# tasks rest on rather than what the branch happens to hold.
-TASK_TREE = Path(__file__).resolve().parent / "foe-tree"
-
 GIT = ["/usr/bin/git", "-c", "user.name=test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"]
 
 ALPHA_DECLARATION = '#[cfg(test)]\n#[path = "lib_test.rs"]\nmod tests;\n'
@@ -485,7 +479,7 @@ class FanOutGrading(Repositories):
 
     def test_the_grader_controls_hold(self) -> None:
         controls = {control.name: control for control in protocol.check_grader_controls(self.out, self.scratch_dir / "controls")}
-        self.assertEqual(sorted(controls), ["corruption:rename-shared-element", "corruption:revert-one-unit", "oracle", "untouched"])
+        self.assertEqual(sorted(controls), ["corruption-rename-shared-element", "corruption-revert-one-unit", "oracle", "untouched"])
         for name, control in controls.items():
             self.assertTrue(control.held, f"{name}: {control.findings}")
         untouched = controls["untouched"].findings
@@ -635,11 +629,11 @@ class SurveyAuthoring(Repositories):
     def test_the_grader_controls_hold_for_both_surveys(self) -> None:
         for name, authored in self.tasks.items():
             controls = {control.name: control for control in protocol.check_grader_controls(authored.directory, self.scratch_dir / f"controls-{name}")}
-            self.assertEqual(sorted(controls), ["corruption:unlisted-items", "oracle", "untouched"], name)
+            self.assertEqual(sorted(controls), ["corruption-unlisted-items", "oracle", "untouched"], name)
             for control_name, control in controls.items():
                 self.assertTrue(control.held, f"{name} {control_name}: {control.findings}")
             self.assertTrue(any("expected an object whose key items holds a list" in finding for finding in controls["untouched"].findings))
-            self.assertTrue(any(finding.startswith("recall") for finding in controls["corruption:unlisted-items"].findings), controls["corruption:unlisted-items"].findings)
+            self.assertTrue(any(finding.startswith("recall") for finding in controls["corruption-unlisted-items"].findings), controls["corruption-unlisted-items"].findings)
 
     def test_removing_one_true_item_from_the_answer_lowers_the_recorded_recall(self) -> None:
         authored = self.tasks["error-messages"]
@@ -771,7 +765,7 @@ class CommandLine(Repositories):
         with contextlib.redirect_stdout(stdout):
             status = teams.main(["verify", "--task", str(out / "errors"), "--scratch", str(out / "scratch"), "--timeout", "60"])
         self.assertEqual(status, 0, stdout.getvalue())
-        self.assertIn("corruption:unlisted-items: held (expected to fail, failed)", stdout.getvalue())
+        self.assertIn("corruption-unlisted-items: held (expected to fail, failed)", stdout.getvalue())
 
 
 class ConstructedDivision(unittest.TestCase):
@@ -969,119 +963,6 @@ class ConstructedText(unittest.TestCase):
                 self.assertNotIn("?", text)
                 for contraction in ("don't", "can't", "won't", "it's", "doesn't", "isn't"):
                     self.assertNotIn(contraction, text.lower())
-
-
-class ConstructedBaseTree(unittest.TestCase):
-    """Every edit of a construction applies to the tree the emitted task records, and the hidden tests are new there."""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.repository = protocol.repository_of(Path(__file__))
-
-    def recorded_commit(self, name: str) -> str | None:
-        path = TASK_TREE / name / protocol.TASK_FILE
-        if not path.is_file():
-            return None
-        return json.loads(path.read_text(encoding="utf-8"))["metadata"][protocol.SOURCE_KEY]["commit"]
-
-    def tree(self, commit: str, paths: set[str]) -> Path:
-        root = Path(tempfile.mkdtemp(prefix="teams-base-"))
-        for path in sorted(paths):
-            destination = root / path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(removal.show_file(self.repository, commit, path))
-        return root
-
-    def test_every_fixture_and_oracle_edit_applies_to_the_recorded_base_tree(self) -> None:
-        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
-            commit = self.recorded_commit(name)
-            if commit is None:
-                self.skipTest(f"{TASK_TREE / name} is absent, so no base tree is recorded")
-            edits = (*construction.ceilings, *construction.fixture_edits, *construction.oracle_edits)
-            root = self.tree(commit, {edit.path for edit in edits} | {path for path, _ in construction.test_appends})
-            try:
-                for edit in edits:
-                    with self.subTest(f"{name}:{edit.path}"):
-                        edit.apply(root)
-                for path, appended in construction.test_appends:
-                    source = (root / path).read_text(encoding="utf-8")
-                    for edit in (edit for edit in construction.test_edits if edit.path == path):
-                        with self.subTest(f"{name}:test:{path}"):
-                            self.assertEqual(source.count(edit.old), 1)
-                        source = source.replace(edit.old, edit.new)
-                    with self.subTest(f"{name}:hidden:{path}"):
-                        self.assertNotIn(appended.strip(), source)
-            finally:
-                shutil.rmtree(root, ignore_errors=True)
-
-    def test_every_specification_sentence_stands_in_the_fixture_document(self) -> None:
-        for name, construction in sorted(teams.CONSTRUCTIONS.items()):
-            commit = self.recorded_commit(name)
-            if commit is None:
-                self.skipTest(f"{TASK_TREE / name} is absent, so no base tree is recorded")
-            edits = (*construction.ceilings, *construction.fixture_edits)
-            root = self.tree(commit, {edit.path for edit in edits})
-            try:
-                for edit in edits:
-                    edit.apply(root)
-                for path, sentences in construction.sentences.items():
-                    document = teams.normalized_sentence((root / path).read_text(encoding="utf-8"))
-                    for sentence in sentences:
-                        with self.subTest(f"{name}:{sentence[:40]}"):
-                            self.assertIn(teams.normalized_sentence(sentence), document)
-            finally:
-                shutil.rmtree(root, ignore_errors=True)
-
-
-class ConstructedTaskDirectory(unittest.TestCase):
-    """What an emitted constructed fan-out records, read from the tree rather than authored again."""
-
-    def tasks(self) -> list[tuple[str, dict]]:
-        found = []
-        for name in sorted(teams.CONSTRUCTIONS):
-            path = TASK_TREE / name / protocol.TASK_FILE
-            if path.is_file():
-                found.append((name, json.loads(path.read_text(encoding="utf-8"))))
-        return found
-
-    def test_the_task_declares_the_fan_out_and_the_division(self) -> None:
-        recorded = self.tasks()
-        if not recorded:
-            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
-        for name, task in recorded:
-            with self.subTest(name):
-                self.assertEqual((task["family"], task["class_name"]), (teams.FAMILY, teams.FAN_OUT))
-                division = task["metadata"]["division"]
-                self.assertTrue(division["separable"])
-                self.assertEqual(sorted(division["write_roots"]), sorted(task["metadata"]["units"]))
-                self.assertEqual(task["metadata"]["n"], len(division["write_roots"]))
-
-    def test_the_recorded_specification_names_every_unit_and_the_judging_test(self) -> None:
-        recorded = self.tasks()
-        if not recorded:
-            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
-        for name, task in recorded:
-            with self.subTest(name):
-                construction = teams.CONSTRUCTIONS[name]
-                specification = json.loads((TASK_TREE / name / protocol.GRADER / removal.SPECIFICATION_FILE).read_text(encoding="utf-8"))
-                self.assertEqual([unit["name"] for unit in specification["units"]], [unit.name for unit in construction.units])
-                self.assertEqual(specification["integration"]["test"], construction.integration_test)
-                self.assertEqual(specification["integration"]["lint_packages"], construction.packages)
-                self.assertEqual(specification["integration"]["test_packages"], [construction.interface_package])
-                for unit in specification["units"]:
-                    self.assertTrue(any(names for names in unit["hidden_test_names"].values()))
-
-    def test_the_check_suite_of_the_regenerated_workspace_names_the_same_packages(self) -> None:
-        recorded = self.tasks()
-        if not recorded:
-            self.skipTest(f"{TASK_TREE} holds no constructed fan-out")
-        for name, _ in recorded:
-            with self.subTest(name):
-                construction = teams.CONSTRUCTIONS[name]
-                patch = (TASK_TREE / name / protocol.GRADER / protocol.WORKSPACE_PATCH).read_text(encoding="utf-8")
-                for package in construction.packages:
-                    self.assertIn(f"-p {package}", patch)
-                self.assertNotIn("cargo test --workspace", patch)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,9 @@
     "checks",
     "scripts/inventory.py"
   ],
+  "preserved_on_stop": [
+    "crates/workflow/inventory.toml"
+  ],
   "metadata": {
     "crate": "workflow",
     "package": "foe-workflow",

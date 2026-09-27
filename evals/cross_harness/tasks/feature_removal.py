@@ -34,6 +34,8 @@ commit form of every changed file under `oracle/workspace/`, the commit form
 of every test file under `tests/`, `specification.json`, `grade.py` with its
 executable wrapper `grade`, and one corruption, `revert-one-crate`, which
 restores the parent form of one touched crate's implementation files. The
+corruption's `expects` file names the findings it targets: `cargo test`
+exiting nonzero, or a hidden test that did not run. The
 grade script copies the workspace into a directory of its own, restores the
 hidden tests into the copy, and runs `cargo test` and `cargo clippy -- -D
 warnings` for the touched crates and `scripts/loc.sh` there. A Rust test
@@ -82,6 +84,12 @@ CLASS_FAMILY: dict[str, str] = {"solvable": "autonomy", "coherent": "teams"}
 PROTECTED: tuple[str, ...] = ("scripts/loc.sh", "AGENTS.md", "checks/run.sh")
 CHECKS_SCRIPT = "checks/run.sh"
 CORRUPTION_NAME = "revert-one-crate"
+# The findings of the grade script that reverting a crate targets, one
+# substring each: the prefix of the finding for a `cargo test` that exited
+# nonzero, and the finding for a hidden test that never compiled. A revert
+# that fails the grade only through clippy, loc.sh, or a missing sentence
+# has not reached the hidden tests, so the control does not hold.
+CORRUPTION_EXPECTS: tuple[str, ...] = ("test: `", "did not run; a test file under src/ compiles only through its mod declaration")
 HIDDEN_TESTS = "tests"
 SPECIFICATION_FILE = "specification.json"
 ORACLE_PATCH = "oracle.patch"
@@ -802,6 +810,7 @@ def _write_task(
         _write(corruption / "parent" / path, show_file(repo, parent, path))
     _write(corruption / "revert.json", json.dumps({"crate": reverted, "restore": restore, "remove": remove}, indent=2) + "\n")
     _write(corruption / "apply.py", CORRUPTION_SCRIPT, executable=True)
+    _write(corruption / protocol.EXPECTS_FILE, "".join(line + "\n" for line in CORRUPTION_EXPECTS))
 
     hidden_test_names = {
         diff.path: test_names(show_file(repo, commit, diff.path).decode("utf-8", "replace")) for diff in tests if diff.path.endswith(".rs")
@@ -851,9 +860,10 @@ def grade_with_timeout(root: Path, reported: Reported, candidate: Any, arm: str,
     """`protocol.grade` with a timeout long enough for a cargo build.
 
     The protocol allows a grade script sixty seconds, which a build cannot
-    meet; the damage judgement and the input object are the protocol's.
+    meet; the damage judgement, the preserved-path judgement, and the input
+    object are the protocol's.
     """
-    found = protocol.damage(root)
+    found, preserved = protocol.damage(root), protocol.preserved_changed(root)
     script = root / GRADER / protocol.GRADE_SCRIPT
     payload = json.dumps({"reported": reported.to_dict(), "candidate": candidate, "arm": arm})
     # The script runs in its own process group so that a timeout ends cargo
@@ -864,45 +874,32 @@ def grade_with_timeout(root: Path, reported: Reported, candidate: Any, arm: str,
             [str(script)], cwd=root / WORKSPACE, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True
         )
     except OSError as error:
-        return protocol.GradeResult(False, [f"the grade script {script} failed: {error}"], found)
+        return protocol.GradeResult(False, [f"the grade script {script} failed: {error}"], found, preserved)
     try:
         stdout, stderr = process.communicate(payload, timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
-        return protocol.GradeResult(False, [f"the grade script {script} failed: it ran past {timeout}s and its process group was killed"], found)
+        return protocol.GradeResult(False, [f"the grade script {script} failed: it ran past {timeout}s and its process group was killed"], found, preserved)
     findings = [line for line in stdout.splitlines() if line.strip()]
     if process.returncode != 0:
         findings.append(f"the grade script {script} exited {process.returncode}: {stderr.strip()}")
-    return protocol.GradeResult(not findings and process.returncode == 0, findings, found)
+    return protocol.GradeResult(not findings and process.returncode == 0, findings, found, preserved)
 
 
 def verify(task_dir: Path, scratch: Path, timeout: int = GRADE_TIMEOUT_SECONDS) -> list[TimedControl]:
     """The controls of `protocol.check_grader_controls`, timed, with a build-length timeout."""
     results: list[TimedControl] = []
-
-    def run(name: str, expected_pass: bool, prepare: Any) -> None:
-        root = scratch / name
+    for control in protocol.controls_of(task_dir):
+        root = scratch / control.name
         if root.exists():
             shutil.rmtree(root)
         protocol.materialize(task_dir, root)
-        reported, candidate = prepare(root)
+        reported, candidate = control.prepare(root)
         started = time.monotonic()
-        result = grade_with_timeout(root, reported, candidate, f"control:{name}", timeout)
+        result = grade_with_timeout(root, reported, candidate, control.arm, timeout)
         elapsed = time.monotonic() - started
-        findings = list(result.findings) + [f"damage: {path}" for path in result.damage]
-        results.append(TimedControl(protocol.ControlResult(name, expected_pass, result.passed and not result.damage, findings), elapsed))
-
-    run("untouched", False, lambda root: (Reported(COMPLETED, None, "untouched fixture"), None))
-    run("oracle", True, protocol.apply_oracle)
-    for corruption in protocol.corruptions(task_dir):
-
-        def corrupted(root: Path, corruption: Path = corruption) -> tuple[Reported, Any]:
-            reported, candidate = protocol.apply_oracle(root)
-            protocol.apply_corruption(corruption, root / WORKSPACE)
-            return reported, candidate
-
-        run(f"corruption:{corruption.name}", False, corrupted)
+        results.append(TimedControl(protocol.control_result(control.name, control.expected_pass, result, control.expects), elapsed))
     return results
 
 
@@ -950,7 +947,8 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "held" if control.held else "FAILED"
         expected = "pass" if control.expected_pass else "fail"
         observed = "passed" if control.passed else "failed"
-        print(f"{control.name}: {verdict} (expected to {expected}, {observed}) in {timed.seconds:.0f}s")
+        intended = {None: "", True: ", intended finding seen", False: ", intended finding absent"}[control.intended_finding_seen]
+        print(f"{control.name}: {verdict} (expected to {expected}, {observed}{intended}) in {timed.seconds:.0f}s")
         for finding in control.findings:
             print(f"  {finding[:400]}")
         held = held and control.held

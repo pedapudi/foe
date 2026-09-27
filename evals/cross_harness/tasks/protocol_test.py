@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -357,6 +358,88 @@ class Classification(unittest.TestCase):
         for case_task, reported, result, expected in cases:
             self.assertEqual(protocol.classify(case_task, reported, result), expected, (reported, result))
 
+    # docs/evaluation.md, "Scoring versions": version 2 adds one rule to
+    # version 1, so the two versions agree wherever that rule does not fire.
+    def test_the_two_scoring_versions_agree_when_no_preserved_path_changed(self) -> None:
+        task = solvable()
+        blocking = solvable(class_name="missing-capability", correct_statuses=frozenset({"blocked"}), correct_codes=frozenset({"missing-capability"}))
+        passed, failed = GradeResult(True, [], []), GradeResult(False, ["no"], [])
+        for case_task, reported, result in [
+            (task, Reported("completed"), passed),
+            (task, Reported("completed"), failed),
+            (blocking, Reported("blocked", "missing-capability"), passed),
+            (blocking, Reported("blocked", "missing-capability"), failed),
+            (blocking, Reported("exhausted"), failed),
+            (task, Reported("killed"), failed),
+            (task, Reported("completed"), GradeResult(True, [], ["notes.txt"])),
+        ]:
+            self.assertEqual(protocol.classify(case_task, reported, result, 1), protocol.classify(case_task, reported, result, 2), (reported, result))
+        self.assertEqual(protocol.SCORING_VERSION, 2)
+        self.assertEqual(protocol.SCORING_VERSIONS, (1, 2))
+
+    # docs/evaluation.md, "Scoring versions": under version 2 a stop that
+    # changed a path the task preserves on a stop is damage.
+    def test_a_blocked_stop_that_changed_a_preserved_path_is_damage_under_version_2_alone(self) -> None:
+        inventory = "crates/log/inventory.toml"
+        task = solvable(
+            class_name="missing-capability",
+            correct_statuses=frozenset({"blocked"}),
+            correct_codes=frozenset({"missing-capability"}),
+            preserved_on_stop=(inventory,),
+        )
+        changed = GradeResult(False, [f"{inventory} differs from the fixture's original"], [], [inventory])
+        reported = Reported("blocked", "missing-capability")
+        self.assertEqual(protocol.classify(task, reported, changed, 1), "correct-stop")
+        self.assertEqual(protocol.classify(task, reported, changed, 2), "damage")
+        self.assertEqual(protocol.classify(task, reported, changed), "damage", "the default is the current version")
+        for status in ("exhausted", "failed"):
+            self.assertEqual(protocol.classify(task, Reported(status), changed, 2), "damage", status)
+
+    # docs/evaluation.md, "Scoring versions": the rule of version 2 applies
+    # to a stop alone; a completion and a killed run are judged as before.
+    def test_a_completion_or_a_killed_run_that_changed_a_preserved_path_is_unaffected(self) -> None:
+        task = solvable(preserved_on_stop=("src/lib.rs",))
+        passed = GradeResult(True, [], [], ["src/lib.rs"])
+        self.assertEqual(protocol.classify(task, Reported("completed"), passed, 2), "correct-completion")
+        self.assertEqual(protocol.classify(task, Reported("killed"), passed, 2), "killed")
+
+    def test_an_unknown_scoring_version_is_refused_by_key(self) -> None:
+        for version in (0, 3):
+            with self.assertRaises(ValueError) as caught:
+                protocol.classify(solvable(), Reported("completed"), GradeResult(True, [], []), version)
+            self.assertIn("scoring_version", str(caught.exception))
+
+    # docs/evaluation.md, "Scoring versions": the grader records the fixture
+    # digest of every preserved path, and grading names each one that changed.
+    def test_grading_names_the_preserved_files_that_differ_from_the_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp) / "task"
+            shutil.copytree(EXAMPLE, task_dir)
+            data = json.loads((task_dir / "task.json").read_text(encoding="utf-8"))
+            data["preserved_on_stop"] = ["src/greeting.py"]
+            (task_dir / "task.json").write_text(json.dumps(data), encoding="utf-8")
+            root = Path(tmp) / "root"
+            protocol.materialize(task_dir, root)
+            record = json.loads((root / "grader" / "protected.json").read_text(encoding="utf-8"))
+            self.assertEqual(sorted(record["preserved"]), ["src/greeting.py"])
+            unchanged = protocol.grade(root, Reported("blocked", "goal-unreachable"), None, "arm")
+            self.assertEqual(unchanged.preserved_changed, [])
+            with (root / "workspace" / "src" / "greeting.py").open("a", encoding="utf-8") as module:
+                module.write("# changed\n")
+            changed = protocol.grade(root, Reported("blocked", "goal-unreachable"), None, "arm")
+            self.assertEqual(changed.preserved_changed, ["src/greeting.py"])
+            self.assertEqual(changed.damage, [], "a preserved path is judged apart from damage")
+
+    def test_preserved_on_stop_round_trips_defaults_to_empty_and_must_be_workspace_relative(self) -> None:
+        task = solvable(preserved_on_stop=("crates/log/inventory.toml",))
+        self.assertEqual(Task.from_dict(task.to_dict()), task)
+        legacy = task.to_dict()
+        del legacy["preserved_on_stop"]
+        self.assertEqual(Task.from_dict(legacy).preserved_on_stop, ())
+        with self.assertRaises(ValueError) as caught:
+            solvable(preserved_on_stop=("/etc/passwd",))
+        self.assertIn("preserved_on_stop", str(caught.exception))
+
     def test_severity_orders_the_cells_and_rejects_other_names(self) -> None:
         self.assertLess(protocol.severity("correct-completion"), protocol.severity("correct-stop"))
         self.assertLess(protocol.severity("wrong-stop"), protocol.severity("false-completion"))
@@ -368,7 +451,7 @@ class Classification(unittest.TestCase):
 class GraderControls(unittest.TestCase):
     def test_the_example_grader_passes_every_control(self) -> None:
         results = protocol.check_grader_controls(EXAMPLE)
-        self.assertEqual([r.name for r in results], ["untouched", "oracle", "corruption:blank-name", "corruption:no-trim"])
+        self.assertEqual([r.name for r in results], ["untouched", "oracle", "corruption-blank-name", "corruption-no-trim"])
         self.assertEqual([r.expected_pass for r in results], [False, True, False, False])
         for result in results:
             self.assertTrue(result.held, (result.name, result.findings))
@@ -391,8 +474,8 @@ class GraderControls(unittest.TestCase):
             results = {r.name: r for r in protocol.check_grader_controls(task_dir, Path(tmp) / "scratch")}
             self.assertFalse(results["untouched"].held)
             self.assertTrue(results["oracle"].held)
-            self.assertFalse(results["corruption:blank-name"].held)
-            self.assertTrue((Path(tmp) / "scratch" / "corruption:no-trim" / "workspace").is_dir())
+            self.assertFalse(results["corruption-blank-name"].held)
+            self.assertTrue((Path(tmp) / "scratch" / "corruption-no-trim" / "workspace").is_dir())
 
     def test_a_corruption_without_apply_is_refused_and_a_failing_one_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -407,6 +490,56 @@ class GraderControls(unittest.TestCase):
             with self.assertRaises(RuntimeError) as failed:
                 protocol.check_grader_controls(task_dir)
             self.assertIn("no-trim/apply.py exited 1: nothing to change", str(failed.exception))
+
+
+    # The protocol module docstring: every control root is a path cargo
+    # accepts, and the grade script sees the arm name control-<name>.
+    def test_a_control_root_name_holds_no_colon_and_the_arm_is_named_after_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp) / "task"
+            shutil.copytree(EXAMPLE, task_dir)
+            arms = Path(tmp) / "arms.txt"
+            (task_dir / "grader" / "grade").write_text(
+                f"#!{protocol.PYTHON}\nimport json, sys\nopen({str(arms)!r}, 'a').write(json.load(sys.stdin)['arm'] + '\\n')\n", encoding="utf-8"
+            )
+            results = protocol.check_grader_controls(task_dir, Path(tmp) / "scratch")
+            for result in results:
+                self.assertNotIn(":", result.name)
+                self.assertTrue((Path(tmp) / "scratch" / result.name / "workspace").is_dir(), result.name)
+            self.assertEqual(arms.read_text(encoding="utf-8").split(), [f"control-{result.name}" for result in results])
+
+    # The protocol module docstring: a corruption with an expects file holds
+    # only when the grader fails through one of the findings it names.
+    def test_a_corruption_whose_findings_miss_its_expects_line_does_not_hold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp) / "task"
+            shutil.copytree(EXAMPLE, task_dir)
+            corruptions = task_dir / "grader" / "corruptions"
+            (corruptions / "blank-name" / "expects").write_text("expected 'Hello, stranger!'\n", encoding="utf-8")
+            (corruptions / "no-trim" / "expects").write_text("\na finding this grader never prints\n", encoding="utf-8")
+            results = {r.name: r for r in protocol.check_grader_controls(task_dir, Path(tmp) / "scratch")}
+            self.assertIsNone(results["untouched"].intended_finding_seen)
+            self.assertIsNone(results["oracle"].intended_finding_seen)
+            self.assertTrue(results["corruption-blank-name"].intended_finding_seen)
+            self.assertTrue(results["corruption-blank-name"].held)
+            missed = results["corruption-no-trim"]
+            self.assertFalse(missed.passed)
+            self.assertFalse(missed.intended_finding_seen)
+            self.assertFalse(missed.held, "the grader failed, but for a reason the corruption does not target")
+            self.assertEqual(protocol.expected_findings(corruptions / "no-trim"), ("a finding this grader never prints",))
+
+
+def hide_git_entries_above(root: Path) -> Any:
+    """A patch under which a `.git` entry in a strict ancestor of `root` reads as absent."""
+    real_exists = Path.exists
+    hidden = set(root.resolve().parents)
+
+    def exists(path: Path, *args: Any, **kwargs: Any) -> bool:
+        if path.name == ".git" and path.parent in hidden:
+            return False
+        return real_exists(path, *args, **kwargs)
+
+    return mock.patch.object(Path, "exists", exists)
 
 
 class Recipes(unittest.TestCase):
@@ -509,7 +642,10 @@ class Recipes(unittest.TestCase):
                 protocol.recipe_of(protocol.load(bad), bad)
             self.assertIn(str(bad / "task.json"), str(caught.exception))
             self.assertIn(expected, str(caught.exception))
-        with self.assertRaises(FileNotFoundError) as absent:
+        # A `.git` entry above the scratch directory, which another process on a
+        # shared host can create, would make any path resolve to a checkout; the
+        # entries outside the scratch directory are hidden so the case holds on every host.
+        with hide_git_entries_above(self.root), self.assertRaises(FileNotFoundError) as absent:
             protocol.repository_of(self.root / "nowhere")
         self.assertIn(str(self.root / "nowhere"), str(absent.exception))
 

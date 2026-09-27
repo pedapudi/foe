@@ -23,6 +23,9 @@
     "docs/config.md",
     "docs/sdk.md"
   ],
+  "preserved_on_stop": [
+    "python/foe/_contract.py"
+  ],
   "metadata": {
     "block": "budget",
     "class": "foe.Budget",
