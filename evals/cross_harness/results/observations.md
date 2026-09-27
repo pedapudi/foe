@@ -1,5 +1,37 @@
 # Observations from the cross-harness run
 
+## Status of this record
+
+This is a dated record of an exploratory campaign. It is kept as it was
+written, apart from this section. Its figures
+describe what these runs did and support no general claim about either
+harness, for the reasons below.
+
+- Each cell holds one attempt, so no figure carries a measure of
+  attempt-to-attempt variation.
+- The tasks are related. The fifteen autonomy tasks come from seven
+  constructions, and tasks of one construction share their obstacle and
+  most of their text. The statistical unit is the construction, as
+  docs/evaluation.md "Statistical unit" states.
+- No person has reviewed the task texts. `metadata.review` in each
+  `task.json` records who has read one.
+- Every foe build these runs used carries commit `1f3295db`, which lets a
+  directory execute grant run dynamically linked binaries. That commit is
+  absent from `main`, so the foe these runs measured differs from the foe
+  on `main`.
+- Isolation is unproven for every run this document draws on. No recorded
+  request carries a canary, but `gates/isolation.py` exits 4 for each run,
+  because no run file records that the foe canary was planted.
+  `autonomy-2026-09-13/isolation.json` and
+  `campaign-two-2026-09-13/isolation/` hold the gate's results.
+- Only part of this document can be recomputed. Its sections on the
+  development and holdout runs rest on records that `attempt-ledger.json`
+  lists as not archived, so their tables cannot be reproduced from this
+  repository. Its figures on the autonomy run can be checked against
+  `tables.md`.
+
+The claims withdrawn from the runs it observes are listed in the status sections of `autonomy-2026-09-13.md` and `campaign-two-2026-09-13.md`.
+
 Mechanism notes taken while attempts were scored. They are recorded when
 found so that the results document draws on what was observed rather than on
 what the numbers suggest afterwards. Nothing here changes a task, a document,

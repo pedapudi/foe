@@ -5,6 +5,47 @@ evaluation must say about it. These are recorded during a run and repaired
 after it, because a repair changes what a harness receives and the run is
 pre-registered.
 
+## Status of this record
+
+This is a dated record of the defects the runs of 2026-09-13 found. Each
+entry is kept as it was written. The table below is the present state: it
+states, for each defect, whether its repair is on `main` and which test
+reaches it. Every foe build those runs used also carried commit `1f3295db`,
+which `main` does not hold.
+
+## Where each repair lives
+
+A commit is named here as reachable from `main` or as absent from it. The
+runtime repairs reached `main` through squash merges, so the branch commits
+that first carried them, and that the recorded runs were built from, are
+absent from `main`.
+
+| Defect | Where the repair lives | What reaches it |
+|---|---|---|
+| One prompt cache key serves every episode that runs a contract | `main`, from `b9332e24` (#246) | `crates/transport/src/format/responses.rs` `the_cache_name_holds_across_steps_and_separates_episodes` |
+| A granted executable is unreachable by name from bash | `main`: the search path from `b9332e24` (#246), the home directory from `7bcdbaf0` (#253) | `crates/code/src/bash_test.rs` `the_search_path_ends_with_the_directories_the_contract_grants` |
+| A subprocess cannot write an existing file under a granted write root | this evaluation's `contracts/graphs.py`, `graphs.CHECK_WRITES`; the branch commit `07eec5cd` is absent from `main` | `repairs_test.py` `CheckWrites` |
+| The Codex route omitted the header the backend routes cache affinity on | `main`, from `7bcdbaf0` (#253); the branch commit `dba1a859` is absent from `main` | `crates/transport/src/format/responses.rs` `codex_backend_receives_the_conversation_in_headers` |
+| A verifier that hangs ended the episode before the model could report | `main`, from `7bcdbaf0` (#253); the branch commit `db8b6a01` is absent from `main` | `repairs_test.py` `VerifierTimeout`; `crates/core/src/registry_test.rs` `verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argument_to_a_tool` |
+| A shell command could spend the whole remaining episode | `main`, from `7bcdbaf0` (#253); the branch commit `0e17d76a` is absent from `main` | `repairs_test.py` `CommandTimeout`; `crates/code/src/bash_test.rs` `a_command_takes_half_of_what_remains_and_the_caller_is_told` |
+| The equivalent prompt does not carry foe's definition of `missing-capability` | nowhere; proposed for a later campaign | none |
+| An episode ending on its token ceiling reported nothing | nowhere; review rejected `63cdb65f`, which is absent from `main` | none |
+| A workflow that ends on its ceiling carries none of what its nodes produced | nowhere; the entry is open | none |
+| A spawned worker cannot run the check it is told to run | this evaluation's `contracts/graphs.py`, the delegating node's instruction; the branch commit `7e7b21e9` is absent from `main` | `contracts/graphs_test.py` `test_the_delegate_is_told_to_grant_workers_the_directories_the_check_writes` |
+
+The half-remaining command timeout has no entry of its own below. The
+builds of the recorded runs carried it, and `results/observations.md`
+states what it changed.
+
+Every foe build the recorded runs used also carried `1f3295db`, which lets
+a directory execute grant run dynamically linked binaries: the release
+build of `dba1a859` for the autonomy run of 2026-09-13, the build of
+`d9b18309` for campaign two, and the build of `63cdb65f` for its last two
+cases. Review rejected `1f3295db`, and `main` grants the loader's files
+exactly instead. The four commits are absent from `main`, so the foe those
+runs measured differs from the foe on `main` in this grant as well as in
+the repairs above.
+
 ## One prompt cache key serves every episode that runs a contract
 
 `crates/transport/src/format/responses.rs` derives `prompt_cache_key` from
@@ -48,7 +89,8 @@ Reproduction: run any two foe episodes of one contract back to back and read
 Repair: name the cache after the conversation rather than the contract. The
 episode identifier is stable for the life of an episode and distinct between
 episodes, which is what the key routes on. Carried in
-https://github.com/pedapudi/foe/pull/246.
+https://github.com/pedapudi/foe/pull/246, which reached `main` as
+`b9332e24`.
 
 Repairing the key alone changed nothing measurable: the episode below, run
 with a per-episode key, still read 15.9 percent of its input from cache. The
@@ -81,7 +123,8 @@ directories and run a bash command naming an executable in it.
 Repair: extend the `bash` and `session` search path with the execute roots
 the contract grants. The grant already names them, so this adds no
 configuration and no environment variable, and it makes the search path agree
-with the permission. Carried in https://github.com/pedapudi/foe/pull/246.
+with the permission. Carried in https://github.com/pedapudi/foe/pull/246,
+which reached `main` as `b9332e24`.
 
 Bearing on the result: twelve of the fourteen foe attempts of that run
 contain a command reporting the toolchain missing, and two of them cite it in
@@ -94,7 +137,8 @@ runnable: the shell also names the workspace as the home directory, so the
 toolchain manager looks for its installation there, cannot create one because
 the write grants name directories under the workspace rather than the
 workspace itself, and falls back to a download the sandbox refuses. Both
-halves are repaired, and the second is what the measurement turned on.
+halves are repaired on `main`, the search path in `b9332e24` and the home
+directory in `7bcdbaf0`, and the second is what the measurement turned on.
 
 ## A subprocess cannot write an existing file under a granted write root
 
@@ -169,11 +213,15 @@ produced nothing. The script no longer treats it as fatal. What remains is
 a check that sometimes reports this refusal as a finding, which costs the
 arm a repair cycle it did not earn.
 
-Status: repaired in `07eec5cd`. The refused process ran in the assessing
-node of the autonomy graph. That node holds the check tool, and the graph
-granted write access only to a node holding the edit tool. The repair grants
-a node that holds the check tool the two directories a check writes,
-`target` and `.check-tmp`.
+Status: repaired in the evaluation's own graphs by the branch commit
+`07eec5cd`, which is absent from `main`. The refused process ran in the
+assessing node of the autonomy graph. That node holds the check tool, and
+the graph granted write access only to a node holding the edit tool. The
+repair, `graphs.CHECK_WRITES` in `contracts/graphs.py`, grants a node that
+holds the check tool the two directories a check writes, `target` and
+`.check-tmp`. `repairs_test.py` `CheckWrites` runs an assessing node's
+check against the built binary, and the same check fails with a refused
+write when the grant is withheld.
 
 ## The Codex route omitted the header the backend routes cache affinity on
 
@@ -206,12 +254,15 @@ request body:
   work.
 
 Reproduction: run one foe episode on the `openai-codex` route from a build
-before `dba1a859` and read `cache_read` in its `assistant/message` records;
-repeat from that commit.
+of `main` before `7bcdbaf0` and read `cache_read` in its
+`assistant/message` records; repeat from that commit.
 
 Repair: the route sends `session-id` and `thread-id` equal to the cache key,
-which is now the episode digest in UUID form. Carried in the same branch as
-the check-write and timeout repairs.
+which is now the episode digest in UUID form. The branch commit
+`dba1a859`, absent from `main`, carried it for the recorded runs, and
+`main` holds it from `7bcdbaf0`. The crate test
+`codex_backend_receives_the_conversation_in_headers` in
+`crates/transport/src/format/responses.rs` holds the headers to the key.
 
 Bearing on the result: the cost comparison recorded so far is a measurement
 of this defect rather than of the harnesses. foe's uncached input on the two
@@ -240,13 +291,17 @@ saw the hang, and stopped with `goal-unreachable`; the difference is only
 whether the model or the verifier met the hang first.
 
 Reproduction: any contract whose `verify` names an executable that does not
-return within `timeout_seconds`, from a build before `db8b6a01`.
+return within `timeout_seconds`, from a build of `main` before `7bcdbaf0`.
 
 Repair: a timed-out verifier returns one finding, that the candidate could
 not be verified within the bound; the node re-fires on it up to `retries`
 times and the episode then ends `blocked` with `verification-unsatisfiable`.
-A nonzero exit or an end by signal is still a failed verifier. Carried in
-`db8b6a01`; `docs/config.md` states the rule.
+A nonzero exit or an end by signal is still a failed verifier. The branch
+commit `db8b6a01`, absent from `main`, carried it for the verifier-timeout
+re-run, and `main` holds it from `7bcdbaf0`. `docs/config.md` `done_when`
+states the rule. `repairs_test.py` `VerifierTimeout` runs an autonomy
+document whose check outlives its limit against the built binary, and
+`crates/core/src/registry_test.rs` holds the finding's text.
 
 Bearing on the result: one foe-configured attempt of sixty is scored
 `wrong-stop` for this reason, and the record stands as scored. The run
@@ -309,12 +364,15 @@ of what was done or what remained. The pre-registered prediction for the
 case named a report; the runtime could not produce one.
 
 Reproduction: any episode whose `budget.input_tokens` is below what its
-work needs, from a build before `63cdb65f`.
+work needs, on `main`.
 
-Repair: the final-request warning also precedes a request when the input
-allowance left is under twice the last request's input, so the model is
-told to report before the ceiling ends the episode. Carried in `63cdb65f`;
-`docs/config.md` and `docs/log-format.md` state the rule.
+Repair, tried and rejected: the final-request warning also preceded a
+request when the input allowance left was under twice the last request's
+input, so the model was told to report before the ceiling ended the
+episode. `63cdb65f` carried it for the `budget-bounded-warning` run.
+Review rejected it, because the input allowance permits a request to cross
+its remainder, so the warning called an estimate the final request. The
+commit is absent from `main`, and `main` issues no such warning.
 
 Bearing on the result: the budget-bounded case measures what each harness
 leaves behind when the budget ends the work. The foe attempts recorded
@@ -351,8 +409,11 @@ first is a change to the outcome's shape in `docs/log-format.md` and
 change that can take that step.
 
 Bearing on the result: the budget-bounded prediction for foe stays
-falsified at the level of the outcome. The repair in `63cdb65f` moved the
-report into the log, not into what the caller receives.
+falsified at the level of the outcome. The warning of `63cdb65f`, absent
+from `main`, moved the report into the log rather than into what the
+caller receives.
+
+Status: open. `main` carries neither the warning nor a `produced` member.
 
 ## A spawned worker cannot run the check it is told to run
 
@@ -376,9 +437,12 @@ call `check` from it.
 
 Repair: the delegate's instruction names the directories the check writes
 beside the unit's own, so a spawn includes them; the delegating node's own
-grant already holds them. A test holds the instruction to the paths.
-Carried in `7e7b21e9`, after the teams runs ended, so no teams record was
-produced under it; the repair is unvalidated by a run.
+grant already holds them. The instruction lives in `contracts/graphs.py`,
+and `contracts/graphs_test.py`
+`test_the_delegate_is_told_to_grant_workers_the_directories_the_check_writes`
+holds it to the paths. The branch commit `7e7b21e9`, absent from `main`,
+carried it after the teams runs ended, so no teams record was produced
+under it; the repair is unvalidated by a run.
 
 Bearing on the result: in every team attempt the workers verified nothing
 and the lead's claim rested on the integrating node's check alone. The

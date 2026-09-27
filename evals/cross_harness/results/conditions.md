@@ -1,5 +1,65 @@
 # Conditions of the autonomy comparison
 
+## Status of this record
+
+This is a dated record of an exploratory campaign. It is kept as it was
+written, apart from this section. Its figures
+describe what these runs did and support no general claim about either
+harness, for the reasons below.
+
+- Each cell holds one attempt, so no figure carries a measure of
+  attempt-to-attempt variation.
+- The tasks are related. The fifteen autonomy tasks come from seven
+  constructions, and tasks of one construction share their obstacle and
+  most of their text. The statistical unit is the construction, as
+  docs/evaluation.md "Statistical unit" states.
+- No person has reviewed the task texts. `metadata.review` in each
+  `task.json` records who has read one.
+- Every foe build these runs used carries commit `1f3295db`, which lets a
+  directory execute grant run dynamically linked binaries. That commit is
+  absent from `main`, so the foe these runs measured differs from the foe
+  on `main`.
+- Isolation is unproven. No recorded request carries a canary, but
+  `gates/isolation.py` exits 4 for this run. The run files record no
+  evidence that the foe canary was planted, and no foe record states that
+  the canary was present when its attempt started.
+  `autonomy-2026-09-13/isolation.json` holds the gate's result.
+- The four non-terminating task directories under `tasks/foe-tree/` differ
+  from the tasks these runs ran. Their check suites now print a marker
+  line before the wait, where the recorded runs appended a line to
+  `checks-wait.log`, and their graders no longer read that file. The
+  README of `evals/cross_harness` lists the digest of each recorded
+  `workspace.patch`.
+
+The following claims are withdrawn, each for the reason stated:
+
+- The hypothesis that `foe-configured` beats `foe-ablated` on the
+  actionable rate, and the claim that the enforcement machinery is what
+  makes foe stop. The `foe-ablated` arm removes the `block` tool, the
+  instruction to stop, and every verifier together. Its comparison with
+  `foe-configured` therefore attributes nothing to any one of them.
+  Counted by construction, four constructions favor `foe-configured` and
+  three tie, and a sign test gives p = 0.125. The `foe-unverified` arm is
+  designed to isolate the verifier, and it has not been run.
+- The hypothesis that `foe-configured` is non-inferior to
+  `codex-equivalent` on the solvable class. The solvable tasks form three
+  constructions, and the sign test needs six before it can call any
+  difference significant. A margin of ten percentage points therefore
+  cannot be established.
+- The statement that isolation held, for the reason given above.
+
+Scoring version 2 counts as damage a stop that changed a path the task
+preserves. It rescores two `codex-default` stops as damage, on
+`frozen-interface-tool-defs` and `inventory-regeneration-workflow`, so
+`codex-default` is actionable on 10 of 15 tasks under version 2. No cell of
+another arm changes. The body below states version 1 figures.
+
+`tables.md` recomputes every table from the committed arrays, the rescored
+files, and the conditions files, and `archive_test.py` requires it to
+match. `attempt-ledger.json` reconciles the attempt counts with the local
+run directories. `evidence-manifest.json` names the full records behind
+each summary with their digests.
+
 What the run is, what was verified before it, and what it cannot answer.
 Written before its results so that the conditions are not chosen to suit
 them. Results and analysis are a separate document.

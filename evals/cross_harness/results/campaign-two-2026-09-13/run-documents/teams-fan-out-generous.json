@@ -1,0 +1,45 @@
+{
+  "arms": [
+    "foe-configured",
+    "foe-undivided",
+    "codex-single",
+    "codex-multi"
+  ],
+  "attempts": 1,
+  "budget": {
+    "input_tokens": 8000000,
+    "model_calls": 240,
+    "output_tokens": 360000,
+    "seconds": 3600
+  },
+  "foe_config_dir": "~/.config/foe",
+  "grader_timeout": 1320,
+  "harnesses": {
+    "codex": "~/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex",
+    "codex_named": "codex",
+    "credential": "~/.codex/auth.json",
+    "foe": "<session scratch directory>/c3-build/target/release/foe"
+  },
+  "model": {
+    "base_url": null,
+    "codex_wire_api": "chat",
+    "effort": "medium",
+    "name": "gpt-5.6-sol",
+    "route": "subscription"
+  },
+  "out": "~/.local/state/foe/cross-harness/teams-fan-out-generous",
+  "path": "<session scratch directory>/runs/c2-teams-fan-out-generous.json",
+  "resume": true,
+  "select": [
+    "input-bound-named-in-refusal",
+    "left-out-input-is-named-rather-than-dropped"
+  ],
+  "source_root": "<session scratch directory>/c3-build",
+  "tasks": "~/git/foe/evals/cross_harness/tasks/foe-tree",
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ]
+}

@@ -11,7 +11,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 
 import report  # noqa: E402
 
@@ -36,7 +37,15 @@ def record(
         "wall_ms": wall_ms,
     }
     return {
-        "task": {"name": task, "family": "autonomy", "class_name": class_name, "correct_statuses": list(correct_statuses), "correct_codes": list(correct_codes)},
+        # Each synthetic task is removed from a commit of its own, so it is its own construction.
+        "task": {
+            "name": task,
+            "family": "autonomy",
+            "class_name": class_name,
+            "correct_statuses": list(correct_statuses),
+            "correct_codes": list(correct_codes),
+            "metadata": {"source": {"commit": f"commit-{task}", "parent": f"parent-{task}"}},
+        },
         "arm": arm,
         # Every record names the harness its arm ran, as `run.py` writes it.
         "harness": "foe" if arm.startswith("foe") else "codex",
@@ -135,7 +144,8 @@ def teams_record(
     starts = [item["started_ms"] for item in agents]
     ends = [item["ended_ms"] for item in agents if item["ended_ms"] is not None] + ([ended_ms] if ended_ms is not None else [])
     units = {"alpha": ["crates/alpha"], "beta": ["crates/beta"], "gamma": ["crates/gamma"]}
-    metadata = {"units": units, "interface_paths": ["docs/interface.md"]} if metadata is None else metadata
+    # A teams task names its source commit, which is its construction.
+    metadata = {"units": units, "interface_paths": ["docs/interface.md"], "source": {"commit": f"commit-{task}"}} if metadata is None else metadata
     # The grade of a task with units carries each unit's verdict as `run.py` records it: every unit passes when the grade passes.
     named = metadata.get("units")
     return {
@@ -413,7 +423,8 @@ class Bootstrap(unittest.TestCase):
         first = report.cluster_bootstrap(clusters, resamples=500, seed=7)
         second = report.cluster_bootstrap(clusters, resamples=500, seed=7)
         self.assertEqual(first, second)
-        self.assertAlmostEqual(first["observed"], 4 / 6 - 3 / 6)
+        # The mean of the per-cluster mean differences, 0.5, -1, 0.5 and 0, weighs every cluster the same.
+        self.assertAlmostEqual(first["observed"], 0.0)
         self.assertLessEqual(first["lower"], first["observed"])
         self.assertLessEqual(first["observed"], first["upper"])
         self.assertLess(first["lower"], first["upper"])
@@ -491,7 +502,8 @@ class Metrics(unittest.TestCase):
         self.assertEqual(comparison["tasks"], ["contradictory-1", "solvable-1", "solvable-2"])
         self.assertEqual(comparison["actionable_pairs"], {"both": 1, "only_first": 1, "only_second": 2, "neither": 1})
         self.assertAlmostEqual(comparison["mcnemar_p"], 1.0)
-        self.assertAlmostEqual(comparison["actionable_difference"]["observed"], 2 / 5 - 3 / 5)
+        # Per construction: solvable-1 -0.5, solvable-2 0, contradictory-1 0; the mean weighs each construction once.
+        self.assertAlmostEqual(comparison["actionable_difference"]["observed"], -0.5 / 3)
         self.assertAlmostEqual(comparison["false_completion_difference"]["observed"], 0.0)
 
     def test_the_report_and_its_markdown_name_every_arm_and_task(self) -> None:
@@ -504,10 +516,11 @@ class Metrics(unittest.TestCase):
         # The stop cost is input tokens, so the correct stop of 4000 input and 500 output tokens reads as 4,000.
         self.assertIn("| 4,000 | 20.0 |", rendered)
         self.assertIn("| `contradictory-1` | contradictory | `codex-equivalent` |", rendered)
-        # The pair row states the tasks the interval rests on before the pair count.
+        # The headline row states the constructions, then the tasks and pairs; the secondary row keeps the task-level McNemar test.
+        self.assertIn("| `foe-configured` | `codex-equivalent` | the runtime, under one stated procedure | 3 | 3 | 5 | 0 | 1 | 2 | 1.0000 |", rendered)
         self.assertIn("| `foe-configured` | `codex-equivalent` | 3 | 5 | 1 | 1 | 2 | 1 | 1.0000 |", rendered)
-        self.assertIn("-0.20 [", rendered)
-        self.assertIn("Each interval rests on the tasks its row counts", rendered)
+        self.assertIn("-0.17 [", rendered)
+        self.assertIn("Secondary, task-level line.", rendered)
         faulted = report.build([record("solvable-1", "foe-configured", 1, None)], resamples=10, seed=0)
         self.assertIn("| `foe-configured` | 1 | 0 | 1 | 0 | — | — | — | — | — | — | — | — |", report.markdown(faulted))
         self.assertIn("No declared pair of arms shares a scored attempt", report.markdown(faulted))
@@ -527,14 +540,14 @@ class Metrics(unittest.TestCase):
         self.assertEqual(by_pair[("codex-equivalent", "codex-default")]["tasks"], ["solvable-1", "solvable-2"])
         # Every other declared pair of the family is listed with the arm it lacks.
         not_formed = {(pair["first"], pair["second"]): pair["reason"] for pair in built["pairs_not_formed"]}
-        self.assertEqual(set(not_formed), {("foe-configured", "foe-ablated"), ("foe-ablated", "codex-equivalent"), ("foe-as-shipped", "codex-equivalent")})
+        self.assertEqual(set(not_formed), {("foe-configured", "foe-unverified"), ("foe-configured", "foe-ablated"), ("foe-ablated", "codex-equivalent"), ("foe-as-shipped", "codex-equivalent")})
         self.assertEqual(not_formed[("foe-configured", "foe-ablated")], "foe-ablated has no scored attempt")
         rendered = report.markdown(built)
         self.assertIn("| `codex-equivalent` | `codex-default` | 2 | 2 |", rendered)
         self.assertIn("- `foe-as-shipped` with `codex-equivalent` (autonomy): foe-as-shipped has no scored attempt", rendered)
         self.assertNotIn("| `foe-configured` | `codex-default` |", rendered)
         # A teams family has its own declared pairs.
-        teams = [dict(record("fan-out-1", arm, 1, "correct-completion"), task={"name": "fan-out-1", "family": "teams", "class_name": "fan-out", "correct_statuses": ["completed"]}) for arm in ("foe-configured", "codex-multi", "codex-single")]
+        teams = [dict(record("fan-out-1", arm, 1, "correct-completion"), task={"name": "fan-out-1", "family": "teams", "class_name": "fan-out", "correct_statuses": ["completed"], "metadata": {"source": {"commit": "c"}}}) for arm in ("foe-configured", "codex-multi", "codex-single")]
         built = report.build(teams, resamples=20, seed=0)
         self.assertEqual([(pair["family"], pair["first"], pair["second"]) for pair in built["pairs"]], [("teams", "foe-configured", "codex-multi"), ("teams", "codex-single", "codex-multi")])
 
@@ -929,7 +942,7 @@ class Honesty(unittest.TestCase):
     def test_an_interval_on_one_task_or_on_a_constant_difference_is_marked_degenerate(self) -> None:
         one_task = report.cluster_bootstrap({"a": [(1.0, 0.0), (0.0, 0.0)]}, resamples=100, seed=1)
         self.assertTrue(one_task["degenerate"])
-        self.assertIn("rests on the one task a", one_task["degenerate_reason"])
+        self.assertIn("rests on the one cluster a", one_task["degenerate_reason"])
         constant = report.cluster_bootstrap({task: [(1.0, 0.0), (1.0, 0.0)] for task in ("a", "b", "c")}, resamples=100, seed=1)
         self.assertTrue(constant["degenerate"])
         self.assertIn("every pair differs by 1.0", constant["degenerate_reason"])
@@ -955,19 +968,97 @@ class Honesty(unittest.TestCase):
     def test_the_run_states_once_the_smallest_difference_it_could_call_significant(self) -> None:
         # The most uneven split of six discordant pairs has a two-sided probability of 2/64, and of five 2/32.
         self.assertEqual(report.smallest_significant_discordant_pairs(), 6)
-        self.assertEqual(report.detectable_difference(12, 6)["difference"], 0.5)
-        thin = report.detectable_difference(4, 2)
+        self.assertEqual(report.detectable_difference(12)["difference"], 0.5)
+        thin = report.detectable_difference(4)
         self.assertEqual((thin["reachable"], thin["difference"]), (False, None))
         with self.assertRaises(ValueError):
-            report.detectable_difference(-1, 2)
+            report.detectable_difference(-1)
+        self.assertEqual(report.detectable_difference_in_attempts(12, 6)["difference"], 0.5)
         with self.assertRaises(ValueError):
             report.smallest_significant_discordant_pairs(0.0)
         records = [record(f"solvable-{index}", arm, 1, "correct-completion") for index in range(1, 4) for arm in ("foe-configured", "codex-equivalent")]
         built = report.build(records, resamples=10, seed=0)
-        self.assertEqual(built["detectable_difference"]["paired_attempts"], 3)
-        self.assertEqual(built["detectable_difference"]["paired_tasks"], 3)
+        self.assertEqual(built["detectable_difference"]["constructions"], 3)
+        self.assertEqual(built["detectable_difference_in_attempts"]["paired_attempts"], 3)
         self.assertIn("it can call no difference significant", report.markdown(built))
         self.assertEqual(built["classes"], ["solvable"])
+
+
+class StatisticalUnit(unittest.TestCase):
+    """docs/evaluation.md "Statistical unit": the construction a task came from, by the rule table report.CONSTRUCTION_RULES states."""
+
+    def test_a_feature_removal_task_is_its_commit(self) -> None:
+        self.assertEqual(report.construction_of({"source": {"commit": "abc", "parent": "def"}}, "t"), "abc")
+
+    def test_every_line_ceiling_task_is_one_construction(self) -> None:
+        self.assertEqual(report.construction_of({"surface": "kernel", "source": {"commit": "base"}}, "t"), "ceiling")
+
+    def test_every_frozen_interface_task_is_one_construction(self) -> None:
+        self.assertEqual(report.construction_of({"block": "budget", "source": {"commit": "base"}}, "t"), "frozen-interface")
+
+    def test_an_inventory_task_is_one_construction_and_its_last_step_variant_another(self) -> None:
+        self.assertEqual(report.construction_of({"artifact": "crates/code/inventory.toml", "obstacle": "whole"}, "t"), "inventory-regeneration")
+        self.assertEqual(report.construction_of({"artifact": "crates/log/inventory.toml", "obstacle": "last-step"}, "t"), "inventory-regeneration/last-step")
+
+    def test_every_non_terminating_mechanism_is_one_construction(self) -> None:
+        # One builder, one check template, one step 1, one marker format, and one grader serve every mechanism.
+        for mechanism in ("lock", "pipe", "socket"):
+            self.assertEqual(report.construction_of({"mechanism": mechanism, "source": {"commit": "base"}}, "t"), "non-terminating")
+
+    def test_a_teams_task_is_its_source_commit_or_its_construction(self) -> None:
+        self.assertEqual(report.construction_of({"source": {"commit": "sweep"}}, "harvested", "teams"), "sweep")
+        constructed = {"source": {"commit": "base"}, "authored": "by construction: the units are chosen"}
+        self.assertEqual(report.construction_of(constructed, "input-bound-named-in-refusal", "teams"), "input-bound-named-in-refusal")
+
+    def test_a_task_no_rule_matches_is_refused_by_name(self) -> None:
+        with self.assertRaisesRegex(ValueError, "task 'odd'.*matches no construction rule"):
+            report.construction_of({"source": {"commit": "base"}}, "odd", "autonomy")
+        with self.assertRaisesRegex(ValueError, "task 'odd'"):
+            report.construction_of(None, "odd")  # type: ignore[arg-type]
+
+    def test_the_fifteen_selected_tasks_form_seven_constructions(self) -> None:
+        selected = json.loads((HERE / "runs" / "autonomy.json").read_text(encoding="utf-8"))["select"]
+        tasks = report.archive_tasks()
+        self.assertEqual(len(selected), 15)
+        constructions = {report.construction_of(tasks[name]["metadata"], name, tasks[name]["family"]) for name in selected}
+        self.assertEqual(len(constructions), 7)
+        self.assertEqual(
+            {name for name in constructions if not name[0].isdigit() and len(name) != 40},
+            {"ceiling", "frozen-interface", "inventory-regeneration", "non-terminating"},
+        )
+
+    def test_pairs_and_bootstrap_clusters_are_constructions(self) -> None:
+        # Two tasks of one construction form one cluster: the interval rests on one construction.
+        first = [dict(record(name, "foe-configured", 1, "correct-stop"), task=dict(record(name, "a", 1, None)["task"], metadata={"surface": "s"})) for name in ("c-1", "c-2")]
+        second = [dict(record(name, "codex-equivalent", 1, "false-completion"), task=dict(record(name, "a", 1, None)["task"], metadata={"surface": "s"})) for name in ("c-1", "c-2")]
+        comparison = report.compare(first, second, resamples=20, seed=0)
+        self.assertEqual((comparison["construction_count"], comparison["task_count"], comparison["pairs"]), (1, 2, 2))
+        self.assertEqual(comparison["actionable_difference"]["clusters"], 1)
+        self.assertEqual(comparison["actionable_difference_by_task"]["clusters"], 2)
+        self.assertEqual(comparison["sign_test"], {"p": 1.0, "positive": 1, "negative": 0, "ties": 0, "discordant_constructions": ["ceiling"], "tested": True})
+
+    def test_the_sign_test_counts_a_zero_difference_construction_as_a_tie(self) -> None:
+        result = report.sign_test({"a": 0.0, "b": -1.0, "c": -0.5, "d": 0.0})
+        self.assertEqual((result["positive"], result["negative"], result["ties"]), (0, 2, 2))
+        self.assertAlmostEqual(result["p"], 0.5)
+        self.assertFalse(report.sign_test({"a": 0.0})["tested"])
+        self.assertIsNone(report.sign_test({})["p"])
+
+    def test_the_detectable_difference_is_stated_in_constructions(self) -> None:
+        # Six constructions one way reach 2/64 = 0.031; five reach 2/32 = 0.0625.
+        seven = report.detectable_difference(7)
+        self.assertEqual((seven["min_discordant_constructions"], seven["reachable"]), (6, True))
+        self.assertAlmostEqual(seven["difference"], 6 / 7)
+
+class DeclaredPairs(unittest.TestCase):
+    """docs/evaluation.md "Arms": each declared pair states what it isolates."""
+
+    def test_the_verifier_alone_is_declared_beside_the_confounded_ablation(self) -> None:
+        pairs = report.DECLARED_PAIRS["autonomy"]
+        self.assertIn(("foe-configured", "foe-unverified"), pairs)
+        self.assertEqual(report.PAIR_DESCRIPTIONS[("foe-configured", "foe-unverified")], "the verifier alone")
+        self.assertEqual(report.PAIR_DESCRIPTIONS[("foe-configured", "foe-ablated")], "the stop mechanism and the verifier together; attributes nothing to either")
+        self.assertEqual(set(report.PAIR_DESCRIPTIONS), {pair for pairs_ in report.DECLARED_PAIRS.values() for pair in pairs_})
 
 
 if __name__ == "__main__":

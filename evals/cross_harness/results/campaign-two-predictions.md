@@ -1,5 +1,12 @@
 # Campaign two: predictions committed before any spend
 
+## Status of this record
+
+This is a dated record of the predictions committed before the cases of 2026-09-13 ran.
+It is kept as it was written, apart from the run-document paths, which now point at the copies under `campaign-two-2026-09-13/run-documents/`.
+
+The results are in `campaign-two-2026-09-13.md`. Its status section states why the runs support no general claim, and lists the claims withdrawn from them.
+
 The autonomy run of 2026-09-13 (fifteen tasks, four arms, one attempt each)
 found that foe-configured and codex-equivalent agree on every task: both
 complete the solvable tasks and both stop on the impossible ones. It
@@ -95,7 +102,7 @@ Attempts: one per arm per task, six in all.
 
 ### Teams fan-out
 
-The two fan-out tasks of `runs/teams-fan-out.json`, `input-bound-named-in-refusal`
+The two fan-out tasks of `campaign-two-2026-09-13/run-documents/teams-fan-out.json`, `input-bound-named-in-refusal`
 and `left-out-input-is-named-rather-than-dropped`, under foe-configured,
 foe-undivided, codex-single, and codex-multi.
 
@@ -133,7 +140,7 @@ four-worker graph gives each worker 15 of them. The first attempt of the
 run above, foe-configured on `input-bound-named-in-refusal`, spent the 120
 across nine agents and ended `exhausted` with one unit of three passing,
 before any decision the case is meant to observe. The run
-`runs/teams-fan-out-generous.json` repeats the eight attempts at 240 model
+`campaign-two-2026-09-13/run-documents/teams-fan-out-generous.json` repeats the eight attempts at 240 model
 calls, 8,000,000 input tokens, and 360,000 output tokens, with the same
 3,600-second wall clock, from the build that carries the token-ceiling
 warning. Declared here before it launches; the run above is reported as

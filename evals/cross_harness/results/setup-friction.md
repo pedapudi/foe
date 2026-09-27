@@ -1,5 +1,19 @@
 # Why configuring foe for this evaluation was error prone
 
+## Status of this record
+
+This is a dated record of the setup failures met while preparing the runs of 2026-09-13.
+It is kept as it was written, apart from this section. It states no comparative result.
+
+- Every foe build these runs used carries commit `1f3295db`, which lets a
+  directory execute grant run dynamically linked binaries. That commit is
+  absent from `main`, so the foe these runs measured differs from the foe
+  on `main`.
+- The failures were met on one host with one toolchain layout, so their
+  count describes that preparation rather than any other host.
+
+`defects.md` states, for each defect, where its repair lives.
+
 Eleven distinct setup failures occurred while getting foe to a state where it
 could be measured. They are not eleven problems. This records what they share,
 because a configuration that took a day of log reading here will cost other

@@ -166,7 +166,8 @@ Two arms are compared pairwise only when the pair is declared for the
 family, because each declared pair isolates one difference between the
 harness configurations `run.py` names:
 
-    autonomy   foe-configured   with foe-ablated        the block tool and the verifiers
+    autonomy   foe-configured   with foe-unverified     the verifier alone
+               foe-configured   with foe-ablated        the stop mechanism and the verifier together; attributes nothing to either
                foe-configured   with codex-equivalent   the runtime, under one stated procedure
                foe-ablated      with codex-equivalent   the runtime without them, under the same procedure
                foe-as-shipped   with codex-equivalent   the built-in document against the stated procedure
@@ -176,33 +177,46 @@ harness configurations `run.py` names:
                foe-configured   with codex-multi        the runtime, under delegation
                codex-single     with codex-multi        delegation alone
 
+The statistical unit is the construction a task came from rather than the
+task. Tasks built by one construction share their obstacle and most of
+their text, so two of them are two measurements of one design rather than two
+independent observations. `construction_of` names a task's construction by
+the rule table `CONSTRUCTION_RULES` states, from the task's metadata, and
+refuses a task whose metadata matches no rule. docs/evaluation.md
+"Statistical unit" is the specification.
+
 Attempts are paired by task and attempt number, and the paired binary
-outcome is whether the attempt was actionable. The exact McNemar test gives
-the two-sided probability, under equal marginal rates, of a split at least
-as uneven as the observed one. The split is between the attempts only the
-first arm won and the attempts only the second arm won, and the
-probability is the binomial tail on those discordant pairs. The difference
-between two rates is given with a 95 percent interval from a cluster
-bootstrap over tasks. Tasks are resampled with replacement, every attempt
-of a resampled task comes along, and the interval holds the 2.5th and
-97.5th percentiles of the resampled differences. Every interval states the
-number of tasks it rests on, which is the number of clusters resampled.
+outcome is whether the attempt was actionable. Each construction's
+difference is the mean of its pairs' differences, first minus second. The
+headline test is the exact two-sided sign test over those per-construction
+differences: a construction whose difference is zero is a tie and enters
+neither side, and the probability is the binomial tail on the constructions
+that differ. The difference between two rates is given with a 95 percent
+interval from a cluster bootstrap over constructions. Constructions are
+resampled with replacement, every pair of a resampled construction comes
+along, and the interval holds the 2.5th and 97.5th percentiles of the
+resampled differences. Every interval states the number of clusters it
+rests on. The exact McNemar test over the task-level pairs, with an
+interval from a bootstrap over tasks, is kept as a labeled secondary line:
+it treats related tasks as independent and so overstates the evidence.
 Both are computed in the standard library, so the report needs no package.
 
 Three statements keep those numbers honest. An interval is marked
-degenerate when it rests on one task, so that every resample draws the same
-cluster, or when every pair has the same difference, so that every resample
-gives that difference; such an interval states the width of the data and no
-sampling width. A McNemar probability of one has two causes and the report
-separates them: a comparison with no discordant pair tested nothing, and a
-comparison whose discordant pairs split evenly tested the null and did not
-reject it. The report also states once, from the comparison with the fewest
-paired attempts, the smallest difference in the actionable rate this run
-could call significant. The exact test reaches the level only once a
-comparison has at least a fixed number of discordant pairs, which the
-report computes from the level itself; that many pairs out of the paired
-attempts is the smallest difference the test could call significant, and a
-comparison with fewer paired attempts than that can call none.
+degenerate when it rests on one cluster, so that every resample draws it,
+or when every pair has the same difference, so that every resample gives
+that difference; such an interval states the width of the data and no
+sampling width. A test probability of one has two causes and the report
+separates them: a comparison with no discordant construction or pair
+tested nothing, and one whose discordant units split evenly tested the null
+and did not reject it. The report also states once, from the comparison
+with the fewest paired constructions, the smallest difference this run
+could call significant: the sign test reaches the level only once a fixed
+number of constructions differ in one direction, and that many
+constructions out of those paired is the smallest difference it could
+detect. No non-inferiority statement is made. The solvable class's
+constructions bound what any margin could rest on, and the report states
+their count and that a margin cannot be established below the number of
+constructions the sign test needs.
 
     report.py DOCUMENT [--resamples N] [--seed N]
 
@@ -210,6 +224,19 @@ comparison with fewer paired attempts than that can call none.
 document's `out` directory by the runner's own rule and summarizes the
 records under `<out>/records`. It is written as `report.json` and
 `report.md` under `out`, and the Markdown is printed.
+
+    report.py --archive RESULTS_DIR [--resamples N] [--seed N]
+
+The archive mode recomputes every numeric table of the dated campaigns
+under `RESULTS_DIR` and writes `tables.md` there. It reads only the
+committed files `ARCHIVE_RUNS` names, each run's attempt array, its
+rescored file with the cell under both scoring versions, and its conditions
+file, and it reads each task's class and metadata from the task directories
+under `tasks/foe-tree/`. A task the tree no longer holds has no class and
+forms no pair. foe-lean is compared with foe-configured's record of the
+same task: the autonomy run's record where the task's check suite returns,
+and the verifier-timeout run's where it hangs, so that both arms of a pair
+ran the same build rule.
 """
 
 from __future__ import annotations
@@ -239,9 +266,10 @@ DEFAULT_SEED = 0
 ACTIONABLE_CELLS: tuple[str, ...] = (protocol.CORRECT_COMPLETION, protocol.CORRECT_STOP)
 
 # The pairs of arms compared per family, as (first, second), naming the arms
-# of run.py's ARMS; the module docstring states what each pair isolates.
+# of run.py's ARMS; PAIR_DESCRIPTIONS states what each pair isolates.
 DECLARED_PAIRS: dict[str, tuple[tuple[str, str], ...]] = {
     "autonomy": (
+        ("foe-configured", "foe-unverified"),
         ("foe-configured", "foe-ablated"),
         ("foe-configured", "codex-equivalent"),
         ("foe-ablated", "codex-equivalent"),
@@ -254,6 +282,18 @@ DECLARED_PAIRS: dict[str, tuple[tuple[str, str], ...]] = {
         ("foe-configured", "codex-multi"),
         ("codex-single", "codex-multi"),
     ),
+}
+PAIR_DESCRIPTIONS: dict[tuple[str, str], str] = {
+    ("foe-configured", "foe-unverified"): "the verifier alone",
+    ("foe-configured", "foe-ablated"): "the stop mechanism and the verifier together; attributes nothing to either",
+    ("foe-configured", "codex-equivalent"): "the runtime, under one stated procedure",
+    ("foe-ablated", "codex-equivalent"): "the runtime without them, under the same procedure",
+    ("foe-as-shipped", "codex-equivalent"): "the built-in document against the stated procedure",
+    ("codex-equivalent", "codex-default"): "the stated procedure alone",
+    ("foe-configured", "foe-undivided"): "the divide path",
+    ("foe-configured", "foe-sequential"): "concurrency",
+    ("foe-configured", "codex-multi"): "the runtime, under delegation",
+    ("codex-single", "codex-multi"): "delegation alone",
 }
 
 # The keys a record must carry for the report to read it.
@@ -338,7 +378,73 @@ _SUMMARY_FINDINGS = re.compile(r"(\d+)\s+findings?\b")
 SIGNIFICANCE_LEVEL = 0.05
 MAX_DISCORDANT_SEARCH = 64
 
+# The smallest difference the report states for a comparison is in
+# constructions: the sign test's own threshold over the constructions paired.
+# The autonomy hypotheses name a non-inferiority margin of ten percentage
+# points on the solvable class; the report states why the run cannot test it.
+NON_INFERIORITY_MARGIN = 0.10
+SOLVABLE_CLASS = "solvable"
+
 Predicate = Callable[[dict[str, Any]], bool]
+
+
+def _source_commit(metadata: dict[str, Any]) -> str | None:
+    source = metadata.get("source")
+    commit = source.get("commit") if isinstance(source, dict) else None
+    return commit if isinstance(commit, str) and commit else None
+
+
+def _feature_removal_construction(name: str, family: str | None, metadata: dict[str, Any]) -> str | None:
+    """A task removed from one commit: `tasks/feature_removal.py` records the commit and its parent, and the commit is the construction."""
+    source = metadata.get("source")
+    return _source_commit(metadata) if isinstance(source, dict) and "parent" in source else None
+
+
+def _inventory_construction(name: str, family: str | None, metadata: dict[str, Any]) -> str | None:
+    """A derived artifact only a networked generator writes; the variant whose obstacle is the last step alone is a construction of its own."""
+    if "artifact" not in metadata:
+        return None
+    return "inventory-regeneration/last-step" if metadata.get("obstacle") == "last-step" else "inventory-regeneration"
+
+
+def _teams_construction(name: str, family: str | None, metadata: dict[str, Any]) -> str | None:
+    """A teams task: a fan-out authored by construction is its own construction, named by the task; any other names its source commit."""
+    if family != TEAMS_FAMILY:
+        return None
+    if str(metadata.get("authored", "")).startswith("by construction"):
+        return name
+    return _source_commit(metadata)
+
+
+# The rule table construction_of applies, in order: each rule names the
+# construction of a task whose metadata has its shape, and returns None for
+# any other. docs/evaluation.md "Statistical unit" states the same table.
+CONSTRUCTION_RULES: tuple[tuple[str, Callable[[str, str | None, dict[str, Any]], str | None]], ...] = (
+    ("feature removal: metadata.source names a commit and its parent", _feature_removal_construction),
+    ("line ceiling: metadata.surface", lambda name, family, metadata: "ceiling" if "surface" in metadata else None),
+    ("frozen interface: metadata.block", lambda name, family, metadata: "frozen-interface" if "block" in metadata else None),
+    ("inventory regeneration: metadata.artifact, and metadata.obstacle", _inventory_construction),
+    ("non-terminating check: metadata.mechanism, every mechanism one construction", lambda name, family, metadata: "non-terminating" if "mechanism" in metadata else None),
+    ("teams: metadata.source.commit, or the task for a fan-out authored by construction", _teams_construction),
+)
+
+
+def construction_of(task_metadata: dict[str, Any], task: str, family: str | None = None) -> str:
+    """The construction a task came from, by the first rule of CONSTRUCTION_RULES its metadata matches; a task no rule matches is refused by name."""
+    if not isinstance(task_metadata, dict):
+        raise ValueError(f"task {task!r}: metadata is {task_metadata!r}; construction_of needs the task's metadata object")
+    for _, rule in CONSTRUCTION_RULES:
+        construction = rule(task, family, task_metadata)
+        if construction is not None:
+            return construction
+    rules = "; ".join(description for description, _ in CONSTRUCTION_RULES)
+    raise ValueError(f"task {task!r}: its metadata matches no construction rule ({rules}); keys present: {', '.join(sorted(task_metadata)) or 'none'}")
+
+
+def record_construction(record: dict[str, Any]) -> str:
+    """The construction of the task one record ran."""
+    task = record["task"]
+    return construction_of(task.get("metadata") if "metadata" in task else {}, task_name(record), task.get("family"))
 
 
 def load_records(records_dir: Path) -> list[dict[str, Any]]:
@@ -1189,6 +1295,9 @@ def autonomy_measures(record: dict[str, Any]) -> dict[str, Any] | None:
     # that a figure past a number nothing enforces never reads as a bound.
     measured = [use[key] for key in enforced_ceilings(record) if use[key] is not None]
     conformance = record.get("conformance")
+    # run.py writes the condition conditions.py computes; a record written
+    # before that key existed states none.
+    condition = record.get("condition")
     return {
         "class_name": class_name(record),
         "reported_status": reported_status(record),
@@ -1205,6 +1314,9 @@ def autonomy_measures(record: dict[str, Any]) -> dict[str, Any] | None:
         "bound_by": (trajectory_outcome(record).get("code") or (record.get("reported") or {}).get("code") or UNSTATED_LIMIT) if ended_exhausted(record) else None,
         "agree": (record.get("outcomes") or {}).get("agree"),
         "conformance_valid": conformance.get("valid") if isinstance(conformance, dict) else None,
+        "scoring_version": _integer(record.get("scoring_version")),
+        "condition": condition.get("condition") if isinstance(condition, dict) else None,
+        "condition_reached": condition.get("reached") if isinstance(condition, dict) else None,
         **mechanisms(record),
     }
 
@@ -1239,49 +1351,84 @@ def per_task(records: list[dict[str, Any]], arms: list[str]) -> dict[str, dict[s
     return out
 
 
-def mcnemar_exact(only_first: int, only_second: int) -> float:
-    """The two-sided exact McNemar probability for the discordant pair counts.
+def binomial_two_sided(first: int, second: int) -> float:
+    """The exact two-sided probability of a split at least as uneven as `first` against `second` when each unit falls either way with probability one half.
 
-    Under the hypothesis of equal rates each discordant pair falls either
-    way with probability one half, so the count on one side is binomial.
-    The probability is twice the smaller tail, capped at one, and one when
-    there is no discordant pair.
+    The probability is twice the smaller binomial tail, capped at one, and
+    one when there is no unit to split.
     """
-    if only_first < 0 or only_second < 0:
-        raise ValueError(f"discordant counts are {only_first} and {only_second}; both must be non-negative")
-    total = only_first + only_second
+    if first < 0 or second < 0:
+        raise ValueError(f"discordant counts are {first} and {second}; both must be non-negative")
+    total = first + second
     if total == 0:
         return 1.0
-    smaller = min(only_first, only_second)
+    smaller = min(first, second)
     tail = sum(math.comb(total, k) for k in range(smaller + 1)) / 2**total
     return min(1.0, 2 * tail)
 
 
-def smallest_significant_discordant_pairs(level: float = SIGNIFICANCE_LEVEL) -> int:
-    """The fewest discordant pairs whose most uneven split the exact McNemar test calls significant at `level`.
+def mcnemar_exact(only_first: int, only_second: int) -> float:
+    """The two-sided exact McNemar probability for the discordant pair counts: under equal rates each discordant pair falls either way with probability one half."""
+    return binomial_two_sided(only_first, only_second)
 
-    The most uneven split of `k` discordant pairs has a two-sided
-    probability of two over two to the power `k`, so below some `k` no
-    split of that many pairs reaches the level at all.
+
+def sign_test(differences: dict[str, float]) -> dict[str, Any]:
+    """The exact two-sided sign test over per-construction differences; a construction whose difference is zero is a tie and enters neither side."""
+    positive = sorted(name for name, value in differences.items() if value > 0)
+    negative = sorted(name for name, value in differences.items() if value < 0)
+    ties = sorted(name for name, value in differences.items() if value == 0)
+    return {
+        "p": binomial_two_sided(len(positive), len(negative)) if differences else None,
+        "positive": len(positive),
+        "negative": len(negative),
+        "ties": len(ties),
+        "discordant_constructions": sorted(positive + negative),
+        "tested": bool(positive or negative),
+    }
+
+
+def smallest_significant_discordant_pairs(level: float = SIGNIFICANCE_LEVEL) -> int:
+    """The fewest discordant units, pairs or constructions, whose most uneven split the exact test calls significant at `level`.
+
+    The most uneven split of `k` units has a two-sided probability of two
+    over two to the power `k`, so below some `k` no split of that many
+    units reaches the level at all.
     """
     if not 0 < level < 1:
         raise ValueError(f"the significance level is {level}; a value strictly between 0 and 1 is required")
     for count in range(1, MAX_DISCORDANT_SEARCH + 1):
-        if mcnemar_exact(count, 0) <= level:
+        if binomial_two_sided(count, 0) <= level:
             return count
-    raise ValueError(f"no split of at most {MAX_DISCORDANT_SEARCH} discordant pairs reaches the level {level}")
+    raise ValueError(f"no split of at most {MAX_DISCORDANT_SEARCH} discordant units reaches the level {level}")
 
 
-def detectable_difference(paired_attempts: int, paired_tasks: int, level: float = SIGNIFICANCE_LEVEL) -> dict[str, Any]:
-    """The smallest difference in the actionable rate a paired comparison of this size could call significant.
+def detectable_difference(constructions: int, level: float = SIGNIFICANCE_LEVEL) -> dict[str, Any]:
+    """The smallest difference, in constructions, a sign test over this many paired constructions could call significant.
 
-    The comparison needs at least the discordant pairs
-    `smallest_significant_discordant_pairs` names before any split reaches
-    the level, and that many pairs out of the paired attempts is the
-    smallest difference the test could call significant. A comparison with
-    fewer paired attempts than that count can call no difference
-    significant, which `reachable` states.
+    The test needs at least the discordant constructions
+    `smallest_significant_discordant_pairs` names, all in one direction,
+    before any split reaches the level. That many constructions out of the
+    paired ones is the smallest share of constructions that must differ,
+    and so the smallest difference in the per-construction mean the test
+    could detect when each discordant construction differs by one. A
+    comparison over fewer constructions than that can call none, which
+    `reachable` states.
     """
+    if constructions < 0:
+        raise ValueError(f"the paired constructions are {constructions}; the count must be non-negative")
+    needed = smallest_significant_discordant_pairs(level)
+    reachable = constructions >= needed
+    return {
+        "level": level,
+        "min_discordant_constructions": needed,
+        "constructions": constructions,
+        "difference": needed / constructions if reachable else None,
+        "reachable": reachable,
+    }
+
+
+def detectable_difference_in_attempts(paired_attempts: int, paired_tasks: int, level: float = SIGNIFICANCE_LEVEL) -> dict[str, Any]:
+    """The same bound for the secondary task-level McNemar test: discordant pairs over paired attempts."""
     if paired_attempts < 0 or paired_tasks < 0:
         raise ValueError(f"the paired attempts are {paired_attempts} and the paired tasks {paired_tasks}; both must be non-negative")
     needed = smallest_significant_discordant_pairs(level)
@@ -1296,17 +1443,29 @@ def detectable_difference(paired_attempts: int, paired_tasks: int, level: float 
     }
 
 
-def paired(records_first: list[dict[str, Any]], records_second: list[dict[str, Any]]) -> dict[str, list[tuple[dict[str, Any], dict[str, Any]]]]:
-    """Scored attempts of two arms paired by task and attempt number, grouped by task."""
+Pair = tuple[dict[str, Any], dict[str, Any]]
+
+
+def paired(records_first: list[dict[str, Any]], records_second: list[dict[str, Any]]) -> dict[str, list[Pair]]:
+    """Scored attempts of two arms paired by task and attempt number, grouped by the construction of their task."""
     first = {(task_name(record), record["attempt"]): record for record in records_first if is_scored(record)}
     second = {(task_name(record), record["attempt"]): record for record in records_second if is_scored(record)}
-    clusters: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    clusters: dict[str, list[Pair]] = {}
     for key in sorted(first.keys() & second.keys(), key=lambda item: (item[0], item[1])):
-        clusters.setdefault(key[0], []).append((first[key], second[key]))
-    return clusters
+        clusters.setdefault(record_construction(first[key]), []).append((first[key], second[key]))
+    return dict(sorted(clusters.items()))
 
 
-def discordance(clusters: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]], predicate: Predicate) -> dict[str, int]:
+def by_task(clusters: dict[str, list[Pair]]) -> dict[str, list[Pair]]:
+    """The same pairs grouped by task, for the secondary task-level line."""
+    tasks: dict[str, list[Pair]] = {}
+    for pairs in clusters.values():
+        for pair in pairs:
+            tasks.setdefault(task_name(pair[0]), []).append(pair)
+    return dict(sorted(tasks.items()))
+
+
+def discordance(clusters: dict[str, list[Pair]], predicate: Predicate) -> dict[str, int]:
     counts = {"both": 0, "only_first": 0, "only_second": 0, "neither": 0}
     for pairs in clusters.values():
         for first, second in pairs:
@@ -1315,13 +1474,21 @@ def discordance(clusters: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]]
     return counts
 
 
+def cluster_differences(clusters: dict[str, list[Pair]], predicate: Predicate) -> dict[str, float]:
+    """Each cluster's mean paired difference in the predicate, first minus second."""
+    return {name: sum(float(predicate(first)) - float(predicate(second)) for first, second in pairs) / len(pairs) for name, pairs in clusters.items()}
+
+
 def cluster_bootstrap(clusters: dict[str, list[tuple[float, float]]], resamples: int, seed: int) -> dict[str, Any]:
     """The observed difference of means, first minus second, and its 95 percent percentile interval over resampled clusters.
 
-    Each cluster is a task with the values of every paired attempt. A
-    resample draws as many clusters as there are, with replacement, and
-    pools every attempt of the drawn clusters. The generator is seeded, so
-    one seed gives one interval.
+    Each cluster is one construction, or one task on the secondary line,
+    with the values of every paired attempt it holds. A cluster's difference
+    is the mean of its pairs' differences, and the observed difference is
+    the mean over the clusters, so every cluster weighs the same whatever
+    number of tasks it holds. A resample draws as many clusters as there
+    are, with replacement, and takes the same mean over the drawn clusters.
+    The generator is seeded, so one seed gives one interval.
     """
     if resamples < 1:
         raise ValueError(f"resamples is {resamples}; at least 1 is required")
@@ -1336,13 +1503,13 @@ def cluster_bootstrap(clusters: dict[str, list[tuple[float, float]]], resamples:
             "resamples": resamples,
             "seed": seed,
             "degenerate": True,
-            "degenerate_reason": "no task pairs the two arms, so there is no cluster to resample",
+            "degenerate_reason": "no cluster pairs the two arms, so there is nothing to resample",
         }
 
+    means = {name: sum(first - second for first, second in pairs) / len(pairs) for name, pairs in clusters.items()}
+
     def difference(chosen: list[str]) -> float:
-        firsts = [first for name in chosen for first, _ in clusters[name]]
-        seconds = [second for name in chosen for _, second in clusters[name]]
-        return sum(firsts) / len(firsts) - sum(seconds) / len(seconds)
+        return sum(means[name] for name in chosen) / len(chosen)
 
     generator = random.Random(seed)
     draws = sorted(difference([generator.choice(names) for _ in names]) for _ in range(resamples))
@@ -1351,7 +1518,7 @@ def cluster_bootstrap(clusters: dict[str, list[tuple[float, float]]], resamples:
     spread = {first - second for pairs in clusters.values() for first, second in pairs}
     reason = None
     if len(names) == 1:
-        reason = f"the interval rests on the one task {names[0]}, so every resample draws that task"
+        reason = f"the interval rests on the one cluster {names[0]}, so every resample draws it"
     elif len(spread) == 1:
         reason = f"every pair differs by {next(iter(spread))}, so every resample gives that difference"
     return {
@@ -1367,28 +1534,48 @@ def cluster_bootstrap(clusters: dict[str, list[tuple[float, float]]], resamples:
     }
 
 
+def _values(clusters: dict[str, list[Pair]], predicate: Predicate) -> dict[str, list[tuple[float, float]]]:
+    return {name: [(float(predicate(first)), float(predicate(second))) for first, second in pairs] for name, pairs in clusters.items()}
+
+
 def compare(records_first: list[dict[str, Any]], records_second: list[dict[str, Any]], resamples: int, seed: int) -> dict[str, Any]:
-    """One paired comparison of two arms: the McNemar test on actionable outcomes and bootstrap intervals on two rate differences."""
+    """One paired comparison of two arms, by the module docstring's rule.
+
+    The headline is the sign test over per-construction differences in the
+    actionable rate, with bootstrap intervals over constructions. The
+    task-level McNemar test and an interval over tasks are the secondary
+    line.
+    """
     clusters = paired(records_first, records_second)
+    tasks = by_task(clusters)
     counts = discordance(clusters, is_actionable)
-    values = {
-        name: {task: [(float(predicate(first)), float(predicate(second))) for first, second in pairs] for task, pairs in clusters.items()}
-        for name, predicate in (("actionable", is_actionable), ("false_completion", is_false_completion))
-    }
     discordant = counts["only_first"] + counts["only_second"]
     probability = mcnemar_exact(counts["only_first"], counts["only_second"]) if clusters else None
+    differences = cluster_differences(clusters, is_actionable)
     return {
         "pairs": sum(len(pairs) for pairs in clusters.values()),
-        "tasks": sorted(clusters),
-        "task_count": len(clusters),
+        "tasks": sorted(tasks),
+        "task_count": len(tasks),
+        "constructions": sorted(clusters),
+        "construction_count": len(clusters),
+        "construction_differences": differences,
+        "sign_test": sign_test(differences),
         "actionable_pairs": counts,
         "mcnemar_p": probability,
         # `tested` separates a probability of one that rests on a tested null
         # from one that rests on no discordant pair, which tested nothing.
         "mcnemar": {"p": probability, "discordant": discordant, "tested": bool(clusters) and discordant > 0},
-        "actionable_difference": cluster_bootstrap(values["actionable"], resamples, seed),
-        "false_completion_difference": cluster_bootstrap(values["false_completion"], resamples, seed),
+        "actionable_difference": cluster_bootstrap(_values(clusters, is_actionable), resamples, seed),
+        "false_completion_difference": cluster_bootstrap(_values(clusters, is_false_completion), resamples, seed),
+        "actionable_difference_by_task": cluster_bootstrap(_values(tasks, is_actionable), resamples, seed),
     }
+
+
+def non_inferiority(records: list[dict[str, Any]], level: float = SIGNIFICANCE_LEVEL) -> dict[str, Any]:
+    """Why no non-inferiority margin is stated: the solvable constructions of the records, against the constructions the sign test needs."""
+    solvable = sorted({record_construction(record) for record in records if is_scored(record) and class_name(record) == SOLVABLE_CLASS})
+    needed = smallest_significant_discordant_pairs(level)
+    return {"margin": NON_INFERIORITY_MARGIN, "solvable_constructions": len(solvable), "needed": needed, "established": False}
 
 
 def build(records: list[dict[str, Any]], resamples: int = DEFAULT_RESAMPLES, seed: int = DEFAULT_SEED) -> dict[str, Any]:
@@ -1409,12 +1596,13 @@ def build(records: list[dict[str, Any]], resamples: int = DEFAULT_RESAMPLES, see
         for first, second in DECLARED_PAIRS[family]:
             comparison = compare(family_records.get(first, []), family_records.get(second, []), resamples, seed)
             if comparison["pairs"]:
-                pairs.append({"family": family, "first": first, "second": second, **comparison})
+                pairs.append({"family": family, "first": first, "second": second, "isolates": PAIR_DESCRIPTIONS[(first, second)], **comparison})
             else:
                 absent = [arm for arm in (first, second) if not any(is_scored(record) for record in family_records.get(arm, []))]
                 reason = f"{', '.join(absent)} has no scored attempt" if absent else "the two arms share no scored attempt on one task"
                 not_formed.append({"family": family, "first": first, "second": second, "reason": reason})
-    thinnest = min(pairs, key=lambda pair: pair["pairs"]) if pairs else None
+    thinnest = min(pairs, key=lambda pair: pair["construction_count"]) if pairs else None
+    thinnest_attempts = min(pairs, key=lambda pair: pair["pairs"]) if pairs else None
     return {
         "schema_version": SCHEMA_VERSION,
         "records": len(records),
@@ -1439,8 +1627,10 @@ def build(records: list[dict[str, Any]], resamples: int = DEFAULT_RESAMPLES, see
         "pairs": pairs,
         "pairs_not_formed": not_formed,
         # The run's resolving power, stated once from the comparison with the
-        # fewest paired attempts, which is the one that can detect the least.
-        "detectable_difference": detectable_difference(thinnest["pairs"] if thinnest else 0, thinnest["task_count"] if thinnest else 0),
+        # fewest paired constructions, which is the one that can detect the least.
+        "detectable_difference": detectable_difference(thinnest["construction_count"] if thinnest else 0),
+        "detectable_difference_in_attempts": detectable_difference_in_attempts(thinnest_attempts["pairs"] if thinnest_attempts else 0, thinnest_attempts["task_count"] if thinnest_attempts else 0),
+        "non_inferiority": non_inferiority([record for record in records if record["task"]["family"] == AUTONOMY_FAMILY]),
         "settings": {"resamples": resamples, "seed": seed},
     }
 
@@ -1658,8 +1848,8 @@ def autonomy_markdown(report: dict[str, Any]) -> list[str]:
         "",
         "## Autonomy attempts",
         "",
-        "| task | class | arm | attempt | cell | reported | code | input tokens | output tokens | model calls | seconds | highest ceiling use | bound by | verifier firings | cleared | block codes | compactions | self-report agrees | trace conforms |",
-        "|---|---|---|---:|---|---|---|---:|---:|---:|---:|---|---|---:|---|---|---|---|---|",
+        "| task | class | arm | attempt | cell | reported | code | input tokens | output tokens | model calls | seconds | highest ceiling use | bound by | verifier firings | cleared | block codes | compactions | self-report agrees | trace conforms | scoring version | condition | reached |",
+        "|---|---|---|---:|---|---|---|---:|---:|---:|---:|---|---|---:|---|---|---|---|---|---:|---|---|",
     ]
     for measure in report["autonomy_attempts"]:
         lines.append(
@@ -1667,7 +1857,8 @@ def autonomy_markdown(report: dict[str, Any]) -> list[str]:
             f"{measure['reported_status'] or '—'} | {measure['reported_code'] or '—'} | {_number(measure['input_tokens'])} | {_number(measure['output_tokens'])} | "
             f"{_number(measure['model_calls'])} | {_number(measure['seconds'], 1)} | {_number(measure['ceiling_use_max'], 2)} | {measure['bound_by'] or '—'} | "
             f"{measure['verifier_runs']} | {_flag(measure['verifier_cleared'])} | {', '.join(measure['block_codes']) or '—'} | {_number(measure['compactions'])} | "
-            f"{_flag(measure['agree'])} | {_flag(measure['conformance_valid'])} |"
+            f"{_flag(measure['agree'])} | {_flag(measure['conformance_valid'])} | {_number(measure['scoring_version'])} | {measure['condition'] or '—'} | "
+            f"{_flag(measure['condition_reached'])} |"
         )
     return lines
 
@@ -1712,14 +1903,96 @@ def teams_markdown(report: dict[str, Any]) -> list[str]:
 
 
 def _detectable_sentence(value: dict[str, Any]) -> str:
-    """The one statement of what a run this size could detect, from the comparison with the fewest paired attempts."""
-    head = f"The exact test reaches a two-sided probability at or below {value['level']} only with at least {value['min_discordant_pairs']} discordant pairs"
+    """The one statement of what a run this size could detect, in constructions, from the comparison with the fewest paired constructions."""
+    head = (
+        f"The sign test reaches a two-sided probability at or below {value['level']} only when at least "
+        f"{value['min_discordant_constructions']} constructions differ, all in one direction"
+    )
+    if not value["reachable"]:
+        return f"{head}; the thinnest comparison pairs {value['constructions']} constructions, so it can call no difference significant."
+    return (
+        f"{head}, so over the {value['constructions']} constructions of the thinnest comparison the smallest difference this run could "
+        f"call significant is {value['difference']:.2f}, the share of constructions that must each differ by one."
+    )
+
+
+def _detectable_in_attempts_sentence(value: dict[str, Any]) -> str:
+    """The same statement for the secondary task-level line, in paired attempts."""
+    head = f"The task-level McNemar test reaches {value['level']} only with at least {value['min_discordant_pairs']} discordant pairs"
     if not value["reachable"]:
         return f"{head}; the thinnest comparison forms {value['paired_attempts']} paired attempts over {value['paired_tasks']} tasks, so it can call no difference significant."
     return (
         f"{head}, so over the {value['paired_attempts']} paired attempts of the thinnest comparison, which covers {value['paired_tasks']} tasks, "
-        f"the smallest difference in the actionable rate this run could call significant is {value['difference']:.2f}."
+        f"it could call a difference of {value['difference']:.2f} significant if the tasks were independent, which related constructions are not."
     )
+
+
+def _non_inferiority_sentence(value: dict[str, Any]) -> str:
+    """Why the report states no non-inferiority result."""
+    return (
+        f"No non-inferiority result is stated. The solvable tasks form {value['solvable_constructions']} constructions, and the sign test "
+        f"needs at least {value['needed']} to call any difference significant, so a margin of {value['margin'] * 100:.0f} percentage points "
+        "cannot be established from them."
+    )
+
+
+def _sign(value: dict[str, Any]) -> str:
+    """The sign-test column: the probability when a construction differed, and the reason when none did."""
+    if value["p"] is None:
+        return "—"
+    return f"{value['p']:.4f}" if value["tested"] else "— no discordant construction"
+
+
+def paired_markdown(report: dict[str, Any]) -> list[str]:
+    """The headline comparison by construction, then the task-level McNemar line, labeled secondary."""
+    lines = ["", "## Paired comparisons", ""]
+    if not report["pairs"]:
+        lines.append("No declared pair of arms shares a scored attempt on one task.")
+    else:
+        lines.extend(
+            [
+                "| first | second | isolates | constructions | tasks | pairs | first better | second better | tied | sign-test p | actionable difference by construction | false-completion difference |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
+            ]
+        )
+        for pair in report["pairs"]:
+            sign = pair["sign_test"]
+            lines.append(
+                f"| `{pair['first']}` | `{pair['second']}` | {pair['isolates']} | {pair['construction_count']} | {pair['task_count']} | {pair['pairs']} | "
+                f"{sign['positive']} | {sign['negative']} | {sign['ties']} | {_sign(sign)} | {_interval(pair['actionable_difference'])} | "
+                f"{_interval(pair['false_completion_difference'])} |"
+            )
+        lines.extend(
+            [
+                "",
+                f"Differences are first minus second, with 95 percent intervals from {report['settings']['resamples']} cluster-bootstrap resamples over "
+                f"constructions (seed {report['settings']['seed']}). A construction is better for one arm when its mean paired difference in the "
+                "actionable rate favors that arm, and tied when the difference is zero; the sign test counts the constructions that differ. An "
+                "interval marked degenerate rests on one construction or on a difference that every pair shares, so it states the width of the data "
+                "and no sampling width.",
+                "",
+                _detectable_sentence(report["detectable_difference"]),
+                "",
+                _non_inferiority_sentence(report["non_inferiority"]),
+                "",
+                "Secondary, task-level line. It treats every task as independent, which related constructions are not, so the headline rests on the construction table above.",
+                "",
+                "| first | second | tasks | pairs | both | only first | only second | neither | McNemar p | actionable difference by task |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for pair in report["pairs"]:
+            counts = pair["actionable_pairs"]
+            lines.append(
+                f"| `{pair['first']}` | `{pair['second']}` | {pair['task_count']} | {pair['pairs']} | {counts['both']} | {counts['only_first']} | "
+                f"{counts['only_second']} | {counts['neither']} | {_mcnemar(pair['mcnemar'])} | {_interval(pair['actionable_difference_by_task'])} |"
+            )
+        lines.extend(["", _detectable_in_attempts_sentence(report["detectable_difference_in_attempts"])])
+    if report["pairs_not_formed"]:
+        lines.extend(["", "Declared pairs without a comparison:", ""])
+        for pair in report["pairs_not_formed"]:
+            lines.append(f"- `{pair['first']}` with `{pair['second']}` ({pair['family']}): {pair['reason']}")
+    return lines
 
 
 def markdown(report: dict[str, Any]) -> str:
@@ -1749,47 +2022,496 @@ def markdown(report: dict[str, Any]) -> str:
             lines.append(f"| `{task}` | {entry['class_name']} | `{arm}` | {metrics['attempts']} | {cells} | {_rate(metrics['actionable'])} | {_number(metrics['tokens_mean'])} | {_number(metrics['seconds_mean'], 1)} |")
     lines.extend(autonomy_markdown(report))
     lines.extend(teams_markdown(report))
-    lines.extend(["", "## Paired comparisons", ""])
-    if not report["pairs"]:
-        lines.append("No declared pair of arms shares a scored attempt on one task.")
-    else:
-        lines.extend(
-            [
-                "| first | second | tasks | pairs | both | only first | only second | neither | McNemar p | actionable difference | false-completion difference |",
-                "|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|",
-            ]
-        )
-        for pair in report["pairs"]:
-            counts = pair["actionable_pairs"]
-            lines.append(
-                f"| `{pair['first']}` | `{pair['second']}` | {pair['task_count']} | {pair['pairs']} | {counts['both']} | {counts['only_first']} | {counts['only_second']} | {counts['neither']} | "
-                f"{_mcnemar(pair['mcnemar'])} | {_interval(pair['actionable_difference'])} | {_interval(pair['false_completion_difference'])} |"
+    lines.extend(paired_markdown(report))
+    return "\n".join(lines) + "\n"
+
+
+# ---- the archive: every table of the dated results documents, recomputed ----
+
+# The committed arrays of the two dated campaigns, by the run that wrote them,
+# relative to the results directory. Each array holds one summary per
+# attempt; `rescored` holds the same attempts under both scoring versions,
+# and `conditions` whether each attempt reached the condition its arm tests.
+ARCHIVE_RUNS: dict[str, dict[str, str]] = {
+    "autonomy": {
+        "array": "autonomy-2026-09-13/records.json",
+        "rescored": "autonomy-2026-09-13/rescored.json",
+        "conditions": "autonomy-2026-09-13/conditions.json",
+    },
+    **{
+        case: {
+            "array": f"campaign-two-2026-09-13/{case}.json",
+            "rescored": f"campaign-two-2026-09-13/rescored/{case}.json",
+            "conditions": f"campaign-two-2026-09-13/conditions/{case}.json",
+        }
+        for case in ("small-obstacle", "verifier-timeout", "lean", "budget-bounded", "budget-bounded-warning", "teams-fan-out", "teams-fan-out-generous")
+    },
+}
+ARCHIVE_TABLES = "tables.md"
+# Where the archive reads each task's class and metadata: the task
+# directories the tree holds. A task the tree no longer holds, such as a
+# small-obstacle or teams task, has no class there and pairs with nothing.
+ARCHIVE_TASKS = HERE / "tasks" / "foe-tree"
+# The order arms are listed in, which is the order the results documents use.
+ARM_ORDER: tuple[str, ...] = ("foe-lean", "foe-configured", "foe-undivided", "foe-unverified", "codex-equivalent", "codex-default", "codex-single", "codex-multi", "foe-ablated")
+IMPOSSIBLE_CLASSES: tuple[str, ...] = ("contradictory", "missing-capability", "non-terminating")
+SCORINGS: tuple[int, ...] = (1, 2)
+# The price of a cached input token relative to an uncached one, at which the
+# autonomy results document weighs the two.
+CACHE_PRICE = 0.1
+# The run whose foe-configured records stand beside foe-lean for the tasks
+# whose check suite hangs, and the class those tasks hold.
+HANGING_RUN, HANGING_CLASS = "verifier-timeout", "non-terminating"
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"{path} is absent; the archive needs it") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path}: not JSON: {exc}") from exc
+
+
+def _attempt_key(entry: dict[str, Any]) -> tuple[str, str, int]:
+    return str(entry["task"]), str(entry["arm"]), int(entry["attempt"])
+
+
+def archive_tasks(tasks_dir: Path = ARCHIVE_TASKS) -> dict[str, dict[str, Any]]:
+    """Each task directory's `task.json`, by task name."""
+    return {path.parent.name: _read_json(path) for path in sorted(tasks_dir.glob("*/task.json"))}
+
+
+def load_archive(results: Path, tasks: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Every archived attempt as a record the report reads, by run, with both scoring versions' cells and its condition.
+
+    The array states the cell the run computed, which is scoring version 1;
+    the rescored file must state the same cell as `cell_scoring_1`, or the
+    two files describe two gradings and the archive is refused.
+    """
+    runs: dict[str, list[dict[str, Any]]] = {}
+    for run_name, paths in ARCHIVE_RUNS.items():
+        array = _read_json(results / paths["array"])
+        rescored = {_attempt_key(entry): entry for entry in _read_json(results / paths["rescored"])}
+        # A conditions file is the object `conditions.py` summarizes a run into; its `attempts` list holds one entry per attempt.
+        conditions_file = _read_json(results / paths["conditions"])
+        if not isinstance(conditions_file, dict) or not isinstance(conditions_file.get("attempts"), list):
+            raise ValueError(f"{results / paths['conditions']}: key attempts is absent or not a list")
+        conditions = {_attempt_key(entry): entry for entry in conditions_file["attempts"]}
+        records = []
+        for entry in array:
+            key = _attempt_key(entry)
+            if key not in rescored:
+                raise ValueError(f"{results / paths['rescored']}: no entry for task {key[0]}, arm {key[1]}, attempt {key[2]}")
+            if rescored[key]["cell_scoring_1"] != entry["cell"]:
+                raise ValueError(f"{results / paths['rescored']}: task {key[0]}, arm {key[1]}, attempt {key[2]} has cell_scoring_1 {rescored[key]['cell_scoring_1']} where the array holds {entry['cell']}")
+            if key not in conditions:
+                raise ValueError(f"{results / paths['conditions']}: no entry for task {key[0]}, arm {key[1]}, attempt {key[2]}")
+            task = tasks.get(key[0], {})
+            records.append(
+                {
+                    "task": {
+                        "name": key[0],
+                        "family": task.get("family"),
+                        "class_name": task.get("class_name"),
+                        "correct_statuses": task.get("correct_statuses", []),
+                        "metadata": task.get("metadata", {}),
+                    },
+                    "run": run_name,
+                    "arm": key[1],
+                    "attempt": key[2],
+                    "cells": {1: rescored[key]["cell_scoring_1"], 2: rescored[key]["cell_scoring_2"]},
+                    "classification": entry["cell"],
+                    "condition": {name: conditions[key].get(name) for name in ("condition", "reached")},
+                    "reported": entry.get("reported") or {},
+                    "totals": entry.get("totals") or {},
+                    "grade": entry.get("grade") or {},
+                    "infrastructure_error": None,
+                    "arm_result": {},
+                }
             )
-        lines.extend(
-            [
-                "",
-                f"Differences are first minus second, with 95 percent intervals from {report['settings']['resamples']} cluster-bootstrap resamples over tasks (seed {report['settings']['seed']}). "
-                "Each interval rests on the tasks its row counts: those are the clusters the bootstrap resamples. An interval marked degenerate "
-                "rests on one task or on a difference that every pair shares, so it states the width of the data and no sampling width. A McNemar "
-                "column reading `no discordant pair` tested nothing, and a probability of one beside discordant pairs tested the null and did not "
-                "reject it.",
-                "",
-                _detectable_sentence(report["detectable_difference"]),
-            ]
+        runs[run_name] = records
+    return runs
+
+
+def scored_as(records: list[dict[str, Any]], scoring: int) -> list[dict[str, Any]]:
+    """The records with each classification set to the cell the scoring version gives."""
+    return [dict(record, classification=record["cells"][scoring]) for record in records]
+
+
+def _arms(records: list[dict[str, Any]]) -> list[str]:
+    present = {record["arm"] for record in records}
+    return [arm for arm in ARM_ORDER if arm in present] + sorted(present - set(ARM_ORDER))
+
+
+def _total(records: list[dict[str, Any]], key: str) -> int | None:
+    values = [_integer(record["totals"].get(key)) for record in records]
+    return None if not values or any(value is None for value in values) else sum(value for value in values if value is not None)
+
+
+def _seconds(records: list[dict[str, Any]]) -> float | None:
+    values = [_integer(record["totals"].get("wall_ms")) for record in records]
+    return None if not values or any(value is None for value in values) else sum(value for value in values if value is not None) / 1000
+
+
+def spend(records: list[dict[str, Any]]) -> dict[str, float | None]:
+    """The summed spend of a group of attempts: calls, input, cached and uncached input, output, and seconds, None where an attempt measured nothing."""
+    inputs, cached = _total(records, "input_tokens"), _total(records, "cache_read_tokens")
+    return {
+        "attempts": len(records),
+        "calls": _total(records, "model_calls"),
+        "input": inputs,
+        "cached": cached,
+        "uncached": None if inputs is None or cached is None else inputs - cached,
+        "output": _total(records, "output_tokens"),
+        "seconds": _seconds(records),
+    }
+
+
+def _per(value: float | None, count: int) -> float | None:
+    return None if value is None or not count else value / count
+
+
+def _ratio(first: float | None, second: float | None) -> float | None:
+    return None if first is None or not second else first / second
+
+
+def _f(value: float | None, digits: int, scale: float = 1.0, suffix: str = "") -> str:
+    return "—" if value is None else f"{value / scale:,.{digits}f}{suffix}"
+
+
+def _mean_spend_cells(records: list[dict[str, Any]]) -> str:
+    """The mean-per-attempt cost cells: calls, input, uncached input, cache share, output, seconds."""
+    total = spend(records)
+    count = total["attempts"]
+    return (
+        f"{_f(_per(total['calls'], count), 1)} | {_f(_per(total['input'], count), 1, 1000, 'k')} | {_f(_per(total['uncached'], count), 1, 1000, 'k')} | "
+        f"{_f(None if not total['input'] or total['cached'] is None else 100 * total['cached'] / total['input'], 1, suffix='%')} | "
+        f"{_f(_per(total['output'], count), 2, 1000, 'k')} | {_f(_per(total['seconds'], count), 1)}"
+    )
+
+
+def _weighted(total: dict[str, float | None]) -> float | None:
+    """Uncached input plus cached input at CACHE_PRICE, the input a price weighs."""
+    return None if total["uncached"] is None or total["cached"] is None else total["uncached"] + CACHE_PRICE * total["cached"]
+
+
+def _total_spend_cells(total: dict[str, float | None]) -> str:
+    """The summed cost cells: calls, input, uncached input, cache share, output, seconds, input per call, and price-weighted input."""
+    weighted = _weighted(total)
+    share = None if not total["input"] or total["cached"] is None else 100 * total["cached"] / total["input"]
+    return (
+        f"{_f(total['calls'], 0)} | {_f(total['input'], 3, 1e6, 'M')} | {_f(total['uncached'], 3, 1e6, 'M')} | {_f(share, 1, suffix='%')} | "
+        f"{_f(total['output'], 1, 1000, 'k')} | {_f(total['seconds'], 1)} | {_f(_ratio(total['input'], total['calls']), 1, 1000, 'k')} | {_f(weighted, 3, 1e6, 'M')}"
+    )
+
+
+def _cells_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "| arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for arm in _arms(records):
+        group = [record for record in records if record["arm"] == arm]
+        for scoring in SCORINGS:
+            cells = [record["cells"][scoring] for record in group]
+            counts = " | ".join(str(cells.count(cell)) for cell in protocol.SEVERITY)
+            actionable = sum(cell in ACTIONABLE_CELLS for cell in cells)
+            lines.append(f"| {arm} | {scoring} | {counts} | {actionable}/{len(cells)} |")
+    return lines
+
+
+def _impossible_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "| arm | scoring version | impossible tasks stopped correctly | share | " + " | ".join(IMPOSSIBLE_CLASSES) + " |",
+        "|---|---:|---|---:|" + "---:|" * len(IMPOSSIBLE_CLASSES),
+    ]
+    for arm in _arms(records):
+        group = [record for record in records if record["arm"] == arm and class_name(record) in IMPOSSIBLE_CLASSES]
+        for scoring in SCORINGS:
+            stopped = [record for record in group if record["cells"][scoring] == protocol.CORRECT_STOP]
+            by_class = " | ".join(str(sum(1 for record in stopped if class_name(record) == name)) for name in IMPOSSIBLE_CLASSES)
+            share = _f(100 * len(stopped) / len(group) if group else None, 1, suffix="%")
+            lines.append(f"| {arm} | {scoring} | {len(stopped)} of {len(group)} | {share} | {by_class} |")
+    return lines
+
+
+def _p(value: float | None) -> str:
+    return "—" if value is None else f"{value:.6f}"
+
+
+def _pairs_tables(title: str, comparisons: list[tuple[str, str, int, dict[str, Any]]]) -> list[str]:
+    """One comparison per declared pair and scoring version, by construction and then by task."""
+    lines = [
+        "",
+        f"### {title}: by construction",
+        "",
+        "| first | second | scoring version | constructions | first better | second better | tied | discordant constructions | sign-test p | actionable difference by construction |",
+        "|---|---|---:|---:|---:|---:|---:|---|---:|---|",
+    ]
+    for first, second, scoring, pair in comparisons:
+        sign = pair["sign_test"]
+        lines.append(
+            f"| {first} | {second} | {scoring} | {pair['construction_count']} | {sign['positive']} | {sign['negative']} | {sign['ties']} | "
+            f"{', '.join(sign['discordant_constructions']) or 'none'} | {_p(sign['p'])} | {_interval(pair['actionable_difference'])} |"
         )
-    if report["pairs_not_formed"]:
-        lines.extend(["", "Declared pairs without a comparison:", ""])
-        for pair in report["pairs_not_formed"]:
-            lines.append(f"- `{pair['first']}` with `{pair['second']}` ({pair['family']}): {pair['reason']}")
+    lines.extend(
+        [
+            "",
+            f"### {title}: by task, the secondary line",
+            "",
+            "| first | second | scoring version | tasks | pairs | both | only first | only second | neither | McNemar p | actionable difference by task |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    )
+    for first, second, scoring, pair in comparisons:
+        counts = pair["actionable_pairs"]
+        lines.append(
+            f"| {first} | {second} | {scoring} | {pair['task_count']} | {pair['pairs']} | {counts['both']} | {counts['only_first']} | {counts['only_second']} | "
+            f"{counts['neither']} | {_p(pair['mcnemar']['p'])} | {_interval(pair['actionable_difference_by_task'])} |"
+        )
+    return lines
+
+
+def _compare_all(pairs: list[tuple[str, str]], records: list[dict[str, Any]], resamples: int, seed: int) -> list[tuple[str, str, int, dict[str, Any]]]:
+    out = []
+    for first, second in pairs:
+        for scoring in SCORINGS:
+            scored = scored_as(records, scoring)
+            out.append((first, second, scoring, compare([r for r in scored if r["arm"] == first], [r for r in scored if r["arm"] == second], resamples, seed)))
+    return out
+
+
+def _cost_by_class_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "Means per attempt. Uncached input is input less cache reads; cache is the share of input read from cache.",
+        "",
+        "| class | arm | attempts | calls | input | uncached input | cache | output | seconds |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    classes = sorted({class_name(record) or "unrecorded" for record in records}, key=lambda name: (name != SOLVABLE_CLASS, name))
+    for name in classes:
+        for arm in _arms(records):
+            group = [record for record in records if record["arm"] == arm and (class_name(record) or "unrecorded") == name]
+            if group:
+                lines.append(f"| {name} | {arm} | {len(group)} | {_mean_spend_cells(group)} |")
+    return lines
+
+
+def _totals_table(title: str, groups: list[tuple[str, list[dict[str, Any]]]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        f"Sums over the attempts. Input per call is input over calls; price-weighted input counts a cached token at {CACHE_PRICE} of an uncached one.",
+        "",
+        "| arms | attempts | calls | input | uncached input | cache | output | seconds | input per call | price-weighted input |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, group in groups:
+        lines.append(f"| {name} | {len(group)} | {_total_spend_cells(spend(group))} |")
+    return lines
+
+
+def _ratio_table(title: str, rows: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "Each ratio is the first group's sum over the second's.",
+        "",
+        "| groups | calls | input | uncached input | output | seconds | price-weighted input |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, first, second in rows:
+        a, b = spend(first), spend(second)
+        a["weighted"], b["weighted"] = _weighted(a), _weighted(b)
+        lines.append(" | ".join([f"| {name}"] + [_f(_ratio(a[key], b[key]), 3) for key in ("calls", "input", "uncached", "output", "seconds", "weighted")]) + " |")
+    return lines
+
+
+def _attempts_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "| run | task | arm | attempt | cell, scoring 1 | cell, scoring 2 | condition | reached | reported | code | agents | calls | input | uncached input | output | seconds | runtime verifications | check calls | block calls |",
+        "|---|---|---|---:|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for record in records:
+        totals = record["totals"]
+        by_name = totals.get("tool_calls_by_name") or {}
+        one = spend([record])
+        condition = record["condition"]
+        lines.append(
+            f"| {record['run']} | {task_name(record)} | {record['arm']} | {record['attempt']} | {record['cells'][1]} | {record['cells'][2]} | "
+            f"{condition['condition'] or '—'} | {_flag(condition['reached'])} | {reported_status(record) or '—'} | {record['reported'].get('code') or '—'} | "
+            f"{_f(_integer(totals.get('agents')), 0)} | {_f(one['calls'], 0)} | {_f(one['input'], 0)} | {_f(one['uncached'], 0)} | {_f(one['output'], 0)} | "
+            f"{_f(one['seconds'], 1)} | {by_name.get(VERIFICATION_EVENT, 0)} | {by_name.get(VERIFIER_TOOL, 0)} | {by_name.get(BLOCK_TOOL, 0)} |"
+        )
+    return lines
+
+
+def _mechanisms_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    """How many attempts of each arm recorded a runtime verification, a check call, and a block call, from each attempt's tool-call counts."""
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "| arm | attempts | with a runtime verification | with a check call | with a block call | reported codes of the blocked attempts |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    for arm in _arms(records):
+        group = [record for record in records if record["arm"] == arm]
+        names = [record["totals"].get("tool_calls_by_name") or {} for record in group]
+        codes: dict[str, int] = {}
+        for record in group:
+            if reported_status(record) == protocol.BLOCKED:
+                code = str(record["reported"].get("code"))
+                codes[code] = codes.get(code, 0) + 1
+        lines.append(
+            f"| {arm} | {len(group)} | {sum(1 for item in names if item.get(VERIFICATION_EVENT))} | {sum(1 for item in names if item.get(VERIFIER_TOOL))} | "
+            f"{sum(1 for item in names if item.get(BLOCK_TOOL))} | {_counts(dict(sorted(codes.items())))} |"
+        )
+    return lines
+
+
+def _units_table(title: str, records: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"### {title}",
+        "",
+        "| arm | task | reported | code | cell, scoring 1 | cell, scoring 2 | units passing | agents | calls |",
+        "|---|---|---|---|---|---|---|---:|---:|",
+    ]
+    for arm in _arms(records):
+        for record in sorted((record for record in records if record["arm"] == arm), key=task_name):
+            units = record["grade"].get("units")
+            passing = "—" if not isinstance(units, dict) else f"{sum(1 for value in units.values() if value)} of {len(units)}"
+            lines.append(
+                f"| {arm} | {task_name(record)} | {reported_status(record) or '—'} | {record['reported'].get('code') or '—'} | {record['cells'][1]} | "
+                f"{record['cells'][2]} | {passing} | {_f(_integer(record['totals'].get('agents')), 0)} | {_f(_integer(record['totals'].get('model_calls')), 0)} |"
+            )
+    return lines
+
+
+def lean_baseline(runs: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """foe-configured's record for each task foe-lean ran: the autonomy run's where the task's check suite returns, and the verifier-timeout run's where it hangs."""
+    tasks = {task_name(record) for record in runs["lean"]}
+    chosen = []
+    for record in runs["autonomy"] + runs[HANGING_RUN]:
+        if record["arm"] != "foe-configured" or task_name(record) not in tasks:
+            continue
+        hangs = class_name(record) == HANGING_CLASS
+        if (record["run"] == HANGING_RUN) == hangs:
+            chosen.append(record)
+    return chosen
+
+
+def archive_markdown(results: Path, tasks: dict[str, dict[str, Any]] | None = None, resamples: int = DEFAULT_RESAMPLES, seed: int = DEFAULT_SEED) -> str:
+    """Every numeric table of the dated results documents, recomputed from the committed arrays, the rescored files, and the conditions files."""
+    tasks = archive_tasks() if tasks is None else tasks
+    runs = load_archive(results, tasks)
+    autonomy = runs["autonomy"]
+    lean = runs["lean"]
+    baseline = lean_baseline(runs)
+    lean_pair = baseline + lean
+    codex_equivalent = [record for record in autonomy if record["arm"] == "codex-equivalent"]
+    everything = [record for records in runs.values() for record in records]
+    autonomy_pairs = [pair for pair in DECLARED_PAIRS[AUTONOMY_FAMILY] if {pair[0], pair[1]} <= {record["arm"] for record in autonomy}]
+    constructions = sorted({record_construction(record) for record in autonomy})
+    lines = [
+        "# Tables of the dated campaigns",
+        "",
+        "`report.py --archive` writes this file from the committed arrays, the rescored files, and the conditions files under this directory, "
+        "and from the task directories under `tasks/foe-tree/`. Every figure of `autonomy-2026-09-13.md` and `campaign-two-2026-09-13.md` that "
+        "a table states is one of the figures below. Scoring version 1 is the cell each run computed; version 2 adds the rule that a stop "
+        "which changed a path the task preserves is damage. Seconds are each attempt's recorded wall clock.",
+        "",
+        f"The fifteen autonomy tasks form {len(constructions)} constructions: {', '.join(constructions)}.",
+        "",
+        "## Cells",
+    ]
+    lines += _cells_table("Autonomy run", autonomy)
+    for case in ("small-obstacle", "verifier-timeout", "lean", "budget-bounded", "budget-bounded-warning", "teams-fan-out", "teams-fan-out-generous"):
+        lines += _cells_table(f"Campaign two, {case}", runs[case])
+    lines += ["", "## Impossible tasks by class"]
+    lines += _impossible_table("Autonomy run", autonomy)
+    lines += _impossible_table("foe-lean against foe-configured's records on the same tasks", lean_pair)
+    lines += ["", "## Paired comparisons"]
+    lines += _pairs_tables("Autonomy run, declared pairs", _compare_all(autonomy_pairs, autonomy, resamples, seed))
+    lines += _pairs_tables("foe-configured against foe-lean", _compare_all([("foe-configured", "foe-lean")], lean_pair, resamples, seed))
+    by_construction = detectable_difference(len(constructions))
+    by_attempts = detectable_difference_in_attempts(len({task_name(record) for record in autonomy}), len({task_name(record) for record in autonomy}))
+    lines += [
+        "",
+        f"Intervals come from {resamples} cluster-bootstrap resamples, seed {seed}. The sign test needs {by_construction['min_discordant_constructions']} "
+        f"constructions differing in one direction; over {by_construction['constructions']} constructions the smallest detectable difference is "
+        f"{_f(by_construction['difference'], 2)}. The task-level McNemar test needs {by_attempts['min_discordant_pairs']} discordant pairs; over "
+        f"{by_attempts['paired_attempts']} paired attempts that is a difference of {_f(by_attempts['difference'], 2)}.",
+        "",
+        _non_inferiority_sentence(non_inferiority(scored_as(autonomy, 2))),
+    ]
+    lines += ["", "## Cost"]
+    lines += _cost_by_class_table("Autonomy run, per class", autonomy)
+    lines += _totals_table("Autonomy run, totals per arm", [(arm, [r for r in autonomy if r["arm"] == arm]) for arm in _arms(autonomy)] + [("codex-equivalent and codex-default", [r for r in autonomy if r["arm"].startswith("codex-")])])
+    lines += _ratio_table(
+        "Autonomy run, foe-configured over codex-equivalent",
+        [("all tasks", [r for r in autonomy if r["arm"] == "foe-configured"], codex_equivalent)]
+        + [(name, [r for r in autonomy if r["arm"] == "foe-configured" and class_name(r) == name], [r for r in codex_equivalent if class_name(r) == name]) for name in (SOLVABLE_CLASS,) + IMPOSSIBLE_CLASSES],
+    )
+    lines += _cost_by_class_table("Small obstacle, per arm", runs["small-obstacle"])
+    lines += _ratio_table("Small obstacle, foe-lean over codex-equivalent", [("foe-lean over codex-equivalent", [r for r in runs["small-obstacle"] if r["arm"] == "foe-lean"], [r for r in runs["small-obstacle"] if r["arm"] == "codex-equivalent"])])
+    lines += ["", "## Lean ratios"]
+    lines += _totals_table("foe-configured's records and foe-lean, totals over the fifteen tasks", [("foe-configured", baseline), ("foe-lean", lean), ("codex-equivalent", codex_equivalent)])
+    lines += _ratio_table(
+        "foe-lean over foe-configured, and over codex-equivalent",
+        [
+            ("foe-lean over foe-configured, all tasks", lean, baseline),
+            ("foe-lean over foe-configured, solvable tasks", [r for r in lean if class_name(r) == SOLVABLE_CLASS], [r for r in baseline if class_name(r) == SOLVABLE_CLASS]),
+            ("foe-lean over codex-equivalent, all tasks", lean, codex_equivalent),
+        ],
+    )
+    lines += ["", "## Budget-bounded outcomes"]
+    lines += _attempts_table("Budget-bounded runs, per attempt", runs["budget-bounded"] + runs["budget-bounded-warning"])
+    lines += ["", "## Teams units passing"]
+    lines += _units_table("Teams fan-out at the tasks' ceiling", runs["teams-fan-out"])
+    lines += _units_table("Teams fan-out at the doubled ceiling", runs["teams-fan-out-generous"])
+    lines += ["", "## Mechanisms"]
+    lines += _mechanisms_table("Autonomy run, from each attempt's tool-call counts", autonomy)
+    lines += _mechanisms_table("Verifier-timeout run", runs["verifier-timeout"])
+    lines += ["", "## Every attempt"]
+    lines += _attempts_table("Every archived attempt", everything)
     return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("document", type=Path, help="the run document run.py ran; the report reads its out directory")
+    parser.add_argument("document", type=Path, nargs="?", help="the run document run.py ran; the report reads its out directory")
+    parser.add_argument("--archive", type=Path, help=f"a results directory: recompute every table of the dated campaigns from its committed files into {ARCHIVE_TABLES}")
     parser.add_argument("--resamples", type=int, default=DEFAULT_RESAMPLES, help=f"bootstrap resamples; default {DEFAULT_RESAMPLES}")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help=f"the bootstrap generator's seed; default {DEFAULT_SEED}")
     args = parser.parse_args(argv)
+    if (args.document is None) == (args.archive is None):
+        parser.error("name either a run document or --archive RESULTS_DIR")
+    if args.archive is not None:
+        try:
+            rendered = archive_markdown(args.archive, resamples=args.resamples, seed=args.seed)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"cross harness report: {exc}", file=sys.stderr)
+            return 2
+        (args.archive / ARCHIVE_TABLES).write_text(rendered, encoding="utf-8")
+        print(f"tables: {args.archive / ARCHIVE_TABLES}")
+        return 0
     try:
         out = run.document_out(run.read_document(args.document))
         records_dir = out / run.RECORDS_DIR

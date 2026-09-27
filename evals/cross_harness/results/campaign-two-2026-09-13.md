@@ -1,10 +1,87 @@
 # Campaign two: cases aimed at the regime where enforcement and instruction differ
 
+## Status of this record
+
+This is a dated record of an exploratory campaign. It is kept as it was
+written, apart from the corrections this section lists. Its figures
+describe what these runs did and support no general claim about either
+harness, for the reasons below.
+
+- Each cell holds one attempt, or two in the small-obstacle case, so no
+  figure carries a measure of attempt-to-attempt variation.
+- The tasks are related. The verifier-timeout, lean, and budget cases rerun
+  autonomy tasks, which come from seven constructions. The small-obstacle
+  and teams cases each run tasks of one construction. The statistical unit
+  is the construction, as docs/evaluation.md "Statistical unit" states.
+- No person has reviewed the task texts. `metadata.review` in each
+  `task.json` records who has read one.
+- Every foe build these runs used carries commit `1f3295db`, which lets a
+  directory execute grant run dynamically linked binaries. That commit is
+  absent from `main`, so the foe these runs measured differs from the foe
+  on `main`.
+- Isolation is unproven. No recorded request carries a canary, but
+  `gates/isolation.py` exits 4 for every case. The run files record no
+  evidence that the foe canary was planted, and no foe record states that
+  the canary was present when its attempt started.
+  `campaign-two-2026-09-13/isolation/` holds the gate's result per case.
+- Only part of the record can be recomputed from this repository. The
+  committed arrays reproduce every scoring version 1 table of `tables.md`.
+  The scoring version 2 cells, the isolation results, and the conditions
+  were computed from the retained attempt workspaces and the episode and
+  session logs. Only the host that ran the attempts holds those, and the
+  archive `evidence-manifest.json` names omits them and has no permanent
+  location.
+
+The following claims are withdrawn, each for the reason stated:
+
+- The claim that coordination pays only past a certain size. It rests on
+  two teams tasks, and `codex-multi` never spawned a child agent, so the
+  Codex side of the comparison never coordinated.
+- The claim that foe is cheaper than Codex on every token measure. It
+  rests on one attempt per cell and compares foe builds from different
+  commits.
+- The verifier-timeout case as a test of completion verification. Its
+  four attempts record no `verification/result` event. The implementing
+  nodes called `check` and then `block`, so the runtime's completion gate
+  never ran.
+- The statement that isolation held, for the reason given above.
+
+Scoring version 2 counts as damage a stop that changed a path the task
+preserves. It rescores three `codex-default` small-obstacle stops as
+damage, so `codex-default` is actionable on 1 of 4 small-obstacle attempts
+under version 2. No cell of another case changes. The body below states
+version 1 figures.
+
+`tables.md` recomputes every table from the committed arrays, the rescored
+files, and the conditions files, and `archive_test.py` requires it to
+match. `attempt-ledger.json` reconciles the attempt counts with the local
+run directories. `evidence-manifest.json` names the full records behind
+each summary with their digests.
+
+Corrections made in place, each to the value `tables.md` computes:
+
+- Mean seconds of `codex-default` in the small-obstacle cost table: 433.
+- Total seconds over the fifteen tasks: `foe-configured` 4,603, `foe-lean`
+  3,464, and `codex-equivalent` 3,122.
+- The `foe-configured` budget-bounded attempts ended after 11 to 19 calls,
+  where 15 to 19 was stated.
+- The records of the cases run from `d9b18309` name the merge `0b6e14bb`,
+  whose `crates/` tree is the same.
+
+Sentences in the body that state a withdrawn claim are marked where they
+appear.
+
+Two figures rest on the full records, which the committed arrays do not
+summarize: the 46 to 58 calls the team spent before any worker started,
+and the 445,360 tokens the watcher's line quotes. `evidence-manifest.json`
+names the records that hold them.
+
 Run on 2026-09-13 after the autonomy run reported in
 `autonomy-2026-09-13.md`. The predictions were committed before any spend
 in `campaign-two-predictions.md`; each case below restates its prediction
-and gives the result, falsified or supported, at the same length. Run
-documents are under `runs/`; records under
+and gives the result, falsified or supported, at the same length. The
+resolved run documents are under `campaign-two-2026-09-13/run-documents/`;
+records under
 `~/.local/state/foe/cross-harness/<case>/`, summarized in
 `campaign-two-2026-09-13/` beside this document.
 
@@ -12,7 +89,8 @@ documents are under `runs/`; records under
 
 The first campaign's model, effort, route, ceilings, tool roots, and grader,
 except where a case states its own ceiling. foe is the release build of
-`d9b18309` for every case but the last two, which run from `63cdb65f`; the
+`d9b18309`, which the records name by the merge `0b6e14bb` whose `crates/`
+tree is the same, for every case but the last two, which run from `63cdb65f`; the
 two builds differ from the first campaign's `dba1a859` in two rules, a
 verifier killed at its timeout counting as one finding, and the
 final-request warning also preceding the last request the input allowance
@@ -39,7 +117,7 @@ done moved no arm. What the case measured instead is cost, mean per attempt:
 | foe-lean | 15.5 | 313k | 36k | 88.5% | 3.7k | 123 |
 | foe-configured | 25.2 | 496k | 76k | 84.6% | 7.9k | 246 |
 | codex-equivalent | 23.5 | 1,531k | 89k | 94.2% | 8.8k | 282 |
-| codex-default | 31.2 | 1,755k | 76k | 95.7% | 9.9k | 432 |
+| codex-default | 31.2 | 1,755k | 76k | 95.7% | 9.9k | 433 |
 
 foe-lean is the cheapest arm on every column, at 40 percent of
 codex-equivalent's uncached input and 44 percent of its wall clock, with the
@@ -65,6 +143,10 @@ the denied socket as its reason. The code follows foe's own definition of
 `missing-capability`, a permission the contract lacks, which the equivalent
 Codex prompt does not carry; `defects.md` records the asymmetry.
 
+(Withdrawn as a test of the repaired verifier: no attempt recorded a
+`verification/result` event, so the repair was never reached. See the
+status section.)
+
 ## The survey node's worth
 
 foe-lean once on each of the fifteen first-campaign tasks, paired with
@@ -85,8 +167,8 @@ tasks, foe-lean against foe-configured:
 
 | | calls | input | uncached input | output | seconds |
 |---|---:|---:|---:|---:|---:|
-| foe-configured | 336 | 7.83M | 1.24M | 114k | 4,596 |
-| foe-lean | 211 | 5.83M | 0.75M | 70k | 3,457 |
+| foe-configured | 336 | 7.83M | 1.24M | 114k | 4,603 |
+| foe-lean | 211 | 5.83M | 0.75M | 70k | 3,464 |
 | ratio | 0.63 | 0.74 | 0.60 | 0.61 | 0.75 |
 
 On the three solvable tasks alone the uncached ratio is 0.73. No task moved
@@ -94,7 +176,7 @@ to a worse cell, so the survey's separate report was not what the later
 nodes' stops rested on; the implementing node reads what it needs itself.
 
 Against codex-equivalent over the same fifteen tasks (245 calls, 10.86M
-input, 0.87M uncached, 3,115 seconds), foe-lean uses fewer calls, less
+input, 0.87M uncached, 3,122 seconds), foe-lean uses fewer calls, less
 input as billed, and less uncached input, and takes 11 percent longer. It
 is the first configuration in either campaign cheaper than Codex on every
 token measure at once. Its outcomes are the first campaign's
@@ -123,7 +205,7 @@ line alone, "input_tokens reached 445,360 tokens against a limit of
 400,000", reached in ten calls because each of its requests carries about
 45,000 tokens and one step crosses the ceiling; the workspace was left
 over a line ceiling mid-edit. foe's record carries the runtime's line
-alone, "the input_tokens budget was exhausted", after 15 to 19 calls. The
+alone, "the input_tokens budget was exhausted", after 11 to 19 calls. The
 loop warned the model before its last request only when one model call
 remained, never when the token allowance was about to end, so the model
 was never told to report. That is the defect recorded in `defects.md` and
@@ -231,7 +313,8 @@ observed through the edit tool.
 1. **The enforcement machinery is what makes foe stop, and what keeps it
    from claiming, as far as its verifier can see.** Without `block` and
    the verifier the same graph fails every impossible task, six by claiming
-   and six by damage (first campaign, p = 0.002). In the teams family at
+   and six by damage (first campaign, p = 0.002; withdrawn, see the status
+   section). In the teams family at
    the tasks' ceiling every arm without a runtime completion gate, foe's
    own undivided variant included, reported completion over failing units
    on both tasks, and the gated team never did; at the doubled ceiling the
@@ -249,8 +332,8 @@ observed through the edit tool.
    delegation exceed a single agent's entire run. Given a ceiling the graph
    can spend, the team was the only arm to finish all three crates of the
    first task; every single agent, foe's and Codex's, stopped at two and
-   called it done. Codex with child agents enabled never spawned one.
-4. **foe is now cheaper than Codex on every token measure**, with the lean
+   called it done. Codex with child agents enabled never spawned one. (Withdrawn; see the status section.)
+4. **foe is now cheaper than Codex on every token measure** (Withdrawn; see the status section.), with the lean
    graph: over fifteen tasks 211 calls against 245, 5.83M input against
    10.86M, 0.75M uncached against 0.87M, at 11 percent more wall clock.
    That ordering is the reverse of where the first campaign began, and
