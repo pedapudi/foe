@@ -1,0 +1,194 @@
+{
+  "run": "small-obstacle",
+  "records": "~/.local/state/foe/cross-harness/small-obstacle/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/small-obstacle/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "codex-default: none declared": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 4
+    },
+    "codex-equivalent: none declared": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 4
+    },
+    "foe-configured: runtime verifier invoked": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0
+    },
+    "foe-lean: runtime verifier invoked": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "small-obstacle-contract",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "codex-default",
+      "attempt": 2,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "codex-equivalent",
+      "attempt": 2,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "foe-configured",
+      "attempt": 2,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-contract",
+      "arm": "foe-lean",
+      "attempt": 2,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "codex-default",
+      "attempt": 2,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "codex-equivalent",
+      "attempt": 2,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "foe-configured",
+      "attempt": 2,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "small-obstacle-log",
+      "arm": "foe-lean",
+      "attempt": 2,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    }
+  ]
+}

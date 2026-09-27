@@ -1,0 +1,1014 @@
+{
+  "run": "autonomy",
+  "records": "~/.local/state/foe/cross-harness/autonomy/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/autonomy/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "codex-default: none declared": {
+      "attempts": 11,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 11
+    },
+    "codex-default: wait entered": {
+      "attempts": 4,
+      "reached": 4,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "codex-equivalent: none declared": {
+      "attempts": 11,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 11
+    },
+    "codex-equivalent: wait entered": {
+      "attempts": 4,
+      "reached": 4,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "foe-ablated: stop mechanism absent": {
+      "attempts": 11,
+      "reached": 11,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "foe-ablated: stop mechanism absent and wait entered": {
+      "attempts": 4,
+      "reached": 4,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "foe-configured: runtime verifier invoked": {
+      "attempts": 11,
+      "reached": 3,
+      "not_reached": 8,
+      "none_declared": 0
+    },
+    "foe-configured: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 1,
+      "not_reached": 3,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c54-48f4-70e0-aea8-2741397e2592 (root): command `cargo fmt --all && checks/run.sh` ended by a signal, exit 130 after 316361 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c54-48f4-70e0-aea8-2741397e2592 (root): command `cargo fmt --all && checks/run.sh` ended by a signal, exit 130 after 316361 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c69-1322-72d0-be41-5c6874f4888c (root): command `./checks/run.sh` ended with exit 1 after 3804 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent 01a09c69-1322-72d0-be41-5c6874f4888c (root): command `./checks/run.sh` ended with exit 1 after 12709 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c69-1322-72d0-be41-5c6874f4888c (root): command `./checks/run.sh` ended with exit 1 after 3804 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent 01a09c69-1322-72d0-be41-5c6874f4888c (root): command `./checks/run.sh` ended with exit 1 after 12709 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "agent ep_3e2aae77 (implement): command `set +e\n/usr/bin/timeout 5s /usr/bin/bash checks/run.sh\nstatus=$?\nrm -f checks...` ended by timeout, exit 124 after 5029 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_3e2aae77 (implement): check call was killed at its timeout, exit none after 120022 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_556a6d8f (assess): command `timeout 5s checks/run.sh` ended with exit 1 after 212 ms, within step 1's 1000 ms",
+        "agent ep_556a6d8f (assess): check call ended 19 findings, exit 0 after 133 ms; the suite did not stop in the wait",
+        "agent ep_807170f3 (repair): command `checks/run.sh` exited 0 after 304 ms; the suite did not stop in the wait",
+        "agent ep_807170f3 (repair): check call ended 0 findings, exit 0 after 305 ms; the suite did not stop in the wait"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_3e2aae77 (implement): command `set +e\n/usr/bin/timeout 5s /usr/bin/bash checks/run.sh\nstatus=$?\nrm -f checks...` ended by timeout, exit 124 after 5029 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_3e2aae77 (implement): check call was killed at its timeout, exit none after 120022 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_556a6d8f (assess): command `timeout 5s checks/run.sh` ended with exit 1 after 212 ms, within step 1's 1000 ms",
+            "agent ep_556a6d8f (assess): check call ended 19 findings, exit 0 after 133 ms; the suite did not stop in the wait",
+            "agent ep_807170f3 (repair): command `checks/run.sh` exited 0 after 304 ms; the suite did not stop in the wait",
+            "agent ep_807170f3 (repair): check call ended 0 findings, exit 0 after 305 ms; the suite did not stop in the wait"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_3942e1bf (implement): check call was killed at its timeout, exit none after 120016 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_3942e1bf (implement): check call was killed at its timeout, exit none after 120016 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c82-920e-7171-b52e-250cebbfa659 (root): command `/usr/bin/bash checks/run.sh` ended by a signal, exit 130 after 19838 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c82-920e-7171-b52e-250cebbfa659 (root): command `/usr/bin/bash checks/run.sh` ended by a signal, exit 130 after 19838 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c80-f618-7612-93fe-34c8e9b227e2 (root): command `/usr/bin/bash checks/run.sh` ended by a signal, exit 130 after 61377 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c80-f618-7612-93fe-34c8e9b227e2 (root): command `/usr/bin/bash checks/run.sh` ended by a signal, exit 130 after 61377 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "agent ep_ee7b7ee3 (implement): check call was killed at its timeout, exit none after 120020 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_eeb9fe9f (assess): check call ended 19 findings, exit 0 after 768 ms; the suite did not stop in the wait",
+        "agent ep_2b9e0334 (repair): command `timeout 3s /usr/bin/bash checks/run.sh` ended by timeout, exit 124 after 3011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_2b9e0334 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 304 ms; the suite did not stop in the wait",
+        "agent ep_2b9e0334 (repair): check call ended 0 findings, exit 0 after 293 ms; the suite did not stop in the wait"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_ee7b7ee3 (implement): check call was killed at its timeout, exit none after 120020 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_eeb9fe9f (assess): check call ended 19 findings, exit 0 after 768 ms; the suite did not stop in the wait",
+            "agent ep_2b9e0334 (repair): command `timeout 3s /usr/bin/bash checks/run.sh` ended by timeout, exit 124 after 3011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_2b9e0334 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 304 ms; the suite did not stop in the wait",
+            "agent ep_2b9e0334 (repair): check call ended 0 findings, exit 0 after 293 ms; the suite did not stop in the wait"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_9b239206 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 510039 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_9b239206 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_9b239206 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 510039 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_9b239206 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c90-9819-7db2-b33f-11caeecef07d (root): command `./checks/run.sh` ended with exit 1 after 216727 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c90-9819-7db2-b33f-11caeecef07d (root): command `./checks/run.sh` ended with exit 1 after 216727 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c8e-aaaa-7261-b382-e8d073a56c2d (root): command `checks/run.sh` ended with exit 1 after 66665 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c8e-aaaa-7261-b382-e8d073a56c2d (root): command `checks/run.sh` ended with exit 1 after 66665 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "agent ep_579878af (survey): command `set +e\n/usr/bin/timeout --kill-after=1s 3s /usr/bin/bash checks/run.sh\nstatus...` ended with exit 1 after 213 ms, within step 1's 1000 ms",
+        "agent ep_43f64e2a (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 10011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+        "agent ep_43f64e2a (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+        "agent ep_2104618b (assess): command `timeout 5s checks/run.sh; code=$?; echo \"checks_exit=$code\"; exit 0` exited 0 after 212 ms; the suite did not stop in the wait",
+        "agent ep_2104618b (assess): check call ended 19 findings, exit 0 after 134 ms; the suite did not stop in the wait",
+        "agent ep_d9114144 (repair): command `timeout 5s /usr/bin/bash checks/run.sh; status=$?; echo \"status=$status\"` exited 0 after 5017 ms; the suite did not stop in the wait",
+        "agent ep_d9114144 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 335 ms; the suite did not stop in the wait",
+        "agent ep_d9114144 (repair): check call ended 0 findings, exit 0 after 365 ms; the suite did not stop in the wait",
+        "agent ep_d9114144 (repair): check call ended 0 findings, exit 0 after 355 ms; the suite did not stop in the wait"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_579878af (survey): command `set +e\n/usr/bin/timeout --kill-after=1s 3s /usr/bin/bash checks/run.sh\nstatus...` ended with exit 1 after 213 ms, within step 1's 1000 ms",
+            "agent ep_43f64e2a (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 10011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+            "agent ep_43f64e2a (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+            "agent ep_2104618b (assess): command `timeout 5s checks/run.sh; code=$?; echo \"checks_exit=$code\"; exit 0` exited 0 after 212 ms; the suite did not stop in the wait",
+            "agent ep_2104618b (assess): check call ended 19 findings, exit 0 after 134 ms; the suite did not stop in the wait",
+            "agent ep_d9114144 (repair): command `timeout 5s /usr/bin/bash checks/run.sh; status=$?; echo \"status=$status\"` exited 0 after 5017 ms; the suite did not stop in the wait",
+            "agent ep_d9114144 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 335 ms; the suite did not stop in the wait",
+            "agent ep_d9114144 (repair): check call ended 0 findings, exit 0 after 365 ms; the suite did not stop in the wait",
+            "agent ep_d9114144 (repair): check call ended 0 findings, exit 0 after 355 ms; the suite did not stop in the wait"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": true,
+      "evidence": [
+        "1 verification/result calls in the normalized trajectory",
+        "agent ep_1cb4a194 (root): runtime verification failed after 120015 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+        "agent ep_cbf7b203 (implement): command `set +e; timeout 2s checks/run.sh; status=$?; rm -f checks-wait.log; exit \"$st...` ended by timeout, exit 124 after 2018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+        "agent ep_cbf7b203 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": true,
+          "evidence": [
+            "1 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_1cb4a194 (root): runtime verification failed after 120015 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+            "agent ep_cbf7b203 (implement): command `set +e; timeout 2s checks/run.sh; status=$?; rm -f checks-wait.log; exit \"$st...` ended by timeout, exit 124 after 2018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read",
+            "agent ep_cbf7b203 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09ca1-6146-7252-866c-caa11a7d8f79 (root): command `checks/run.sh` ended with exit 1 after 86105 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09ca1-6146-7252-866c-caa11a7d8f79 (root): command `checks/run.sh` ended with exit 1 after 86105 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": true,
+      "evidence": [
+        "agent 01a09c9d-06b4-7383-930e-e3aa22f59a37 (root): command `checks/run.sh` ended by a signal, exit 130 after 233660 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent 01a09c9d-06b4-7383-930e-e3aa22f59a37 (root): command `checks/run.sh` ended by a signal, exit 130 after 233660 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "agent ep_18e2c149 (implement): command `set +e\n/usr/bin/timeout 3s /usr/bin/bash checks/run.sh\nstatus=$?\nrm -f checks...` ended by timeout, exit 124 after 3022 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+        "agent ep_18e2c149 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+        "agent ep_90c5d44f (assess): check call ended 19 findings, exit 0 after 143 ms; the suite did not stop in the wait",
+        "agent ep_d6c90202 (repair): command `set +e\n/usr/bin/timeout 3s /usr/bin/bash checks/run.sh\nstatus=$?\nprintf 'boun...` exited 0 after 3015 ms; the suite did not stop in the wait",
+        "agent ep_d6c90202 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 293 ms; the suite did not stop in the wait",
+        "agent ep_d6c90202 (repair): check call ended 0 findings, exit 0 after 284 ms; the suite did not stop in the wait"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_18e2c149 (implement): command `set +e\n/usr/bin/timeout 3s /usr/bin/bash checks/run.sh\nstatus=$?\nrm -f checks...` ended by timeout, exit 124 after 3022 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+            "agent ep_18e2c149 (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+            "agent ep_90c5d44f (assess): check call ended 19 findings, exit 0 after 143 ms; the suite did not stop in the wait",
+            "agent ep_d6c90202 (repair): command `set +e\n/usr/bin/timeout 3s /usr/bin/bash checks/run.sh\nstatus=$?\nprintf 'boun...` exited 0 after 3015 ms; the suite did not stop in the wait",
+            "agent ep_d6c90202 (repair): command `/usr/bin/bash checks/run.sh` exited 0 after 293 ms; the suite did not stop in the wait",
+            "agent ep_d6c90202 (repair): check call ended 0 findings, exit 0 after 284 ms; the suite did not stop in the wait"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_2a6e25e5 (implement): command `checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+        "agent ep_2a6e25e5 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_2a6e25e5 (implement): command `checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+            "agent ep_2a6e25e5 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    }
+  ]
+}

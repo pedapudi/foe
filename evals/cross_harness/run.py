@@ -8,7 +8,8 @@ agent finishes a task that can be finished and stops on one that cannot. A
 family has its own arms, and an arm is one harness in one configuration:
 
     autonomy   foe-configured   the survey, implement, assess, repair graph of contracts/graphs.py
-               foe-ablated      the same graph without the `block` tool and without verifiers
+               foe-ablated      the same graph without the `block` tool, the instruction to call it, and verifiers
+               foe-unverified   the same graph without verifiers; `block` and the instruction to call it stay
                foe-lean         the same graph without the survey node; the implementing node reads the workspace itself
                foe-as-shipped   the built-in coding workflow, `--config builtin:coding`
                codex-equivalent Codex CLI with the graph's four phases stated in the prompt
@@ -53,6 +54,11 @@ task of the teams family it also carries `units`, each unit's verdict as
 `tasks/teams.py` leaves in the materialized root's grader directory, and
 null when no grade left one.
 For every other task `units` is null.
+The record's `scoring_version` is the `tasks/protocol.py` SCORING_VERSION
+its `classification` was computed under. Its `condition` states whether the
+attempt reached the condition its arm's control tests, as
+`conditions.py` computes it, so that the gate "Mechanism exercised" of
+docs/evaluation.md can report apart an attempt that did not.
 
 The runner takes one run document, a JSON file, and launches nothing
 without `--confirm-spend`:
@@ -203,8 +209,13 @@ binary resolves it from the passwd database, and no argument or
 environment value moves it, so the document key `foe_config_dir` names it
 for a test that must leave the real directory untouched. The runner
 passes nothing about the file to foe and removes it once the attempts
-have ended. `gates/isolation.py` searches every recorded request for both
-sentences after the run.
+have ended. After planting it, the runner reads the file back and records
+its path and SHA-256 in the run file under `canaries.foe_config.planted`,
+and it refuses the run when the file does not hold the sentence. Before
+each foe attempt it reads the file again and records whether it still
+holds the sentence as the attempt's `foe_canary_present`, which is null
+for a Codex attempt. `gates/isolation.py` searches every recorded request
+for both sentences after the run.
 
 The runner calls a real model and spends real credit, so without
 `--confirm-spend` it prints every value the document resolved to and every
@@ -227,6 +238,7 @@ execute, and refuses the run by name when the program is found.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import keyword
 import os
@@ -250,6 +262,7 @@ for directory in (EVALS, HERE, HERE / "arms", HERE / "contracts", HERE / "gates"
     sys.path.insert(0, str(directory))
 
 import codex_arm  # noqa: E402
+import conditions  # noqa: E402
 import feature_removal  # noqa: E402
 import foe_arm  # noqa: E402
 import foe_build  # noqa: E402
@@ -395,6 +408,7 @@ ARMS: dict[str, tuple[Arm, ...]] = {
     "autonomy": (
         Arm("foe-configured", "foe", "document", "configured"),
         Arm("foe-ablated", "foe", "document", "ablated"),
+        Arm("foe-unverified", "foe", "document", "unverified"),
         Arm("foe-lean", "foe", "document", "lean"),
         Arm("foe-as-shipped", "foe", "builtin", "builtin:coding"),
         Arm("codex-equivalent", "codex", "codex", "equivalent"),
@@ -803,6 +817,29 @@ def plant_foe_canary(config_dir: Path, sentence: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(sentence + "\n", encoding="utf-8")
     return path
+
+
+def planted_foe_canary(path: Path, sentence: str) -> dict[str, str]:
+    """The planted foe canary read back from `path`: its path and the SHA-256 of its bytes.
+
+    A file that does not hold `sentence` is refused by path, because a run
+    whose canary is absent cannot show that foe left the file unread.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"the foe canary {path} cannot be read back after planting: {exc}") from exc
+    if data != (sentence + "\n").encode("utf-8"):
+        raise ValueError(f"the foe canary {path} does not hold the run's sentence after planting")
+    return {"path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def foe_canary_present(path: Path, sentence: str) -> bool:
+    """Whether the foe canary at `path` still holds `sentence`; an unreadable file does not."""
+    try:
+        return path.read_text(encoding="utf-8") == sentence + "\n"
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def remove_foe_canary(path: Path, sentence: str) -> bool:
@@ -1367,8 +1404,7 @@ def foe_document(arm: Arm, task: protocol.Task, workspace: Path, check: Path, to
             workspace,
             check,
             budget,
-            ablated=arm.variant == "ablated",
-            lean=arm.variant == "lean",
+            variant=arm.variant,
             root_files=root_files,
             write_roots=roots or graphs.WRITE_ROOTS,
             execute=execute,
@@ -1741,8 +1777,13 @@ def provider_outage(result: ArmResult) -> str | None:
     return None
 
 
-def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected, arm: Arm, attempt: int) -> dict[str, Any]:
-    """Materialize, run, normalize, grade, and classify one attempt, and return its record."""
+def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected, arm: Arm, attempt: int, foe_canary: tuple[Path, str] | None = None) -> dict[str, Any]:
+    """Materialize, run, normalize, grade, and classify one attempt, and return its record.
+
+    `foe_canary` is the planted foe canary's path and sentence. A foe
+    attempt records whether the file still holds the sentence before the
+    arm starts, and False when the run planted none.
+    """
     task = entry.task
     attempt_dir = attempt_path(settings.out, task.name, arm.name, attempt)
     root = attempt_dir / "root"
@@ -1773,6 +1814,9 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         "conformance": None,
         "grade": None,
         "classification": None,
+        "scoring_version": protocol.SCORING_VERSION,
+        "condition": None,
+        "foe_canary_present": None,
         "infrastructure_error": None,
     }
     if record["not_applicable"] is not None:
@@ -1788,6 +1832,8 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         record["ended_ms"] = foe_arm.now_ms()
         return record
     make_check_directories(workspace)
+    if arm.harness == "foe":
+        record["foe_canary_present"] = foe_canary is not None and foe_canary_present(*foe_canary)
     before = snapshot(workspace)
     try:
         result = run_arm(settings, arm, task, workspace, attempt_dir)
@@ -1814,6 +1860,7 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         record["grader_paths_named"] = grader_paths_named(record["trajectory"], root)
         # A provider outage measures the model service, so it replaces the classification of an attempt that would otherwise be read as a stop.
         record["infrastructure_error"] = record["infrastructure_error"] or provider_outage(result)
+        record["condition"] = conditions.condition_reached(record, task)
     try:
         protocol.materialize(entry.directory, root, protocol.GRADER)
     except (OSError, ValueError) as exc:
@@ -1830,7 +1877,7 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
             # The grade ran, but its per-unit record cannot be read; the attempt measured no unit verdict.
             record["infrastructure_error"] = record["infrastructure_error"] or f"the fan-out grade left an unreadable units record: {exc}"
     if record["infrastructure_error"] is None:
-        record["classification"] = protocol.classify(task, reported, graded)
+        record["classification"] = protocol.classify(task, reported, graded, scoring_version=record["scoring_version"])
     record["ended_ms"] = foe_arm.now_ms()
     return record
 
@@ -2043,6 +2090,11 @@ def main(argv: list[str] | None = None) -> int:
         foe_canary = plant_foe_canary(document.foe_config_dir, settings.canaries[FOE_CONFIG_CANARY])
     except (ValueError, OSError) as exc:
         return refuse(str(exc))
+    try:
+        planted = planted_foe_canary(foe_canary, settings.canaries[FOE_CONFIG_CANARY])
+    except ValueError as exc:
+        remove_foe_canary(foe_canary, settings.canaries[FOE_CONFIG_CANARY])
+        return refuse(str(exc))
     write_json(
         run_file,
         {
@@ -2052,7 +2104,12 @@ def main(argv: list[str] | None = None) -> int:
             "provenance": provenance,
             "canaries": {
                 CODEX_CONFIG_CANARY: {"sentence": settings.canaries[CODEX_CONFIG_CANARY], "placement": f"{codex_arm.CONFIG_CANARY_NAME} in the fresh CODEX_HOME of every Codex attempt"},
-                FOE_CONFIG_CANARY: {"sentence": settings.canaries[FOE_CONFIG_CANARY], "path": str(foe_canary), "placement": f"{CANARY_FILE} in foe's configuration directory {document.foe_config_dir}, removed once the attempts have ended"},
+                FOE_CONFIG_CANARY: {
+                    "sentence": settings.canaries[FOE_CONFIG_CANARY],
+                    "path": str(foe_canary),
+                    "placement": f"{CANARY_FILE} in foe's configuration directory {document.foe_config_dir}, removed once the attempts have ended",
+                    "planted": planted,
+                },
             },
             "arms": [arm.name for arm in arms],
             "tasks": [entry.task.name for entry in tasks],
@@ -2066,7 +2123,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for attempt, entry, arm in pending:
             print(f"cross harness: attempt {attempt}, {entry.task.name}, {arm.name}", file=sys.stderr, flush=True)
-            record = run_attempt(settings, provenance, entry, arm, attempt)
+            record = run_attempt(settings, provenance, entry, arm, attempt, (foe_canary, settings.canaries[FOE_CONFIG_CANARY]))
             write_json(record_path(settings.out, entry.task.name, arm.name, attempt), record)
             if record["not_applicable"] is not None:
                 print(f"cross harness: {entry.task.name} under {arm.name} is not applicable: {record['not_applicable']}", file=sys.stderr, flush=True)

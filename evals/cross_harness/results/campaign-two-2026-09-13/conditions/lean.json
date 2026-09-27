@@ -1,0 +1,246 @@
+{
+  "run": "lean",
+  "records": "~/.local/state/foe/cross-harness/lean/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/lean/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "foe-lean: runtime verifier invoked": {
+      "attempts": 11,
+      "reached": 3,
+      "not_reached": 8,
+      "none_declared": 0
+    },
+    "foe-lean: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_81eeca1d (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_81eeca1d (implement): check call was killed at its timeout, exit none after 120019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_81eeca1d (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_81eeca1d (implement): check call was killed at its timeout, exit none after 120019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_c14fcf91 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 531976 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_c14fcf91 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_c14fcf91 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 531976 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_c14fcf91 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_aa8f1db9 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_aa8f1db9 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_48e2feb5 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+        "agent ep_48e2feb5 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_48e2feb5 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+            "agent ep_48e2feb5 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    }
+  ]
+}

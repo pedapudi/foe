@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -488,18 +489,17 @@ class Planning(Harness):
         self.assertEqual(status, run.NOTHING_LAUNCHED, err)
         self.assertResolved(out, "source root", str(checkout))
         # A relative default foe with no checkout above the document falls back to the current directory's checkout.
-        with mock.patch.object(run.Path, "cwd", return_value=self.root):
+        # The case needs no checkout above the scratch directory, and another process on a shared
+        # host can create a `.git` entry there, so entries outside the scratch directory are hidden.
+        real_exists = Path.exists
+        above = set(self.root.resolve().parents)
+
+        def exists(path: Path, *args: Any, **kwargs: Any) -> bool:
+            return False if path.name == run.GIT_ENTRY and path.parent in above else real_exists(path, *args, **kwargs)
+
+        with mock.patch.object(run.Path, "cwd", return_value=self.root), mock.patch.object(Path, "exists", exists):
             status, _, err = self.main([str(self.document(harnesses=None))])
         self.assertEqual(status, run.NOTHING_LAUNCHED)
-        # The premise is that no ancestor of the scratch directory holds a git entry. A stray one in
-        # the system temporary directory has broken this test twice; name it rather than fail obscurely.
-        # This half needs no checkout above the scratch directory. Another
-        # process on the host can put one there, and one running this
-        # evaluation transiently does, so the premise is checked rather than
-        # assumed and the case is skipped when the host does not meet it.
-        stray = next((d for d in Path(self.root).parents if (d / run.GIT_ENTRY).exists()), None)
-        if stray is not None:
-            self.skipTest(f"{stray} holds a {run.GIT_ENTRY} entry, so a scratch directory beneath it resolves to a checkout")
         self.assertIn("key harnesses.foe is absent, and neither the document's directory", err)
 
     def test_the_family_is_read_from_the_tasks_and_a_mixed_selection_is_refused(self) -> None:
@@ -937,6 +937,12 @@ class Pieces(unittest.TestCase):
             ablated = run.foe_document(run.arm_by_name("autonomy", "foe-ablated"), self.task, workspace, check)
             self.assertEqual(ablated["name"], "autonomy-ablated")
             self.assertNotIn("block", ablated["tools"])
+            # docs/evaluation.md "Arms": the verifier-only arm keeps `block` and drops only the verifier.
+            unverified = run.foe_document(run.arm_by_name("autonomy", "foe-unverified"), self.task, workspace, check)
+            self.assertEqual(unverified["name"], "autonomy-unverified")
+            self.assertIn("block", unverified["tools"])
+            self.assertNotIn("done_when", unverified)
+            self.assertEqual(unverified["tools"], document["tools"])
             teams_task = run.protocol.Task.from_dict({**self.task.to_dict(), "family": "teams", "class_name": "coherent"})
             sequential = run.foe_document(run.arm_by_name("teams", "foe-sequential"), teams_task, workspace, check)
             self.assertEqual(sequential["name"], "teams-sequential")
@@ -1687,6 +1693,76 @@ class Gates(Harness):
         self.assertEqual(status, run.NOTHING_LAUNCHED)
         self.assertResolved(out, "foe config dir", str(Path(run.DEFAULT_FOE_CONFIG_DIR).expanduser()))
         self.assertEqual(run.DEFAULT_FOE_CONFIG_DIR, "~/.config/foe")
+
+    def test_the_run_file_records_the_planted_canary_and_each_foe_attempt_records_whether_it_was_still_there(self) -> None:
+        """docs/evaluation.md "Qualification evidence", isolation: a canary the run cannot show it planted fails qualification, so the run records the evidence."""
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "codex-default"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        item = json.loads((self.out / run.RUN_FILE).read_text(encoding="utf-8"))["canaries"][run.FOE_CONFIG_CANARY]
+        digest = hashlib.sha256((item["sentence"] + "\n").encode("utf-8")).hexdigest()
+        self.assertEqual(item["planted"], {"path": item["path"], "sha256": digest})
+        self.assertIs(self.record("foe-configured")["foe_canary_present"], True)
+        self.assertIsNone(self.record("codex-default")["foe_canary_present"])
+
+    def test_a_canary_that_does_not_read_back_refuses_the_run_and_a_missing_one_is_recorded_absent(self) -> None:
+        config_dir = self.root / "foe-config"
+        sentence = "This sentence is the foe config isolation canary 44444444-4444-4444-8444-444444444444; a model request that carries it was built from a file the harness must never read."
+        planted = run.plant_foe_canary(config_dir, sentence)
+        self.assertEqual(run.planted_foe_canary(planted, sentence)["sha256"], hashlib.sha256((sentence + "\n").encode("utf-8")).hexdigest())
+        self.assertTrue(run.foe_canary_present(planted, sentence))
+        planted.write_text("changed\n", encoding="utf-8")
+        self.assertFalse(run.foe_canary_present(planted, sentence))
+        with self.assertRaises(ValueError) as caught:
+            run.planted_foe_canary(planted, sentence)
+        self.assertIn(f"the foe canary {planted} does not hold the run's sentence after planting", str(caught.exception))
+        planted.unlink()
+        self.assertFalse(run.foe_canary_present(planted, sentence))
+        with self.assertRaises(ValueError):
+            run.planted_foe_canary(planted, sentence)
+        # A run whose canary vanishes after it was read back records it absent on the attempt.
+        read_back = run.planted_foe_canary
+
+        def read_back_then_remove(path: Path, text: str) -> dict[str, str]:
+            planted = read_back(path, text)
+            path.unlink()
+            return planted
+
+        with mock.patch.object(run, "planted_foe_canary", side_effect=read_back_then_remove):
+            status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        self.assertIs(self.record("foe-configured")["foe_canary_present"], False)
+
+
+class Scoring(Harness):
+    """docs/evaluation.md "Scoring versions" and gate "Mechanism exercised": each record names its scoring version and the condition its arm's control tests."""
+
+    def test_the_record_names_the_scoring_version_its_classification_used(self) -> None:
+        seen: list[int] = []
+        classify = run.protocol.classify
+
+        def recording(*args: Any, **keys: Any) -> str:
+            seen.append(keys["scoring_version"])
+            return classify(*args, **keys)
+
+        with mock.patch.object(run.protocol, "classify", side_effect=recording):
+            status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        record = self.record("foe-configured")
+        self.assertEqual(record["scoring_version"], run.protocol.SCORING_VERSION)
+        self.assertEqual(seen, [run.protocol.SCORING_VERSION])
+
+    def test_the_record_states_whether_the_arm_reached_its_condition(self) -> None:
+        """The docs/evaluation.md gate "Mechanism exercised": the fake foe logs no verification, so the configured arm did not reach its condition and the unverified arm did."""
+        status, _, err = self.main(self.argv("--confirm-spend", arms=["foe-configured", "foe-unverified", "foe-ablated", "codex-default"]))
+        self.assertEqual(status, run.EVALUATED, err)
+        configured = self.record("foe-configured")["condition"]
+        self.assertEqual((configured["condition"], configured["reached"]), (run.conditions.VERIFIER_INVOKED, False))
+        unverified = self.record("foe-unverified")["condition"]
+        self.assertEqual((unverified["condition"], unverified["reached"]), (run.conditions.VERIFIER_ABSENT, True))
+        ablated = self.record("foe-ablated")["condition"]
+        self.assertEqual((ablated["condition"], ablated["reached"]), (run.conditions.STOP_ABSENT, True))
+        codex = self.record("codex-default")["condition"]
+        self.assertEqual((codex["condition"], codex["reached"]), (run.conditions.NONE_DECLARED, None))
 
 
 if __name__ == "__main__":

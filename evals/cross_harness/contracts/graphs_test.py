@@ -99,6 +99,15 @@ def events(episode: Path) -> list[dict[str, Any]]:
         return [json.loads(line) for line in handle if line.strip()]
 
 
+def verifications(episode: Path) -> int:
+    """The `verification/result` events in the episode's log and in every child episode's log beneath it."""
+    count = 0
+    for log in sorted(episode.rglob("episode.jsonl")):
+        with log.open(encoding="utf-8") as handle:
+            count += sum(1 for line in handle if line.strip() and json.loads(line)["type"] == "verification/result")
+    return count
+
+
 def outcome(episode: Path) -> dict[str, Any]:
     ends = [event for event in events(episode) if event["type"] == "episode/end"]
     return ends[-1]["data"]["outcome"]
@@ -313,8 +322,9 @@ def scripted(workspace: Path, assessment: str, survey_reads: int = 1) -> tuple[h
 def every_document(workspace: Path, check: Path) -> dict[str, dict[str, Any]]:
     documents = {
         "autonomy": graphs.autonomy(workspace, check, BUDGET, task="Probe."),
-        "autonomy-ablated": graphs.autonomy(workspace, check, BUDGET, ablated=True, task="Probe."),
-        "autonomy-lean": graphs.autonomy(workspace, check, BUDGET, lean=True, task="Probe."),
+        "autonomy-ablated": graphs.autonomy(workspace, check, BUDGET, "ablated", task="Probe."),
+        "autonomy-unverified": graphs.autonomy(workspace, check, BUDGET, "unverified", task="Probe."),
+        "autonomy-lean": graphs.autonomy(workspace, check, BUDGET, "lean", task="Probe."),
         "autonomy-root-files": graphs.autonomy(workspace, check, BUDGET, root_files=True, task="Probe."),
     }
     for variant in graphs.TEAMS_VARIANTS:
@@ -440,18 +450,65 @@ class Shape(unittest.TestCase):
         self.assertEqual(graphs.delegation_report()["properties"]["units"]["maxItems"], graphs.WORKER_EPISODES)
 
     def test_the_ablated_variant_holds_no_block_and_no_verifier(self) -> None:
-        document = graphs.autonomy(self.workspace, self.check, BUDGET, ablated=True)
+        document = graphs.autonomy(self.workspace, self.check, BUDGET, "ablated")
+        self.assertEqual(document["name"], "autonomy-ablated")
         self.assertNotIn("done_when", document)
         for path, contract in contracts(document):
             self.assertNotIn("block", contract["tools"], path)
             self.assertNotIn("block", json.dumps(contract["instructions"]), path)
             self.assertNotIn("verify", contract.get("done_when", {}), path)
         for name, node in nodes(document).items():
-            self.assertNotIn("verify", node, name)
-            self.assertNotIn("retries", node, name)
+            for key in graphs.NODE_VERIFIER_KEYS:
+                self.assertNotIn(key, node, f"{name}: {key}")
             self.assertIn("returns", node["model"]["done_when"], name)
         self.assertEqual({name: node["model"]["tools"] for name, node in nodes(document).items()}, {name: [t for t in tools if t != "block"] for name, tools in AUTONOMY_TOOLS.items()})
         self.assertEqual(nodes(document)["assess"]["branches"], {"accept": [], "repair": ["repair"]})
+        self.assertEqual(document["budget"]["max_episodes"], 1 + len(nodes(document)), "without a verifier each node fires once")
+
+    def test_the_unverified_variant_differs_from_the_configured_one_in_the_verifier_keys_alone(self) -> None:
+        """docs/evaluation.md "Arms": testing the verifier alone keeps the available outcomes and the stopping instructions identical.
+
+        With the keys `verify`, `retries`, and `max_fires` removed from every
+        node, `done_when` from the root, and the name and
+        `budget.max_episodes` from both, the two documents are equal; the
+        tools of every contract and every instruction string are identical
+        before any removal.
+        """
+        configured = graphs.autonomy(self.workspace, self.check, BUDGET, task="Probe.")
+        unverified = graphs.autonomy(self.workspace, self.check, BUDGET, "unverified", task="Probe.")
+        self.assertEqual(unverified["name"], "autonomy-unverified")
+        self.assertIn("done_when", configured)
+        self.assertNotIn("done_when", unverified)
+        self.assertEqual(dict(contracts(configured)).keys(), dict(contracts(unverified)).keys())
+        for (path, ours), (_, theirs) in zip(sorted(contracts(configured), key=lambda item: item[0]), sorted(contracts(unverified), key=lambda item: item[0])):
+            self.assertEqual(ours["tools"], theirs["tools"], path)
+            self.assertEqual(ours["instructions"], theirs["instructions"], path)
+        self.assertIn(graphs.BLOCK, nodes(unverified)["implement"]["model"]["tools"])
+        self.assertIn("call `block`", nodes(unverified)["implement"]["model"]["instructions"]["20-contract"])
+
+        def stripped(document: dict[str, Any]) -> dict[str, Any]:
+            document = json.loads(json.dumps(document))
+            for node in nodes(document).values():
+                for key in graphs.NODE_VERIFIER_KEYS:
+                    node.pop(key, None)
+            document.pop("done_when", None)
+            document.pop("name")
+            document["budget"].pop("max_episodes")
+            return document
+
+        self.assertEqual(stripped(configured), stripped(unverified))
+        for name, node in nodes(unverified).items():
+            for key in graphs.NODE_VERIFIER_KEYS:
+                self.assertNotIn(key, node, f"{name}: {key}")
+        # The episode ceiling counts the firings that remain: one per node.
+        self.assertEqual(unverified["budget"]["max_episodes"], 1 + len(nodes(unverified)))
+        self.assertEqual(configured["budget"]["max_episodes"], 1 + 1 + graphs.VERIFIED_FIRES + 2 * graphs.TERMINAL_FIRES)
+
+    def test_an_unknown_autonomy_variant_is_refused_by_name(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            graphs.autonomy(self.workspace, self.check, BUDGET, "parallel")
+        self.assertIn("variant is 'parallel'", str(caught.exception))
+        self.assertIn("unverified", str(caught.exception))
 
     def test_the_delegate_is_told_to_grant_workers_the_directories_the_check_writes(self) -> None:
         """A worker spawned with its unit's directories alone cannot run the check, whose build writes `target`."""
@@ -462,7 +519,7 @@ class Shape(unittest.TestCase):
         self.assertIn("plus the directories the check writes, `/w/target` and `/w/.check-tmp`", nodes(whole)["delegate"]["model"]["instructions"]["10-role"])
 
     def test_the_lean_variant_drops_the_survey_and_keeps_the_verifiers(self) -> None:
-        document = graphs.autonomy(self.workspace, self.check, BUDGET, lean=True)
+        document = graphs.autonomy(self.workspace, self.check, BUDGET, "lean")
         graph = nodes(document)
         self.assertEqual(document["name"], "autonomy-lean")
         self.assertEqual(list(graph), ["implement", "assess", "repair"])
@@ -763,6 +820,42 @@ class Fired(unittest.TestCase):
             episode, served = self.run_document(Path(tmp), "alone", teams, "accept")
             self.assertEqual(fired(episode), ["survey", "implement-alone"])
             self.assertEqual(reservations(episode), [40, 38], "each firing reserved the root's whole remainder")
+
+    def test_the_configured_document_invokes_the_runtime_verifier_and_the_unverified_one_never_does_while_block_stays_callable(self) -> None:
+        """docs/evaluation.md "Arms" and gate "Mechanism exercised": the control reaches the condition it tests.
+
+        Under `configured` the accept path records at least one
+        `verification/result` event. Under `unverified` the same scripted
+        path records none, and an implementing node that calls `block` is
+        offered the tool and ends the workflow blocked.
+        """
+        if not os.access(FOE, os.X_OK):
+            self.skipTest(f"{FOE} is not built")
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace, check = materialize(Path(tmp))
+            configured = graphs.autonomy(workspace, check, BUDGET, task="Probe.")
+            episode, _ = self.run_document(Path(tmp), "configured", configured, "accept")
+            self.assertGreaterEqual(verifications(episode), 1, "the runtime verifier ran under configured")
+            unverified = graphs.autonomy(workspace, check, BUDGET, "unverified", task="Probe.")
+            episode, _ = self.run_document(Path(tmp), "unverified", unverified, "accept")
+            self.assertEqual(fired(episode), ["survey", "implement", "assess"])
+            self.assertEqual(verifications(episode), 0, "no verifier is declared under unverified")
+            offered: list[list[str]] = []
+            accept, _ = scripted(workspace, "accept")
+
+            def block_on_implement(request: dict[str, Any]) -> list[dict[str, Any]]:
+                if "Implement the task in the workspace" not in request["system"]:
+                    return accept(request)
+                offered.append([tool["name"] for tool in request["tools"]])
+                return runtime_responses.call("stop", "block", {"code": "goal-unreachable", "message": "The goal cannot be reached."}) + runtime_responses.done("tool")
+
+            path = graphs.write(unverified, Path(tmp) / "documents" / "unverified-block.json")
+            status, episode = host_runtime.run(FOE, path, Path(tmp) / "logs" / "unverified-block", block_on_implement)
+            self.assertEqual(status, 2, outcome(episode))
+            self.assertEqual(outcome(episode), {"kind": "blocked", "code": "goal-unreachable", "message": "The goal cannot be reached."})
+            self.assertEqual(len(offered), 1)
+            self.assertIn("block", offered[0])
+            self.assertEqual(verifications(episode), 0)
 
 
 class Divided(unittest.TestCase):

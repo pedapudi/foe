@@ -1,0 +1,130 @@
+{
+  "run": "verifier-timeout",
+  "records": "~/.local/state/foe/cross-harness/verifier-timeout/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/verifier-timeout/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "foe-configured: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_b73fbbd0 (implement): command `checks/run.sh` ended with no exit status after 300019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_b73fbbd0 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+        "agent ep_b73fbbd0 (implement): check call was killed at its timeout, exit none after 120011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_b73fbbd0 (implement): command `checks/run.sh` ended with no exit status after 300019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_b73fbbd0 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
+            "agent ep_b73fbbd0 (implement): check call was killed at its timeout, exit none after 120011 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_ee7332c8 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_ee7332c8 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_b09ff81e (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_b09ff81e (implement): check call was killed at its timeout, exit none after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "agent ep_02bb7972 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120015 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+        "agent ep_02bb7972 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": true,
+          "evidence": [
+            "agent ep_02bb7972 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120015 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
+            "agent ep_02bb7972 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+          ]
+        }
+      ]
+    }
+  ]
+}

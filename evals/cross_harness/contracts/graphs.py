@@ -58,9 +58,22 @@ tool from its assessing node for the same reason; its team workflow gives it
 to a read-only surveyor, but that surveyor is a spawned child whose block
 reaches a lead that can respond, not a graph node whose block is the end.
 
-The ablated autonomy variant removes the `block` tool from every node and
-every verifier declaration, so a run under it can show what those two
-mechanisms contribute. The teams variant `undivided` leaves the survey only
+A document holds two mechanisms that can be switched off one at a time.
+The stopping mechanism is the `block` tool together with the instruction
+that tells a node when to call it. The verifying mechanism is the `check`
+named under `verify` on a node, with the `retries` and `max_fires` that its
+findings admit, and under `done_when` at the root. The autonomy variants
+differ only in these switches and in the survey node:
+
+    configured   both mechanisms and the survey node
+    unverified   the stopping mechanism without the verifying one; tools,
+                 instructions, branches, and budgets equal `configured`
+                 except `budget.max_episodes`, which counts only the
+                 firings that remain
+    ablated      neither mechanism
+    lean         both mechanisms without the survey node
+
+The teams variant `undivided` leaves the survey only
 the `alone` label and drops the three nodes of the divide path; `sequential`
 keeps the graph and caps concurrency at one.
 
@@ -97,6 +110,9 @@ BLOCK = "block"
 WRITE_ROOTS: tuple[str, ...] = ("crates", "docs", "examples")
 EXECUTE_ROOTS: tuple[str, ...] = ("/bin", "/usr/bin", "/usr/local/bin")
 TEAMS_VARIANTS: tuple[str, ...] = ("configured", "undivided", "sequential")
+AUTONOMY_VARIANTS: tuple[str, ...] = ("configured", "ablated", "unverified", "lean")
+# The keys the verifying mechanism adds to a model node; at the root it adds `done_when`.
+NODE_VERIFIER_KEYS: tuple[str, ...] = ("verify", "retries", "max_fires")
 WORKER = "worker"
 
 # How many times findings from the root verifier re-fire the completing
@@ -374,13 +390,18 @@ def _check_def(check: Path, seconds: int) -> dict[str, Any]:
     }
 
 
-def _instructions(role: str, block: bool) -> dict[str, str]:
-    contract = f"{_CONTRACT} {_BLOCK}" if block else _CONTRACT
+def _instructions(role: str, stopping: bool) -> dict[str, str]:
+    contract = f"{_CONTRACT} {_BLOCK}" if stopping else _CONTRACT
     return {"10-role": role, "20-contract": contract}
 
 
 class _Shape:
-    """What every node of one document shares: the workspace, the check, the grants, and whether `block` is present."""
+    """What every node of one document shares: the workspace, the check, the grants, and the two mechanisms.
+
+    `stopping` places the `block` tool and the instruction to call it on
+    every node that can change the workspace. `verified` names the check as
+    the verifier on every node declared verified and at the root.
+    """
 
     def __init__(
         self,
@@ -389,14 +410,16 @@ class _Shape:
         limits: dict[str, int],
         write: list[str],
         execute: Sequence[str],
-        block: bool,
+        stopping: bool,
+        verified: bool,
     ) -> None:
         self.workspace = workspace
         self.check = check
         self.limits = limits
         self.write = write
         self.execute = [str(root) for root in execute]
-        self.block = block
+        self.stopping = stopping
+        self.verified = verified
 
     def root_write(self) -> list[str]:
         """The document's write grant: the task's write roots and the directories a check writes into."""
@@ -419,7 +442,7 @@ class _Shape:
         return roots + extra
 
     def tools(self, names: Sequence[str]) -> list[str]:
-        return [name for name in names if self.block or name != BLOCK]
+        return [name for name in names if self.stopping or name != BLOCK]
 
     def contract(self, name: str, role: str, tools: Sequence[str], returns: dict[str, Any], **budget: int) -> dict[str, Any]:
         """A child contract in the sense of docs/config.md `child_contracts`, within this document's ceiling.
@@ -451,11 +474,17 @@ class _Shape:
     def node(self, contract: dict[str, Any], follows: Sequence[str], *, verified: bool = False, **keys: Any) -> dict[str, Any]:
         """A model node; `verified` names the check as the node's verifier and admits the re-fires its findings cause."""
         node: dict[str, Any] = {"model": contract, "follows": list(follows)}
-        if verified and self.block:
+        if verified and self.verified:
             node["verify"] = CHECK
             node["retries"] = NODE_RETRIES
             node.setdefault("max_fires", VERIFIED_FIRES)
         node.update(keys)
+        if not self.verified:
+            # Every firing past the first is one a verifier's findings cause:
+            # a node's own verifier, or the root's re-firing the completing
+            # node. Without a verifier no node fires twice, so no node
+            # carries a `max_fires` and the episode ceiling counts one firing each.
+            node.pop("max_fires", None)
         return node
 
     def document(self, name: str, role: str, tools: Sequence[str], nodes: dict[str, Any], task: str, **budget: Any) -> dict[str, Any]:
@@ -472,7 +501,7 @@ class _Shape:
             "grants": {"read": [str(self.workspace)], "write": self.root_write(), "execute": list(self.execute)},
             "budget": {**self.limits, "max_episodes": 1 + fires, **budget},
         }
-        if self.block:
+        if self.verified:
             document["done_when"] = {"verify": CHECK, "retries": ROOT_RETRIES}
         document["workflow"] = {"nodes": nodes, "recovery": {"enabled": False}}
         document["task"] = task
@@ -480,7 +509,14 @@ class _Shape:
 
 
 def _shape(
-    workspace: Path, check: Path, budget: Mapping[str, Any], root_files: bool, write_roots: Sequence[str], execute: Sequence[str], block: bool
+    workspace: Path,
+    check: Path,
+    budget: Mapping[str, Any],
+    root_files: bool,
+    write_roots: Sequence[str],
+    execute: Sequence[str],
+    stopping: bool,
+    verified: bool,
 ) -> _Shape:
     workspace = _absolute(workspace, "workspace")
     check = _absolute(check, "check")
@@ -490,16 +526,15 @@ def _shape(
     for index, root in enumerate(write):
         if root in write[:index]:
             raise ValueError(f"write_roots entry {write_roots[index]!r} repeats an earlier entry")
-    return _Shape(workspace, check, _budget(budget), write, execute, block)
+    return _Shape(workspace, check, _budget(budget), write, execute, stopping, verified)
 
 
 def autonomy(
     workspace: Path,
     check: Path,
     budget: Mapping[str, Any],
-    ablated: bool = False,
+    variant: str = "configured",
     *,
-    lean: bool = False,
     root_files: bool = False,
     write_roots: Sequence[str] = WRITE_ROOTS,
     execute: Sequence[str] = EXECUTE_ROOTS,
@@ -511,14 +546,27 @@ def autonomy(
     `seconds`, with `input_tokens` and `output_tokens` optional. `root_files`
     widens the write grant from the listed `write_roots`, each a relative
     path to a directory below the workspace, to the workspace itself.
-    `ablated` removes `block` from every node and every verifier
-    declaration, including the root's. `lean` drops the survey node: the
-    implementing node reads the workspace itself, which saves one episode's
-    cold start at the price of the survey's separate report. `task` is the
-    task text; the run that uses the document supplies it, so the default is
-    a placeholder that states as much.
+    `task` is the task text; the run that uses the document supplies it, so
+    the default is a placeholder that states as much.
+
+    `variant` is one of AUTONOMY_VARIANTS. `configured` holds both
+    mechanisms. `unverified` removes the verifier keys from every node and
+    the root's `done_when`, and changes nothing else apart from the episode
+    ceiling, which counts the firings that remain; the `block` tool and the
+    instruction to call it stay, so a model under it can still reach every
+    outcome the configured document offers. `ablated` removes the `block`
+    tool, the instruction to call it, and every verifier declaration
+    together. A score under `ablated` therefore cannot attribute an effect
+    to the verifier, because the blocked outcome a task may require is
+    unavailable to the model; `unverified` is the arm that isolates the
+    verifier. `lean` drops the survey node: the implementing node reads the
+    workspace itself, which saves one episode's cold start at the price of
+    the survey's separate report.
     """
-    shape = _shape(workspace, check, budget, root_files, write_roots, execute, block=not ablated)
+    if variant not in AUTONOMY_VARIANTS:
+        raise ValueError(f"variant is {variant!r}; expected one of {', '.join(AUTONOMY_VARIANTS)}")
+    lean = variant == "lean"
+    shape = _shape(workspace, check, budget, root_files, write_roots, execute, stopping=variant != "ablated", verified=variant not in ("ablated", "unverified"))
     survey = shape.contract(
         "survey",
         "Read the task and the workspace before anything changes. Find the files the task names, the checks that cover them, "
@@ -565,7 +613,7 @@ def autonomy(
     if not lean:
         nodes = {"survey": shape.node(survey, ["task"]), **nodes}
     return shape.document(
-        "autonomy-ablated" if ablated else "autonomy-lean" if lean else "autonomy",
+        "autonomy" if variant == "configured" else f"autonomy-{variant}",
         "Run the declared workflow against the task in the workspace.",
         ("read", "grep", "edit", "bash", CHECK, "block"),
         nodes,
@@ -605,7 +653,7 @@ def teams(
         raise ValueError(f"max_concurrent is {max_concurrent!r}; expected a positive integer")
     if variant == "sequential":
         max_concurrent = 1
-    shape = _shape(workspace, check, budget, root_files, write_roots, execute, block=True)
+    shape = _shape(workspace, check, budget, root_files, write_roots, execute, stopping=True, verified=True)
     # The task's own shape reaches only the nodes that can end the workflow:
     # the value the run grades is the one the terminal node returned, and a
     # node in the middle of the graph still reports its work as a change.
