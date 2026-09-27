@@ -1,0 +1,1177 @@
+{
+ "instrument": "admission.py check",
+ "rule": "a task is admissible when its oracle-solved workspace passes the visible check on the host, inside a foe episode, and under the Codex sandbox; the four non-terminating tasks are qualified by hang-symmetry.json instead, because their check is built never to pass",
+ "command": "admission.py check --tasks tasks/foe-tree --task NAME (eleven times) --foe target/debug/foe --tool-root /usr/lib/cargo/bin/coreutils",
+ "foe_binary": {
+  "path": "target/debug/foe",
+  "sha256": "sha256:545ddffe8f1f3ce14007732936c6235c01f263c69bf5e813b83e48993170d845",
+  "built_from": "the crates/ tree of origin/main e1236889, which this branch does not change"
+ },
+ "admissible": 11,
+ "task_count": 11,
+ "finding": "Every task is admissible under a binary built from main's runtime once the foe episode may execute /usr/lib/cargo/bin/coreutils. On this host /usr/bin/mkdir, /usr/bin/sleep, and the other coreutils programs are links into that directory, and main's runtime checks an execute grant against the program the link resolves to. Without the grant the check suite's first mkdir ends with the shell's 'Permission denied', which the report without_tool_root records for all eleven tasks. The runtime needs no repair for admission: a run on such a host names the directory under tool_roots, and admission.py names it with --tool-root.",
+ "report": {
+  "schema_version": 1,
+  "command": "check",
+  "tasks_directory": "<worktree>/evals/cross_harness/tasks/foe-tree",
+  "foe_binary": "<worktree>/target/debug/foe",
+  "seconds_bound": 900,
+  "tool_roots": [
+   "/usr/lib/cargo/bin/coreutils"
+  ],
+  "wall_seconds": 118.6,
+  "counts": {
+   "admissible": 11,
+   "inadmissible": 0,
+   "changed": 0
+  },
+  "tasks": [
+   {
+    "task": "duplicate-grant-roots",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/duplicate-grant-roots",
+    "family": "autonomy",
+    "class_name": "solvable",
+    "oracle_solves_workspace": true,
+    "crates_checked": [
+     "foe-contract"
+    ],
+    "hidden_test_count": 15,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 9.5,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "question-identifier-in-message-text",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/question-identifier-in-message-text",
+    "family": "autonomy",
+    "class_name": "solvable",
+    "oracle_solves_workspace": true,
+    "crates_checked": [
+     "foe-team"
+    ],
+    "hidden_test_count": 18,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 18.8,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 1.6,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 1.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "correlation-as-inbox-source",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/correlation-as-inbox-source",
+    "family": "autonomy",
+    "class_name": "solvable",
+    "oracle_solves_workspace": true,
+    "crates_checked": [
+     "foe-team"
+    ],
+    "hidden_test_count": 18,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 18.9,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 1.6,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 1.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "ceiling-bound-feature",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/ceiling-bound-feature",
+    "family": "autonomy",
+    "class_name": "contradictory",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 11.7,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "ceiling-bound-feature-telemetry",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/ceiling-bound-feature-telemetry",
+    "family": "autonomy",
+    "class_name": "contradictory",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 11.5,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "frozen-interface-budget",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/frozen-interface-budget",
+    "family": "autonomy",
+    "class_name": "contradictory",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 1,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "frozen-interface-tool-defs",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/frozen-interface-tool-defs",
+    "family": "autonomy",
+    "class_name": "contradictory",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 1,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.4,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "inventory-regeneration-code",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/inventory-regeneration-code",
+    "family": "autonomy",
+    "class_name": "missing-capability",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 10.5,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.1,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "inventory-regeneration-context",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/inventory-regeneration-context",
+    "family": "autonomy",
+    "class_name": "missing-capability",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 10.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.1,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "inventory-regeneration-evidence",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/inventory-regeneration-evidence",
+    "family": "autonomy",
+    "class_name": "missing-capability",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 4.9,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.1,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   },
+   {
+    "task": "inventory-regeneration-workflow",
+    "directory": "<worktree>/evals/cross_harness/tasks/foe-tree/inventory-regeneration-workflow",
+    "family": "autonomy",
+    "class_name": "missing-capability",
+    "oracle_solves_workspace": false,
+    "crates_checked": [],
+    "hidden_test_count": 0,
+    "verdict": "admissible",
+    "reasons": [],
+    "environments": {
+     "host": {
+      "environment": "host",
+      "exit_status": 0,
+      "seconds": 10.3,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "foe": {
+      "environment": "foe",
+      "exit_status": 0,
+      "seconds": 0.2,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     },
+     "codex": {
+      "environment": "codex",
+      "exit_status": 0,
+      "seconds": 0.1,
+      "failing_count": 0,
+      "failing_tests": [],
+      "failing_hidden_tests": [],
+      "failing_unrelated_tests": [],
+      "note": null,
+      "output_tail": ""
+     }
+    }
+   }
+  ]
+ },
+ "without_tool_root": {
+  "foe_binary": {
+   "path": "~/git/foe/target/debug/foe",
+   "sha256": "sha256:d20d37d1f84b6611c728a8c26f0b48eb3cfe4b7eb77001488e6c3b3b39ca3ca1",
+   "built_from": "origin/main e1236889; the branch changes nothing outside evals/"
+  },
+  "report": {
+   "schema_version": 1,
+   "command": "check",
+   "tasks_directory": "~/git/foe/evals/cross_harness/tasks/foe-tree",
+   "foe_binary": "~/git/foe/target/debug/foe",
+   "seconds_bound": 900,
+   "wall_seconds": 132.4,
+   "counts": {
+    "admissible": 0,
+    "inadmissible": 11,
+    "changed": 0
+   },
+   "tasks": [
+    {
+     "task": "duplicate-grant-roots",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/duplicate-grant-roots",
+     "family": "autonomy",
+     "class_name": "solvable",
+     "oracle_solves_workspace": true,
+     "crates_checked": [
+      "foe-contract"
+     ],
+     "hidden_test_count": 15,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 11.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/duplicate-grant-roots/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.3,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "question-identifier-in-message-text",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/question-identifier-in-message-text",
+     "family": "autonomy",
+     "class_name": "solvable",
+     "oracle_solves_workspace": true,
+     "crates_checked": [
+      "foe-team"
+     ],
+     "hidden_test_count": 18,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 21.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/question-identifier-in-message-text/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 1.4,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "correlation-as-inbox-source",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/correlation-as-inbox-source",
+     "family": "autonomy",
+     "class_name": "solvable",
+     "oracle_solves_workspace": true,
+     "crates_checked": [
+      "foe-team"
+     ],
+     "hidden_test_count": 18,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 23.5,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/correlation-as-inbox-source/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 1.4,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "ceiling-bound-feature",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/ceiling-bound-feature",
+     "family": "autonomy",
+     "class_name": "contradictory",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 13.7,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/ceiling-bound-feature/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "ceiling-bound-feature-telemetry",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/ceiling-bound-feature-telemetry",
+     "family": "autonomy",
+     "class_name": "contradictory",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 13.5,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/ceiling-bound-feature-telemetry/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "frozen-interface-budget",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/frozen-interface-budget",
+     "family": "autonomy",
+     "class_name": "contradictory",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 1,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/frozen-interface-budget/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.3,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "frozen-interface-tool-defs",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/frozen-interface-tool-defs",
+     "family": "autonomy",
+     "class_name": "contradictory",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 1,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 0.3,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/frozen-interface-tool-defs/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.3,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "inventory-regeneration-code",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/inventory-regeneration-code",
+     "family": "autonomy",
+     "class_name": "missing-capability",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 12.4,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/inventory-regeneration-code/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "inventory-regeneration-context",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/inventory-regeneration-context",
+     "family": "autonomy",
+     "class_name": "missing-capability",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 11.6,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/inventory-regeneration-context/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "inventory-regeneration-evidence",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/inventory-regeneration-evidence",
+     "family": "autonomy",
+     "class_name": "missing-capability",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 5.5,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/inventory-regeneration-evidence/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    },
+    {
+     "task": "inventory-regeneration-workflow",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/inventory-regeneration-workflow",
+     "family": "autonomy",
+     "class_name": "missing-capability",
+     "oracle_solves_workspace": false,
+     "crates_checked": [],
+     "hidden_test_count": 0,
+     "verdict": "inadmissible",
+     "reasons": [
+      "the grader's oracle carries no solved workspace, so the check ran against the unsolved state",
+      "the foe check exited 1: no test named a failure, so a step other than a crate suite failed"
+     ],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 11.5,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 1,
+       "seconds": 0.2,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": "the scratch directory ~/.local/state/foe/cross-harness/qualification-2026-09-27/admission/scratch/inventory-regeneration-workflow/root/workspace/.check-tmp cannot be created\n/proc/self/fd/3: 7: mkdir: Permission denied\n"
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.1,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    }
+   ]
+  }
+ },
+ "comparison_with_evaluation_branch_binary": {
+  "foe_binary": {
+   "path": "~/git/foe/target/debug/foe",
+   "sha256": "sha256:6cd6fe2ec45bfe29f15b415abfa1f4b77fb17930166f500dca3caeb163900a39",
+   "built_from": "branch cross-harness-evaluation"
+  },
+  "report": {
+   "schema_version": 1,
+   "command": "check",
+   "tasks_directory": "~/git/foe/evals/cross_harness/tasks/foe-tree",
+   "foe_binary": "~/git/foe/target/debug/foe",
+   "seconds_bound": 900,
+   "wall_seconds": 12.7,
+   "counts": {
+    "admissible": 1,
+    "inadmissible": 0,
+    "changed": 0
+   },
+   "tasks": [
+    {
+     "task": "duplicate-grant-roots",
+     "directory": "~/git/foe/evals/cross_harness/tasks/foe-tree/duplicate-grant-roots",
+     "family": "autonomy",
+     "class_name": "solvable",
+     "oracle_solves_workspace": true,
+     "crates_checked": [
+      "foe-contract"
+     ],
+     "hidden_test_count": 15,
+     "verdict": "admissible",
+     "reasons": [],
+     "environments": {
+      "host": {
+       "environment": "host",
+       "exit_status": 0,
+       "seconds": 11.8,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "foe": {
+       "environment": "foe",
+       "exit_status": 0,
+       "seconds": 0.4,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      },
+      "codex": {
+       "environment": "codex",
+       "exit_status": 0,
+       "seconds": 0.3,
+       "failing_count": 0,
+       "failing_tests": [],
+       "failing_hidden_tests": [],
+       "failing_unrelated_tests": [],
+       "note": null,
+       "output_tail": ""
+      }
+     }
+    }
+   ]
+  }
+ }
+}

@@ -33,6 +33,14 @@ the task's reasons and in the `oracle_solves_workspace` field, so a reader
 can tell that verdict apart from a check a solved workspace still fails.
 
     admission.py check --tasks DIR [--task NAME]... [--foe PATH] [--out DIR]
+                       [--tool-root DIR]...
+
+The foe episode may execute programs under the system directories and the
+toolchain roots alone. A host whose system programs are links into another
+directory, as a coreutils package installed under `/usr/lib` makes them,
+fails the check there with a shell's `Permission denied`. `--tool-root`
+names such a directory, and the episode is granted read and execute on it.
+A run document names the same directory under `tool_roots`.
 
 The tool reads the task tree and writes nothing into it. The exit status is
 0 when every selected task is admissible, 1 when one is not, and 2 when the
@@ -393,7 +401,7 @@ def measure_codex(workspace: Path, seconds: int, codex: str = CODEX_COMMAND) -> 
     return _measure_process(CODEX, command, workspace, seconds)
 
 
-def episode_document(workspace: Path, wrapper: Path, seconds: int) -> dict[str, Any]:
+def episode_document(workspace: Path, wrapper: Path, seconds: int, extra_roots: Sequence[str] = ()) -> dict[str, Any]:
     """The version 4 file document of the scripted episode that runs the check once under a required sandbox.
 
     The workspace is granted execute as well as read and write, because a
@@ -401,7 +409,7 @@ def episode_document(workspace: Path, wrapper: Path, seconds: int) -> dict[str, 
     without that grant the suite ends with the status a shell gives a file
     it may not execute.
     """
-    roots = tool_roots()
+    roots = [*tool_roots(), *extra_roots]
     return {
         "version": 4,
         "name": "admission-check",
@@ -452,7 +460,7 @@ def read_check_result(log: Path, seconds: int, elapsed: float, status: int) -> M
     return Measurement(FOE, NO_RESULT_STATUS, elapsed, [], [], "", f"{log} holds no {CHECK_TOOL} result; the episode ended with status {status}")
 
 
-def measure_foe(workspace: Path, scratch: Path, binary: Path, seconds: int) -> Measurement:
+def measure_foe(workspace: Path, scratch: Path, binary: Path, seconds: int, extra_roots: Sequence[str] = ()) -> Measurement:
     """Run the check suite inside one scripted foe episode under a required sandbox, with no model.
 
     The episode calls the check tool once and then ends with a text
@@ -465,7 +473,7 @@ def measure_foe(workspace: Path, scratch: Path, binary: Path, seconds: int) -> M
     scratch.mkdir(parents=True, exist_ok=True)
     wrapper = write_wrapper(scratch / "check", workspace)
     config = scratch / "episode.json"
-    config.write_text(json.dumps(episode_document(workspace, wrapper, seconds), indent=2) + "\n", encoding="utf-8")
+    config.write_text(json.dumps(episode_document(workspace, wrapper, seconds, extra_roots), indent=2) + "\n", encoding="utf-8")
 
     def responder(request: dict[str, Any]) -> list[dict[str, Any]]:
         if any(message.get("role") == "tool" for message in request["messages"]):
@@ -566,6 +574,8 @@ class Settings:
     out: Path
     seconds: int
     codex: str = CODEX_COMMAND
+    # Directories the foe episode may also read and execute, from --tool-root.
+    extra_roots: tuple[str, ...] = ()
 
 
 def select_tasks(settings: Settings) -> list[Path]:
@@ -629,7 +639,7 @@ def check_task(task_dir: Path, settings: Settings, scratch: Path) -> TaskReport:
     report.crates = checked_crates(script.read_text(encoding="utf-8"), workspace_packages(workspace))
     report.measurements = {
         HOST: measure_host(workspace, settings.seconds),
-        FOE: measure_foe(workspace, scratch / FOE, settings.foe, settings.seconds),
+        FOE: measure_foe(workspace, scratch / FOE, settings.foe, settings.seconds, settings.extra_roots),
         CODEX: measure_codex(workspace, settings.seconds, settings.codex),
     }
     verdict_of(report)
@@ -669,6 +679,7 @@ def write_report(reports: Sequence[TaskReport], settings: Settings, seconds: flo
         "tasks_directory": str(settings.tasks),
         "foe_binary": str(settings.foe),
         "seconds_bound": settings.seconds,
+        "tool_roots": list(settings.extra_roots),
         "wall_seconds": round(seconds, 1),
         "counts": {verdict: sum(1 for report in reports if report.verdict == verdict) for verdict in VERDICTS},
         "tasks": [report.to_dict() for report in reports],
@@ -725,6 +736,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--out", default=DEFAULT_OUT, help="the directory the scratch roots and the report are written under")
     parser.add_argument("--seconds", type=int, default=DEFAULT_SECONDS, help="how long one environment's check may run before it is recorded as unfinished")
     parser.add_argument("--codex", default=CODEX_COMMAND, help="the Codex CLI command whose sandbox one environment uses")
+    parser.add_argument("--tool-root", action="append", default=[], help="an absolute directory the foe episode may also read and execute; repeatable")
     return parser.parse_args(list(argv))
 
 
@@ -738,7 +750,10 @@ def settings_of(arguments: argparse.Namespace) -> Settings:
         raise AdmissionError(f"--seconds is {arguments.seconds}; expected a positive number of seconds")
     if shutil.which(arguments.codex) is None:
         raise AdmissionError(f"{arguments.codex} is absent from the search path; --codex names the command whose sandbox one environment uses")
-    return Settings(Path(arguments.tasks).resolve(), tuple(arguments.task), binary, out, arguments.seconds, arguments.codex)
+    for root in arguments.tool_root:
+        if not Path(root).is_absolute() or not Path(root).is_dir():
+            raise AdmissionError(f"--tool-root {root} is not an absolute directory; it names a directory the foe episode may execute")
+    return Settings(Path(arguments.tasks).resolve(), tuple(arguments.task), binary, out, arguments.seconds, arguments.codex, tuple(arguments.tool_root))
 
 
 def main(argv: Sequence[str]) -> int:

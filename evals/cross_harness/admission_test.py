@@ -370,6 +370,13 @@ class EpisodeDocument(unittest.TestCase):
         self.assertEqual(document["tool_defs"]["check"]["timeout_seconds"], 900)
         self.assertGreater(document["budget"]["seconds"], 900)
 
+    def test_a_tool_root_is_granted_read_and_execute(self) -> None:
+        """A host whose system programs link into another directory names it with --tool-root, and the episode may execute it."""
+        document = admission.episode_document(Path("/scratch/root/workspace"), Path("/scratch/check"), 900, ["/usr/lib/cargo/bin/coreutils"])
+        self.assertIn("/usr/lib/cargo/bin/coreutils", document["grants"]["execute"])
+        self.assertIn("/usr/lib/cargo/bin/coreutils", document["grants"]["read"])
+        self.assertNotIn("/usr/lib/cargo/bin/coreutils", document["grants"]["write"])
+
     def test_the_wrapper_sets_only_the_four_variables_and_marks_an_absent_command(self) -> None:
         body = admission.wrapper_body(Path("/scratch/root/workspace"))
         self.assertEqual([line.split("=")[0] for line in body.split("\n")[:3]], ["PATH", "LANG", "TMPDIR"])
@@ -449,9 +456,19 @@ class Arguments(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             stderr = StringIO()
             with redirect_stderr(stderr):
-                status = admission.main(["check", "--tasks", temporary, "--foe", "/bin/sh", "--out", str(Path(temporary) / "out")])
+                # --codex names an executable by path, so the test holds on a host without the Codex CLI.
+                status = admission.main(["check", "--tasks", temporary, "--foe", "/bin/sh", "--codex", "/bin/sh", "--out", str(Path(temporary) / "out")])
             self.assertEqual(status, 2)
             self.assertIn("holds no task directory", stderr.getvalue())
+
+    def test_a_tool_root_that_is_not_an_absolute_directory_ends_the_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for root in ("relative/bin", str(Path(temporary) / "absent")):
+                stderr = StringIO()
+                with redirect_stderr(stderr):
+                    status = admission.main(["check", "--tasks", temporary, "--foe", "/bin/sh", "--codex", "/bin/sh", "--tool-root", root, "--out", str(Path(temporary) / "out")])
+                self.assertEqual(status, 2)
+                self.assertIn(f"--tool-root {root} is not an absolute directory", stderr.getvalue())
 
     def test_a_named_task_the_directory_lacks_ends_the_tool(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
