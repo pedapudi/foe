@@ -25,7 +25,9 @@ changing a required field requires a new log version.
 Before it launches a child, the parent writes two files into the child's
 directory: `config.json`, the child's configuration, and
 `child-launch.json`, the launch metadata that names the child and carries
-its effective budget, granted write roots, and process-boundary paths.
+its effective budget, granted write roots, and process-boundary paths. It
+also carries `home` when the parent resolved its home directory from `HOME`
+([models.md](models.md#where-credentials-live)).
 Neither file enters the log.
 
 An episode directory is self-contained. Copying it copies everything needed

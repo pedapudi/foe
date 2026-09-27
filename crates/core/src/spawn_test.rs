@@ -263,43 +263,47 @@ echo 'foe: grants.write: Not a directory' >&2
 exit 1
 "#;
 
-/// A stand-in child that records the home directory it was given, so that a
-/// test can read what the parent passed across the cleared environment.
+/// A stand-in child that records the environment's `HOME` and the launch
+/// metadata its parent wrote into its working directory.
 pub(crate) const HOME_REPORTING_CHILD: &str = r#"#!/bin/sh
 printf '%s' "${HOME-unset}" > "$(dirname "$0")/child-home.txt"
+cp child-launch.json "$(dirname "$0")/child-launch-seen.json"
 exit 1
 "#;
 
 /// docs/models.md "Where credentials live": a child starts with a cleared
-/// environment, which leaves
-/// nothing for the home directory to rest on where the passwd database holds
-/// no entry for the user. The parent carries `HOME` across so that a child
-/// resolves the same directory its parent did. Without it every child on such
-/// a host dies while it constructs itself, although the root episode runs.
+/// environment and reads no `HOME`. A home directory its parent resolved from
+/// `HOME`, because the user has no passwd entry, travels in the launch
+/// metadata instead, and a parent that found an entry passes nothing.
 #[tokio::test]
-async fn a_child_receives_the_home_directory_its_parent_reads() {
-    let dir = scratch("spawn", "child-home");
-    let expected = std::env::var("HOME").expect("the test environment names a home directory");
-    let spawner = process_spawner(
-        "ep_root",
-        dir.to_path_buf(),
-        parent_config(),
-        Arc::new(Lines::default()),
-        Arc::new(Router::new()),
-        Arc::new(Seen::default()),
-    )
-    .with_launcher(script(&dir, "home-foe.sh", HOME_REPORTING_CHILD));
-    let request = SpawnRequest {
-        contract: "worker".into(),
-        task: "t".into(),
-        context: SpawnContext::Fresh,
-        reserve: BudgetAmount::default(),
-        write: None,
-        call_id: "tc".into(),
-    };
-    spawner.spawn(request).unwrap().run.settle().await;
-    let seen = std::fs::read_to_string(dir.join("child-home.txt")).expect("the child recorded its home directory");
-    assert_eq!(seen, expected, "a child reads the home directory its parent did");
+async fn a_child_receives_a_home_directory_resolved_from_home_in_its_launch_metadata() {
+    for home in [Some(PathBuf::from("/srv/home/worker")), None] {
+        let dir = scratch("spawn", "child-home");
+        let spawner = process_spawner(
+            "ep_root",
+            dir.to_path_buf(),
+            parent_config(),
+            Arc::new(Lines::default()),
+            Arc::new(Router::new()),
+            Arc::new(Seen::default()),
+        )
+        .with_launcher(script(&dir, "home-foe.sh", HOME_REPORTING_CHILD))
+        .with_home(home.clone());
+        let request = SpawnRequest {
+            contract: "worker".into(),
+            task: "t".into(),
+            context: SpawnContext::Fresh,
+            reserve: BudgetAmount::default(),
+            write: None,
+            call_id: "tc".into(),
+        };
+        spawner.spawn(request).unwrap().run.settle().await;
+        let seen = std::fs::read_to_string(dir.join("child-home.txt")).expect("the child recorded its environment");
+        assert_eq!(seen, "unset", "a child's environment carries no HOME");
+        let launch = std::fs::read(dir.join("child-launch-seen.json")).expect("the child copied its launch metadata");
+        let launch: ChildLaunch = serde_json::from_slice(&launch).unwrap();
+        assert_eq!(launch.home, home);
+    }
 }
 
 /// docs/protocol.md "Children": a child that exits before `episode/end`

@@ -16,11 +16,11 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["net"] }
 async-trait.workspace = true
 sha2.workspace = true
-# The home directory comes from the passwd database, never from `HOME`.
+# The home directory comes from the passwd database. `HOME` is read only
+# where the database holds no entry for the user (src/paths.rs).
 nix = { version = "0.31", features = ["user"] }
 # TLS with the ring provider and Mozilla's roots compiled in. The system
-# certificate store is never read. No crate in this tree reads an
-# environment variable.
+# certificate store is never read, and no environment variable names one.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

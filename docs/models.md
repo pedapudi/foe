@@ -196,8 +196,11 @@ carries must be an absolute path to a directory that exists. When a run grants
 access to a credential file, its resolved permission records whether the home
 directory came from this fallback. The record is part of `episode/start`.
 Successful fallback prints no startup notice and adds no conversation message.
-A child episode starts with a cleared environment. Its parent carries `HOME`
-across so the child can use the same fallback.
+A child episode starts with a cleared environment and reads no `HOME`. When
+its parent resolved the home directory from `HOME`, the parent writes that
+directory into the child's `child-launch.json` as `home`, and the child uses
+it where the passwd database holds no entry. A parent that found an entry
+writes no `home`, and its child finds the same entry.
 
 A `model` block may omit its credential field. A provider that requires a
 credential then reads its convention file. `compatible-http` reads only an

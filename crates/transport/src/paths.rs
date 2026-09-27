@@ -8,6 +8,9 @@
 //! accounts in a directory service every lookup finds nothing, and refusing
 //! to run leaves nothing to fall back to. Where an entry exists it still
 //! decides, so the environment never overrides a database that answered.
+//! A child episode reads no environment: its parent passes the directory it
+//! resolved from `HOME` in the launch metadata, and [`inherit_home`] makes
+//! that directory stand for the missing entry instead.
 //!
 //! Below the home directory, `~/.config/foe/` holds the default model file
 //! and one credentials file per provider. Nothing else is looked up by
@@ -16,6 +19,10 @@
 use std::io;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// The home directory a parent resolved from `HOME`, set once at startup.
+static INHERITED: OnceLock<PathBuf> = OnceLock::new();
 
 /// Where a home directory came from, which the caller reports when it was
 /// not the passwd database.
@@ -31,9 +38,24 @@ pub fn home_source() -> Result<(PathBuf, HomeSource), String> {
     match nix::unistd::User::from_uid(uid) {
         Ok(Some(user)) if user.dir.is_absolute() => Ok((user.dir, HomeSource::Passwd)),
         Ok(Some(user)) => Err(format!("passwd entry for uid {uid} has a relative home directory {:?}", user.dir)),
-        Ok(None) => from_environment(uid),
+        Ok(None) => match INHERITED.get() {
+            Some(dir) => Ok((dir.clone(), HomeSource::Environment)),
+            None => from_environment(uid),
+        },
         Err(e) => Err(format!("reading the passwd entry for uid {uid}: {e}")),
     }
+}
+
+/// Makes `dir`, which a parent resolved from `HOME`, stand for a missing
+/// passwd entry in this process. An entry that exists still decides.
+pub fn inherit_home(dir: PathBuf) {
+    let _ = INHERITED.set(dir);
+}
+
+/// The home directory a child must be given, which is one resolved from
+/// `HOME`. A child finds a passwd entry itself wherever its parent did.
+pub fn home_for_child() -> Option<PathBuf> {
+    home_source().ok().filter(|(_, source)| *source == HomeSource::Environment).map(|(dir, _)| dir)
 }
 
 /// The home directory of the real user.
@@ -140,9 +162,11 @@ mod tests {
             assert!(refused.contains("Set HOME"), "it names what to do: {refused}");
         }
 
-        // This host records an entry, so the database decides and the
-        // environment is not consulted at all.
+        // This host records an entry, so the database decides and neither
+        // the environment nor an inherited directory is consulted.
+        inherit_home(dir.to_path_buf());
         assert_eq!(home_source().unwrap().1, HomeSource::Passwd);
+        assert_eq!(home_for_child(), None, "a child finds the entry itself");
     }
 
     #[test]
