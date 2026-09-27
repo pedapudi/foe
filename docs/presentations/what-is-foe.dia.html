@@ -324,8 +324,8 @@ li:has(> .dia-marker) { list-style: none; display: grid; grid-template-columns: 
       roots, executables, ports, child contracts. The kernel enforces the
       list — filesystem rules compiled per process, rather than conventions
       asked of the model.</p>
-      <p>There is <strong>no ambient authority</strong>: no environment variables read
-      anywhere, no search of the system path, no default network. What is
+      <p>There is <strong>no ambient authority</strong>: no environment variable read
+      except <code>HOME</code> for a user the passwd database lacks, no search of the system path, no default network. What is
       not granted does not exist for the run.</p>
       <p>Grants only <strong>narrow</strong> downward: a child episode, a tool process,
       a spawned executable each get a subset, never more.</p>

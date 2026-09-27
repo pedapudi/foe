@@ -85,7 +85,7 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
       <p>foe inverts it. A contract <em>declares</em> what the run may touch, and
       everything else does not exist for it:</p>
       <ul style="--dia-marker: '▸'; list-style: none;">
-        <li>no environment variable is read, anywhere,</li>
+        <li>no environment variable is read except <code>HOME</code>, and that only for a user the passwd database lacks,</li>
         <li>no search of the system path — executables by absolute path,</li>
         <li>no network unless a model endpoint or tool asks for it,</li>
         <li>no file outside the declared roots and fixed system paths.</li>
@@ -252,8 +252,8 @@ pre.plan b { color: var(--dia-accent); font-weight: 600; }
         <li>the <strong>interpreter</strong> its shebang line names — followed
         recursively if that is itself a script,</li>
         <li>the <strong>dynamic loader</strong> its ELF header names,</li>
-        <li>shared-library directories as <em>read-only</em> when every grant
-        names a file, because a library is loaded rather than executed.</li>
+        <li>shared-library directories as <em>read-only</em>, because a
+        library is loaded rather than executed.</li>
       </ul>
       <p>A directory in <code>grants.execute</code> is honored as a declared
       subtree grant — a usable starting breadth — but the vocabulary can
