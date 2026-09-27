@@ -40,7 +40,7 @@ states what it changed.
 Every foe build the recorded runs used also carried `1f3295db`, which lets
 a directory execute grant run dynamically linked binaries: the release
 build of `dba1a859` for the autonomy run of 2026-09-13, the build of
-`d9b18309` for campaign two, and the build of `63cdb65f` for its last two
+`d9b18309` for the enforcement-pressure cases, and the build of `63cdb65f` for its last two
 cases. Review rejected `1f3295db`, and `main` grants the loader's files
 exactly instead. The four commits are absent from `main`, so the foe those
 runs measured differs from the foe on `main` in this grant as well as in
@@ -306,8 +306,8 @@ document whose check outlives its limit against the built binary, and
 Bearing on the result: one foe-configured attempt of sixty is scored
 `wrong-stop` for this reason, and the record stands as scored. The run
 document `runs/verifier-timeout.json` re-runs the four non-terminating
-tasks under `foe-configured` with the repair, and campaign two reads those
-records beside the first campaign's.
+tasks under `foe-configured` with the repair, and the enforcement-pressure cases read
+those records beside the autonomy run's.
 
 ## The equivalent prompt does not carry foe's definition of `missing-capability`
 
@@ -324,7 +324,7 @@ contract lacks.
 Evidence: every foe-configured stop on a non-terminating task that the
 grader scored `wrong-stop` carries `missing-capability` with a reason that
 names the held lock or the denied socket: `waiting-check-suite` in the
-first campaign and in the verifier-timeout re-run, and
+autonomy run and in the verifier-timeout re-run, and
 `unreleased-lock-context` in the re-run. On the same tasks both Codex arms
 coded `goal-unreachable`. The non-terminating tasks accept
 `goal-unreachable`, `looping-tool-call`, and `verification-unsatisfiable`;
@@ -337,12 +337,12 @@ with `PHASES` in `run.py` and `DEFAULT_SCHEMA` in `arms/codex_arm.py`.
 Repair, for a later campaign and not for any run that has ended: the
 equivalent prompt carries the three definitions in foe's words, and a task
 whose obstacle is a permission the sandbox denies accepts
-`missing-capability`. Neither is applied to the first campaign or to
-campaign two, whose predictions were committed against the code sets as
+`missing-capability`. Neither is applied to the autonomy run or to
+the enforcement-pressure cases, whose predictions were committed against the code sets as
 they stand.
 
 Bearing on the result: the two foe-configured attempts scored `wrong-stop`
-in the first campaign are this disagreement and the hanging-verifier
+in the autonomy run are this disagreement and the hanging-verifier
 defect. Under a reading that accepts a `blocked` status with a true reason
 on the non-terminating tasks, a reading chosen after the run and reported
 as such, foe-configured is actionable on fourteen of fifteen in the first
@@ -357,8 +357,8 @@ and ended `exhausted` with the runtime's one line, "the input_tokens budget
 was exhausted", and nothing the model had learned.
 
 Evidence: `duplicate-grant-roots` under `foe-configured` in the
-budget-bounded case of campaign two, a 400,000-token ceiling below what
-every arm spent on the task in the first campaign. The episode ended after
+enforcement-pressure budget-bounded case, a 400,000-token ceiling below what
+every arm spent on the task in the autonomy run. The episode ended after
 19 requests and 418,009 input tokens, with the work under way and no report
 of what was done or what remained. The pre-registered prediction for the
 case named a report; the runtime could not produce one.

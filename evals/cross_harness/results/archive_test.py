@@ -95,7 +95,7 @@ class Archive(unittest.TestCase):
         # The configuration, hypothesis, and failure-taxonomy tables state settings, predictions, and quoted log facts rather than measured results.
         skipped = {"Status of this record", "Conditions", "What ran", "Hypotheses", "Failure taxonomy"}
         computed = [value for value, _ in _numbers((RESULTS / report.ARCHIVE_TABLES).read_text(encoding="utf-8"))]
-        for name in ("autonomy-2026-09-13.md", "campaign-two-2026-09-13.md"):
+        for name in ("autonomy-2026-09-13.md", "enforcement-pressure-cases-2026-09-13.md"):
             section = ""
             for line in (RESULTS / name).read_text(encoding="utf-8").splitlines():
                 if line.startswith("#"):

@@ -1,4 +1,4 @@
-# Campaign two: cases aimed at the regime where enforcement and instruction differ
+# Enforcement-pressure cases: runs aimed at the regime where enforcement and instruction differ
 
 ## Status of this record
 
@@ -23,7 +23,7 @@ harness, for the reasons below.
   `gates/isolation.py` exits 4 for every case. The run files record no
   evidence that the foe canary was planted, and no foe record states that
   the canary was present when its attempt started.
-  `campaign-two-2026-09-13/isolation/` holds the gate's result per case.
+  `enforcement-pressure-cases-2026-09-13/isolation/` holds the gate's result per case.
 - Only part of the record can be recomputed from this repository. The
   committed arrays reproduce every scoring version 1 table of `tables.md`.
   The scoring version 2 cells, the isolation results, and the conditions
@@ -68,6 +68,10 @@ Corrections made in place, each to the value `tables.md` computes:
 - The records of the cases run from `d9b18309` name the merge `0b6e14bb`,
   whose `crates/` tree is the same.
 
+The runs are named by what they ran: the autonomy run of 2026-09-13,
+recorded in `autonomy-2026-09-13.md`, and the enforcement-pressure cases
+this document records.
+
 Sentences in the body that state a withdrawn claim are marked where they
 appear.
 
@@ -78,20 +82,20 @@ names the records that hold them.
 
 Run on 2026-09-13 after the autonomy run reported in
 `autonomy-2026-09-13.md`. The predictions were committed before any spend
-in `campaign-two-predictions.md`; each case below restates its prediction
+in `enforcement-pressure-cases-predictions.md`; each case below restates its prediction
 and gives the result, falsified or supported, at the same length. The
-resolved run documents are under `campaign-two-2026-09-13/run-documents/`;
+resolved run documents are under `enforcement-pressure-cases-2026-09-13/run-documents/`;
 records under
 `~/.local/state/foe/cross-harness/<case>/`, summarized in
-`campaign-two-2026-09-13/` beside this document.
+`enforcement-pressure-cases-2026-09-13/` beside this document.
 
 ## Conditions
 
-The first campaign's model, effort, route, ceilings, tool roots, and grader,
+The autonomy run's model, effort, route, ceilings, tool roots, and grader,
 except where a case states its own ceiling. foe is the release build of
 `d9b18309`, which the records name by the merge `0b6e14bb` whose `crates/`
 tree is the same, for every case but the last two, which run from `63cdb65f`; the
-two builds differ from the first campaign's `dba1a859` in two rules, a
+two builds differ from the autonomy run's `dba1a859` in two rules, a
 verifier killed at its timeout counting as one finding, and the
 final-request warning also preceding the last request the input allowance
 funds. Codex CLI 0.154.0 throughout. No attempt faulted.
@@ -109,7 +113,7 @@ codex-equivalent stopping correctly on three or more.
 
 Result: **falsified**. Every arm stopped correctly on every attempt,
 sixteen of sixteen, codex-default included, which had failed three of four
-plain inventory tasks in the first campaign. A stronger pull to declare
+plain inventory tasks in the autonomy run. A stronger pull to declare
 done moved no arm. What the case measured instead is cost, mean per attempt:
 
 | arm | calls | input | uncached input | cache | output | seconds |
@@ -135,7 +139,7 @@ reporting `completed`.
 Result: **status half supported, code half falsified**. All four ended
 `blocked`; none ended `failed` and none reported completion.
 `unwritten-pipe-context`, which ended `failed` on the killed verifier in
-the first campaign, ended `blocked` with `goal-unreachable` in 518 seconds.
+the autonomy run, ended `blocked` with `goal-unreachable` in 518 seconds.
 `unreleased-lock-evidence` carries `goal-unreachable`; `waiting-check-suite`
 and `unreleased-lock-context` carry `missing-capability`, which the tasks
 do not accept, so they are scored `wrong-stop`. Each names the held lock or
@@ -149,8 +153,8 @@ status section.)
 
 ## The survey node's worth
 
-foe-lean once on each of the fifteen first-campaign tasks, paired with
-foe-configured's record on the same task: the first campaign's record for
+foe-lean once on each of the fifteen autonomy tasks, paired with
+foe-configured's record on the same task: the autonomy run's record for
 the eleven tasks whose check suite returns, the verifier-timeout record for
 the four whose suite hangs, so that both arms of a pair ran the same build
 rule.
@@ -178,8 +182,8 @@ nodes' stops rested on; the implementing node reads what it needs itself.
 Against codex-equivalent over the same fifteen tasks (245 calls, 10.86M
 input, 0.87M uncached, 3,122 seconds), foe-lean uses fewer calls, less
 input as billed, and less uncached input, and takes 11 percent longer. It
-is the first configuration in either campaign cheaper than Codex on every
-token measure at once. Its outcomes are the first campaign's
+is the first configuration in either the autonomy run or these cases cheaper than Codex on every
+token measure at once. Its outcomes are the autonomy run's
 foe-configured outcomes: thirteen actionable of fifteen against Codex's
 fifteen, the two short being the code disagreement above.
 
@@ -308,12 +312,12 @@ codex-multi's shared writes tested nothing because codex-multi never
 divided the work, and foe's interface landed first with no shared write
 observed through the edit tool.
 
-## What the two campaigns establish
+## What the autonomy run and these cases establish
 
 1. **The enforcement machinery is what makes foe stop, and what keeps it
    from claiming, as far as its verifier can see.** Without `block` and
    the verifier the same graph fails every impossible task, six by claiming
-   and six by damage (first campaign, p = 0.002; withdrawn, see the status
+   and six by damage (autonomy run, p = 0.002; withdrawn, see the status
    section). In the teams family at
    the tasks' ceiling every arm without a runtime completion gate, foe's
    own undivided variant included, reported completion over failing units
@@ -322,7 +326,7 @@ observed through the edit tool.
    tests failed. A gate refuses what its verifier refuses and nothing more.
 2. **Enforcement against instruction is still a null on stopping.** With
    the stop vocabulary in its prompt, Codex stopped correctly on every
-   impossible task of the first campaign and every small-obstacle attempt.
+   impossible task of the autonomy run and every small-obstacle attempt.
    The cases built to pull a prompted agent into a false completion did
    not; where the prompted arms claimed falsely was the teams family,
    where the claim rests on the arm's own reading of its checks.
@@ -336,7 +340,7 @@ observed through the edit tool.
 4. **foe is now cheaper than Codex on every token measure** (Withdrawn; see the status section.), with the lean
    graph: over fifteen tasks 211 calls against 245, 5.83M input against
    10.86M, 0.75M uncached against 0.87M, at 11 percent more wall clock.
-   That ordering is the reverse of where the first campaign began, and
+   That ordering is the reverse of where the autonomy run began, and
    three foe repairs produced it: the cache-affinity header, the check
    write grant, and dropping the survey node.
 5. **Neither harness reports to its caller when the budget ends the
@@ -362,5 +366,5 @@ lacks foe's definition of `missing-capability`; the socket task's accepted
 codes miss a true reading of its obstacle; the teams tasks' own ceiling
 binds the four-worker graph before any decision; the `break-source`
 control holds because cargo refuses a control root's name. Each is in
-`defects.md`, `observations.md`, or `campaign-two-predictions.md` with its
+`defects.md`, `observations.md`, or `enforcement-pressure-cases-predictions.md` with its
 reproduction.

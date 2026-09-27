@@ -2040,9 +2040,9 @@ ARCHIVE_RUNS: dict[str, dict[str, str]] = {
     },
     **{
         case: {
-            "array": f"campaign-two-2026-09-13/{case}.json",
-            "rescored": f"campaign-two-2026-09-13/rescored/{case}.json",
-            "conditions": f"campaign-two-2026-09-13/conditions/{case}.json",
+            "array": f"enforcement-pressure-cases-2026-09-13/{case}.json",
+            "rescored": f"enforcement-pressure-cases-2026-09-13/rescored/{case}.json",
+            "conditions": f"enforcement-pressure-cases-2026-09-13/conditions/{case}.json",
         }
         for case in ("small-obstacle", "verifier-timeout", "lean", "budget-bounded", "budget-bounded-warning", "teams-fan-out", "teams-fan-out-generous")
     },
@@ -2433,7 +2433,7 @@ def archive_markdown(results: Path, tasks: dict[str, dict[str, Any]] | None = No
         "# Tables of the dated campaigns",
         "",
         "`report.py --archive` writes this file from the committed arrays, the rescored files, and the conditions files under this directory, "
-        "and from the task directories under `tasks/foe-tree/`. Every figure of `autonomy-2026-09-13.md` and `campaign-two-2026-09-13.md` that "
+        "and from the task directories under `tasks/foe-tree/`. Every figure of `autonomy-2026-09-13.md` and `enforcement-pressure-cases-2026-09-13.md` that "
         "a table states is one of the figures below. Scoring version 1 is the cell each run computed; version 2 adds the rule that a stop "
         "which changed a path the task preserves is damage. Seconds are each attempt's recorded wall clock.",
         "",
@@ -2443,7 +2443,7 @@ def archive_markdown(results: Path, tasks: dict[str, dict[str, Any]] | None = No
     ]
     lines += _cells_table("Autonomy run", autonomy)
     for case in ("small-obstacle", "verifier-timeout", "lean", "budget-bounded", "budget-bounded-warning", "teams-fan-out", "teams-fan-out-generous"):
-        lines += _cells_table(f"Campaign two, {case}", runs[case])
+        lines += _cells_table(f"Enforcement-pressure cases, {case}", runs[case])
     lines += ["", "## Impossible tasks by class"]
     lines += _impossible_table("Autonomy run", autonomy)
     lines += _impossible_table("foe-lean against foe-configured's records on the same tasks", lean_pair)

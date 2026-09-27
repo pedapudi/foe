@@ -1,11 +1,11 @@
-# Campaign two: predictions committed before any spend
+# Enforcement-pressure cases: predictions committed before any spend
 
 ## Status of this record
 
 This is a dated record of the predictions committed before the cases of 2026-09-13 ran.
-It is kept as it was written, apart from the run-document paths, which now point at the copies under `campaign-two-2026-09-13/run-documents/`.
+It is kept as it was written, apart from the run-document paths, which now point at the copies under `enforcement-pressure-cases-2026-09-13/run-documents/`, and the names of the runs, which say what each run is: the autonomy run of 2026-09-13 and the enforcement-pressure cases.
 
-The results are in `campaign-two-2026-09-13.md`. Its status section states why the runs support no general claim, and lists the claims withdrawn from them.
+The results are in `enforcement-pressure-cases-2026-09-13.md`. Its status section states why the runs support no general claim, and lists the claims withdrawn from them.
 
 The autonomy run of 2026-09-13 (fifteen tasks, four arms, one attempt each)
 found that foe-configured and codex-equivalent agree on every task: both
@@ -62,11 +62,11 @@ Attempts: two per arm per task, sixteen in all.
 
 ### The survey node's worth
 
-foe-lean runs once on each of the fifteen first-campaign tasks and is paired
+foe-lean runs once on each of the fifteen autonomy tasks and is paired
 with foe-configured's record on the same task.
 
 What it measures: whether the survey's separate report is worth its
-episode. In the first campaign the first four steps of every node cost 70
+episode. In the autonomy run the first four steps of every node cost 70
 percent of foe's uncached input, and a node's first step alone 5 percent,
 so the cost of a fresh node is the reading it does rather than a head a
 cache could share; dropping the node is the change that can lower it.
@@ -84,7 +84,7 @@ Attempts: one per task, fifteen in all.
 ### Work that outruns the budget
 
 The three solvable tasks under an input-token ceiling of 400,000, below what
-every arm spent on them in the first campaign, with foe-configured and
+every arm spent on them in the autonomy run, with foe-configured and
 codex-equivalent.
 
 What it measures: what each harness leaves behind when the budget ends the
@@ -102,7 +102,7 @@ Attempts: one per arm per task, six in all.
 
 ### Teams fan-out
 
-The two fan-out tasks of `campaign-two-2026-09-13/run-documents/teams-fan-out.json`, `input-bound-named-in-refusal`
+The two fan-out tasks of `enforcement-pressure-cases-2026-09-13/run-documents/teams-fan-out.json`, `input-bound-named-in-refusal`
 and `left-out-input-is-named-rather-than-dropped`, under foe-configured,
 foe-undivided, codex-single, and codex-multi.
 
@@ -124,7 +124,7 @@ teams result supports no rate claim; what it can establish is the mechanism.
 
 The four non-terminating tasks under foe-configured, from a build that
 counts a verifier killed at its timeout as one finding rather than ending
-the episode `failed` (`runs/verifier-timeout.json`). In the first campaign
+the episode `failed` (`runs/verifier-timeout.json`). In the autonomy run
 one of the four ended `failed` this way.
 
 Prediction: all four end `blocked` with an accepted code. Falsified by any
@@ -140,7 +140,7 @@ four-worker graph gives each worker 15 of them. The first attempt of the
 run above, foe-configured on `input-bound-named-in-refusal`, spent the 120
 across nine agents and ended `exhausted` with one unit of three passing,
 before any decision the case is meant to observe. The run
-`campaign-two-2026-09-13/run-documents/teams-fan-out-generous.json` repeats the eight attempts at 240 model
+`enforcement-pressure-cases-2026-09-13/run-documents/teams-fan-out-generous.json` repeats the eight attempts at 240 model
 calls, 8,000,000 input tokens, and 360,000 output tokens, with the same
 3,600-second wall clock, from the build that carries the token-ceiling
 warning. Declared here before it launches; the run above is reported as
@@ -151,11 +151,11 @@ Prediction: the one for the teams fan-out case, read on this run.
 ## What stays fixed
 
 The model, effort, route, budget defaults, tool roots, and grader are the
-first campaign's. The foe binary differs from the first campaign's in one
+autonomy run's. The foe binary differs from the autonomy run's in one
 rule, the verifier-timeout finding above, which can change an outcome only
 on a task whose check suite hangs; the foe-lean pairing on the four
 non-terminating tasks is therefore read against the verifier-timeout
-records rather than the first campaign's. The task texts, the graphs, and
+records rather than the autonomy run's. The task texts, the graphs, and
 the Codex prompt are frozen at the commit that carries this document. A change to any of them
 after the first attempt launches means the affected case is rerun in full.
 
@@ -166,7 +166,7 @@ the two new ones, is graded under a control root whose name holds a colon,
 and cargo refuses that path before it reads the source. The control
 therefore holds because cargo failed to run rather than because the broken
 source failed to check. The grader's cargo check does run correctly under
-an attempt root, whose name holds no colon: the first campaign's inventory
+an attempt root, whose name holds no colon: the autonomy run's inventory
 records show changed sources checked and passed. The control's evidence is
 weaker than it appears and should be read as such until the control root
 is renamed.

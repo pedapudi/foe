@@ -585,7 +585,7 @@
       "arm": "codex-default",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -593,7 +593,7 @@
       "arm": "codex-default",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -601,7 +601,7 @@
       "arm": "codex-equivalent",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -609,7 +609,7 @@
       "arm": "codex-equivalent",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -617,7 +617,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -625,7 +625,7 @@
       "arm": "foe-configured",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -633,7 +633,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -641,7 +641,7 @@
       "arm": "foe-lean",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -649,7 +649,7 @@
       "arm": "codex-default",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -657,7 +657,7 @@
       "arm": "codex-default",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -665,7 +665,7 @@
       "arm": "codex-equivalent",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -673,7 +673,7 @@
       "arm": "codex-equivalent",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -681,7 +681,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -689,7 +689,7 @@
       "arm": "foe-configured",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -697,7 +697,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "small-obstacle",
@@ -705,7 +705,7 @@
       "arm": "foe-lean",
       "attempt": "02",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -713,7 +713,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -721,7 +721,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -729,7 +729,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -737,7 +737,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -745,7 +745,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -753,7 +753,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -761,7 +761,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -769,7 +769,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -777,7 +777,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -785,7 +785,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -793,7 +793,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -801,7 +801,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -809,7 +809,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -817,7 +817,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "lean",
@@ -825,7 +825,7 @@
       "arm": "foe-lean",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/lean.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
     },
     {
       "run": "verifier-timeout",
@@ -833,7 +833,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
     },
     {
       "run": "verifier-timeout",
@@ -841,7 +841,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
     },
     {
       "run": "verifier-timeout",
@@ -849,7 +849,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
     },
     {
       "run": "verifier-timeout",
@@ -857,7 +857,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -865,7 +865,7 @@
       "arm": "codex-equivalent",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -873,7 +873,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -881,7 +881,7 @@
       "arm": "codex-equivalent",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -889,7 +889,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -897,7 +897,7 @@
       "arm": "codex-equivalent",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded",
@@ -905,7 +905,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded-warning",
@@ -913,7 +913,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded-warning",
@@ -921,7 +921,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
     },
     {
       "run": "budget-bounded-warning",
@@ -929,7 +929,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -937,7 +937,7 @@
       "arm": "codex-multi",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -945,7 +945,7 @@
       "arm": "codex-single",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -953,7 +953,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -961,7 +961,7 @@
       "arm": "foe-undivided",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -969,7 +969,7 @@
       "arm": "codex-multi",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -977,7 +977,7 @@
       "arm": "codex-single",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -985,7 +985,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out",
@@ -993,7 +993,7 @@
       "arm": "foe-undivided",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1001,7 +1001,7 @@
       "arm": "codex-multi",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1009,7 +1009,7 @@
       "arm": "codex-single",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1017,7 +1017,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1025,7 +1025,7 @@
       "arm": "foe-undivided",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1033,7 +1033,7 @@
       "arm": "codex-multi",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1041,7 +1041,7 @@
       "arm": "codex-single",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1049,7 +1049,7 @@
       "arm": "foe-configured",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     },
     {
       "run": "teams-fan-out-generous",
@@ -1057,7 +1057,7 @@
       "arm": "foe-undivided",
       "attempt": "01",
       "in_committed_array": true,
-      "reason": "its record is the entry campaign-two-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
     }
   ]
 }

@@ -136,11 +136,11 @@ The documents under `runs/`:
 | `autonomy-pilot.json` | the two cheapest tasks on foe's tree under four autonomy arms |
 | `autonomy.json` | the fifteen autonomy tasks under four arms, the run `results/autonomy-2026-09-13.md` records |
 | `autonomy-verifier.json` | the fifteen autonomy tasks under `foe-configured`, `foe-unverified`, and `codex-equivalent`, three attempts each; not yet run |
-| `verifier-timeout.json`, `lean.json`, `budget-bounded.json`, `budget-bounded-warning.json` | cases of 2026-09-13 that `results/campaign-two-2026-09-13.md` records |
+| `verifier-timeout.json`, `lean.json`, `budget-bounded.json`, `budget-bounded-warning.json` | cases of 2026-09-13 that `results/enforcement-pressure-cases-2026-09-13.md` records |
 
 The small-obstacle and teams cases of that record ran tasks this tree does
 not hold, so no document under `runs/` selects them.
-`results/campaign-two-2026-09-13/run-documents/` keeps the resolved run
+`results/enforcement-pressure-cases-2026-09-13/run-documents/` keeps the resolved run
 document of every case of that record.
 
 A document's keys, with relative paths resolved against the document's own

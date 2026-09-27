@@ -1,6 +1,6 @@
 # Tables of the dated campaigns
 
-`report.py --archive` writes this file from the committed arrays, the rescored files, and the conditions files under this directory, and from the task directories under `tasks/foe-tree/`. Every figure of `autonomy-2026-09-13.md` and `campaign-two-2026-09-13.md` that a table states is one of the figures below. Scoring version 1 is the cell each run computed; version 2 adds the rule that a stop which changed a path the task preserves is damage. Seconds are each attempt's recorded wall clock.
+`report.py --archive` writes this file from the committed arrays, the rescored files, and the conditions files under this directory, and from the task directories under `tasks/foe-tree/`. Every figure of `autonomy-2026-09-13.md` and `enforcement-pressure-cases-2026-09-13.md` that a table states is one of the figures below. Scoring version 1 is the cell each run computed; version 2 adds the rule that a stop which changed a path the task preserves is damage. Seconds are each attempt's recorded wall clock.
 
 The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a68cddc76f9, 789e8b994f232fafaf100517dce2e57b1e4ac55d, a920d48d12344f7d5370221c02ecd5e661b96a9f, ceiling, frozen-interface, inventory-regeneration, non-terminating.
 
@@ -19,7 +19,7 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 | foe-ablated | 1 | 3 | 0 | 0 | 0 | 6 | 6 | 3/15 |
 | foe-ablated | 2 | 3 | 0 | 0 | 0 | 6 | 6 | 3/15 |
 
-### Campaign two, small-obstacle
+### Enforcement-pressure cases, small-obstacle
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -32,21 +32,21 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 | codex-default | 1 | 0 | 4 | 0 | 0 | 0 | 0 | 4/4 |
 | codex-default | 2 | 0 | 1 | 0 | 0 | 0 | 3 | 1/4 |
 
-### Campaign two, verifier-timeout
+### Enforcement-pressure cases, verifier-timeout
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | foe-configured | 1 | 0 | 2 | 2 | 0 | 0 | 0 | 2/4 |
 | foe-configured | 2 | 0 | 2 | 2 | 0 | 0 | 0 | 2/4 |
 
-### Campaign two, lean
+### Enforcement-pressure cases, lean
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | foe-lean | 1 | 3 | 10 | 2 | 0 | 0 | 0 | 13/15 |
 | foe-lean | 2 | 3 | 10 | 2 | 0 | 0 | 0 | 13/15 |
 
-### Campaign two, budget-bounded
+### Enforcement-pressure cases, budget-bounded
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -55,14 +55,14 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 | codex-equivalent | 1 | 0 | 0 | 3 | 0 | 0 | 0 | 0/3 |
 | codex-equivalent | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0/3 |
 
-### Campaign two, budget-bounded-warning
+### Enforcement-pressure cases, budget-bounded-warning
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | foe-configured | 1 | 0 | 0 | 3 | 0 | 0 | 0 | 0/3 |
 | foe-configured | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0/3 |
 
-### Campaign two, teams-fan-out
+### Enforcement-pressure cases, teams-fan-out
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -75,7 +75,7 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 | codex-multi | 1 | 0 | 0 | 0 | 0 | 2 | 0 | 0/2 |
 | codex-multi | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0/2 |
 
-### Campaign two, teams-fan-out-generous
+### Enforcement-pressure cases, teams-fan-out-generous
 
 | arm | scoring version | correct-completion | correct-stop | wrong-stop | killed | false-completion | damage | actionable |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
