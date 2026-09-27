@@ -126,7 +126,7 @@ own in place of the per-executable narrowing: read on `/usr` alone — the
 interpreter's installation prefix, world-readable system files — execute
 on the interpreter, write on nothing, and no network. No workspace root,
 home directory, or credential file is granted. The sandbox's baseline
-loader, system, and device paths apply as they do to every process.
+library, system, and device paths apply as they do to every process.
 Landlock enforces the policy where the kernel offers it; as everywhere in
 [sandbox.md](sandbox.md), `best-effort` mode applies what the kernel
 offers and applies nothing when Landlock is absent. The source's one door

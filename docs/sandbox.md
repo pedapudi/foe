@@ -64,14 +64,13 @@ executable before confinement. An ELF executable names its dynamic loader in
 a `PT_INTERP` program header. A script names its interpreter in the first
 line. The policy grants execute access to that exact loader or interpreter.
 Library directories remain readable because the loader searches them for
-shared objects. They carry execute permission only when an execute grant
-names a directory, as the table above states.
+shared objects. They carry no execute permission.
 
 An execute grant on a directory permits executable files below that
 directory. The runtime does not enumerate a mutable directory to infer
-support files. A script below such a directory must receive its interpreter
-through an exact execute grant, a selected configured executable, or a
-selected built-in tool.
+support files. A script or dynamically linked executable below such a
+directory must receive its interpreter or loader through an exact execute
+grant, a selected configured executable, or a selected built-in tool.
 
 A shebang must name an absolute interpreter directly. A shebang that names
 `/usr/bin/env` is rejected because `env` selects another executable through a
@@ -200,7 +199,8 @@ The episode keeps:
 - read and write on its own log directory, which holds its children's
   directories, its spill files, and the `tmp` directory its executables
   write;
-- the loader, system, and device paths;
+- read on the library and system paths, and read and write on the device
+  files;
 - outbound TCP when the episode calls a configured model endpoint or a reachable
   configured tool declares `network: true`;
 - inbound TCP on the ports `grants.bind` lists and, when the episode serves
