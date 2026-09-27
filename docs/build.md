@@ -217,8 +217,15 @@ scripts/examples.sh target/debug/foe
 ```
 
 Continuous integration runs both tiers, along with `scripts/loc.sh`, the
-browser bundle build and test suite in `view/`, and the Python suite in
-`python/`.
+browser bundle build and test suite in `view/`, the Python suite in
+`python/`, and the cross-harness evaluation tests:
+
+```sh
+sh evals/cross_harness/run_unit_tests.sh --forbid-skips
+```
+
+Those tests run the built binary and rebuild task workspaces from recorded
+commits, so they need `target/debug/foe` and a clone with full history.
 
 ## Integrate a change
 

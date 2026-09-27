@@ -1,9 +1,10 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# Every module of the evaluation, its fixtures, and its task recipes. The
-# workspaces of the tasks under tasks/foe-tree are regenerated from the
-# repository's history at run time and are absent from the tree.
+# Every module of the evaluation, its fixtures, its task recipes, and the
+# recorded results that results/archive_test.py reads. The workspaces of the tasks under
+# tasks/foe-tree are regenerated from the repository's history at run time
+# and are absent from the tree.
 filegroup(
     name = "sources",
     srcs = glob(
@@ -19,6 +20,7 @@ filegroup(
             "tasks/foe-tree/*/task.json",
             "tasks/foe-tree/*/grader/**",
             "runs/*.json",
+            "results/**",
         ],
         exclude = ["tasks/foe-tree/*/workspace/**"],
     ),

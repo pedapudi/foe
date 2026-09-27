@@ -37,7 +37,12 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
+      # The cross-harness evaluation tests regenerate task workspaces with
+      # git archive from commits in the repository's history, so the clone
+      # holds the full history.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install the toolchain pinned in rust-toolchain.toml
         run: |
@@ -76,6 +81,14 @@ jobs:
         run: |
           cargo build -p foe
           scripts/examples.sh target/debug/foe
+
+      # The deterministic tests of the cross-harness evaluation. They need no
+      # model credential, no network, and no Codex login. They run against
+      # target/debug/foe, which the step above builds, and against the git
+      # history the checkout fetched. --forbid-skips turns an absent binary or
+      # an absent history into a failure rather than a skipped test.
+      - name: Cross-harness evaluation tests
+        run: sh evals/cross_harness/run_unit_tests.sh --forbid-skips
 
       - name: Test the Python host against the built binary
         working-directory: python
