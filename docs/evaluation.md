@@ -875,10 +875,8 @@ was about changed what the caller relied on.
 
 `rescore.py` scores committed records again under version 2 and keeps each
 version 1 cell beside the version 2 cell. It reads the workspace each
-attempt left, so it runs only on a host that holds the run directories
-under `~/.local/state/foe/cross-harness/`. The archive that
-`results/evidence-manifest.json` names holds the full records and omits
-those workspaces, and it has no permanent location.
+attempt left, under the runner's state root or under a copy of it, such as
+the archive that "Evidence archive" describes.
 
 ### Statistical unit
 
@@ -1083,6 +1081,41 @@ Three other comparisons were considered and set aside:
   non-terminating tasks come from the verifier-timeout records. It measures
   cost rather than stopping behavior.
 
+### Evidence archive
+
+The raw files behind the recorded results are kept outside the repository
+in one compressed archive. It is the asset
+`cross-harness-evidence-2026-09-13.tar.zst` of the release of this
+repository tagged `cross-harness-evidence-2026-09-13`.
+`evals/cross_harness/results/evidence-manifest.json` names the asset with
+its size and SHA-256 digest, and lists every file it holds with that
+file's digest.
+
+The archive holds every file of the eight runs of 2026-09-13 that three
+instruments read: `rescore.py`, `gates/isolation.py`, and `conditions.py`.
+Those files are the run files and every record, the foe episode logs, and
+the Codex session files, event streams, and canary files. They also
+include each foe attempt's document, and each attempt's `task.json`,
+workspace patch, and preserved workspace files. The manifest lists what
+the archive leaves out and the reason for each exclusion. No archived file
+holds a credential.
+
+Each member path is relative to the runner's state root,
+`~/.local/state/foe/cross-harness`, so the directory the archive is
+extracted into takes the place of that root. A record names each attempt
+path under the home directory of the host that ran the attempt. Given
+`--state-root DIRECTORY`, each of the three instruments reads every such
+path under DIRECTORY, whatever that home directory was. The isolation gate
+and `conditions.py --out` name the run directory in the `~` form of the
+state root, so their output is the same on every host.
+
+The `reproduce` commands of the manifest extract the archive, run the three
+instruments against the extracted copy, and compare each output with the
+committed rescored, conditions, and isolation file. They then run
+`report.py --archive` and require `tables.md` to be unchanged. Every
+comparison matches byte for byte. `rescore.py` also needs the base commit
+each task names, and every such commit it uses is an ancestor of `main`.
+
 ## Benchmarks selected for foe
 
 ### Harness-Bench
@@ -1233,8 +1266,9 @@ The cross-harness evaluation has one implemented family, autonomy, with
 fifteen tasks from seven constructions. Its recorded campaigns hold one
 attempt per cell, no person has read their task texts, and their foe builds
 carry a sandbox commit absent from `main`, so they establish no comparative
-claim. Their isolation results are unproven, and their scoring version 2
-cells can be recomputed only on the host that ran them. A confirmatory
+claim. Their isolation results are unproven. The archive that "Evidence
+archive" describes holds their raw evidence, and every table of
+`results/tables.md` can be recomputed from it. A confirmatory
 comparison needs repeated attempts, a person's review of the task texts
 and a trajectory sample, and more constructions than the seven the tree
 holds. `runs/autonomy-verifier.json` declares the repeated comparison of

@@ -24,13 +24,13 @@ harness, for the reasons below.
   evidence that the foe canary was planted, and no foe record states that
   the canary was present when its attempt started.
   `enforcement-pressure-cases-2026-09-13/isolation/` holds the gate's result per case.
-- Only part of the record can be recomputed from this repository. The
-  committed arrays reproduce every scoring version 1 table of `tables.md`.
-  The scoring version 2 cells, the isolation results, and the conditions
-  were computed from the retained attempt workspaces and the episode and
-  session logs. Only the host that ran the attempts holds those, and the
-  archive `evidence-manifest.json` names omits them and has no permanent
-  location.
+- The committed arrays reproduce every scoring version 1 table of
+  `tables.md`. The scoring version 2 cells, the isolation results, and the
+  conditions were computed from the retained attempt workspaces and the
+  episode and session logs. Those files are in the evidence archive, the
+  release asset `cross-harness-evidence-2026-09-13.tar.zst`.
+  `evidence-manifest.json` names the asset with its digest and gives the
+  commands that recompute each of those files from it.
 
 The following claims are withdrawn, each for the reason stated:
 

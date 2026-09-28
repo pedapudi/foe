@@ -188,12 +188,15 @@ network-denial, and admission results recorded on that date.
 
 The committed arrays reproduce every scoring version 1 table. The scoring
 version 2 cells, the isolation results, and the conditions were computed
-from the retained attempt workspaces and the episode and session logs,
-which only the host that ran the attempts holds. `rescore.py`,
-`gates/isolation.py`, and `conditions.py` therefore reproduce those files
-only on a host that holds the run directories under
-`~/.local/state/foe/cross-harness/`. The archive `evidence-manifest.json`
-names holds the full records and omits the workspaces and logs.
+from the retained attempt workspaces and the episode and session logs.
+Those files are in the evidence archive, the asset
+`cross-harness-evidence-2026-09-13.tar.zst` of the release tagged
+`cross-harness-evidence-2026-09-13`. `evidence-manifest.json` gives the
+archive's digest, the digest of every file in it, and the commands that
+recompute each rescored, conditions, and isolation file and `tables.md`
+from an extracted copy. `rescore.py`, `gates/isolation.py`, and
+`conditions.py` read that copy when `--state-root` names it.
+docs/evaluation.md "Evidence archive" states what the archive holds.
 
 ## Tests
 

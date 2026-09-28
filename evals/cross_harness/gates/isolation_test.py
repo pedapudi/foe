@@ -361,5 +361,37 @@ class Gate(unittest.TestCase):
         self.assertFalse(original.exists())
 
 
+    # docs/evaluation.md, "Evidence archive": the gate reads a copy of the
+    # state root, such as the extracted archive, in place of the paths the
+    # records name under the home directory of the host that ran the run.
+    def test_state_root_reads_a_copy_in_place_of_the_recorded_home_directory(self) -> None:
+        copy = self.root / "copy"
+        recorded = "/home/writer-absent/.local/state/foe/cross-harness/run-a"
+        self.out = copy / "run-a"
+        self.document.write_text(json.dumps({"tasks": str(EXAMPLES), "model": {"route": "subscription", "name": "m"}, "harnesses": {"foe": str(self.foe)}, "out": recorded}), encoding="utf-8")
+
+        def as_recorded(path: str) -> str:
+            return f"{recorded}/{Path(path).relative_to(self.out).as_posix()}"
+
+        self.write_run_file()
+        self.write_record("foe-configured", "foe", {"episode_dir": as_recorded(str(self.foe_episode("foe")))})
+        codex = self.codex_artifacts("codex")
+        codex = {**codex, "session_files": [as_recorded(item) for item in codex["session_files"]], "events": as_recorded(codex["events"]), "config_canary_file": as_recorded(codex["config_canary_file"])}
+        self.write_record("codex-equivalent", "codex", codex)
+        status, out, err = self.main("--out", str(self.out))
+        self.assertEqual(status, isolation.UNQUALIFIED, "without --state-root the recorded paths name nothing on this host")
+        status, out, err = self.main("--state-root", str(copy))
+        self.assertEqual(status, isolation.ISOLATED, out + err)
+        self.assertIn(f"isolation gate over {self.out}", out)
+        result = json.loads((self.out / isolation.RESULT_FILE).read_text(encoding="utf-8"))
+        self.assertEqual(result["out"], "~/.local/state/foe/cross-harness/run-a")
+        self.assertEqual(result["document"], str(self.document.resolve()))
+        self.assertEqual([item["planted"] for item in result["results"] if item["harness"] == "codex"], [True])
+
+    def test_the_result_names_a_document_the_repository_holds_relative_to_it(self) -> None:
+        self.assertEqual(isolation.repository_relative(isolation.REPOSITORY / "evals" / "cross_harness" / "runs" / "lean.json"), "evals/cross_harness/runs/lean.json")
+        self.assertEqual(isolation.repository_relative(Path("/elsewhere/run.json")), "/elsewhere/run.json")
+
+
 if __name__ == "__main__":
     unittest.main()

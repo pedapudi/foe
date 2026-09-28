@@ -172,6 +172,28 @@ class Records(unittest.TestCase):
             rows = conditions.records_conditions(records)
             self.assertEqual([(row["arm"], row["reached"]) for row in rows], [("codex-default", None), ("foe-configured", True)])
 
+    # docs/evaluation.md, "Evidence archive": the document an ablated attempt
+    # ran is read under a copy of the state root, such as the extracted
+    # archive, although its record names it under another host's home.
+    def test_state_root_reads_the_document_under_a_copy_and_out_writes_the_conditions_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            copy_root = Path(tmp) / "copy"
+            records = copy_root / "run-a" / "records"
+            document = copy_root / "run-a" / "attempts" / "probe" / "foe-ablated" / "01" / "artifacts" / "config.json"
+            document.parent.mkdir(parents=True)
+            document.write_text(json.dumps(graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated")), encoding="utf-8")
+            recorded = f"/home/writer-absent/.local/state/foe/cross-harness/{document.relative_to(copy_root).as_posix()}"
+            path = records / "probe" / "foe-ablated" / "01.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({**record("foe-ablated", agent("implement", "edit"), config=recorded), "task": SOLVABLE, "attempt": 1}), encoding="utf-8")
+            self.assertIs(conditions.records_conditions(records)[0]["reached"], False, "without the copy the recorded document names nothing on this host")
+            out = Path(tmp) / "conditions.json"
+            self.assertEqual(conditions.main([str(records), "--state-root", str(copy_root), "--out", str(out)]), 0)
+            written = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual((written["run"], written["records"], written["command"], written["rule"]), ("run-a", "~/.local/state/foe/cross-harness/run-a/records", "conditions.py ~/.local/state/foe/cross-harness/run-a/records", conditions.RULE))
+            self.assertEqual(written["summary"], {"foe-ablated: stop mechanism absent": {"attempts": 1, "reached": 1, "not_reached": 0, "none_declared": 0}})
+            self.assertEqual([(row["arm"], row["reached"]) for row in written["attempts"]], [("foe-ablated", True)])
+
 
 if __name__ == "__main__":
     unittest.main()

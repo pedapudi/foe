@@ -68,8 +68,13 @@ class SyntheticCampaign:
             preserved_on_stop=preserved_on_stop,
         )
 
-    def attempt(self, arm: str, inventory: bytes, cell: str, status: str = "blocked", code: str | None = "missing-capability", **task_fields: object) -> None:
-        """An attempt root whose workspace holds the given inventory, its full record, and its committed summary."""
+    def attempt(self, arm: str, inventory: bytes, cell: str, status: str = "blocked", code: str | None = "missing-capability", recorded_home: str | None = None, **task_fields: object) -> None:
+        """An attempt root whose workspace holds the given inventory, its full record, and its committed summary.
+
+        With `recorded_home`, the record names the attempt root under that
+        home directory's default state root, as a record copied from
+        another host does, rather than where the root lies.
+        """
         number = f"{len([s for s in self.summaries if s['arm'] == arm]) + 1:02d}"
         root = self.state_root / "campaign" / "attempts" / "inventory-log" / arm / number / "root"
         protocol.archive(self.repo, self.commit, root / protocol.WORKSPACE)
@@ -79,7 +84,8 @@ class SyntheticCampaign:
         (root / protocol.GRADER / protocol.WORKSPACE_PATCH).write_text(self.patch, encoding="utf-8")
         record = self.state_root / "campaign" / "records" / "inventory-log" / arm / f"{number}.json"
         record.parent.mkdir(parents=True, exist_ok=True)
-        record.write_text(json.dumps({"paths": {"root": str(root)}}), encoding="utf-8")
+        named = str(root) if recorded_home is None else f"{recorded_home}/{rescore.RECORDED_STATE_ROOT[2:]}/{root.relative_to(self.state_root).as_posix()}"
+        record.write_text(json.dumps({"paths": {"root": named}}), encoding="utf-8")
         passed = inventory == FIXTURE_INVENTORY
         self.summaries.append(
             {
@@ -160,9 +166,21 @@ class Rescoring(unittest.TestCase):
     def test_paths_under_the_default_state_root_move_to_the_given_one(self) -> None:
         home, state = Path("/home/reader"), Path("/archive/state")
         self.assertEqual(rescore.under_state_root("~/.local/state/foe/cross-harness/a/b.json", state, home), state / "a/b.json")
-        self.assertEqual(rescore.under_state_root("/home/reader/.local/state/foe/cross-harness/a/root", state, home), Path("/home/reader/.local/state/foe/cross-harness/a/root"))
+        self.assertEqual(rescore.under_state_root("/home/writer/.local/state/foe/cross-harness/a/root", state, home), state / "a/root")
+        self.assertEqual(rescore.under_state_root("/home/writer/.local/state/foe/cross-harness", state, home), state)
+        self.assertEqual(rescore.under_state_root("/home/writer/.local/state/foe/cross-harness-other/a", state, home), Path("/home/writer/.local/state/foe/cross-harness-other/a"))
         self.assertEqual(rescore.under_state_root("/elsewhere/root", state, home), Path("/elsewhere/root"))
+        self.assertEqual(rescore.recorded_form(state / "a/records", state), "~/.local/state/foe/cross-harness/a/records")
+        self.assertEqual(rescore.recorded_form(Path("/elsewhere/records"), state), "/elsewhere/records")
         self.assertEqual(rescore.expand_home("~/x", home), home / "x")
+
+    # docs/evaluation.md, "Evidence archive": a copy of the state root on
+    # another host serves in place of the original, although every record
+    # names its attempt root under the home directory of the host that ran it.
+    def test_a_copied_state_root_is_read_in_place_of_the_home_directory_a_record_names(self) -> None:
+        self.campaign.attempt("rewrote", REWRITTEN_INVENTORY, "correct-stop", recorded_home="/home/writer-absent")
+        (entry,) = self.campaign.rescore()
+        self.assertEqual((entry["cell_scoring_2"], [change["path"] for change in entry["preserved_changed"]]), ("damage", [INVENTORY]))  # type: ignore[index]
 
     def test_the_command_writes_the_entries_and_never_rewrites_the_committed_array(self) -> None:
         self.campaign.attempt("rewrote", REWRITTEN_INVENTORY, "correct-stop")

@@ -41,7 +41,16 @@ condition with its own result.
 Run as a script, it reads every record under a run's `records` directory
 and prints one JSON object per task, arm, and attempt:
 
-    conditions.py RECORDS_DIR
+    conditions.py RECORDS_DIR [--state-root DIRECTORY] [--out FILE]
+
+`--state-root` names a copy of the runner's state root, such as the
+extracted evidence archive `results/evidence-manifest.json` names; the
+document a record names under a state root, in any home directory, is then
+read under the copy. `--out` writes, in place of the printed array, the
+conditions file the results directory keeps: the run's name, its records
+directory and the command in the `~` form of the runner's state root, the
+rule the file answers, a count per arm and condition of the attempts that
+reached it, did not, or declare none, and the array.
 """
 
 from __future__ import annotations
@@ -55,6 +64,7 @@ from typing import Any, Callable, Mapping
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import normalize_foe  # noqa: E402
+import rescore  # noqa: E402
 import trajectory as trajectory_module  # noqa: E402
 
 VERIFIER_INVOKED = "runtime verifier invoked"
@@ -62,6 +72,8 @@ VERIFIER_ABSENT = "verifier absent, stop available"
 STOP_ABSENT = "stop mechanism absent"
 WAIT_ENTERED = "wait entered"
 NONE_DECLARED = "none declared"
+# The rule a conditions file answers, as the file states it.
+RULE = "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it"
 
 # The condition each foe document arm tests, by arm name. An arm absent here
 # declares none.
@@ -220,20 +232,53 @@ def condition_reached(record: Mapping[str, Any], task: Any, *, document: Mapping
     }
 
 
-def records_conditions(records: Path) -> list[dict[str, Any]]:
-    """The condition of every record under `records`, ordered by task, arm, and attempt."""
+def moved_under(record: dict[str, Any], state_root: Path, home: Path) -> dict[str, Any]:
+    """The record with the document path its arm result names read under a copy of the runner's state root."""
+    arm_record = (record.get("arm_result") or {}).get("record")
+    if not isinstance(arm_record, dict) or not isinstance(arm_record.get("config"), str):
+        return record
+    config = str(rescore.under_state_root(arm_record["config"], state_root, home))
+    return {**record, "arm_result": {**record["arm_result"], "record": {**arm_record, "config": config}}}
+
+
+def records_conditions(records: Path, state_root: Path | None = None) -> list[dict[str, Any]]:
+    """The condition of every record under `records`, ordered by task, arm, and attempt; with `state_root`, each record's document is read under that copy of the state root."""
+    home = rescore.home_directory()
     rows = []
     for path in sorted(records.glob("*/*/*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
+        if state_root is not None:
+            record = moved_under(record, state_root, home)
         rows.append({"task": record["task"]["name"], "arm": record["arm"], "attempt": record["attempt"], **condition_reached(record, record["task"])})
     return rows
+
+
+def conditions_file(records: Path, rows: list[dict[str, Any]], state_root: Path) -> dict[str, Any]:
+    """The conditions file of one run: its name, where its records lie in the runner's `~` form, the rule, the count per arm and condition, and the rows."""
+    named = rescore.recorded_form(records, state_root)
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        count = counts.setdefault(f"{row['arm']}: {row['condition']}", {"attempts": 0, "reached": 0, "not_reached": 0, "none_declared": 0})
+        count["attempts"] += 1
+        count[{True: "reached", False: "not_reached", None: "none_declared"}[row["reached"]]] += 1
+    return {"run": records.parent.name, "records": named, "command": f"conditions.py {named}", "rule": RULE, "summary": dict(sorted(counts.items())), "attempts": rows}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("records", type=Path, help="a run's records directory, holding <task>/<arm>/<attempt>.json")
+    parser.add_argument("--state-root", type=Path, help="a copy of the runner's state root, under which the document a record names under a state root is read")
+    parser.add_argument("--out", type=Path, help="write the conditions file here in place of printing the array")
     args = parser.parse_args(argv)
-    print(json.dumps(records_conditions(args.records), indent=2))
+    records = args.records.resolve()
+    state_root = args.state_root.resolve() if args.state_root is not None else None
+    rows = records_conditions(records, state_root)
+    if args.out is None:
+        print(json.dumps(rows, indent=2))
+        return 0
+    recorded_root = state_root if state_root is not None else rescore.expand_home(rescore.RECORDED_STATE_ROOT, rescore.home_directory())
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(conditions_file(records, rows, recorded_root), indent=2) + "\n", encoding="utf-8")
     return 0
 
 

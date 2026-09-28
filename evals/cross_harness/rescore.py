@@ -12,9 +12,15 @@ computes it from what the attempt left behind.
 RECORDS_ARRAY is a committed JSON array of attempt summaries, as `run.py`
 writes them. Each summary names its full record under `record`, as a path
 under the runner's default state root `~/.local/state/foe/cross-harness`;
-the tool reads it under `--state-root` instead. The attempt root the full
-record names under `paths.root` is absolute and is read where it names. A leading `~` in any path
-resolves to the home directory the password database names for the user.
+the tool reads it under `--state-root` instead. The full record names its
+attempt root under `paths.root` as an absolute path, which lies under the
+default state root of the home directory of the host that ran the attempt.
+The tool reads that root under `--state-root` as well, whatever the home
+directory was, so a copy of the state root on another host, such as the
+extracted evidence archive `results/evidence-manifest.json` names, serves
+in place of the original. A path under no state root is read where it
+names. A leading `~` in any path resolves to the home directory the
+password database names for the user.
 
 For each attempt the tool reads the full record, the attempt root it names
 under `paths.root`, and the `task.json` materialized in that root. It
@@ -62,6 +68,9 @@ import protocol  # noqa: E402
 # The state root `run.py` writes under by default, in the form committed
 # summaries name their full records with.
 RECORDED_STATE_ROOT = "~/.local/state/foe/cross-harness"
+# The same state root as a record names it absolutely: this suffix of the
+# path after the home directory of the host that ran the attempt.
+STATE_ROOT_UNDER_HOME = "/" + RECORDED_STATE_ROOT[2:]
 RESCORED_VERSION = 2
 
 
@@ -80,15 +89,30 @@ def expand_home(path: str, home: Path) -> Path:
 def under_state_root(recorded: str, state_root: Path, home: Path) -> Path:
     """Where a recorded path lies when the runner's default state root is moved to `state_root`.
 
-    A path written under the default state root in its `~` form is moved
-    under `state_root`. Any other path, including an absolute one, is taken
-    as it stands, with a leading `~` resolved against `home`.
+    A path written under the default state root is moved under
+    `state_root`, in its `~` form and in its absolute form under any home
+    directory, since a record names the root under the home directory of
+    the host that wrote it. Any other path is taken as it stands, with a
+    leading `~` resolved against `home`.
     """
     if recorded == RECORDED_STATE_ROOT:
         return state_root
     if recorded.startswith(RECORDED_STATE_ROOT + "/"):
         return state_root / recorded[len(RECORDED_STATE_ROOT) + 1 :]
+    if recorded.startswith("/"):
+        _, found, rest = recorded.partition(STATE_ROOT_UNDER_HOME)
+        if found and (not rest or rest.startswith("/")):
+            return state_root / rest[1:] if rest else state_root
     return expand_home(recorded, home)
+
+
+def recorded_form(path: Path, state_root: Path) -> str:
+    """A path under `state_root` in the `~` form the runner's records use, so that output names no host's copy; any other path as it stands."""
+    try:
+        relative = path.relative_to(state_root)
+    except ValueError:
+        return str(path)
+    return RECORDED_STATE_ROOT if relative == Path(".") else f"{RECORDED_STATE_ROOT}/{relative.as_posix()}"
 
 
 def preserved_paths(task: protocol.Task) -> tuple[str, ...]:
@@ -196,7 +220,7 @@ def rescore(records: Path, state_root: Path, home: Path, repo: Path, scratch: Pa
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("records", type=str, help="a committed JSON array of attempt summaries")
-    parser.add_argument("--state-root", required=True, help="the directory that holds the full records and attempt roots")
+    parser.add_argument("--state-root", required=True, help="the directory that holds the full records and attempt roots: the runner's state root or a copy of it")
     parser.add_argument("--out", required=True, help="the JSON file the entries are written to")
     parser.add_argument("--repo", help="the repository holding the base commits; default: the repository holding this file")
     parser.add_argument("--scratch", help="where fixtures are rebuilt; default: the system temporary directory")
