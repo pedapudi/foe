@@ -27,9 +27,10 @@ harness, for the reasons below.
 - The committed arrays reproduce every scoring version 1 table of
   `tables.md`. The scoring version 2 cells, the isolation results, and the
   conditions were computed from the retained attempt workspaces and the
-  episode and session logs. Those files are in the evidence archive, the
-  release asset `cross-harness-evidence-2026-09-13.tar.zst`.
-  `evidence-manifest.json` names the asset with its digest and gives the
+  episode and session logs. Those files are in the evidence archive
+  `cross-harness-evidence-2026-09-13.tar.zst`, which is unpublished and
+  which the repository owner holds. `evidence-manifest.json` names the
+  archive with its digest and gives the
   commands that recompute each of those files from it.
 
 The following claims are withdrawn, each for the reason stated:

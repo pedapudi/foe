@@ -134,8 +134,8 @@ class EvidenceManifest(unittest.TestCase):
         self.archive = self.manifest["archive"]
         self.files = {entry["path"]: entry["sha256"] for entry in self.archive["files"]}
 
-    def test_the_archive_names_its_release_asset_and_lists_each_file_once_in_order(self) -> None:
-        self.assertEqual((self.archive["release_tag"], self.archive["asset"]), ("cross-harness-evidence-2026-09-13", "cross-harness-evidence-2026-09-13.tar.zst"))
+    def test_the_archive_names_its_file_and_lists_each_file_once_in_order(self) -> None:
+        self.assertEqual(self.archive["asset"], "cross-harness-evidence-2026-09-13.tar.zst")
         self.assertRegex(self.archive["sha256"], "^[0-9a-f]{64}$")
         paths = [entry["path"] for entry in self.archive["files"]]
         self.assertEqual(paths, sorted(set(paths)))

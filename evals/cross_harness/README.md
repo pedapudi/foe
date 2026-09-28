@@ -189,9 +189,9 @@ network-denial, and admission results recorded on that date.
 The committed arrays reproduce every scoring version 1 table. The scoring
 version 2 cells, the isolation results, and the conditions were computed
 from the retained attempt workspaces and the episode and session logs.
-Those files are in the evidence archive, the asset
-`cross-harness-evidence-2026-09-13.tar.zst` of the release tagged
-`cross-harness-evidence-2026-09-13`. `evidence-manifest.json` gives the
+Those files are in the evidence archive
+`cross-harness-evidence-2026-09-13.tar.zst`, which is unpublished and
+which the repository owner holds. `evidence-manifest.json` gives the
 archive's digest, the digest of every file in it, and the commands that
 recompute each rescored, conditions, and isolation file and `tables.md`
 from an extracted copy. `rescore.py`, `gates/isolation.py`, and

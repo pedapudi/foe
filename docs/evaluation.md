@@ -1084,10 +1084,9 @@ Three other comparisons were considered and set aside:
 ### Evidence archive
 
 The raw files behind the recorded results are kept outside the repository
-in one compressed archive. It is the asset
-`cross-harness-evidence-2026-09-13.tar.zst` of the release of this
-repository tagged `cross-harness-evidence-2026-09-13`.
-`evals/cross_harness/results/evidence-manifest.json` names the asset with
+in one compressed archive, `cross-harness-evidence-2026-09-13.tar.zst`.
+The archive is unpublished, and the repository owner holds it.
+`evals/cross_harness/results/evidence-manifest.json` names the archive with
 its size and SHA-256 digest, and lists every file it holds with that
 file's digest.
 

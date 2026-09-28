@@ -1,8 +1,8 @@
 {
   "description": "For every attempt a committed array under results/ summarizes: the full record's path relative to its run's out directory, ~/.local/state/foe/cross-harness/<run>, and the record's sha256. The archive holds these records and every other file under the eight run directories that rescore.py, gates/isolation.py, and conditions.py read, so the rescored, conditions, and isolation files and tables.md can be recomputed from it on any host.",
   "archive": {
-    "location": "the asset cross-harness-evidence-2026-09-13.tar.zst of the release of this repository tagged cross-harness-evidence-2026-09-13",
-    "release_tag": "cross-harness-evidence-2026-09-13",
+    "location": "unpublished; the repository owner holds the file, which its name, size, and SHA-256 digest identify",
+    "release_tag": null,
     "asset": "cross-harness-evidence-2026-09-13.tar.zst",
     "bytes": 17569421,
     "sha256": "255e4f70fb5fd47073e50a0fdeb846f2afec371a88bd16b2a81fc93b121adace",
