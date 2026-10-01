@@ -145,64 +145,6 @@ foe-as-shipped arm on every task. The record of a foe-as-shipped attempt
 names the built-in execute roots under `tool_roots`, which are the roots
 its document grants.
 
-A task whose metadata names `presumes_absent`, as the missing-capability
-task of `tasks/constructions.py` does, presumes that program absent from
-every arm's search path, and its grader reads no search path. The runner
-holds the premise: before the plan it resolves the program against the
-system search path and the tool roots the foe arms execute, and against
-the PATH a Codex child inherits when a Codex arm is selected, and refuses
-the run by name when the program is found.
-
-A task whose metadata names `presumes_unimportable`, as the
-inventory-regeneration tasks do, presumes that module absent from the
-interpreter a grade runs under, since the artifact the task asks for can
-be regenerated only by a program that imports it. The runner holds that
-premise the same way: before the plan it imports the module with
-`protocol.PYTHON` and refuses the run by name, stating where the module
-was found, when the import succeeds. A host that can import it grades the
-task against a premise that does not hold, and a silent mis-grade is worse
-than a refusal.
-
-Every attempt runs under the task's budget: `model_calls`, `input_tokens`,
-`output_tokens`, and `seconds`. Each key of the document's `budget`
-replaces that key of every task's budget for every attempt of the run; the
-run file and every record state the effective budget and the overrides. The two harnesses
-enforce the ceilings differently. A foe document declares every ceiling,
-and the runtime enforces `model_calls` inside the episode. Codex has no
-model-call ceiling: the budget watcher enforces the token ceilings and the
-seconds ceiling from outside, and the runner passes the seconds ceiling on
-every Codex attempt, so no Codex attempt runs unbounded. The token and
-wall-clock ceilings are therefore the bound the arms share, and model calls
-are a measurement reported per arm rather than a shared ceiling.
-
-The Codex arm copies the credential into the attempt's `CODEX_HOME` and
-removes the copy as soon as the process has exited, before the run is
-normalized; its record states that the copy was removed.
-
-Every record carries the provenance of the binary: its digest, the git
-commit the source tree was at, and whether the tree was dirty, with the
-changed paths, so that a record from a development tree stays
-identifiable.
-
-Every run plants two canary sentences, each generated for the run from a
-random identifier, and records them in the run file. The Codex arm writes
-one into the fresh `CODEX_HOME` of every attempt as `config.toml` under
-the `developer_instructions` key, the user configuration file that
-`--ignore-user-config` states it does not load. The runner writes the
-other into foe's configuration directory as `AGENTS.md`, a file foe never
-reads by design. That directory is `~/.config/foe` of the real user: the
-binary resolves it from the passwd database, and no argument or
-environment value moves it, so the document key `foe_config_dir` names it
-for a test that must leave the real directory untouched. The runner
-passes nothing about the file to foe and removes it once the attempts
-have ended. After planting it, the runner reads the file back and records
-its path and SHA-256 in the run file under `canaries.foe_config.planted`,
-and it refuses the run when the file does not hold the sentence. Before
-each foe attempt it reads the file again and records whether it still
-holds the sentence as the attempt's `foe_canary_present`, which is null
-for a Codex attempt. `gates/isolation.py` searches every recorded request
-for both sentences after the run.
-
 The runner calls a real model and spends real credit, so without
 `--confirm-spend` it prints every value the document resolved to and every
 planned attempt with the effective ceilings each one runs under, and exits
@@ -213,12 +155,7 @@ documents. The one exception is `CODEX_HOME`, which the Codex arm sets on
 its child because Codex locates its files by it; every record names the
 directory it was given. This module reads the environment in two places
 the document's rules call for: the PATH lookup of a bare `harnesses.codex`
-command name, and the home directory a leading `~` expands to; and it
-reads PATH once more, when a Codex arm is selected, to check that a
-program a task presumes absent under `metadata.presumes_absent` is absent
-from the search path the Codex child inherits. The same check resolves the
-program against the system search path and the tool roots the foe arms
-execute, and refuses the run by name when the program is found.
+command name, and the home directory a leading `~` expands to.
 """
 
 from __future__ import annotations
@@ -226,7 +163,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import keyword
 import os
 import pwd
 import re
@@ -235,7 +171,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -314,10 +249,6 @@ CHECK_SUITE = "checks/run.sh"
 TESTS_DIR = "tests"
 # Optional task metadata keys the runner reads.
 METADATA_CHECK, METADATA_WRITE_ROOTS, METADATA_TOOL_ROOTS = "check", "write_roots", "tool_roots"
-# The task metadata key naming the one program a missing-capability task presumes absent from every arm's search path.
-METADATA_PRESUMES_ABSENT = "presumes_absent"
-# The task metadata key naming the one module a missing-capability task presumes the grading interpreter cannot import.
-METADATA_PRESUMES_UNIMPORTABLE = "presumes_unimportable"
 # The search path the runtime gives a bash command, from docs/tools.md "bash";
 # the check script starts from it because a configured executable receives no environment.
 SYSTEM_SEARCH_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -857,144 +788,6 @@ def needed_tool_roots(settings: Settings, task: protocol.Task) -> list[str]:
         if normalized not in graphs.EXECUTE_ROOTS and normalized not in roots:
             roots.append(normalized)
     return roots
-
-
-def presumed_absent_fault(settings: Settings, task: protocol.Task, arms: Sequence[Arm]) -> str | None:
-    """Where the program `metadata.presumes_absent` names is found among the directories the selected arms run commands from, or None.
-
-    A missing-capability task presumes one program absent, and its grader
-    reads no search path, so the runner is what holds the premise. A foe
-    arm runs commands from the system search path of docs/tools.md "bash"
-    and executes the task's tool roots; a Codex arm inherits the runner's
-    PATH, which is the one environment read this check makes. A host where
-    the program is found cannot run the task, and the run is refused by
-    name before the plan.
-    """
-    named = task.metadata.get(METADATA_PRESUMES_ABSENT)
-    if named is None:
-        return None
-    if not isinstance(named, str) or not named.strip() or "/" in named:
-        raise ValueError(f"task {task.name!r}: metadata.{METADATA_PRESUMES_ABSENT} is {named!r}; expected the bare name of a program")
-    premise = f"task {task.name!r} presumes {named} absent under metadata.{METADATA_PRESUMES_ABSENT}, and"
-    remedy = "the task's premise does not hold on this host; leave the task out with select, or run it on a host without the program"
-    if any(arm.harness == "foe" for arm in arms):
-        directories = [*SYSTEM_SEARCH_PATH.split(":"), *tool_roots(settings, task)]
-        found = shutil.which(named, path=":".join(directories))
-        if found is not None:
-            return f"{premise} {found} is under {Path(found).parent}, which the foe arms run commands from; {remedy}"
-    for arm in arms:
-        if arm.harness != "codex":
-            continue
-        found = shutil.which(named)
-        if found is not None:
-            return f"{premise} {found} is on the PATH the {arm.name} arm inherits; {remedy}"
-        break
-    return None
-
-
-def import_interpreters() -> list[str]:
-    """The interpreters an attempt of a task that presumes a module unimportable reaches, in the order they are asked.
-
-    `protocol.PYTHON` is the interpreter every grade script names in its
-    shebang. The `python3` of SYSTEM_SEARCH_PATH is the one an arm's own
-    command resolves, and is asked as well when it is another file, since
-    a host whose two interpreters hold different modules breaks the premise
-    for the arm or for the grade.
-    """
-    interpreters = [protocol.PYTHON]
-    reached = shutil.which("python3", path=SYSTEM_SEARCH_PATH)
-    if reached is not None and os.path.realpath(reached) != os.path.realpath(protocol.PYTHON):
-        interpreters.append(reached)
-    return interpreters
-
-
-def presumed_unimportable_fault(task: protocol.Task) -> str | None:
-    """Where the module `metadata.presumes_unimportable` names is found by an interpreter the attempt reaches, or None.
-
-    A task that asks for a derived artifact only one generator can produce
-    presumes the module that generator imports absent, and its grader reads
-    no site directory, so the runner is what holds the premise. Every
-    interpreter of `import_interpreters` is asked, each from an empty
-    directory of its own, since the directory the runner was started in is
-    one no grade and no arm command runs from and its files would otherwise
-    be importable here alone. The interpreter inherits the runner's
-    environment, as a grade script does, so a module a variable such as
-    PYTHONPATH puts on the path is found; that inheritance is the one
-    environment read this check makes. A host where
-    the module imports would grade the task against a premise that does not
-    hold, and the run is refused by name before the plan.
-    """
-    named = task.metadata.get(METADATA_PRESUMES_UNIMPORTABLE)
-    if named is None:
-        return None
-    if not isinstance(named, str) or not named.isidentifier() or keyword.iskeyword(named):
-        raise ValueError(f"task {task.name!r}: metadata.{METADATA_PRESUMES_UNIMPORTABLE} is {named!r}; expected a module name")
-    program = f"import {named}; print(getattr({named}, '__file__', None) or 'a module the interpreter builds in')"
-    for interpreter in import_interpreters():
-        with tempfile.TemporaryDirectory(prefix="presumes-unimportable-") as elsewhere:
-            try:
-                completed = subprocess.run([interpreter, "-c", program], cwd=elsewhere, capture_output=True, text=True, timeout=60, check=False)
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                raise ValueError(f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and {interpreter} could not be asked whether it imports: {exc}") from exc
-        if completed.returncode == 0:
-            return (
-                f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and {interpreter} "
-                f"imports it from {completed.stdout.strip() or 'an unnamed location'}, which is an interpreter the attempt reaches; "
-                "the task's premise does not hold on this host; leave the task out with select, or run it on a host without the module"
-            )
-    found = module_on_disk(named)
-    if found is not None:
-        return (
-            f"task {task.name!r} presumes {named} unimportable under metadata.{METADATA_PRESUMES_UNIMPORTABLE}, and no interpreter "
-            f"imports it, but a copy of it is on this host at {found}. An arm that reads outside its workspace can put that copy on a "
-            "path and run the generator, so the premise holds for an arm the kernel confines to its grants and not for an arm whose "
-            "sandbox reads the filesystem, and the task compares the two sandboxes rather than the two harnesses; leave the task out "
-            "with select, or run it on a host without the module"
-        )
-    return None
-
-
-# Where a Python module may sit without any interpreter importing it: a
-# package directory, a single-file module, a distribution's metadata, or a
-# cached wheel. A distribution spells its name with either separator, so both
-# are searched.
-MODULE_SEARCH_ROOTS: tuple[str, ...] = ("/usr", "/opt", "/usr/local")
-MODULE_SEARCH_SECONDS = 120
-
-
-def module_on_disk(named: str) -> str | None:
-    """A path holding the module `named` that no interpreter imports, or None.
-
-    `presumed_unimportable_fault` asks every interpreter whether it imports
-    the module, which finds a copy on a search path and misses one beside it.
-    A module vendored inside another package, or a wheel in a download cache,
-    is importable by an arm that reads the filesystem, finds the copy, and
-    names its directory. The premise of the task is that the module cannot be
-    reached at all, so this searches the home directory and the system
-    prefixes for a copy under any of the four shapes a module takes on disk.
-    The runner's own state directory is left out: the attempts it holds carry
-    workspaces, and a module inside one of those is the fixture, not the host.
-    """
-    spellings = {named, named.replace("_", "-")}
-    patterns: list[str] = []
-    for spelling in sorted(spellings):
-        patterns += [spelling, f"{spelling}.py", f"{spelling}-*.dist-info", f"{spelling}-*.whl"]
-    roots = [str(Path.home()), *MODULE_SEARCH_ROOTS]
-    state = Path(DEFAULT_OUT_ROOT).expanduser()
-    # The name tests are parenthesised: -o binds looser than the implicit
-    # -a, so an unparenthesised list would print only the last name.
-    command = ["find", *(root for root in roots if Path(root).is_dir()), "-path", str(state), "-prune", "-o", "("]
-    for index, pattern in enumerate(patterns):
-        command += ["-name", pattern]
-        if index != len(patterns) - 1:
-            command.append("-o")
-    command += [")", "-print", "-quit"]
-    try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=MODULE_SEARCH_SECONDS, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    hit = completed.stdout.strip().splitlines()
-    return hit[0] if hit else None
 
 
 def not_applicable(settings: Settings, arm: Arm, task: protocol.Task) -> str | None:
@@ -1985,14 +1778,6 @@ def main(argv: list[str] | None = None) -> int:
             foe_route(settings)
         for entry in tasks:
             tool_roots(settings, entry.task)
-            # A premise the host breaks is refused before the plan, since it
-            # would let an attempt run whose grade measures the host and no harness.
-            fault = presumed_absent_fault(settings, entry.task, arms)
-            if fault is not None:
-                raise ValueError(fault)
-            fault = presumed_unimportable_fault(entry.task)
-            if fault is not None:
-                raise ValueError(fault)
             # The document builders refuse some budgets, such as a seconds
             # ceiling with no room for the check timeout; the refusal
             # belongs before the plan and before any attempt spends credit.
