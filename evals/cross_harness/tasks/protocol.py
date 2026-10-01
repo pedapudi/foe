@@ -9,7 +9,10 @@ falls into.
 A task belongs to one of two families. An `autonomy` task is given to one
 agent and has one of four classes: `solvable`, `contradictory`,
 `missing-capability`, and `non-terminating`. A `teams` task is given to a
-team and has one of three classes: `fan-out`, `survey`, and `coherent`. The
+team and has one of three classes: `fan-out`, `survey`, and `coherent`. No
+tool of this directory authors or runs a teams task. The family stays
+readable because `rescore.py` loads the task files of the teams cases of
+2026-09-13 from the evidence archive. The
 text an autonomy task shows the agent follows one template for every class,
 a specification paragraph followed by CLOSING, so the text never names the
 class and the agent has to discover whether the task can be done.

@@ -1,12 +1,11 @@
 # Cross-harness evaluation
 
 Evaluations that compare foe with Codex CLI on the properties foe claims as
-its own: bounded, truthful termination; coordinated teams under disjoint
-write grants; containment by grants; enforced budgets; verifier-gated
-completion; and typed state across compaction. [docs/evaluation.md](../../docs/evaluation.md)
-"Cross-harness evaluation against Codex CLI" specifies the families, the
-arms, the validity gates, and the task protocol. This directory holds the
-instruments, the tasks, and the runners. Every module is standard-library
+its own. [docs/evaluation.md](../../docs/evaluation.md) "Cross-harness
+evaluation against Codex CLI" specifies the families, the arms, the
+validity gates, and the task protocol. This directory holds the
+instruments, the tasks, and the runners for the autonomy family: bounded,
+truthful termination of one agent. Every module is standard-library
 Python with its unit tests beside it, and no unit test needs a model
 credential, the network, or a Codex login.
 
@@ -22,12 +21,11 @@ credential, the network, or a Codex login.
 | `metering_proxy.py` | a recording, metering proxy between a harness and an OpenAI-compatible endpoint; refuses a request once an attempt's budget is spent |
 | `codex_budget_watcher.py` | follows Codex's session files during a run and stops the process tree when a token or wall-clock limit is crossed |
 | `arms/foe_arm.py`, `arms/codex_arm.py` | one harness given one task in one workspace; both return the same result record |
-| `contracts/graphs.py` | generates the bespoke foe documents: the autonomy graph, its variant without verifiers, its ablation without verifiers or `block`, and its lean variant without the survey node, and the teams graph in its configured, undivided, and sequential variants |
+| `contracts/graphs.py` | generates the bespoke foe documents: the autonomy graph, its variant without verifiers, its ablation without verifiers or `block`, and its lean variant without the survey node |
 | `tasks/protocol.py` | what a task is, how a task directory is laid out, how a task is materialized, graded, and classified into a confusion cell |
 | `tasks/policies.py` | degenerate policies that stand in for an arm, so the grader controls run without a model |
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
 | `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks; it offers more designs than `tasks/foe-tree/` holds |
-| `tasks/teams.py` | authors the teams tasks: fan-out tasks, harvested from a sweep commit or constructed over the crates of one change, and survey tasks whose answer a script computes |
 | `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
 | `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request, and the requests and the planted canaries are proven present; exit status 4 means no canary was found but the evidence leaves the absence unproven |
 | `gates/hang_symmetry.py` | the non-terminating class's premise: each task's check is still running after 45 seconds on the host and under the Codex sandbox |
@@ -37,7 +35,7 @@ credential, the network, or a Codex login.
 | `rescore.py` | scores committed attempt records again under the current scoring version from the workspaces the attempts left, and keeps each original cell beside the new one |
 | `admission.py` | decides which tasks are admissible: the oracle-solved workspace's visible check passes on the host, inside a foe episode, and under a Codex sandbox; `--tool-root` grants the foe episode a further directory to execute |
 | `run.py` | runs every selected task under every selected arm, grades each run, and writes one record per attempt |
-| `report.py` | rates per arm, cells per task, teams coordination measures, and paired comparisons over the records, with the construction as the statistical unit; `--archive` recomputes every table of the dated campaigns under `results/` |
+| `report.py` | rates per arm, cells per task, and paired comparisons over the records, with the construction as the statistical unit; `--archive` recomputes every table of the dated campaigns under `results/` |
 | `environment/` | the container an attempt runs in, its egress sink, and `build.sh`; see `environment/environment.md` |
 
 ## Tasks
@@ -99,7 +97,6 @@ Most task texts were written by an agent and await a person's reading;
 python3 evals/cross_harness/tasks/feature_removal.py author \
   --repo . --commit SHA --out evals/cross_harness/tasks/foe-tree/NAME --name NAME
 python3 evals/cross_harness/tasks/constructions.py --help
-python3 evals/cross_harness/tasks/teams.py --help
 ```
 
 ## Running
@@ -139,7 +136,8 @@ The documents under `runs/`:
 | `verifier-timeout.json`, `lean.json`, `budget-bounded.json`, `budget-bounded-warning.json` | cases of 2026-09-13 that `results/enforcement-pressure-cases-2026-09-13.md` records |
 
 The small-obstacle and teams cases of that record ran tasks this tree does
-not hold, so no document under `runs/` selects them.
+not hold, and the teams cases ran arms `run.py` does not hold, so no
+document under `runs/` selects them.
 `results/enforcement-pressure-cases-2026-09-13/run-documents/` keeps the resolved run
 document of every case of that record.
 

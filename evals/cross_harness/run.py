@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 """Run every selected task under every selected arm, grade each run, and record it.
 
-The cross-harness evaluation compares foe with Codex CLI on tasks of two
-families. An `autonomy` task goes to one agent and measures whether the
-agent finishes a task that can be finished and stops on one that cannot. A
-`teams` task goes to a team and measures the same under delegation. Each
-family has its own arms, and an arm is one harness in one configuration:
+The cross-harness evaluation compares foe with Codex CLI on tasks of the
+`autonomy` family. An autonomy task goes to one agent and measures whether
+the agent finishes a task that can be finished and stops on one that
+cannot. The runner holds arms for that family alone, and an arm is one
+harness in one configuration:
 
     autonomy   foe-configured   the survey, implement, assess, repair graph of contracts/graphs.py
                foe-ablated      the same graph without the `block` tool, the instruction to call it, and verifiers
@@ -14,20 +14,10 @@ family has its own arms, and an arm is one harness in one configuration:
                foe-as-shipped   the built-in coding workflow, `--config builtin:coding`
                codex-equivalent Codex CLI with the graph's four phases stated in the prompt
                codex-default    Codex CLI with the task text alone
-    teams      foe-configured   the survey, interface, delegate, integrate graph
-               foe-undivided    the same graph with the divide path removed
-               foe-sequential   the same graph with concurrency capped at one
-               foe-as-shipped   the built-in team document, `--config builtin:team`
-               codex-single     Codex CLI with child agents disabled
-               codex-multi      Codex CLI with child agents enabled
 
 Every Codex arm receives the output schema of `arms/codex_arm.py`, so its
 final message is a typed report with a status, a blocked code, and evidence,
-which is what a foe outcome carries. A task whose grade reads a value of its
-own records that value's shape under `metadata.returns`: the shape is
-declared on the two nodes that can end the foe document's teams graph and
-merged into the Codex arm's final-message schema, so both harnesses can
-return what the grade needs.
+which is what a foe outcome carries.
 
 Every run of one task under one arm is an attempt. The runner materializes
 the task's workspace into a fresh root, runs the arm, and materializes the
@@ -48,12 +38,7 @@ grades the workspace with the task's hidden grader, and classifies the
 graded outcome into one confusion cell of `tasks/protocol.py`. One JSON
 record per attempt is written under `<out>/records/<task>/<arm>/`, and
 `report.py` reads them. The record's `grade` carries the grader's
-verdict, its findings, and the damage judged beside it; for a fan-out
-task of the teams family it also carries `units`, each unit's verdict as
-`{name: passed}`, read from the `units.json` the grade script of
-`tasks/teams.py` leaves in the materialized root's grader directory, and
-null when no grade left one.
-For every other task `units` is null.
+verdict, its findings, and the damage judged beside it.
 The record's `scoring_version` is the `tasks/protocol.py` SCORING_VERSION
 its `classification` was computed under. Its `condition` states whether the
 attempt reached the condition its arm's control tests, as
@@ -107,7 +92,8 @@ document is in, and a leading `~` expands to the home directory.
                     binary resolves for the real user
 
 The family is the one the selected tasks declare in their `task.json`; a
-selection spanning two families is refused naming both. The run file
+selection spanning two families is refused naming both, and so is a
+selection of a family the runner holds no arms for. The run file
 records the resolved document under `document`, so a reader can verify the
 run from the document alone.
 
@@ -270,7 +256,6 @@ import graphs  # noqa: E402
 import normalize_codex  # noqa: E402
 import normalize_foe  # noqa: E402
 import protocol  # noqa: E402
-import teams  # noqa: E402
 import trajectory  # noqa: E402
 from foe_arm import ArmResult  # noqa: E402
 
@@ -287,8 +272,6 @@ CODEX_COMPATIBLE_PROVIDER = "compatible"
 CODEX_WIRE_APIS: tuple[str, ...] = ("chat", "responses")
 # The Codex sandbox whose write surface matches a foe write grant over the workspace.
 CODEX_SANDBOX = "workspace-write"
-# The workers a team runs at once, for the configured foe graph and the Codex multi-agent arm alike.
-TEAM_CONCURRENCY = 4
 
 DEFAULT_EFFORT = "medium"
 DEFAULT_GRADER_TIMEOUT_SECONDS = feature_removal.GRADE_TIMEOUT_SECONDS
@@ -331,11 +314,6 @@ CHECK_SUITE = "checks/run.sh"
 TESTS_DIR = "tests"
 # Optional task metadata keys the runner reads.
 METADATA_CHECK, METADATA_WRITE_ROOTS, METADATA_TOOL_ROOTS = "check", "write_roots", "tool_roots"
-# The shape a task requires of the value its grade reads. A task that
-# states one has it declared on the foe document's terminal nodes and
-# merged into the Codex arm's final-message schema, so both harnesses can
-# return the value the grade needs.
-METADATA_RETURNS = "returns"
 # The task metadata key naming the one program a missing-capability task presumes absent from every arm's search path.
 METADATA_PRESUMES_ABSENT = "presumes_absent"
 # The task metadata key naming the one module a missing-capability task presumes the grading interpreter cannot import.
@@ -413,14 +391,6 @@ ARMS: dict[str, tuple[Arm, ...]] = {
         Arm("foe-as-shipped", "foe", "builtin", "builtin:coding"),
         Arm("codex-equivalent", "codex", "codex", "equivalent"),
         Arm("codex-default", "codex", "codex", "default"),
-    ),
-    "teams": (
-        Arm("foe-configured", "foe", "document", "configured"),
-        Arm("foe-undivided", "foe", "document", "undivided"),
-        Arm("foe-sequential", "foe", "document", "sequential"),
-        Arm("foe-as-shipped", "foe", "builtin", "builtin:team"),
-        Arm("codex-single", "codex", "codex", "single"),
-        Arm("codex-multi", "codex", "codex", "multi"),
     ),
 }
 
@@ -508,14 +478,17 @@ def discover_tasks(tasks_dir: Path, names: Sequence[str] | None) -> list[Selecte
 
 
 def shared_family(tasks: list[Selected], tasks_dir: Path) -> str:
-    """The one family every selected task declares; a selection spanning two families is refused naming both."""
+    """The one family every selected task declares; a selection spanning two families, or of a family without arms, is refused by name."""
     first_of: dict[str, str] = {}
     for entry in tasks:
         first_of.setdefault(entry.task.family, entry.task.name)
     if len(first_of) > 1:
         (family_a, name_a), (family_b, name_b) = list(first_of.items())[:2]
         raise ValueError(f"the selected tasks under {tasks_dir} span two families: {name_a} is {family_a} and {name_b} is {family_b}; use select to name the tasks of one family")
-    return next(iter(first_of))
+    family, name = next(iter(first_of.items()))
+    if family not in ARMS:
+        raise ValueError(f"the selected task {name} under {tasks_dir} is of the {family} family, which has no arm; the runner holds arms for {', '.join(ARMS)} tasks alone")
+    return family
 
 
 def select_arms(names: Sequence[str] | None, family: str) -> list[Arm]:
@@ -1399,28 +1372,15 @@ def foe_document(arm: Arm, task: protocol.Task, workspace: Path, check: Path, to
     budget = {key: (task.budget if budget is None else budget)[key] for key in protocol.BUDGET_KEYS}
     # The workspace is executable because a check suite runs the build scripts and test binaries its build wrote there.
     execute = [*tools, str(workspace)]
-    if task.family == "autonomy":
-        document = graphs.autonomy(
-            workspace,
-            check,
-            budget,
-            variant=arm.variant,
-            root_files=root_files,
-            write_roots=roots or graphs.WRITE_ROOTS,
-            execute=execute,
-        )
-    else:
-        document = graphs.teams(
-            workspace,
-            check,
-            budget,
-            variant=arm.variant,
-            max_concurrent=TEAM_CONCURRENCY,
-            root_files=root_files,
-            write_roots=roots or graphs.WRITE_ROOTS,
-            execute=execute,
-            returns=task.metadata.get(METADATA_RETURNS),
-        )
+    document = graphs.autonomy(
+        workspace,
+        check,
+        budget,
+        variant=arm.variant,
+        root_files=root_files,
+        write_roots=roots or graphs.WRITE_ROOTS,
+        execute=execute,
+    )
     return with_placeholder(with_read_roots(document, tools), workspace)
 
 
@@ -1575,10 +1535,8 @@ def run_arm(settings: Settings, arm: Arm, task: protocol.Task, workspace: Path, 
         reasoning_effort=settings.effort,
         credential_source=settings.credential,
         limits=codex_limits(budget),
-        agents_enabled=arm.variant == "multi",
-        max_threads=TEAM_CONCURRENCY if arm.variant == "multi" else None,
         model_providers=codex_providers(settings),
-        output_schema=codex_arm.schema_for(task.metadata.get(METADATA_RETURNS)),
+        output_schema=codex_arm.DEFAULT_SCHEMA,
         config_canary=settings.canaries.get(CODEX_CONFIG_CANARY),
     )
     try:
@@ -1869,13 +1827,7 @@ def run_attempt(settings: Settings, provenance: dict[str, Any], entry: Selected,
         return record
     reported = protocol_reported(record["reported"]) if record["reported"] else protocol.Reported(protocol.FAILED, None, record["infrastructure_error"] or "")
     graded = feature_removal.grade_with_timeout(root, reported, record["candidate"], arm.name, settings.grader_timeout)
-    record["grade"] = {"passed": graded.passed, "findings": list(graded.findings), "damage": list(graded.damage), "units": None}
-    if task.family == teams.FAMILY and task.class_name == teams.FAN_OUT:
-        try:
-            record["grade"]["units"] = teams.read_units(root)
-        except ValueError as exc:
-            # The grade ran, but its per-unit record cannot be read; the attempt measured no unit verdict.
-            record["infrastructure_error"] = record["infrastructure_error"] or f"the fan-out grade left an unreadable units record: {exc}"
+    record["grade"] = {"passed": graded.passed, "findings": list(graded.findings), "damage": list(graded.damage)}
     if record["infrastructure_error"] is None:
         record["classification"] = protocol.classify(task, reported, graded, scoring_version=record["scoring_version"])
     record["ended_ms"] = foe_arm.now_ms()

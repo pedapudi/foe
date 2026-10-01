@@ -80,7 +80,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import protocol  # noqa: E402
 from protocol import COMPLETED, GRADER, WORKSPACE, Reported, Task  # noqa: E402
 
-CLASS_FAMILY: dict[str, str] = {"solvable": "autonomy", "coherent": "teams"}
+# The one class a removed feature authors, and its family.
+CLASS_FAMILY: dict[str, str] = {"solvable": "autonomy"}
 PROTECTED: tuple[str, ...] = ("scripts/loc.sh", "AGENTS.md", "checks/run.sh")
 CHECKS_SCRIPT = "checks/run.sh"
 CORRUPTION_NAME = "revert-one-crate"

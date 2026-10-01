@@ -591,12 +591,11 @@ class Grading(Repository):
 
 
 class Classes(Repository):
-    def test_a_coherent_task_belongs_to_the_teams_family(self) -> None:
-        out = self.scratch() / "coherent"
-        authored = removal.author(self.repo, self.feature, out, "coherent-values", "coherent")
-        self.assertEqual((authored.task.family, authored.task.class_name), ("teams", "coherent"))
-        with self.assertRaises(ValueError):
-            removal.author(self.repo, self.feature, self.scratch() / "x", "x", "survey")
+    def test_a_class_other_than_solvable_is_refused_by_name(self) -> None:
+        for class_name in ("coherent", "survey"):
+            with self.assertRaises(ValueError) as caught:
+                removal.author(self.repo, self.feature, self.scratch() / class_name, class_name, class_name)
+            self.assertIn(f"class {class_name!r} is not one of solvable", str(caught.exception))
 
     def test_a_commit_that_deletes_a_file_is_refused_by_path(self) -> None:
         with self.assertRaises(ValueError) as caught:

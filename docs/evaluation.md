@@ -662,9 +662,9 @@ below states what the records support.
 groups:
 
 - Tasks: `tasks/protocol.py` defines a task, materializes its workspace,
-  grades it, and classifies the result. `tasks/feature_removal.py`,
-  `tasks/constructions.py`, and `tasks/teams.py` author tasks, and
-  `tasks/foe-tree/` holds the fifteen autonomy tasks.
+  grades it, and classifies the result. `tasks/feature_removal.py` and
+  `tasks/constructions.py` author tasks, and `tasks/foe-tree/` holds the
+  fifteen autonomy tasks.
 - Arms: `contracts/graphs.py` generates the foe documents, and
   `arms/foe_arm.py` and `arms/codex_arm.py` run one harness on one task.
   `metering_proxy.py` and `codex_budget_watcher.py` enforce the shared
@@ -682,14 +682,15 @@ groups:
 ### Families
 
 Six families each isolate one property. The autonomy family is implemented
-with task fixtures in the tree. The teams family has authoring tools and
-report measures and no task in the tree. The other four are specified here
-and share the same protocol.
+with task fixtures in the tree. The other five are specified here and share
+the same protocol. The teams cases of 2026-09-13 ran tasks and arms the tree
+does not hold, and `results/enforcement-pressure-cases-2026-09-13.md`
+records them.
 
 | family | status | property | behavior the tasks make matter |
 |---|---|---|---|
 | autonomy | implemented; fifteen tasks in the tree | an unattended run ends within its bounds with an outcome an automated consumer can act on | whether a false completion can end the run, and whether a stop is bounded and reported truthfully; every task has a hidden grader its visible check under-covers, and one class per way a task can be impossible |
-| teams | specified; `tasks/teams.py` authors tasks and `report.py` computes the measures | dividing work among coordinated agents beats one agent, and foe's team beats Codex's multi-agent mode | who writes the shared interface first, whether two agents can touch one file, how children are scheduled and their reports carried |
+| teams | specified; recorded cases of 2026-09-13 | dividing work among coordinated agents beats one agent, and foe's team beats Codex's multi-agent mode | who writes the shared interface first, whether two agents can touch one file, how children are scheduled and their reports carried |
 | containment | specified | grants deny accesses below the model | tasks where the shortcut, editing a test, raising a ceiling, or reading a secret, is easier than the fix |
 | budget | specified | what an agent does when told one request remains, and the state it leaves | partial-credit tasks stopped at a fraction of the median spend |
 | verifier | specified | whether the runtime, or the model, decides that a check passed | visible checks that can be gamed |
@@ -709,34 +710,27 @@ a script computes.
 
 ### Arms
 
-`run.py` names every arm. Each autonomy and teams arm below runs foe or
+`run.py` names every arm of the autonomy family, and each runs foe or
 Codex CLI.
 
 | family | foe document arms | foe as shipped | Codex arms |
 |---|---|---|---|
 | autonomy | `foe-configured`; `foe-unverified`, which removes every verifier and keeps `block` and the instruction to call it, so every outcome of `foe-configured` stays available; `foe-ablated`, which removes `block`, the instruction to call it, and every verifier together, so it attributes an effect to neither; `foe-lean`, which drops the survey node | `foe-as-shipped` | `codex-equivalent`, which states the graph's four phases and the stop vocabulary in the prompt; `codex-default`, which receives the task text alone |
-| teams | `foe-configured`; `foe-undivided`, which leaves the survey only the `alone` branch; `foe-sequential`, which runs one worker at a time | `foe-as-shipped` | `codex-single`, with child agents disabled; `codex-multi`, with child agents enabled |
 
 Every Codex arm receives an output schema that asks for foe's outcome
 vocabulary: a status, a blocked code, and evidence. The generated documents
-declare no `context` block, so they never compact. Of the as-shipped
-documents, `builtin:coding` enables compaction and `builtin:team` does not.
+declare no `context` block, so they never compact. The as-shipped document,
+`builtin:coding`, enables compaction.
 
 The autonomy graph has four model nodes: a read-only survey, an
 implementing node verified by the check, an assessing node without an edit
 tool that chooses `accept` or `repair`, and a terminal repairing node. Only
 the two nodes that change files hold `block`. The generated documents
 disable workflow recovery, so a block from any node ends the whole
-workflow. The teams graph has five model nodes. A survey chooses `divide`
-or `alone`, and a second node writes the shared interface. A delegating
-node without an edit tool spawns one worker per unit under that unit's
-write grant. An integrating node and an implementing node for the `alone`
-path complete the graph. Every
-model node declares `model_calls` as `"unlimited"`, so it draws on whatever
-the earlier firings left. A worker declares a fixed share, half the root
-allowance divided among the workers that run at once, because concurrent
-children reserve from one remainder. `evals/cross_harness/contracts/graphs.py`
-generates the documents per workspace.
+workflow. Every model node declares `model_calls` as `"unlimited"`, so it
+draws on whatever the earlier firings left.
+`evals/cross_harness/contracts/graphs.py` generates the documents per
+workspace.
 
 Two arms are compared only when the pair is declared, because each declared
 pair isolates one difference. `foe-configured` against `foe-unverified`
@@ -745,7 +739,7 @@ measures the stop mechanism and the verifier together and attributes
 nothing to either. `foe-configured` against `codex-equivalent` compares the
 runtimes under one stated procedure, and `codex-equivalent` against
 `codex-default` measures the stated procedure alone. `report.py` lists every
-declared pair of both families.
+declared pair.
 
 ### Controls
 
@@ -893,7 +887,6 @@ matches:
 | `block`, a frozen-interface construction | `frozen-interface` |
 | `artifact`, an inventory construction | `inventory-regeneration`, or `inventory-regeneration/last-step` when `obstacle` is `last-step` |
 | `mechanism`, a non-terminating construction | `non-terminating`, whatever the mechanism |
-| a teams task | the task's name for a fan-out authored by construction, and otherwise `source.commit` |
 
 The three non-terminating mechanisms, a lock, a pipe, and a socket, form
 one construction. One builder in `tasks/constructions.py` writes all
@@ -946,15 +939,6 @@ four missing-capability, and four non-terminating.
 `evals/cross_harness/tasks/examples/` holds one further solvable example
 task that the smoke run uses. Every autonomy task text awaits a person's
 reading, as each `task.json` records.
-
-`tasks/teams.py` authors teams tasks. A fan-out task is either harvested
-from a sweep commit or constructed from a sequence of scripted edits, and
-both paths produce the same task directory. A harvested fan-out goes
-through the same feature removal, with the commit's tests partitioned by
-unit so that a unit's pass is one number. A survey task asks a question
-over the whole tree whose ground truth a script computes, and the grader
-scores the returned list by precision and recall. No task text names its
-units, because how the change divides is what the family measures.
 
 A grader receives one JSON object on standard input, `reported` with
 `status`, `code`, and `evidence`, `candidate`, and `arm`, runs with the

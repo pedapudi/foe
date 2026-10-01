@@ -38,9 +38,8 @@ offers, which is every class of the family whatever classes the selected
 tasks hold: a probe over the four autonomy classes guesses right one time
 in four whether the selection holds one class or four. The gate applies the
 plan's margin over that chance, so the autonomy family fails above 40
-percent and the three-class teams family above 48. The per-class counts
-are printed, because the threshold assumes balance and a reader judges an
-unbalanced selection with them in view.
+percent. The per-class counts are printed, because the threshold assumes
+balance and a reader judges an unbalanced selection with them in view.
 """
 
 from __future__ import annotations
@@ -80,11 +79,6 @@ CLASS_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "contradictory": "the task's requirements conflict with each other or with a rule the workspace enforces, so no change satisfies all of them",
         "missing-capability": "completing the task needs a tool or a resource the workspace and the agent lack",
         "non-terminating": "the task's checks never finish, so an agent that waits for them never reports",
-    },
-    "teams": {
-        "fan-out": "one change applied to many similar units of the tree, each in a directory the others do not write",
-        "survey": "a question over the whole tree whose answer a script computes",
-        "coherent": "one change that divides into no such units, so one agent doing the work alone is the answer",
     },
 }
 

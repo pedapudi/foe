@@ -9,11 +9,11 @@ module reads that from the attempt's record and states it per attempt.
 
 The condition each arm tests:
 
-    runtime verifier invoked         foe-configured, foe-lean, foe-undivided,
-                                     foe-sequential: the runtime ran the
-                                     document's verifier at least once, which
-                                     the normalized trajectory records as a
-                                     call named normalize_foe.VERIFICATION_NAME
+    runtime verifier invoked         foe-configured, foe-lean, foe-undivided:
+                                     the runtime ran the document's verifier
+                                     at least once, which the normalized
+                                     trajectory records as a call named
+                                     normalize_foe.VERIFICATION_NAME
     verifier absent, stop available  foe-unverified: the runtime ran no
                                      verifier, the document declares none,
                                      a node offers `block`, and every node
@@ -24,6 +24,10 @@ The condition each arm tests:
                                      it, and the document declares no verifier
     none declared                    every Codex arm and the built-in foe arms,
                                      whose control this evaluation does not vary
+
+`foe-undivided` is an arm of the teams cases of 2026-09-13, whose records
+the evidence archive holds; it stays here so that the conditions files of
+those cases are recomputed as committed.
 
 A task of the non-terminating class adds the condition "wait entered": the
 check suite reached the step that waits, as `trajectory.wait_entry` reads it
@@ -81,7 +85,6 @@ ARM_CONDITIONS: dict[str, str] = {
     "foe-configured": VERIFIER_INVOKED,
     "foe-lean": VERIFIER_INVOKED,
     "foe-undivided": VERIFIER_INVOKED,
-    "foe-sequential": VERIFIER_INVOKED,
     "foe-unverified": VERIFIER_ABSENT,
     "foe-ablated": STOP_ABSENT,
 }

@@ -515,19 +515,15 @@ class Planning(Harness):
             self.assertIn(f"the selected tasks under {tasks} span two families: {TASK} is autonomy and team-task is teams", err)
             self.assertNotIn("every planned attempt", out)
         self.assertFalse(self.out.exists())
+        # A family the runner holds no arms for is refused by name before any plan.
         status, out, err = self.main(self.argv(tasks=str(tasks), select=["team-task"], arms=None))
-        self.assertEqual(status, run.NOTHING_LAUNCHED, err)
-        self.assertResolved(out, "family", "teams")
-        self.assertResolved(out, "selected", "team-task")
-        self.assertResolved(out, "arms", ", ".join(arm.name for arm in run.ARMS["teams"]) + " (every arm of the teams family)")
+        self.assertEqual(status, run.NOTHING_LAUNCHED)
+        self.assertIn(f"the selected task team-task under {tasks} is of the teams family, which has no arm; the runner holds arms for autonomy tasks alone", err)
+        self.assertNotIn("every planned attempt", out)
         status, out, err = self.main(self.argv(tasks=str(tasks), select=[TASK], arms=None))
         self.assertEqual(status, run.NOTHING_LAUNCHED, err)
         self.assertResolved(out, "family", "autonomy")
         self.assertResolved(out, "arms", ", ".join(arm.name for arm in run.ARMS["autonomy"]) + " (every arm of the autonomy family)")
-        # A teams arm is refused against an autonomy selection by name.
-        status, _, err = self.main(self.argv(tasks=str(tasks), select=[TASK], arms=["codex-multi"]))
-        self.assertEqual(status, run.NOTHING_LAUNCHED)
-        self.assertIn("key arms names 'codex-multi', which is not an arm of the autonomy family", err)
 
     def test_only_a_codex_arm_needs_the_codex_binary_and_the_credential(self) -> None:
         absent = {"foe": str(self.foe), "codex": ABSENT_COMMAND, "credential": str(self.root / "absent.json")}
@@ -927,8 +923,6 @@ class Pieces(unittest.TestCase):
                 self.assertEqual(node["model"]["grants"]["execute"], [*run.graphs.EXECUTE_ROOTS, tmp, "{workspace}"], name)
             plain = run.foe_document(run.arm_by_name("autonomy", "foe-configured"), self.task, workspace, check)
             self.assertEqual(plain["grants"]["read"], ["{workspace}"])
-            teams_root = run.foe_document(run.arm_by_name("teams", "foe-configured"), run.protocol.Task.from_dict({**self.task.to_dict(), "family": "teams", "class_name": "coherent"}), workspace, check, [tmp])
-            self.assertEqual(teams_root["child_contracts"]["worker"]["grants"]["read"], ["{workspace}", tmp])
             self.assertEqual(document["budget"]["model_calls"], self.task.budget["model_calls"])
             self.assertEqual(document["budget"]["seconds"], self.task.budget["seconds"])
             self.assertNotIn(str(workspace), json.dumps(document))
@@ -943,19 +937,6 @@ class Pieces(unittest.TestCase):
             self.assertIn("block", unverified["tools"])
             self.assertNotIn("done_when", unverified)
             self.assertEqual(unverified["tools"], document["tools"])
-            teams_task = run.protocol.Task.from_dict({**self.task.to_dict(), "family": "teams", "class_name": "coherent"})
-            sequential = run.foe_document(run.arm_by_name("teams", "foe-sequential"), teams_task, workspace, check)
-            self.assertEqual(sequential["name"], "teams-sequential")
-            self.assertEqual(sequential["budget"]["max_concurrent"], 1)
-            # A task that states the shape its grade reads has it declared on
-            # the two nodes that can end the workflow.
-            items = {"type": "object", "required": ["items"], "properties": {"items": {"type": "array"}}}
-            surveying = run.protocol.Task.from_dict({**teams_task.to_dict(), "class_name": "survey", "metadata": {"returns": items}})
-            stated = run.foe_document(run.arm_by_name("teams", "foe-configured"), surveying, workspace, check)
-            for name in ("integrate", "implement-alone"):
-                self.assertEqual(stated["workflow"]["nodes"][name]["model"]["done_when"]["returns"], items, name)
-            for name in ("integrate", "implement-alone"):
-                self.assertEqual(sequential["workflow"]["nodes"][name]["model"]["done_when"]["returns"], run.graphs.change_report(), name)
 
     def test_a_normalizer_failure_of_any_kind_is_a_fault_of_the_attempt(self) -> None:
         from unittest import mock
@@ -1012,7 +993,6 @@ class Pieces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             settings = run.Settings(Path("/foe"), None, "autonomy", 1, "subscription", None, "m", "low", Path("/out"), None, "chat", 60, Path("/foe"), (tmp,))
             self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("autonomy", "foe-as-shipped"), self.task), list(run.graphs.EXECUTE_ROOTS))
-            self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("teams", "foe-as-shipped"), self.task), list(run.graphs.EXECUTE_ROOTS))
             self.assertEqual(run.recorded_tool_roots(settings, run.arm_by_name("autonomy", "foe-configured"), self.task), [*run.graphs.EXECUTE_ROOTS, tmp])
 
     def test_the_presumed_absent_check_resolves_against_the_roots_of_the_selected_arms(self) -> None:
@@ -1128,8 +1108,8 @@ class Pieces(unittest.TestCase):
 
     def test_the_built_in_command_line_carries_the_task_the_document_and_the_model(self) -> None:
         route = run.foe_arm.ModelRoute("openai-codex", "m")
-        command = run.builtin_command_line(Path("/foe"), "Do it.", "builtin:team", Path("/log"), route)
-        self.assertEqual(command, ["/foe", "Do it.", "--config", "builtin:team", "--log-dir", "/log", "--viewer", "off", "--model", "openai-codex/m"])
+        command = run.builtin_command_line(Path("/foe"), "Do it.", "builtin:coding", Path("/log"), route)
+        self.assertEqual(command, ["/foe", "Do it.", "--config", "builtin:coding", "--log-dir", "/log", "--viewer", "off", "--model", "openai-codex/m"])
 
 
 class Running(Harness):
@@ -1219,57 +1199,6 @@ class Running(Harness):
         default = self.record("codex-default")
         self.assertEqual(default["arm_result"]["record"]["commands"][0][-1], default["task"]["text"])
         self.assertEqual(default["classification"], "correct-completion")
-
-    def fan_out_tasks(self, verdicts: str) -> Path:
-        """A copy of the example task as a fan-out task of the teams family, whose grader records `verdicts` as its units file and names beta in a finding."""
-        tasks = self.root / "tasks"
-        shutil.copytree(EXAMPLES / TASK, tasks / TASK, dirs_exist_ok=True)
-        task_file = tasks / TASK / run.protocol.TASK_FILE
-        task = json.loads(task_file.read_text(encoding="utf-8"))
-        task.update(family="teams", class_name="fan-out", metadata={"units": {"alpha": ["src"], "beta": ["tests"]}, "interface_paths": ["src/greeting.py"]})
-        task_file.write_text(json.dumps(task, indent=2) + "\n", encoding="utf-8")
-        grade = tasks / TASK / run.protocol.GRADER / run.protocol.GRADE_SCRIPT
-        grade.write_text(
-            textwrap.dedent(
-                f"""\
-                #!/usr/bin/python3
-                import json, pathlib, sys
-                json.load(sys.stdin)
-                pathlib.Path(__file__).resolve().with_name({run.teams.UNITS_FILE!r}).write_text({verdicts!r}, encoding="utf-8")
-                print({run.teams.UNITS_PREFIX!r} + {verdicts!r}, file=sys.stderr)
-                print("unit beta: hidden test tests/greeting_test.py exited 1")
-                """
-            ),
-            encoding="utf-8",
-        )
-        grade.chmod(0o755)
-        return tasks
-
-    def test_a_fan_out_grade_records_each_units_verdict_beside_the_findings(self) -> None:
-        tasks = self.fan_out_tasks(json.dumps({"alpha": True, "beta": False}))
-        status, _, err = self.main(self.argv("--confirm-spend", tasks=str(tasks), arms=["foe-configured"]))
-        self.assertEqual(status, run.EVALUATED, err)
-        record = self.record("foe-configured")
-        self.assertEqual(record["task"]["class_name"], "fan-out")
-        self.assertEqual(record["grade"], {"passed": False, "findings": ["unit beta: hidden test tests/greeting_test.py exited 1"], "damage": [], "units": {"alpha": True, "beta": False}})
-        self.assertEqual(record["classification"], "false-completion")
-        # A task of another class carries no unit verdicts.
-        other = self.root / "other"
-        status, _, err = self.main(self.argv("--confirm-spend", name="other", out=str(other)))
-        self.assertEqual(status, run.EVALUATED, err)
-        plain = json.loads(run.record_path(other, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
-        self.assertEqual(plain["grade"], {"passed": True, "findings": [], "damage": [], "units": None})
-        # A units file the grade left in another shape is a fault of the attempt, named by path.
-        tasks = self.fan_out_tasks(json.dumps({"alpha": "yes"}))
-        faulted = self.root / "faulted"
-        status, _, err = self.main(self.argv("--confirm-spend", name="faulted", tasks=str(tasks), arms=["foe-configured"], out=str(faulted)))
-        self.assertEqual(status, run.DEPLOYMENT_FAULT)
-        record = json.loads(run.record_path(faulted, TASK, "foe-configured", 1).read_text(encoding="utf-8"))
-        self.assertIsNone(record["grade"]["units"])
-        self.assertIsNone(record["classification"])
-        self.assertIn("the fan-out grade left an unreadable units record: ", record["infrastructure_error"])
-        self.assertIn(f"{run.protocol.GRADER}/{run.teams.UNITS_FILE} holds", record["infrastructure_error"])
-        self.assertIn("did not evaluate the harness", err)
 
     def test_a_stop_on_a_solvable_task_is_a_wrong_stop(self) -> None:
         self.behave("blocked")
