@@ -700,9 +700,9 @@ class StatisticalUnit(unittest.TestCase):
     def test_every_frozen_interface_task_is_one_construction(self) -> None:
         self.assertEqual(report.construction_of({"block": "budget", "source": {"commit": "base"}}, "t"), "frozen-interface")
 
-    def test_an_inventory_task_is_one_construction_and_its_last_step_variant_another(self) -> None:
-        self.assertEqual(report.construction_of({"artifact": "crates/code/inventory.toml", "obstacle": "whole"}, "t"), "inventory-regeneration")
-        self.assertEqual(report.construction_of({"artifact": "crates/log/inventory.toml", "obstacle": "last-step"}, "t"), "inventory-regeneration/last-step")
+    def test_every_inventory_task_is_one_construction(self) -> None:
+        for crate in ("code", "log"):
+            self.assertEqual(report.construction_of({"artifact": f"crates/{crate}/inventory.toml", "source": {"commit": "base"}}, "t"), "inventory-regeneration")
 
     def test_every_non_terminating_mechanism_is_one_construction(self) -> None:
         # One builder, one check template, one step 1, one marker format, and one grader serve every mechanism.

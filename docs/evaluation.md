@@ -885,7 +885,7 @@ matches:
 | `source` names a commit and its parent, as feature removal writes it | the commit |
 | `surface`, a line-ceiling construction | `ceiling` |
 | `block`, a frozen-interface construction | `frozen-interface` |
-| `artifact`, an inventory construction | `inventory-regeneration`, or `inventory-regeneration/last-step` when `obstacle` is `last-step` |
+| `artifact`, an inventory construction | `inventory-regeneration` |
 | `mechanism`, a non-terminating construction | `non-terminating`, whatever the mechanism |
 
 The three non-terminating mechanisms, a lock, a pipe, and a socket, form

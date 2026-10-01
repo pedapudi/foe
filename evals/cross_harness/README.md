@@ -25,7 +25,7 @@ credential, the network, or a Codex login.
 | `tasks/protocol.py` | what a task is, how a task directory is laid out, how a task is materialized, graded, and classified into a confusion cell |
 | `tasks/policies.py` | degenerate policies that stand in for an arm, so the grader controls run without a model |
 | `tasks/feature_removal.py` | authors a task from one committed feature of this repository |
-| `tasks/constructions.py` | authors the contradictory, missing-capability, and non-terminating tasks; it offers more designs than `tasks/foe-tree/` holds |
+| `tasks/constructions.py` | authors the twelve contradictory, missing-capability, and non-terminating tasks under `tasks/foe-tree/` |
 | `gates/label_leakage.py` | the label non-leakage gate: a model shown only a task's text and file listing must fail to name its class |
 | `gates/isolation.py` | the harness isolation gate: neither canary a run plants appears in any recorded model request, and the requests and the planted canaries are proven present; exit status 4 means no canary was found but the evidence leaves the absence unproven |
 | `gates/hang_symmetry.py` | the non-terminating class's premise: each task's check is still running after 45 seconds on the host and under the Codex sandbox |

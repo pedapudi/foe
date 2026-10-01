@@ -316,13 +316,6 @@ def _feature_removal_construction(name: str, family: str | None, metadata: dict[
     return _source_commit(metadata) if isinstance(source, dict) and "parent" in source else None
 
 
-def _inventory_construction(name: str, family: str | None, metadata: dict[str, Any]) -> str | None:
-    """A derived artifact only a networked generator writes; the variant whose obstacle is the last step alone is a construction of its own."""
-    if "artifact" not in metadata:
-        return None
-    return "inventory-regeneration/last-step" if metadata.get("obstacle") == "last-step" else "inventory-regeneration"
-
-
 # The rule table construction_of applies, in order: each rule names the
 # construction of a task whose metadata has its shape, and returns None for
 # any other. docs/evaluation.md "Statistical unit" states the same table.
@@ -330,7 +323,7 @@ CONSTRUCTION_RULES: tuple[tuple[str, Callable[[str, str | None, dict[str, Any]],
     ("feature removal: metadata.source names a commit and its parent", _feature_removal_construction),
     ("line ceiling: metadata.surface", lambda name, family, metadata: "ceiling" if "surface" in metadata else None),
     ("frozen interface: metadata.block", lambda name, family, metadata: "frozen-interface" if "block" in metadata else None),
-    ("inventory regeneration: metadata.artifact, and metadata.obstacle", _inventory_construction),
+    ("inventory regeneration: metadata.artifact", lambda name, family, metadata: "inventory-regeneration" if "artifact" in metadata else None),
     ("non-terminating check: metadata.mechanism, every mechanism one construction", lambda name, family, metadata: "non-terminating" if "mechanism" in metadata else None),
 )
 
