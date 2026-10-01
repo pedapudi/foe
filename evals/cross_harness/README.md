@@ -190,9 +190,10 @@ from the retained attempt workspaces and the episode and session logs.
 Those files are in the evidence archive
 `cross-harness-evidence-2026-09-13.tar.zst`, which is unpublished and
 which the repository owner holds. `evidence-manifest.json` gives the
-archive's digest, the digest of every file in it, and the commands that
-recompute each rescored, conditions, and isolation file and `tables.md`
-from an extracted copy. `rescore.py`, `gates/isolation.py`, and
+archive's digest, the digest of the file list beside the archive, which
+holds the digest of every archived file, and the commands that recompute
+each rescored, conditions, and isolation file and `tables.md` from an
+extracted copy. `rescore.py`, `gates/isolation.py`, and
 `conditions.py` read that copy when `--state-root` names it.
 docs/evaluation.md "Evidence archive" states what the archive holds.
 

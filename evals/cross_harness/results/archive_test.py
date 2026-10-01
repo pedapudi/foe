@@ -127,31 +127,42 @@ class Archive(unittest.TestCase):
 
 
 class EvidenceManifest(unittest.TestCase):
-    """docs/evaluation.md "Evidence archive": the manifest names every archived file by digest, and the archive covers every record and every committed output."""
+    """docs/evaluation.md "Evidence archive": the manifest names the archive and its file list by digest, names every summarized record by digest, and reproduces every committed output."""
 
     def setUp(self) -> None:
         self.manifest = json.loads((RESULTS / "evidence-manifest.json").read_text(encoding="utf-8"))
         self.archive = self.manifest["archive"]
-        self.files = {entry["path"]: entry["sha256"] for entry in self.archive["files"]}
 
-    def test_the_archive_names_its_file_and_lists_each_file_once_in_order(self) -> None:
+    def test_the_archive_and_its_file_list_are_named_by_size_and_digest(self) -> None:
         self.assertEqual(self.archive["asset"], "cross-harness-evidence-2026-09-13.tar.zst")
-        self.assertRegex(self.archive["sha256"], "^[0-9a-f]{64}$")
-        paths = [entry["path"] for entry in self.archive["files"]]
-        self.assertEqual(paths, sorted(set(paths)))
+        file_list = self.archive["file_list"]
+        self.assertEqual(file_list["asset"], self.archive["asset"] + ".files.json")
+        for named in (self.archive, file_list):
+            self.assertRegex(named["sha256"], "^[0-9a-f]{64}$")
+            self.assertIsInstance(named["bytes"], int)
+            self.assertGreater(named["bytes"], 0)
+        self.assertNotIn("files", self.archive, "the per-file digests live in the file list beside the archive")
 
-    def test_every_summarized_attempt_record_is_archived_with_its_digest(self) -> None:
+    def test_every_summarized_attempt_is_named_once_with_its_record_digest(self) -> None:
+        named = [(attempt["run"], attempt["task"], attempt["arm"], int(attempt["attempt"])) for attempt in self.manifest["attempts"]]
+        self.assertEqual(len(named), len(set(named)))
+        summarized = []
+        for run_name, paths in report.ARCHIVE_RUNS.items():
+            for entry in json.loads((RESULTS / paths["array"]).read_text(encoding="utf-8")):
+                summarized.append((run_name, entry["task"], entry["arm"], int(entry["attempt"])))
+        self.assertEqual(sorted(named), sorted(summarized))
         for attempt in self.manifest["attempts"]:
-            self.assertEqual(self.files.get(f"{attempt['run']}/{attempt['record']}"), attempt["sha256"], attempt)
+            self.assertEqual(attempt["record"], f"records/{attempt['task']}/{attempt['arm']}/{attempt['attempt']}.json", attempt)
+            self.assertRegex(attempt["sha256"], "^[0-9a-f]{64}$", attempt)
 
     def test_the_commands_reproduce_every_committed_output_of_the_archive_mode(self) -> None:
         commands = "\n".join(self.archive["reproduce"]["commands"])
         for paths in report.ARCHIVE_RUNS.values():
             for key in ("array", "rescored", "conditions"):
                 self.assertIn(f"evals/cross_harness/results/{paths[key]}", commands)
+        self.assertEqual(sorted(self.archive["runs"]), sorted(report.ARCHIVE_RUNS))
         for run_name in self.archive["runs"]:
             self.assertIn(f'--out "$EVIDENCE/{run_name}"', commands)
-            self.assertTrue(any(path.startswith(f"{run_name}/records/") for path in self.files), run_name)
 
 
 _NUMBER = re.compile(r"(?<![\w.])([−-]?\+?\d[\d,]*(?:\.\d+)?)(\s?[kM%×]?)")

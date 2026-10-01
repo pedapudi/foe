@@ -1071,8 +1071,11 @@ The raw files behind the recorded results are kept outside the repository
 in one compressed archive, `cross-harness-evidence-2026-09-13.tar.zst`.
 The archive is unpublished, and the repository owner holds it.
 `evals/cross_harness/results/evidence-manifest.json` names the archive with
-its size and SHA-256 digest, and lists every file it holds with that
-file's digest.
+its size and SHA-256 digest. It names the same way the archive's file list,
+`cross-harness-evidence-2026-09-13.tar.zst.files.json`, which the owner
+holds beside the archive and which gives the size and digest of every
+archived file. The manifest also gives the digest of every record the
+committed arrays summarize.
 
 The archive holds every file of the eight runs of 2026-09-13 that three
 instruments read: `rescore.py`, `gates/isolation.py`, and `conditions.py`.
