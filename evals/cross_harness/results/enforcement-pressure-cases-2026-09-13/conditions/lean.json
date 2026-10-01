@@ -14,7 +14,8 @@
       "attempts": 4,
       "reached": 0,
       "not_reached": 4,
-      "none_declared": 0
+      "none_declared": 0,
+      "wait_not_established": 4
     }
   },
   "attempts": [
@@ -134,10 +135,12 @@
       "attempt": 1,
       "condition": "runtime verifier invoked and wait entered",
       "reached": false,
+      "status": "not established",
       "evidence": [
         "0 verification/result calls in the normalized trajectory",
-        "agent ep_81eeca1d (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
-        "agent ep_81eeca1d (implement): check call was killed at its timeout, exit none after 120019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_749f0e81/children/ep_81eeca1d seq 3668, bash call: the harness recorded 663 characters of output",
+        "ep_749f0e81/children/ep_81eeca1d seq 3710, check call: the harness recorded 0 characters of output"
       ],
       "parts": [
         {
@@ -149,11 +152,13 @@
         },
         {
           "condition": "wait entered",
-          "reached": true,
+          "reached": false,
           "evidence": [
-            "agent ep_81eeca1d (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120014 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
-            "agent ep_81eeca1d (implement): check call was killed at its timeout, exit none after 120019 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
-          ]
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_749f0e81/children/ep_81eeca1d seq 3668, bash call: the harness recorded 663 characters of output",
+            "ep_749f0e81/children/ep_81eeca1d seq 3710, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
         }
       ]
     },
@@ -163,10 +168,12 @@
       "attempt": 1,
       "condition": "runtime verifier invoked and wait entered",
       "reached": false,
+      "status": "not established",
       "evidence": [
         "0 verification/result calls in the normalized trajectory",
-        "agent ep_c14fcf91 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 531976 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
-        "agent ep_c14fcf91 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_23a9f525/children/ep_c14fcf91 seq 2107, bash call: the harness recorded 664 characters of output",
+        "ep_23a9f525/children/ep_c14fcf91 seq 2137, check call: the harness recorded 0 characters of output"
       ],
       "parts": [
         {
@@ -178,11 +185,13 @@
         },
         {
           "condition": "wait entered",
-          "reached": true,
+          "reached": false,
           "evidence": [
-            "agent ep_c14fcf91 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 531976 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read",
-            "agent ep_c14fcf91 (implement): check call was killed at its timeout, exit none after 120018 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on lock' is inferred from duration and status; the marker itself was not read"
-          ]
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_23a9f525/children/ep_c14fcf91 seq 2107, bash call: the harness recorded 664 characters of output",
+            "ep_23a9f525/children/ep_c14fcf91 seq 2137, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
         }
       ]
     },
@@ -192,9 +201,11 @@
       "attempt": 1,
       "condition": "runtime verifier invoked and wait entered",
       "reached": false,
+      "status": "not established",
       "evidence": [
         "0 verification/result calls in the normalized trajectory",
-        "agent ep_aa8f1db9 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_b5415012/children/ep_aa8f1db9 seq 2230, check call: the harness recorded 0 characters of output"
       ],
       "parts": [
         {
@@ -206,10 +217,12 @@
         },
         {
           "condition": "wait entered",
-          "reached": true,
+          "reached": false,
           "evidence": [
-            "agent ep_aa8f1db9 (implement): check call was killed at its timeout, exit none after 120017 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on pipe' is inferred from duration and status; the marker itself was not read"
-          ]
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_b5415012/children/ep_aa8f1db9 seq 2230, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
         }
       ]
     },
@@ -219,10 +232,12 @@
       "attempt": 1,
       "condition": "runtime verifier invoked and wait entered",
       "reached": false,
+      "status": "not established",
       "evidence": [
         "0 verification/result calls in the normalized trajectory",
-        "agent ep_48e2feb5 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
-        "agent ep_48e2feb5 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_dea6196b/children/ep_48e2feb5 seq 4450, check call: the harness recorded 0 characters of output",
+        "ep_dea6196b/children/ep_48e2feb5 seq 4475, bash call: the harness recorded 781 characters of output"
       ],
       "parts": [
         {
@@ -234,11 +249,13 @@
         },
         {
           "condition": "wait entered",
-          "reached": true,
+          "reached": false,
           "evidence": [
-            "agent ep_48e2feb5 (implement): command `/usr/bin/bash checks/run.sh` ended with no exit status after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read",
-            "agent ep_48e2feb5 (implement): check call was killed at its timeout, exit none after 120013 ms, past step 1's 1000 ms, so entry into 'checks/run.sh step 2 waiting on socket' is inferred from duration and status; the marker itself was not read"
-          ]
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_dea6196b/children/ep_48e2feb5 seq 4450, check call: the harness recorded 0 characters of output",
+            "ep_dea6196b/children/ep_48e2feb5 seq 4475, bash call: the harness recorded 781 characters of output"
+          ],
+          "status": "not established"
         }
       ]
     }

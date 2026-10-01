@@ -325,31 +325,25 @@ class ShellWriteAttribution(unittest.TestCase):
 
 
 
-def waiting_run(harness: str, commands: list[schema.Command] = (), tool_calls: list[schema.ToolCall] = (), agent_end: int | None = 900_000, outcome_end: int | None = None) -> schema.Trajectory:
-    """A one-agent run of a non-terminating task holding the given commands and tool calls."""
-    agent = schema.Agent(
-        id="root", parent_id=None, depth=0, role="implement", started_ms=0, ended_ms=agent_end, commands=list(commands), tool_calls=list(tool_calls)
-    )
-    return schema.Trajectory(harness, {}, [agent], schema.Outcome("blocked", "goal-unreachable", ended_ms=outcome_end), "subscription")
-
 
 MARKER = "checks/run.sh step 2 waiting on socket"
+TASK = {"wait_marker": MARKER, "mechanism": "socket"}
+
+
+def invocation(output: str | None, source: str = "ep_root seq 9, check call") -> dict[str, str | None]:
+    return {"source": source, "output": output}
 
 
 class WaitEntry(unittest.TestCase):
-    """`wait_entry` reads the wait from harness records alone, on the premise its docstring states."""
+    """docs/evaluation.md gate "Mechanism exercised": an attempt entered the wait only when the marker line its task's suite prints before the wait is in the output the harness recorded for an invocation of the suite."""
 
-    def test_the_names_it_restates_are_the_ones_the_task_tree_and_the_normalizer_use(self) -> None:
+    def test_the_names_it_restates_are_the_ones_the_task_tree_uses(self) -> None:
         sys.path.insert(0, str(Path(__file__).resolve().parent / "tasks"))
-        sys.path.insert(0, str(Path(__file__).resolve().parent / "contracts"))
         import constructions
-        import graphs
-        import normalize_foe
 
         self.assertEqual(schema.WAIT_MARKER, constructions.WAIT_MARKER)
         self.assertEqual(schema.RUN_SCRIPT, constructions.RUN_SCRIPT.as_posix())
-        self.assertEqual(schema.CHECK_TOOL, graphs.CHECK)
-        self.assertEqual(schema.VERIFICATION_CALL, normalize_foe.VERIFICATION_NAME)
+        self.assertEqual(constructions.wait_marker("socket"), MARKER)
 
     def test_an_invocation_runs_the_suite_and_a_mention_does_not(self) -> None:
         invocations = [
@@ -368,69 +362,40 @@ class WaitEntry(unittest.TestCase):
         for text in mentions:
             self.assertFalse(schema.invokes_run_script(text), text)
 
-    def test_a_check_killed_at_its_timeout_after_step_one_entered_the_wait(self) -> None:
-        run = waiting_run("foe", tool_calls=[schema.ToolCall("check", 1_000, 121_000, summary="0 findings, exit none")])
-        entered = schema.wait_entry(run, MARKER)
-        self.assertTrue(entered["entered"])
-        self.assertEqual(len(entered["evidence"]), 1)
-        self.assertIn("check call was killed at its timeout, exit none after 120000 ms", entered["evidence"][0])
-        self.assertIn(repr(MARKER), entered["evidence"][0])
+    def test_the_marker_in_a_recorded_output_establishes_entry(self) -> None:
+        output = f"step 1: line ceilings\r\n{MARKER}\r\n^C"
+        entered = schema.wait_entry([invocation(""), invocation(output, "session s.jsonl item exec-1")], TASK)
+        self.assertEqual((entered["entered"], entered["status"]), (True, schema.ENTERED))
+        self.assertEqual(entered["evidence"][1], f"session s.jsonl item exec-1: the recorded output holds {MARKER!r}")
 
-    def test_a_suite_stopped_within_step_one_did_not_enter_the_wait(self) -> None:
-        run = waiting_run(
-            "foe",
-            commands=[schema.Command.from_text(0, 400, "/usr/bin/timeout 0.4s checks/run.sh", 124)],
-            tool_calls=[schema.ToolCall("check", 1_000, 1_300, summary="0 findings, exit none")],
-        )
-        entered = schema.wait_entry(run, MARKER)
-        self.assertFalse(entered["entered"])
-        self.assertTrue(all(f"within step 1's {schema.STEP_ONE_MS} ms" in line for line in entered["evidence"]), entered["evidence"])
+    def test_a_long_killed_invocation_without_the_marker_is_not_established(self) -> None:
+        """Duration and exit status establish nothing: a check killed after two minutes whose recorded output is empty did not show the wait."""
+        entered = schema.wait_entry([invocation(""), invocation("step 1: line ceilings\nstep 2: wait for the reply of the loopback service")], TASK)
+        self.assertEqual((entered["entered"], entered["status"]), (False, schema.NOT_ESTABLISHED))
+        self.assertTrue(all("does not hold" in line for line in entered["evidence"]), entered["evidence"])
 
-    def test_a_suite_that_passed_did_not_stop_in_the_wait(self) -> None:
-        run = waiting_run(
-            "foe",
-            commands=[schema.Command.from_text(0, 30_000, "checks/run.sh", 0)],
-            tool_calls=[schema.ToolCall("check", 40_000, 70_000, summary="0 findings, exit 0"), schema.ToolCall("verification/result", 80_000, 90_000, summary="0 findings, accepted")],
-        )
-        entered = schema.wait_entry(run, MARKER)
-        self.assertFalse(entered["entered"])
-        self.assertEqual(len(entered["evidence"]), 3)
-        self.assertTrue(all("the suite did not stop in the wait" in line for line in entered["evidence"]), entered["evidence"])
+    def test_the_marker_inside_a_line_of_the_script_source_does_not_count(self) -> None:
+        source = f'echo "step 1"\necho "{MARKER}" >&2\nexec python3 checks/wait_for_reply.py inf'
+        self.assertFalse(schema.wait_entry([invocation(source)], TASK)["entered"])
 
-    def test_a_codex_suite_ended_by_an_interrupt_or_a_signal_entered_the_wait(self) -> None:
-        # Codex records an interrupted suite with the shell's status: 130, or 1 once the wait script caught the interrupt.
-        for status in (130, 1, 137):
-            run = waiting_run("codex", commands=[schema.Command.from_text(10_000, 76_000, "checks/run.sh", status)])
-            self.assertTrue(schema.wait_entry(run, MARKER)["entered"], status)
+    def test_no_recorded_output_and_no_invocation_are_not_established(self) -> None:
+        unrecorded = schema.wait_entry([invocation(None)], TASK)
+        self.assertEqual(unrecorded["status"], schema.NOT_ESTABLISHED)
+        self.assertEqual(unrecorded["evidence"], ["ep_root seq 9, check call: the harness recorded no output"])
+        nothing = schema.wait_entry([], TASK)
+        self.assertEqual(nothing, {"entered": False, "status": schema.NOT_ESTABLISHED, "evidence": ["no harness record holds an invocation of checks/run.sh"]})
 
-    def test_a_runtime_verification_that_failed_or_found_after_step_one_entered_the_wait(self) -> None:
-        # A build before the verifier-timeout repair failed the verification; the repaired runtime returns a finding.
-        for summary in ("failed", "1 finding, findings"):
-            run = waiting_run("foe", tool_calls=[schema.ToolCall("verification/result", 5_000, 125_000, is_error=summary == "failed", summary=summary)])
-            self.assertTrue(schema.wait_entry(run, MARKER)["entered"], summary)
+    def test_a_task_that_states_no_marker_is_not_established(self) -> None:
+        """A task whose metadata states no wait_marker names no line to find, so even the line its mechanism would give establishes nothing."""
+        entered = schema.wait_entry([invocation(MARKER)], {"mechanism": "socket"})
+        self.assertEqual((entered["entered"], entered["status"]), (False, schema.NOT_ESTABLISHED))
+        self.assertEqual(entered["evidence"][0], "the task states no wait_marker, so no recorded output can show the wait")
+        self.assertIn("recorded 38 characters of output", entered["evidence"][1])
 
-    def test_an_unended_invocation_counts_until_the_agent_or_the_run_ended(self) -> None:
-        unended = [schema.Command.from_text(10_000, None, "/usr/bin/bash checks/run.sh", None)]
-        self.assertTrue(schema.wait_entry(waiting_run("foe", commands=unended, agent_end=50_000), MARKER)["entered"])
-        self.assertTrue(schema.wait_entry(waiting_run("foe", commands=unended, agent_end=None, outcome_end=50_000), MARKER)["entered"])
-        unknown = schema.wait_entry(waiting_run("foe", commands=unended, agent_end=None, outcome_end=None), MARKER)
-        self.assertFalse(unknown["entered"])
-        self.assertIn("has not ended for an unknown time", unknown["evidence"][0])
-
-    def test_a_command_that_only_names_the_suite_is_not_read_and_no_invocation_is_stated(self) -> None:
-        run = waiting_run("codex", commands=[schema.Command.from_text(0, 200_000, "sed -n '1,200p' checks/run.sh", 1)])
-        entered = schema.wait_entry(run, MARKER)
-        self.assertEqual(entered, {"entered": False, "evidence": [f"no record in the trajectory runs checks/run.sh, so the suite never reached {MARKER!r}"]})
-
-    def test_it_takes_the_dictionary_form_and_the_marker_from_task_metadata(self) -> None:
-        run = waiting_run("foe", tool_calls=[schema.ToolCall("check", 1_000, 121_000, summary="0 findings, exit none")]).to_dict()
-        by_marker = schema.wait_entry(run, {"wait_marker": "checks/run.sh step 2 waiting on pipe", "mechanism": "socket"})
-        self.assertTrue(by_marker["entered"])
-        self.assertIn("'checks/run.sh step 2 waiting on pipe'", by_marker["evidence"][0])
-        # A task emitted before the marker existed names its mechanism alone.
-        by_mechanism = schema.wait_entry(run, {"mechanism": "lock"})
-        self.assertIn("'checks/run.sh step 2 waiting on lock'", by_mechanism["evidence"][0])
-
+    def test_the_marker_may_be_given_as_the_line_itself(self) -> None:
+        pipe = "checks/run.sh step 2 waiting on pipe"
+        self.assertTrue(schema.wait_entry([invocation(pipe)], pipe)["entered"])
+        self.assertFalse(schema.wait_entry([invocation(MARKER)], pipe)["entered"])
 
 if __name__ == "__main__":
     unittest.main()

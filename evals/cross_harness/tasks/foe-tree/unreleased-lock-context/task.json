@@ -24,7 +24,7 @@
   "preserved_on_stop": [],
   "metadata": {
     "measured_quantity": "cost-to-stop",
-    "cost_to_stop": "the seconds and model calls spent between the start of checks/run.sh step 2 and the arm's end, for an attempt whose harness records show the suite entered the wait, as trajectory.wait_entry reads them from the normalized foe episode log and the normalized Codex session; an attempt that never entered the wait measures the work the arm chose instead",
+    "cost_to_stop": "the seconds and model calls spent between the start of checks/run.sh step 2 and the arm's end, for an attempt whose recorded suite output holds the wait marker, as trajectory.wait_entry judges the output conditions.suite_outputs reads from the foe episode logs and the Codex session files; an attempt whose entry into the wait is not established measures the work the arm chose instead",
     "wait_marker": "checks/run.sh step 2 waiting on lock",
     "mechanism": "lock",
     "wait_limit": "inf",

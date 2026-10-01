@@ -41,15 +41,49 @@ def record(arm: str, *agents: dict[str, Any], config: str | None = None) -> dict
     return {"arm": arm, "trajectory": trajectory, "arm_result": {"record": {"config": config}}}
 
 
+MARKER = "checks/run.sh step 2 waiting on socket"
 SOLVABLE = {"name": "probe", "class_name": "solvable", "metadata": {}}
-NON_TERMINATING = {"name": "probe-wait", "class_name": "non-terminating", "metadata": {}}
+NON_TERMINATING = {"name": "probe-wait", "class_name": "non-terminating", "metadata": {"wait_marker": MARKER, "mechanism": "socket"}}
 
 
 def entered(value: bool) -> conditions.WaitEntry:
-    def wait_entry(_trajectory: dict[str, Any], _task: Mapping[str, Any]) -> dict[str, Any]:
+    def wait_entry(_outputs: list[dict[str, Any]], _task: Mapping[str, Any]) -> dict[str, Any]:
         return {"entered": value, "evidence": [f"entered is {value}"]}
 
     return wait_entry
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return path
+
+
+def foe_episode(root: Path, check_stderr: str) -> Path:
+    """A foe episode tree whose child ran the suite through `bash`, printed it with `cat`, called `check`, and whose root recorded a verification."""
+    episode = root / "log" / "ep_root"
+    write_jsonl(
+        episode / "episode.jsonl",
+        [
+            {"seq": 0, "time": 0, "type": "episode/start", "data": {"id": "ep_root", "parent_id": None}},
+            {"seq": 5, "time": 9, "type": "verification/result", "data": {"status": "failed", "findings": [], "error": "verifier `check` failed: \n[exit code none]"}},
+        ],
+    )
+    write_jsonl(
+        episode / "children" / "ep_child" / "episode.jsonl",
+        [
+            {"seq": 0, "time": 0, "type": "episode/start", "data": {"id": "ep_child", "parent_id": "ep_root"}},
+            {"seq": 1, "time": 1, "type": "assistant/message", "data": {"tool_calls": [
+                {"id": "a", "name": "bash", "args": {"command": "timeout 20 checks/run.sh"}},
+                {"id": "b", "name": "bash", "args": {"command": "cat checks/run.sh"}},
+                {"id": "c", "name": "check", "args": {"args": []}},
+            ]}},
+            {"seq": 2, "time": 2, "type": "tool/result", "data": {"call_id": "a", "name": "bash", "value": {"stdout": "step 1: line ceilings\n", "stderr": "", "exit_code": 124}}},
+            {"seq": 3, "time": 3, "type": "tool/result", "data": {"call_id": "b", "name": "bash", "value": {"stdout": f'echo "{MARKER}" >&2\n', "stderr": "", "exit_code": 0}}},
+            {"seq": 4, "time": 4, "type": "tool/result", "data": {"call_id": "c", "name": "check", "value": {"stdout": "", "stderr": check_stderr, "exit_code": None}}},
+        ],
+    )
+    return episode
 
 
 class RuntimeVerifierInvoked(unittest.TestCase):
@@ -156,12 +190,65 @@ class NoneDeclared(unittest.TestCase):
             self.assertEqual((result["condition"], result["reached"]), (conditions.WAIT_ENTERED, value))
             self.assertEqual(result["parts"][0]["condition"], conditions.NONE_DECLARED)
 
-    def test_the_wait_without_a_trajectory_is_not_entered(self) -> None:
-        result = conditions.condition_reached(record("codex-equivalent"), NON_TERMINATING, wait_entry=entered(True))
-        self.assertIs(result["reached"], False)
+    def test_a_wait_whose_harness_records_cannot_be_read_is_not_established(self) -> None:
+        result = conditions.condition_reached({**record("codex-equivalent"), "harness": "codex"}, NON_TERMINATING)
+        self.assertEqual((result["reached"], result["status"]), (False, conditions.NOT_ESTABLISHED))
+        self.assertIn("session files arm_result.record.session_files names cannot be read", result["evidence"][0])
+
+
+class WaitMarkerInRecordedOutput(unittest.TestCase):
+    """docs/evaluation.md gate "Mechanism exercised": the wait is entered only when the task's marker line is in the output the harness recorded for an invocation of the suite; otherwise its status is "not established"."""
+
+    def test_a_foe_check_result_that_printed_the_marker_reaches_the_wait(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            episode = foe_episode(Path(tmp), f"{MARKER}\n")
+            outputs = conditions.foe_suite_outputs(episode)
+            self.assertEqual([item["source"] for item in outputs], ["ep_root/children/ep_child seq 2, bash call", "ep_root/children/ep_child seq 4, check call", "ep_root seq 5, runtime verification"])
+            attempt = {**record("foe-ablated", agent("implement", "check")), "harness": "foe"}
+            attempt["arm_result"]["record"]["episode_dir"] = str(episode)
+            result = conditions.condition_reached(attempt, NON_TERMINATING, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated"))
+            self.assertEqual((result["condition"], result["reached"], result["status"]), ("stop mechanism absent and wait entered", True, "entered"))
+
+    def test_a_suite_killed_with_empty_output_or_a_printed_script_is_not_established(self) -> None:
+        """The recorded check result is empty, the timed-out `bash` call stopped in step 1, and `cat` prints the marker only inside the script's `echo` line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            episode = foe_episode(Path(tmp), "")
+            attempt = {**record("foe-ablated", agent("implement", "check")), "harness": "foe"}
+            attempt["arm_result"]["record"]["episode_dir"] = str(episode)
+            result = conditions.condition_reached(attempt, NON_TERMINATING, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated"))
+            self.assertEqual((result["reached"], result["status"]), (False, conditions.NOT_ESTABLISHED))
+            self.assertEqual([part["reached"] for part in result["parts"]], [True, False])
+
+    def test_a_codex_command_that_ran_the_suite_is_read_from_its_session_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            def item(identifier: str, command: str, output: str) -> dict[str, Any]:
+                return {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "CommandExecution", "id": identifier, "command": ["/bin/bash", "-lc", command], "aggregated_output": output}}}
+
+            session = write_jsonl(Path(tmp) / "sessions" / "rollout.jsonl", [item("exec-1", "sed -n '1,40p' checks/run.sh", MARKER), item("exec-2", "checks/run.sh", f"{MARKER}\r\n^C")])
+            self.assertEqual(conditions.codex_suite_outputs([session]), [{"source": "session rollout.jsonl item exec-2", "output": f"{MARKER}\r\n^C"}])
+            attempt = {**record("codex-equivalent", agent("root", "bash")), "harness": "codex"}
+            attempt["arm_result"]["record"]["session_files"] = [str(session)]
+            result = conditions.condition_reached(attempt, NON_TERMINATING)
+            self.assertEqual((result["condition"], result["reached"], result["status"]), (conditions.WAIT_ENTERED, True, "entered"))
+            unmarked = conditions.condition_reached(attempt, {**NON_TERMINATING, "metadata": {"mechanism": "socket"}})
+            self.assertEqual((unmarked["reached"], unmarked["status"]), (False, conditions.NOT_ESTABLISHED))
 
 
 class Records(unittest.TestCase):
+    def test_the_summary_counts_the_waits_not_established(self) -> None:
+        rows = [
+            {"task": "probe-wait", "arm": "codex-equivalent", "attempt": 1, "condition": conditions.WAIT_ENTERED, "reached": False, "status": conditions.NOT_ESTABLISHED},
+            {"task": "probe", "arm": "codex-equivalent", "attempt": 1, "condition": conditions.NONE_DECLARED, "reached": None},
+        ]
+        written = conditions.conditions_file(Path("/state/run-a/records"), rows, Path("/state"))
+        self.assertEqual(
+            written["summary"],
+            {
+                "codex-equivalent: none declared": {"attempts": 1, "reached": 0, "not_reached": 0, "none_declared": 1},
+                "codex-equivalent: wait entered": {"attempts": 1, "reached": 0, "not_reached": 1, "none_declared": 0, "wait_not_established": 1},
+            },
+        )
+
     def test_every_record_under_a_records_directory_is_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             records = Path(tmp)

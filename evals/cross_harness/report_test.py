@@ -749,6 +749,14 @@ class StatisticalUnit(unittest.TestCase):
         self.assertEqual((seven["min_discordant_constructions"], seven["reachable"]), (6, True))
         self.assertAlmostEqual(seven["difference"], 6 / 7)
 
+class WaitNotEstablishedColumn(unittest.TestCase):
+    """docs/evaluation.md gate "Mechanism exercised": the archive's reached column names a wait whose entry the recorded output does not show."""
+
+    def test_the_archive_states_a_wait_not_established_in_its_reached_column(self) -> None:
+        self.assertEqual(report._reached({"condition": "wait entered", "reached": False, "status": "not established"}), "no, wait not established")
+        self.assertEqual(report._reached({"condition": "wait entered", "reached": True, "status": "entered"}), "yes")
+
+
 class DeclaredPairs(unittest.TestCase):
     """docs/evaluation.md "Arms": each declared pair states what it isolates."""
 

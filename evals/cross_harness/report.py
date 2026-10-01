@@ -1726,7 +1726,7 @@ def load_archive(results: Path, tasks: dict[str, dict[str, Any]]) -> dict[str, l
                     "attempt": key[2],
                     "cells": {1: rescored[key]["cell_scoring_1"], 2: rescored[key]["cell_scoring_2"]},
                     "classification": entry["cell"],
-                    "condition": {name: conditions[key].get(name) for name in ("condition", "reached")},
+                    "condition": {name: conditions[key].get(name) for name in ("condition", "reached", "status")},
                     "reported": entry.get("reported") or {},
                     "totals": entry.get("totals") or {},
                     "grade": entry.get("grade") or {},
@@ -1943,6 +1943,17 @@ def _ratio_table(title: str, rows: list[tuple[str, list[dict[str, Any]], list[di
     return lines
 
 
+# The status `conditions.py` gives a wait whose entry the recorded output does not show.
+NOT_ESTABLISHED = "not established"
+
+
+def _reached(condition: dict[str, Any]) -> str:
+    """The reached column: yes, no, or the wait's status where its entry is not established."""
+    if condition.get("status") == NOT_ESTABLISHED:
+        return f"no, wait {NOT_ESTABLISHED}"
+    return _flag(condition["reached"])
+
+
 def _attempts_table(title: str, records: list[dict[str, Any]]) -> list[str]:
     lines = [
         "",
@@ -1958,7 +1969,7 @@ def _attempts_table(title: str, records: list[dict[str, Any]]) -> list[str]:
         condition = record["condition"]
         lines.append(
             f"| {record['run']} | {task_name(record)} | {record['arm']} | {record['attempt']} | {record['cells'][1]} | {record['cells'][2]} | "
-            f"{condition['condition'] or '—'} | {_flag(condition['reached'])} | {reported_status(record) or '—'} | {record['reported'].get('code') or '—'} | "
+            f"{condition['condition'] or '—'} | {_reached(condition)} | {reported_status(record) or '—'} | {record['reported'].get('code') or '—'} | "
             f"{_f(_integer(totals.get('agents')), 0)} | {_f(one['calls'], 0)} | {_f(one['input'], 0)} | {_f(one['uncached'], 0)} | {_f(one['output'], 0)} | "
             f"{_f(one['seconds'], 1)} | {by_name.get(VERIFICATION_EVENT, 0)} | {by_name.get(VERIFIER_TOOL, 0)} | {by_name.get(BLOCK_TOOL, 0)} |"
         )

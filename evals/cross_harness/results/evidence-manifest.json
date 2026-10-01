@@ -36,7 +36,7 @@
       },
       {
         "files": "<run>/attempts/<task>/<arm>/<attempt>/log/<episode>/**/episode.jsonl of every foe attempt, child episodes included",
-        "read_by": "gates/isolation.py, for the request events"
+        "read_by": "gates/isolation.py, for the request events; conditions.py, for the recorded output of every invocation of a non-terminating task's check suite"
       },
       {
         "files": "<run>/attempts/<task>/<arm>/<attempt>/artifacts/config.json of every foe attempt, the document the attempt ran",
@@ -44,7 +44,7 @@
       },
       {
         "files": "the session files under artifacts/codex-home/sessions/, artifacts/events.jsonl, and artifacts/codex-home/config.toml of every Codex attempt",
-        "read_by": "gates/isolation.py, for the recorded requests and the Codex canary"
+        "read_by": "gates/isolation.py, for the recorded requests and the Codex canary; conditions.py, for the recorded output of every command that runs a non-terminating task's check suite, from the session files"
       },
       {
         "files": "root/task.json and root/grader/workspace.patch of every attempt",

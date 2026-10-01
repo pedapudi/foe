@@ -46,10 +46,10 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "contracts"))
 sys.path.insert(0, str(HERE.parent))
 
+import conditions  # noqa: E402
 import graphs  # noqa: E402
 import run  # noqa: E402
 import host_runtime  # noqa: E402
-import normalize_foe  # noqa: E402
 import runtime_responses  # noqa: E402
 import trajectory  # noqa: E402
 
@@ -201,9 +201,14 @@ class VerifierTimeout(Case):
             self.assertNotIn("error", verification)
         # The implementing node opened one firing for its first run and one per retry.
         self.assertEqual(opened, [SURVEY] + [IMPLEMENT] * (graphs.NODE_RETRIES + 1))
-        # The wait-entry reader counts these verifications from the normalized log alone.
-        entered = trajectory.wait_entry(normalize_foe.normalize(episode), MARKER)
-        self.assertTrue(entered["entered"], entered["evidence"])
+        # The wait-entry reader requires the marker in recorded output. The
+        # check printed it, and the runtime's timeout finding states the
+        # bound and none of the output, so entry is not established.
+        outputs = conditions.foe_suite_outputs(episode)
+        self.assertEqual(len(outputs), graphs.NODE_RETRIES + 1, outputs)
+        self.assertTrue(all(item["source"].endswith("runtime verification") for item in outputs), outputs)
+        entered = trajectory.wait_entry(outputs, MARKER)
+        self.assertEqual((entered["entered"], entered["status"]), (False, trajectory.NOT_ESTABLISHED), entered["evidence"])
 
 
 class CheckWrites(Case):

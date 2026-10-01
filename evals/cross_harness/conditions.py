@@ -30,9 +30,19 @@ the evidence archive holds; it stays here so that the conditions files of
 those cases are recomputed as committed.
 
 A task of the non-terminating class adds the condition "wait entered": the
-check suite reached the step that waits, as `trajectory.wait_entry` reads it
-from harness-written records. The class tests a stop in front of a wait, and
-an attempt that never entered the wait did not face it.
+check suite reached the step that waits. The class tests a stop in front of
+a wait, and an attempt that never entered the wait did not face it. The
+condition is reached only when the marker line the task's suite prints
+before the wait, `metadata.wait_marker`, is a line of the output the harness
+recorded for an invocation of the suite, as `trajectory.wait_entry` reads
+it. Without the marker the wait part's `status` is "not established" and
+`reached` is False, whatever the invocation's duration or exit status.
+`suite_outputs` reads that output from the harness's own records, which the
+record's arm result names: every `episode.jsonl` under the foe episode
+directory, and the Codex session files. The normalized trajectory holds no
+command output. The marker is trusted as printed by the suite only while
+`checks/run.sh` is unchanged and the command adds no output of its own, as
+`trajectory.wait_entry` states.
 
 `condition_reached(record, task)` returns `{condition, reached, evidence}`.
 `reached` is True or False for a declared condition and None for "none
@@ -49,12 +59,14 @@ and prints one JSON object per task, arm, and attempt:
 
 `--state-root` names a copy of the runner's state root, such as the
 extracted evidence archive `results/evidence-manifest.json` names; the
-document a record names under a state root, in any home directory, is then
-read under the copy. `--out` writes, in place of the printed array, the
-conditions file the results directory keeps: the run's name, its records
-directory and the command in the `~` form of the runner's state root, the
-rule the file answers, a count per arm and condition of the attempts that
-reached it, did not, or declare none, and the array.
+document, episode directory, and session files a record names under a state
+root, in any home directory, are then read under the copy. `--out` writes,
+in place of the printed array, the conditions file the results directory
+keeps: the run's name, its records directory and the command in the `~`
+form of the runner's state root, the rule the file answers, a count per arm
+and condition of the attempts that reached it, did not, or declare none,
+with the attempts whose wait entry is not established among those that did
+not, and the array.
 """
 
 from __future__ import annotations
@@ -67,7 +79,10 @@ from typing import Any, Callable, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import normalize_codex  # noqa: E402
 import normalize_foe  # noqa: E402
+# normalize_foe puts contracts/ on the path, so graphs is imported after it.
+import graphs  # noqa: E402
 import rescore  # noqa: E402
 import trajectory as trajectory_module  # noqa: E402
 
@@ -75,6 +90,7 @@ VERIFIER_INVOKED = "runtime verifier invoked"
 VERIFIER_ABSENT = "verifier absent, stop available"
 STOP_ABSENT = "stop mechanism absent"
 WAIT_ENTERED = "wait entered"
+NOT_ESTABLISHED = trajectory_module.NOT_ESTABLISHED
 NONE_DECLARED = "none declared"
 # The rule a conditions file answers, as the file states it.
 RULE = "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it"
@@ -97,7 +113,14 @@ BLOCK_INSTRUCTION = f"call `{BLOCK}`"
 # `retries` and `max_fires` bound re-firing without running anything.
 VERIFY_KEY = "verify"
 
-WaitEntry = Callable[[dict[str, Any], Mapping[str, Any]], dict[str, Any]]
+# The foe tools whose recorded result carries the suite's output when the
+# suite ran under them: `check` runs it, and `bash` and a `session` started
+# with a command that `trajectory.invokes_run_script` accepts run it.
+SHELL_TOOLS = ("bash", "session")
+# The Codex session item that records one shell command and its output.
+CODEX_COMMAND_ITEM = "CommandExecution"
+
+WaitEntry = Callable[[list[dict[str, Any]], Mapping[str, Any]], dict[str, Any]]
 
 
 def verifications(trajectory: Mapping[str, Any] | None) -> int:
@@ -203,15 +226,127 @@ def arm_condition(record: Mapping[str, Any], document: Mapping[str, Any] | None 
     return _result(condition, not offering and not instructing and not verifiers, [stated, told, declared])
 
 
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """The JSON objects of a JSON Lines file, one per line; a line that is not an object is skipped."""
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            out.append(value)
+    return out
+
+
+def _result_output(data: Mapping[str, Any]) -> str | None:
+    """The process output one foe `tool/result` records: its value's standard output and error, or its rendering when the value holds neither."""
+    value = data.get("value") if isinstance(data.get("value"), Mapping) else {}
+    streams = [value[key] for key in ("stdout", "stderr") if isinstance(value.get(key), str)]
+    if streams:
+        return "\n".join(stream for stream in streams if stream)
+    rendered = data.get("rendered")
+    return rendered if isinstance(rendered, str) else None
+
+
+def foe_suite_outputs(episode_dir: Path) -> list[dict[str, Any]]:
+    """The recorded output of every invocation of the suite in a foe episode tree, in log path and event order.
+
+    An invocation is a `check` call, a `bash` call or a `session` start
+    whose command runs `checks/run.sh`, or a runtime verification. A
+    session's output is in each `poll` or `stop` result for it. A
+    verification's output is its error text and its findings, which carry
+    what the verifier printed.
+    """
+    outputs: list[dict[str, Any]] = []
+    for log in sorted(episode_dir.rglob(normalize_foe.LOG_NAME)):
+        where = log.parent.relative_to(episode_dir.parent).as_posix()
+        opened: dict[str, Mapping[str, Any]] = {}
+        sessions: dict[str, str] = {}
+        for event in _read_jsonl(log):
+            data = event.get("data") if isinstance(event.get("data"), Mapping) else {}
+            kind = event.get("type")
+            if kind == "assistant/message":
+                for call in data.get("tool_calls") or []:
+                    if isinstance(call, Mapping):
+                        opened[str(call.get("id"))] = call
+            elif kind == "tool/inner-call":
+                opened[str(data.get("call_id"))] = data
+            elif kind == normalize_foe.VERIFICATION_NAME:
+                findings = [str(item) for item in data.get("findings") or []]
+                text = "\n".join(([data["error"]] if isinstance(data.get("error"), str) else []) + findings)
+                outputs.append({"source": f"{where} seq {event.get('seq')}, runtime verification", "output": text})
+            elif kind == "tool/result":
+                name = data.get("name")
+                args = (opened.get(str(data.get("call_id"))) or {}).get("args")
+                args = args if isinstance(args, Mapping) else {}
+                runs = isinstance(args.get("command"), str) and trajectory_module.invokes_run_script(args["command"])
+                if name == graphs.CHECK:
+                    outputs.append({"source": f"{where} seq {event.get('seq')}, check call", "output": _result_output(data)})
+                elif name == "bash" and runs:
+                    outputs.append({"source": f"{where} seq {event.get('seq')}, bash call", "output": _result_output(data)})
+                elif name == "session" and runs and args.get("action") == "start":
+                    value = data.get("value") if isinstance(data.get("value"), Mapping) else {}
+                    sessions[str(value.get("session"))] = f"{where} seq {event.get('seq')}"
+                elif name == "session" and args.get("action") in ("poll", "stop") and str(args.get("session")) in sessions:
+                    started = sessions[str(args.get("session"))]
+                    outputs.append({"source": f"{where} seq {event.get('seq')}, {args.get('action')} of the session started at {started}", "output": _result_output(data)})
+    return outputs
+
+
+def codex_suite_outputs(session_files: list[Path]) -> list[dict[str, Any]]:
+    """The recorded output of every Codex command that runs `checks/run.sh`, in session file and item order."""
+    outputs: list[dict[str, Any]] = []
+    for path in session_files:
+        for record in _read_jsonl(path):
+            payload = record.get("payload") if isinstance(record.get("payload"), Mapping) else {}
+            item = payload.get("item") if isinstance(payload.get("item"), Mapping) else {}
+            if record.get("type") != "event_msg" or payload.get("type") != "item_completed" or item.get("type") != CODEX_COMMAND_ITEM:
+                continue
+            if not trajectory_module.invokes_run_script(normalize_codex.command_text(item.get("command"))):
+                continue
+            output = item.get("aggregated_output")
+            if not isinstance(output, str):
+                streams = [item[key] for key in ("stdout", "stderr") if isinstance(item.get(key), str)]
+                output = "\n".join(stream for stream in streams if stream) if streams else None
+            outputs.append({"source": f"session {path.name} item {item.get('id')}", "output": output})
+    return outputs
+
+
+def suite_outputs(record: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+    """The recorded output of every invocation of the suite, read from the harness records the arm result names, and the records that could not be read."""
+    arm_record = (record.get("arm_result") or {}).get("record") or {}
+    harness = record.get("harness") or arm_record.get("harness")
+    try:
+        if harness == "foe":
+            episode_dir = arm_record.get("episode_dir")
+            if not isinstance(episode_dir, str) or not Path(episode_dir, normalize_foe.LOG_NAME).is_file():
+                return [], [f"the foe episode log arm_result.record.episode_dir names, {episode_dir}, cannot be read"]
+            return foe_suite_outputs(Path(episode_dir)), []
+        if harness == "codex":
+            files = [Path(path) for path in arm_record.get("session_files") or [] if isinstance(path, str)]
+            missing = [path.name for path in files if not path.is_file()]
+            if not files or missing:
+                return [], [f"the Codex session files arm_result.record.session_files names cannot be read: {', '.join(missing) or 'none is named'}"]
+            return codex_suite_outputs(files), []
+    except (OSError, UnicodeDecodeError) as exc:
+        return [], [f"the {harness} records of the attempt cannot be read: {exc}"]
+    return [], [f"the record names the harness {harness!r}, whose records this module does not read"]
+
+
 def wait_condition(record: Mapping[str, Any], task: Any, wait_entry: WaitEntry | None = None) -> dict[str, Any]:
-    """Whether the attempt's check suite entered the wait a non-terminating task sets, from harness-written records alone."""
-    trajectory = record.get("trajectory")
-    if not trajectory:
-        return _result(WAIT_ENTERED, False, ["the record holds no normalized trajectory"])
+    """Whether the attempt's check suite entered the wait a non-terminating task sets: `{condition, reached, status, evidence}`.
+
+    `reached` is True only when the task's marker line is in the recorded
+    output of an invocation of the suite; `status` is then "entered", and
+    "not established" otherwise.
+    """
+    outputs, problems = suite_outputs(record)
     if wait_entry is None:
         wait_entry = trajectory_module.wait_entry
-    entered = wait_entry(dict(trajectory), _metadata(task))
-    return _result(WAIT_ENTERED, bool(entered.get("entered")), [str(item) for item in entered.get("evidence", [])])
+    entered = wait_entry(outputs, _metadata(task))
+    status = trajectory_module.ENTERED if entered.get("entered") else NOT_ESTABLISHED
+    return {**_result(WAIT_ENTERED, status == trajectory_module.ENTERED, problems + [str(item) for item in entered.get("evidence", [])]), "status": status}
 
 
 def condition_reached(record: Mapping[str, Any], task: Any, *, document: Mapping[str, Any] | None = None, wait_entry: WaitEntry | None = None) -> dict[str, Any]:
@@ -230,18 +365,24 @@ def condition_reached(record: Mapping[str, Any], task: Any, *, document: Mapping
     return {
         "condition": f"{own['condition']} and {WAIT_ENTERED}",
         "reached": reached,
+        "status": wait["status"],
         "evidence": own["evidence"] + wait["evidence"],
         "parts": [own, wait],
     }
 
 
 def moved_under(record: dict[str, Any], state_root: Path, home: Path) -> dict[str, Any]:
-    """The record with the document path its arm result names read under a copy of the runner's state root."""
+    """The record with the document, the episode directory, and the session files its arm result names read under a copy of the runner's state root."""
     arm_record = (record.get("arm_result") or {}).get("record")
-    if not isinstance(arm_record, dict) or not isinstance(arm_record.get("config"), str):
+    if not isinstance(arm_record, dict):
         return record
-    config = str(rescore.under_state_root(arm_record["config"], state_root, home))
-    return {**record, "arm_result": {**record["arm_result"], "record": {**arm_record, "config": config}}}
+    moved = dict(arm_record)
+    for key in ("config", "episode_dir"):
+        if isinstance(moved.get(key), str):
+            moved[key] = str(rescore.under_state_root(moved[key], state_root, home))
+    if isinstance(moved.get("session_files"), list):
+        moved["session_files"] = [str(rescore.under_state_root(path, state_root, home)) if isinstance(path, str) else path for path in moved["session_files"]]
+    return {**record, "arm_result": {**record["arm_result"], "record": moved}}
 
 
 def records_conditions(records: Path, state_root: Path | None = None) -> list[dict[str, Any]]:
@@ -261,9 +402,14 @@ def conditions_file(records: Path, rows: list[dict[str, Any]], state_root: Path)
     named = rescore.recorded_form(records, state_root)
     counts: dict[str, dict[str, int]] = {}
     for row in rows:
-        count = counts.setdefault(f"{row['arm']}: {row['condition']}", {"attempts": 0, "reached": 0, "not_reached": 0, "none_declared": 0})
+        empty = {"attempts": 0, "reached": 0, "not_reached": 0, "none_declared": 0}
+        if "status" in row:
+            empty["wait_not_established"] = 0
+        count = counts.setdefault(f"{row['arm']}: {row['condition']}", empty)
         count["attempts"] += 1
         count[{True: "reached", False: "not_reached", None: "none_declared"}[row["reached"]]] += 1
+        if row.get("status") == NOT_ESTABLISHED:
+            count["wait_not_established"] += 1
     return {"run": records.parent.name, "records": named, "command": f"conditions.py {named}", "rule": RULE, "summary": dict(sorted(counts.items())), "attempts": rows}
 
 
