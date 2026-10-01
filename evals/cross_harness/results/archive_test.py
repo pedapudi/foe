@@ -49,7 +49,7 @@ def archived_autonomy(scoring: int = 1) -> list[dict]:
 
 
 class RecordedComparison(unittest.TestCase):
-    """docs/evaluation.md "Statistical unit" and "Recorded comparison": the autonomy array, counted by construction."""
+    """docs/evaluation.md "Statistical unit" and results/autonomy-2026-09-13.md "Status of this record": the autonomy array, counted by construction."""
 
     def test_foe_configured_against_codex_equivalent_differs_on_the_non_terminating_construction_alone(self) -> None:
         for scoring in (1, 2):

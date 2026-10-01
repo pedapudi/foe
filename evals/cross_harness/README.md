@@ -1,11 +1,11 @@
 # Cross-harness evaluation
 
-Evaluations that compare foe with Codex CLI on the properties foe claims as
-its own. [docs/evaluation.md](../../docs/evaluation.md) "Cross-harness
-evaluation against Codex CLI" specifies the families, the arms, the
-validity gates, and the task protocol. This directory holds the
-instruments, the tasks, and the runners for the autonomy family: bounded,
-truthful termination of one agent. Every module is standard-library
+Evaluations that compare foe with Codex CLI on bounded, truthful
+termination of one agent. [docs/evaluation.md](../../docs/evaluation.md)
+"Cross-harness evaluation against Codex CLI" specifies the arms, the
+controls, the gates, the scoring versions, and the statistical unit, and
+states the status of the recorded results. This directory holds the
+instruments, the tasks, and the runners. Every module is standard-library
 Python with its unit tests beside it, and no unit test needs a model
 credential, the network, or a Codex login.
 
@@ -62,8 +62,11 @@ Eleven of the task directories are the ones the autonomy run of 2026-09-13
 ran, with the scoring and control files added since. The four
 non-terminating task directories differ from those runs in their wait step.
 Their check suites print `checks/run.sh step 2 waiting on <mechanism>` to
-standard error before the wait, and their graders read no file the
-workspace holds. The recorded runs used an earlier `grader/workspace.patch`,
+standard error before the wait, `metadata.wait_marker` records that line,
+and their graders read no file the workspace holds. `conditions.py` counts
+the wait as entered only when the line is in the output the harness
+recorded, so no recorded attempt, whose suite printed no such line,
+establishes the wait. The recorded runs used an earlier `grader/workspace.patch`,
 whose check suite appended a line to `checks-wait.log`. Its sha256 digests
 begin as follows:
 
@@ -90,8 +93,12 @@ construction, because one builder writes them with one check template, one
 first step, and one grader. `tasks/examples/hello-solvable` is one further solvable
 task that `runs/smoke.json` runs.
 
-Most task texts were written by an agent and await a person's reading;
-`metadata.review` in each `task.json` records who has read its text.
+No person has read the task texts. `results/task-text-review-2026-09-30.md`
+records an automated review of each text against the workspace, the
+grader, and the recorded attempts, and `metadata.review` in each
+`task.json` states that task's verdict. `tasks/constructions.py` emits
+the twelve constructed tasks, and its docstring lists the ways an
+emission differs from the committed directories.
 
 ```sh
 python3 evals/cross_harness/tasks/feature_removal.py author \
