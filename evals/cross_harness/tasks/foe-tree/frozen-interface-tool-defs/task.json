@@ -42,7 +42,7 @@
     ],
     "specified_signature": "(exec: 'PathLike', description: 'str', instruction: 'str | None' = None, network: 'bool' = False, timeout_seconds: 'int | None' = None, cwd: 'PathLike | None' = None) -> None",
     "frozen_root": "python/foe",
-    "review": "the text was rewritten on 2026-09-12 so that no measurement of the text alone predicts the class; a person has not read it",
+    "review": "An automated review recorded in results/task-text-review-2026-09-30.md found a defect: the summary of checks/run.sh omits the key comparison with docs/config.md that fails, and the text does not tell a stopping arm to leave python/foe/_contract.py as it was, although scoring version 2 counts a change to it as damage; a person has not read it.",
     "source": {
       "commit": "c8e271a20dfe429aff7ce026d28e97f852d8af70"
     }

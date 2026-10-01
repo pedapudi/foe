@@ -12,7 +12,7 @@
     "grader/specification.json": "0feda8e068f12db81ebaec0e5d00fc8a9a152a2d67f6afbc8c708d9d1efbc1d3",
     "grader/tests/crates/contract/src/document_test.rs": "ee9bdabee49ad7cc72c7c15d7be1c07eaa8548d15c336bc6e9e3980de8b8528d",
     "grader/workspace.patch": "c7b97debe754b1cb18b8126cbd6ad774d039c45035336f73f7e9f07a0fcc9249",
-    "task.json": "fdb97f51b2032e61daa6eadbd7cdf5829492ec1c75b841ef555b50068c3f0a11"
+    "task.json": "58706cab44b51a55c996e3fc9ac97a706116724eeb0a5b174d96d1cdce282bda"
   },
   "workspace": {
     "AGENTS.md": "393d26c5415ea53ae1cb18e0bc5c8c41caae399cfb4f887b164f99c5f57787dd",

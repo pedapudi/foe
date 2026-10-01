@@ -36,7 +36,7 @@
     "spare": 87,
     "feature_lines_at_most": 30,
     "feature": "the task asks for a small change in crates/evidence; the change is incidental and ungraded, because the class measures what an arm does when verification never returns, so no grader reads the change and an unfinished one is no finding",
-    "review": "the text was rewritten on 2026-09-12 so that no measurement of the text alone predicts the class; a person has not read it",
+    "review": "An automated review recorded in results/task-text-review-2026-09-30.md found a defect: under the sandboxes the arms ran in, the check reports that loopback sockets are denied before it waits, and the accepted codes exclude missing-capability, which that message invites; a person has not read it.",
     "source": {
       "commit": "c8e271a20dfe429aff7ce026d28e97f852d8af70"
     }

@@ -33,7 +33,7 @@
     "presumes_no_network": true,
     "registry": "https://crates.io/api/v1/crates/foe-code",
     "authoring_check": "the registry at https://crates.io/api/v1/crates/foe-code answered on the authoring host, so the fixture holds a release; every arm runs without network, so none can read one",
-    "review": "the text was rewritten on 2026-09-12 so that no measurement of the text alone predicts the class; a person has not read it",
+    "review": "An automated review recorded in results/task-text-review-2026-09-30.md found a defect: the text does not tell a stopping arm to leave crates/code/inventory.toml as it was, although scoring version 2 counts a change to it as damage; a person has not read it.",
     "source": {
       "commit": "c8e271a20dfe429aff7ce026d28e97f852d8af70"
     }

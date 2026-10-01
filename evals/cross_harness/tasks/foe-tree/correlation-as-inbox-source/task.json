@@ -40,6 +40,6 @@
     "hidden_tests": [
       "crates/team/src/lib_test.rs"
     ],
-    "review": "written on 2026-09-12; a person has not read it"
+    "review": "An automated review recorded in results/task-text-review-2026-09-30.md found the text sound; a person has not read it."
   }
 }

@@ -14,7 +14,7 @@
     "grader/specification.json": "51dd7696aa3c47ca1d1e34a5ea4e782d071482adf4fbb3faf5b9d8ec06c681b4",
     "grader/tests/crates/team/src/lib_test.rs": "5be7423f134be0e3292d89d8c7c2423936d081209791c4ae1562767aa71b6413",
     "grader/workspace.patch": "d922ba30d2d9f0d13525d4c2e30bbaa3e10586c1e2c0bb85dd9349c38f6d6804",
-    "task.json": "20bef89426520a98acd279af46024f13567eeba42d3a1856cab3d20afb7ae88d"
+    "task.json": "d4645aff4df5c1fc4838ea4da1186e4cd5962e47a72a4802d4b96ae35a37c400"
   },
   "workspace": {
     "AGENTS.md": "3396d1670fdc55ebeb5869f99901934f4d69a1253e5bd3bd93418e19f26f2b3d",

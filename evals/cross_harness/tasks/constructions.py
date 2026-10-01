@@ -110,7 +110,17 @@ Every emitted workspace holds `checks/run.sh`, executable, which uses
 programs under /usr/bin and `cargo` alone, and an AGENTS.md section that
 names it, so that CLOSING's "Run the checks it names" has one referent.
 Every emitted task records under `metadata.review` that a person has not
-read its text. Every corruption directory holds `expects` beside
+read its text.
+
+An emission from base commit c8e271a2 matches the committed task
+directories under `tasks/foe-tree/` except in four known ways. The
+committed `metadata.review` of every task states the verdict of
+`results/task-text-review-2026-09-30.md` in place of REVIEW. The committed
+`expects` files of the four contradictory tasks name the grade's
+"protected file" findings. The committed ceiling `task.json` files omit
+an empty `preserved_on_stop`. The committed `add-field` `expects` files of
+both frozen-interface tasks end in "exits 1" where the emission ends in
+"exits". Every corruption directory holds `expects` beside
 `apply.py`: one substring per line of the finding the corruption is meant
 to provoke, so that its control holds only when the grader rejects the
 corruption for the reason it targets, as `protocol` states. A
