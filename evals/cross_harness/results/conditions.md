@@ -30,6 +30,13 @@ harness, for the reasons below.
   `checks-wait.log`, and their graders no longer read that file. The
   README of `evals/cross_harness` lists the digest of each recorded
   `workspace.patch`.
+- The suites these runs used printed no marker line, so no recorded
+  non-terminating attempt can establish that it entered the wait. The
+  conditions files therefore record every such wait as not established,
+  and the comparisons that `tables.md` restricts to reached conditions
+  exclude every non-terminating pair for that reason alone. The exclusion
+  says nothing about whether an arm reached the wait. The recorded output
+  shows that several suites did reach their waiting step.
 
 The following claims are withdrawn, each for the reason stated:
 

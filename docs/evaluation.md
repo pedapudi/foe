@@ -783,9 +783,15 @@ kinds:
    attempt-to-attempt noise in the pilot.
 5. Mechanism exercised: `conditions.py` states per attempt whether the
    condition its arm tests occurred, `run.py` writes it into the record,
-   and `report.py` shows it beside each attempt's cell. The paired
-   comparisons pool attempts that reached their condition with attempts
-   that did not, so a reader weighs a comparison by the condition column.
+   and `report.py` shows it beside each attempt's cell. `report.py` states
+   each paired comparison twice: over every pair, and over the pairs in
+   which both attempts' controls reached their conditions. An arm that
+   declares no controlled mechanism stays in the restricted pairs. A pair
+   leaves when either attempt's condition was not reached, including a
+   wait whose entry is not established, or when a record states no
+   condition. Each result names the pairs, tasks, and constructions it
+   rests on. A restriction that leaves no pair states that reason in place
+   of a statistic.
 6. Harness isolation: every run plants two canary sentences. One goes into
    each attempt's fresh `CODEX_HOME` as the user configuration file that
    `--ignore-user-config` states it does not load. The other goes into

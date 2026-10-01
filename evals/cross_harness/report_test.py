@@ -749,6 +749,55 @@ class StatisticalUnit(unittest.TestCase):
         self.assertEqual((seven["min_discordant_constructions"], seven["reachable"]), (6, True))
         self.assertAlmostEqual(seven["difference"], 6 / 7)
 
+def with_condition(item: dict, reached: bool | None, status: str | None = None) -> dict:
+    """The record with the condition `conditions.py` computes, as `run.py` writes it."""
+    condition = {"condition": "runtime verifier invoked" if item["arm"].startswith("foe") else "none declared", "reached": reached}
+    if status is not None:
+        condition["status"] = status
+    return {**item, "condition": condition}
+
+
+class RestrictedToReachedControls(unittest.TestCase):
+    """docs/evaluation.md gate "Mechanism exercised": each comparison is also stated over the pairs whose controls reached the conditions they test, with the attempts and constructions it rests on, and a restriction that keeps no pair states so in place of a statistic."""
+
+    def pairs(self, reached: dict[str, bool | None]) -> tuple[list[dict], list[dict]]:
+        """One attempt per task under each arm; foe-configured's condition is reached as `reached` names it per task, and codex-equivalent declares none."""
+        first, second = [], []
+        for task, value in reached.items():
+            first.append(with_condition(record(task, "foe-configured", 1, "correct-completion"), value))
+            second.append(with_condition(record(task, "codex-equivalent", 1, "incorrect-completion"), None))
+        return first, second
+
+    def test_a_pair_enters_when_both_controls_reached_or_declare_none(self) -> None:
+        first, second = self.pairs({"solvable-1": True, "solvable-2": False, "solvable-3": True})
+        comparison = report.compare(first, second, resamples=50, seed=0)
+        self.assertEqual((comparison["pairs"], comparison["construction_count"]), (3, 3))
+        narrowed = comparison["restricted"]
+        self.assertIsNone(narrowed["no_pair"])
+        self.assertEqual((narrowed["pairs"], narrowed["task_count"], narrowed["construction_count"]), (2, 2, 2))
+        self.assertEqual(narrowed["tasks"], ["solvable-1", "solvable-3"])
+        self.assertEqual(narrowed["actionable_pairs"], {"both": 0, "only_first": 2, "only_second": 0, "neither": 0})
+        self.assertNotIn("restricted", narrowed)
+
+    def test_a_wait_not_established_or_an_unstated_condition_leaves_with_its_partner(self) -> None:
+        first, second = self.pairs({"solvable-1": True, "solvable-2": True})
+        first[0] = with_condition(first[0], False, "not established")
+        second[1] = {key: value for key, value in second[1].items() if key != "condition"}
+        self.assertFalse(report.control_reached(first[0]))
+        self.assertFalse(report.control_reached(second[1]))
+        narrowed = report.compare(first, second, resamples=50, seed=0)["restricted"]
+        self.assertEqual(narrowed, {"pairs": 0, "tasks": [], "task_count": 0, "constructions": [], "construction_count": 0, "no_pair": report.NO_RESTRICTED_PAIR})
+
+    def test_the_markdown_states_both_results_and_says_when_no_pair_remains(self) -> None:
+        first, second = self.pairs({"solvable-1": False, "solvable-2": False})
+        rendered = report.markdown(report.build(first + second, resamples=20, seed=0))
+        self.assertIn("restricted paired attempts | restricted tasks | restricted constructions |", rendered)
+        self.assertIn(f"| `foe-configured` | `codex-equivalent` | 2 | 2 | 0.5000 | +1.00 [+1.00, +1.00] degenerate | 0 | 0 | 0 | — | {report.NO_RESTRICTED_PAIR} |", rendered)
+        first, second = self.pairs({"solvable-1": True, "solvable-2": None})
+        rendered = report.markdown(report.build(first + second, resamples=20, seed=0))
+        self.assertIn("| `foe-configured` | `codex-equivalent` | 2 | 2 | 0.5000 | +1.00 [+1.00, +1.00] degenerate | 2 | 2 | 2 | 0.5000 | +1.00 [+1.00, +1.00] degenerate |", rendered)
+
+
 class WaitNotEstablishedColumn(unittest.TestCase):
     """docs/evaluation.md gate "Mechanism exercised": the archive's reached column names a wait whose entry the recorded output does not show."""
 

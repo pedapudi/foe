@@ -140,6 +140,21 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 | codex-equivalent | codex-default | 1 | 15 | 15 | 12 | 3 | 0 | 0 | 0.250000 | +0.20 [+0.00, +0.40] |
 | codex-equivalent | codex-default | 2 | 15 | 15 | 10 | 5 | 0 | 0 | 0.062500 | +0.33 [+0.13, +0.60] |
 
+### Autonomy run, declared pairs: restricted to pairs whose controls reached their conditions
+
+Restricted to the pairs in which both attempts' controls reached the conditions they test, from each attempt's condition; an arm that declares no controlled mechanism enters, and an attempt whose condition was not reached or whose wait entry is not established leaves with its partner. Paired attempts count pairs; each pair is one attempt of each arm.
+
+| first | second | scoring version | paired attempts | constructions | sign-test p | actionable difference by construction | restricted paired attempts | restricted tasks | restricted constructions | restricted sign-test p | restricted actionable difference by construction |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---|
+| foe-configured | foe-ablated | 1 | 15 | 7 | 0.125000 | +0.50 [+0.14, +0.86] | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+| foe-configured | foe-ablated | 2 | 15 | 7 | 0.125000 | +0.50 [+0.14, +0.86] | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+| foe-configured | codex-equivalent | 1 | 15 | 7 | 1.000000 | -0.07 [-0.21, +0.00] | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+| foe-configured | codex-equivalent | 2 | 15 | 7 | 1.000000 | -0.07 [-0.21, +0.00] | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+| foe-ablated | codex-equivalent | 1 | 15 | 7 | 0.125000 | -0.57 [-0.86, -0.14] | 11 | 11 | 6 | 0.250000 | -0.50 [-0.83, -0.17] |
+| foe-ablated | codex-equivalent | 2 | 15 | 7 | 0.125000 | -0.57 [-0.86, -0.14] | 11 | 11 | 6 | 0.250000 | -0.50 [-0.83, -0.17] |
+| codex-equivalent | codex-default | 1 | 15 | 7 | 1.000000 | +0.11 [+0.00, +0.32] | 11 | 11 | 6 | 1.000000 | +0.12 [+0.00, +0.38] |
+| codex-equivalent | codex-default | 2 | 15 | 7 | 0.500000 | +0.21 [+0.00, +0.50] | 11 | 11 | 6 | 0.500000 | +0.25 [+0.00, +0.58] |
+
 ### foe-configured against foe-lean: by construction
 
 | first | second | scoring version | constructions | first better | second better | tied | discordant constructions | sign-test p | actionable difference by construction |
@@ -153,6 +168,15 @@ The fifteen autonomy tasks form 7 constructions: 6862ad1229e70209245409941dd67a6
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | foe-configured | foe-lean | 1 | 15 | 15 | 13 | 0 | 0 | 2 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
 | foe-configured | foe-lean | 2 | 15 | 15 | 13 | 0 | 0 | 2 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+
+### foe-configured against foe-lean: restricted to pairs whose controls reached their conditions
+
+Restricted to the pairs in which both attempts' controls reached the conditions they test, from each attempt's condition; an arm that declares no controlled mechanism enters, and an attempt whose condition was not reached or whose wait entry is not established leaves with its partner. Paired attempts count pairs; each pair is one attempt of each arm.
+
+| first | second | scoring version | paired attempts | constructions | sign-test p | actionable difference by construction | restricted paired attempts | restricted tasks | restricted constructions | restricted sign-test p | restricted actionable difference by construction |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---|
+| foe-configured | foe-lean | 1 | 15 | 7 | 1.000000 | +0.00 [+0.00, +0.00] degenerate | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
+| foe-configured | foe-lean | 2 | 15 | 7 | 1.000000 | +0.00 [+0.00, +0.00] degenerate | 3 | 3 | 3 | 1.000000 | +0.00 [+0.00, +0.00] degenerate |
 
 Intervals come from 2000 cluster-bootstrap resamples, seed 0. The sign test needs 6 constructions differing in one direction; over 7 constructions the smallest detectable difference is 0.86. The task-level McNemar test needs 6 discordant pairs; over 15 paired attempts that is a difference of 0.40.
 

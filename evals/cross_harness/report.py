@@ -145,6 +145,19 @@ interval from a bootstrap over tasks, is kept as a labeled secondary line:
 it treats related tasks as independent and so overstates the evidence.
 Both are computed in the standard library, so the report needs no package.
 
+Each comparison is also stated restricted to the pairs in which both
+attempts' controls reached the conditions they test, beside the
+unrestricted result. An attempt enters the restriction when its record
+states a condition, as `conditions.py` computes it, whose `reached` is
+true, or null for an arm that declares no controlled mechanism. An
+attempt whose condition was not reached, including a wait whose entry is
+"not established", leaves the restriction together with its partner, and
+so does an attempt whose record states no condition.
+Each result states the paired attempts, tasks, and constructions it rests
+on. When the restriction leaves no pair, the report says so and computes no
+statistic for it. docs/evaluation.md gate "Mechanism exercised" is the rule
+this restriction answers.
+
 Three statements keep those numbers honest. An interval is marked
 degenerate when it rests on one cluster, so that every resample draws it,
 or when every pair has the same difference, so that every resample gives
@@ -1188,15 +1201,45 @@ def _values(clusters: dict[str, list[Pair]], predicate: Predicate) -> dict[str, 
     return {name: [(float(predicate(first)), float(predicate(second))) for first, second in pairs] for name, pairs in clusters.items()}
 
 
+def control_reached(record: dict[str, Any]) -> bool:
+    """Whether the attempt's control reached the condition it tests: the record states a condition whose `reached` is true, or null for an arm that declares none."""
+    condition = record.get("condition")
+    return isinstance(condition, dict) and "reached" in condition and condition["reached"] is not False
+
+
+def restricted(clusters: dict[str, list[Pair]]) -> dict[str, list[Pair]]:
+    """The pairs in which both attempts' controls reached their conditions, by construction; a construction left with no pair is dropped."""
+    kept = {name: [pair for pair in pairs if control_reached(pair[0]) and control_reached(pair[1])] for name, pairs in clusters.items()}
+    return {name: pairs for name, pairs in kept.items() if pairs}
+
+
+# The status `conditions.py` gives a wait whose entry the recorded output does not show.
+NOT_ESTABLISHED = "not established"
+# What a restricted comparison states in place of a statistic when it keeps no pair.
+NO_RESTRICTED_PAIR = "no pair remains in which both attempts' controls reached their conditions"
+
+
 def compare(records_first: list[dict[str, Any]], records_second: list[dict[str, Any]], resamples: int, seed: int) -> dict[str, Any]:
-    """One paired comparison of two arms, by the module docstring's rule.
+    """One paired comparison of two arms, by the module docstring's rule, with the same comparison restricted under `restricted`.
 
     The headline is the sign test over per-construction differences in the
     actionable rate, with bootstrap intervals over constructions. The
     task-level McNemar test and an interval over tasks are the secondary
-    line.
+    line. The restricted result holds the same keys over the pairs whose
+    controls both reached their conditions, or, when none remains, the
+    zero counts and `no_pair` with the reason and no statistic.
     """
     clusters = paired(records_first, records_second)
+    kept = restricted(clusters)
+    if kept:
+        narrowed: dict[str, Any] = {**compare_clusters(kept, resamples, seed), "no_pair": None}
+    else:
+        narrowed = {"pairs": 0, "tasks": [], "task_count": 0, "constructions": [], "construction_count": 0, "no_pair": NO_RESTRICTED_PAIR}
+    return {**compare_clusters(clusters, resamples, seed), "restricted": narrowed}
+
+
+def compare_clusters(clusters: dict[str, list[Pair]], resamples: int, seed: int) -> dict[str, Any]:
+    """The statistics of one paired comparison over pairs already grouped by construction."""
     tasks = by_task(clusters)
     counts = discordance(clusters, is_actionable)
     discordant = counts["only_first"] + counts["only_second"]
@@ -1548,6 +1591,36 @@ def _sign(value: dict[str, Any]) -> str:
     return f"{value['p']:.4f}" if value["tested"] else "— no discordant construction"
 
 
+def restricted_markdown(comparisons: list[tuple[str, str, int | None, dict[str, Any]]]) -> list[str]:
+    """Each comparison unrestricted and restricted to the pairs whose controls reached their conditions, side by side, with the attempts and constructions each rests on."""
+    scored = any(scoring is not None for _, _, scoring, _ in comparisons)
+
+    # The archive states a sign-test probability as `_p` does in its other tables, and a run's report as `_sign` does.
+    def sign(value: dict[str, Any]) -> str:
+        return _p(value["p"]) if scored else _sign(value)
+
+    head = "| first | second | scoring version |" if scored else "| first | second |"
+    rule = "|---|---|---:|" if scored else "|---|---|"
+    lines = [
+        "",
+        "Restricted to the pairs in which both attempts' controls reached the conditions they test, from each attempt's condition; an arm that "
+        "declares no controlled mechanism enters, and an attempt whose condition was not reached or whose wait entry is not established leaves "
+        "with its partner. Paired attempts count pairs; each pair is one attempt of each arm.",
+        "",
+        f"{head} paired attempts | constructions | sign-test p | actionable difference by construction | restricted paired attempts | restricted tasks | restricted constructions | restricted sign-test p | restricted actionable difference by construction |",
+        f"{rule}---:|---:|---:|---|---:|---:|---:|---:|---|",
+    ]
+    for first, second, scoring, pair in comparisons:
+        narrowed = pair["restricted"]
+        if narrowed["no_pair"]:
+            after = f"0 | 0 | 0 | — | {narrowed['no_pair']} |"
+        else:
+            after = f"{narrowed['pairs']} | {narrowed['task_count']} | {narrowed['construction_count']} | {sign(narrowed['sign_test'])} | {_interval(narrowed['actionable_difference'])} |"
+        lead = f"| {first} | {second} | {scoring} |" if scored else f"| {first} | {second} |"
+        lines.append(f"{lead} {pair['pairs']} | {pair['construction_count']} | {sign(pair['sign_test'])} | {_interval(pair['actionable_difference'])} | {after}")
+    return lines
+
+
 def paired_markdown(report: dict[str, Any]) -> list[str]:
     """The headline comparison by construction, then the task-level McNemar line, labeled secondary."""
     lines = ["", "## Paired comparisons", ""]
@@ -1575,6 +1648,7 @@ def paired_markdown(report: dict[str, Any]) -> list[str]:
                 "actionable rate favors that arm, and tied when the difference is zero; the sign test counts the constructions that differ. An "
                 "interval marked degenerate rests on one construction or on a difference that every pair shares, so it states the width of the data "
                 "and no sampling width.",
+                *restricted_markdown([(f"`{pair['first']}`", f"`{pair['second']}`", None, pair) for pair in report["pairs"]]),
                 "",
                 _detectable_sentence(report["detectable_difference"]),
                 "",
@@ -1880,6 +1954,8 @@ def _pairs_tables(title: str, comparisons: list[tuple[str, str, int, dict[str, A
             f"| {first} | {second} | {scoring} | {pair['task_count']} | {pair['pairs']} | {counts['both']} | {counts['only_first']} | {counts['only_second']} | "
             f"{counts['neither']} | {_p(pair['mcnemar']['p'])} | {_interval(pair['actionable_difference_by_task'])} |"
         )
+    lines.extend(["", f"### {title}: restricted to pairs whose controls reached their conditions"])
+    lines.extend(restricted_markdown(comparisons))
     return lines
 
 
@@ -1941,10 +2017,6 @@ def _ratio_table(title: str, rows: list[tuple[str, list[dict[str, Any]], list[di
         a["weighted"], b["weighted"] = _weighted(a), _weighted(b)
         lines.append(" | ".join([f"| {name}"] + [_f(_ratio(a[key], b[key]), 3) for key in ("calls", "input", "uncached", "output", "seconds", "weighted")]) + " |")
     return lines
-
-
-# The status `conditions.py` gives a wait whose entry the recorded output does not show.
-NOT_ESTABLISHED = "not established"
 
 
 def _reached(condition: dict[str, Any]) -> str:
