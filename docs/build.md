@@ -227,6 +227,29 @@ sh evals/cross_harness/run_unit_tests.sh --forbid-skips
 Those tests run the built binary and rebuild task workspaces from recorded
 commits, so they need `target/debug/foe` and a clone with full history.
 
+Continuous integration runs the cross-harness evaluation tests on every push
+to `main`. On any other push or pull request, it runs them when the change
+touches one of these paths:
+
+- `evals/cross_harness/`, `evals/BUILD.bazel`, and the shared evaluation
+  modules the tests import or run: `evals/host_runtime.py`,
+  `evals/runtime_responses.py`, `evals/foe_build.py`, and
+  `evals/trace_quality.py`;
+- the runtime the evaluation drives: `crates/`, `Cargo.toml`, `Cargo.lock`,
+  and `rust-toolchain.toml`;
+- the Python package under `python/`, which `evals/host_runtime.py`
+  imports, and `scripts/loc.sh`, whose ceiling table the task tests parse;
+  and
+- the workflow file `.github/workflows/ci.yml`.
+
+The list holds every repository path the tests import, run, or read. A
+test that starts reading another path adds it to the list in the workflow
+and here.
+
+A pull request is compared with its base commit, and a push with the commit
+its branch held before the push. When that commit is absent, is all zeros, or
+is missing from the clone, the tests run.
+
 ## Integrate a change
 
 Work happens on a branch. A branch reaches `main` by being rebased onto
