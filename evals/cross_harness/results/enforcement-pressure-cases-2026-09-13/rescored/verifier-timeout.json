@@ -1,0 +1,38 @@
+[
+  {
+    "task": "unreleased-lock-context",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "unreleased-lock-evidence",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "unwritten-pipe-context",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "waiting-check-suite",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  }
+]

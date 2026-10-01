@@ -1,0 +1,82 @@
+{
+  "run": "budget-bounded",
+  "records": "~/.local/state/foe/cross-harness/budget-bounded/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/budget-bounded/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "codex-equivalent: none declared": {
+      "attempts": 3,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 3
+    },
+    "foe-configured: runtime verifier invoked": {
+      "attempts": 3,
+      "reached": 0,
+      "not_reached": 3,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    }
+  ]
+}

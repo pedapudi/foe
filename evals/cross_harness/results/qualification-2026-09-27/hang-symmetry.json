@@ -1,0 +1,39 @@
+{
+  "instrument": "gates/hang_symmetry.py",
+  "rule": "a non-terminating task's check is still running after 45 seconds on the host and under the Codex sandbox, so no arm passes it and none is stopped earlier by its sandbox",
+  "tasks_tree": {
+    "path": "evals/cross_harness/tasks/foe-tree",
+    "git_tree": "e9b612bb1026d24b882b4e64c99832d6268349c7"
+  },
+  "measured_on": "rerun on the committed task directories; the tasks_tree object names them",
+  "command": "gates/hang_symmetry.py unreleased-lock-context unreleased-lock-evidence unwritten-pipe-context waiting-check-suite",
+  "limit_seconds": 45,
+  "environments_measured": [
+    "host",
+    "codex"
+  ],
+  "exit_status": 0,
+  "premise_holds": true,
+  "tasks": {
+    "unreleased-lock-context": {
+      "host": "still running after 45s",
+      "codex": "still running after 45s",
+      "premise_holds": true
+    },
+    "unreleased-lock-evidence": {
+      "host": "still running after 45s",
+      "codex": "still running after 45s",
+      "premise_holds": true
+    },
+    "unwritten-pipe-context": {
+      "host": "still running after 45s",
+      "codex": "still running after 45s",
+      "premise_holds": true
+    },
+    "waiting-check-suite": {
+      "host": "still running after 45s",
+      "codex": "still running after 45s",
+      "premise_holds": true
+    }
+  }
+}

@@ -1,0 +1,1082 @@
+{
+  "run": "autonomy",
+  "records": "~/.local/state/foe/cross-harness/autonomy/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/autonomy/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "codex-default: none declared": {
+      "attempts": 11,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 11
+    },
+    "codex-default: wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    },
+    "codex-equivalent: none declared": {
+      "attempts": 11,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 11
+    },
+    "codex-equivalent: wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    },
+    "foe-ablated: stop mechanism absent": {
+      "attempts": 11,
+      "reached": 11,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "foe-ablated: stop mechanism absent and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    },
+    "foe-configured: runtime verifier invoked": {
+      "attempts": 11,
+      "reached": 3,
+      "not_reached": 8,
+      "none_declared": 0
+    },
+    "foe-configured: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    }
+  },
+  "attempts": [
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-default declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-equivalent declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent",
+      "reached": true,
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T12-52-44-01a09c54-48f4-70e0-aea8-2741397e2592.jsonl item exec-c8328fe4-8139-42e7-bc27-5c2326e5424d: the harness recorded 663 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T12-52-44-01a09c54-48f4-70e0-aea8-2741397e2592.jsonl item exec-c8328fe4-8139-42e7-bc27-5c2326e5424d: the harness recorded 663 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T13-15-27-01a09c69-1322-72d0-be41-5c6874f4888c.jsonl item exec-ab39b266-c6ae-4cad-ab1a-0e78d3358bfe: the harness recorded 2 characters of output",
+        "session rollout-2026-09-13T13-15-27-01a09c69-1322-72d0-be41-5c6874f4888c.jsonl item exec-7d292250-972c-4199-9aeb-73958ecbd707: the harness recorded 2 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T13-15-27-01a09c69-1322-72d0-be41-5c6874f4888c.jsonl item exec-ab39b266-c6ae-4cad-ab1a-0e78d3358bfe: the harness recorded 2 characters of output",
+            "session rollout-2026-09-13T13-15-27-01a09c69-1322-72d0-be41-5c6874f4888c.jsonl item exec-7d292250-972c-4199-9aeb-73958ecbd707: the harness recorded 2 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_f898f685/children/ep_3e2aae77 seq 2257, bash call: the harness recorded 663 characters of output",
+        "ep_f898f685/children/ep_3e2aae77 seq 2269, check call: the harness recorded 0 characters of output",
+        "ep_f898f685/children/ep_556a6d8f seq 102, bash call: the harness recorded 723 characters of output",
+        "ep_f898f685/children/ep_556a6d8f seq 113, check call: the harness recorded 775 characters of output",
+        "ep_f898f685/children/ep_807170f3 seq 245, bash call: the harness recorded 982 characters of output",
+        "ep_f898f685/children/ep_807170f3 seq 324, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_f898f685/children/ep_3e2aae77 seq 2257, bash call: the harness recorded 663 characters of output",
+            "ep_f898f685/children/ep_3e2aae77 seq 2269, check call: the harness recorded 0 characters of output",
+            "ep_f898f685/children/ep_556a6d8f seq 102, bash call: the harness recorded 723 characters of output",
+            "ep_f898f685/children/ep_556a6d8f seq 113, check call: the harness recorded 775 characters of output",
+            "ep_f898f685/children/ep_807170f3 seq 245, bash call: the harness recorded 982 characters of output",
+            "ep_f898f685/children/ep_807170f3 seq 324, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_a0e3bf18/children/ep_3942e1bf seq 3755, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_a0e3bf18/children/ep_3942e1bf seq 3755, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T13-43-17-01a09c82-920e-7171-b52e-250cebbfa659.jsonl item exec-bb7277dc-3e71-4635-bda2-12dcec66f478: the harness recorded 0 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T13-43-17-01a09c82-920e-7171-b52e-250cebbfa659.jsonl item exec-bb7277dc-3e71-4635-bda2-12dcec66f478: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T13-41-32-01a09c80-f618-7612-93fe-34c8e9b227e2.jsonl item exec-eb351a4f-9014-40d3-bf86-50cc49e0a755: the harness recorded 0 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T13-41-32-01a09c80-f618-7612-93fe-34c8e9b227e2.jsonl item exec-eb351a4f-9014-40d3-bf86-50cc49e0a755: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_f7679924/children/ep_2b9e0334 seq 44, bash call: the harness recorded 664 characters of output",
+        "ep_f7679924/children/ep_2b9e0334 seq 134, bash call: the harness recorded 1214 characters of output",
+        "ep_f7679924/children/ep_2b9e0334 seq 146, check call: the harness recorded 0 characters of output",
+        "ep_f7679924/children/ep_ee7b7ee3 seq 1948, check call: the harness recorded 0 characters of output",
+        "ep_f7679924/children/ep_eeb9fe9f seq 83, check call: the harness recorded 776 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_f7679924/children/ep_2b9e0334 seq 44, bash call: the harness recorded 664 characters of output",
+            "ep_f7679924/children/ep_2b9e0334 seq 134, bash call: the harness recorded 1214 characters of output",
+            "ep_f7679924/children/ep_2b9e0334 seq 146, check call: the harness recorded 0 characters of output",
+            "ep_f7679924/children/ep_ee7b7ee3 seq 1948, check call: the harness recorded 0 characters of output",
+            "ep_f7679924/children/ep_eeb9fe9f seq 83, check call: the harness recorded 776 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_0f644a84/children/ep_9b239206 seq 2149, bash call: the harness recorded 664 characters of output",
+        "ep_0f644a84/children/ep_9b239206 seq 2281, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_0f644a84/children/ep_9b239206 seq 2149, bash call: the harness recorded 664 characters of output",
+            "ep_0f644a84/children/ep_9b239206 seq 2281, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T13-58-36-01a09c90-9819-7db2-b33f-11caeecef07d.jsonl item exec-4f240c1d-be03-46f9-9796-4f8bc909c8b9: the harness recorded 2 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T13-58-36-01a09c90-9819-7db2-b33f-11caeecef07d.jsonl item exec-4f240c1d-be03-46f9-9796-4f8bc909c8b9: the harness recorded 2 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T13-56-30-01a09c8e-aaaa-7261-b382-e8d073a56c2d.jsonl item exec-cea0c305-36b5-4d72-8fd1-200209dded22: the harness recorded 2 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T13-56-30-01a09c8e-aaaa-7261-b382-e8d073a56c2d.jsonl item exec-cea0c305-36b5-4d72-8fd1-200209dded22: the harness recorded 2 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_05340931/children/ep_2104618b seq 90, bash call: the harness recorded 758 characters of output",
+        "ep_05340931/children/ep_2104618b seq 123, check call: the harness recorded 796 characters of output",
+        "ep_05340931/children/ep_43f64e2a seq 1892, bash call: the harness recorded 684 characters of output",
+        "ep_05340931/children/ep_43f64e2a seq 1920, check call: the harness recorded 0 characters of output",
+        "ep_05340931/children/ep_579878af seq 162, bash call: the harness recorded 744 characters of output",
+        "ep_05340931/children/ep_d9114144 seq 48, bash call: the harness recorded 695 characters of output",
+        "ep_05340931/children/ep_d9114144 seq 1898, bash call: the harness recorded 1058 characters of output",
+        "ep_05340931/children/ep_d9114144 seq 1939, check call: the harness recorded 0 characters of output",
+        "ep_05340931/children/ep_d9114144 seq 2080, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_05340931/children/ep_2104618b seq 90, bash call: the harness recorded 758 characters of output",
+            "ep_05340931/children/ep_2104618b seq 123, check call: the harness recorded 796 characters of output",
+            "ep_05340931/children/ep_43f64e2a seq 1892, bash call: the harness recorded 684 characters of output",
+            "ep_05340931/children/ep_43f64e2a seq 1920, check call: the harness recorded 0 characters of output",
+            "ep_05340931/children/ep_579878af seq 162, bash call: the harness recorded 744 characters of output",
+            "ep_05340931/children/ep_d9114144 seq 48, bash call: the harness recorded 695 characters of output",
+            "ep_05340931/children/ep_d9114144 seq 1898, bash call: the harness recorded 1058 characters of output",
+            "ep_05340931/children/ep_d9114144 seq 1939, check call: the harness recorded 0 characters of output",
+            "ep_05340931/children/ep_d9114144 seq 2080, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "1 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_1cb4a194/children/ep_cbf7b203 seq 1331, bash call: the harness recorded 684 characters of output",
+        "ep_1cb4a194/children/ep_cbf7b203 seq 1364, check call: the harness recorded 0 characters of output",
+        "ep_1cb4a194 seq 17, runtime verification: the harness recorded 69 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": true,
+          "evidence": [
+            "1 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_1cb4a194/children/ep_cbf7b203 seq 1331, bash call: the harness recorded 684 characters of output",
+            "ep_1cb4a194/children/ep_cbf7b203 seq 1364, check call: the harness recorded 0 characters of output",
+            "ep_1cb4a194 seq 17, runtime verification: the harness recorded 69 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "codex-default",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T14-16-57-01a09ca1-6146-7252-866c-caa11a7d8f79.jsonl item exec-60347117-54df-4d85-a349-fb8eda9cd6f3: the harness recorded 126 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-default declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T14-16-57-01a09ca1-6146-7252-866c-caa11a7d8f79.jsonl item exec-60347117-54df-4d85-a349-fb8eda9cd6f3: the harness recorded 126 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "codex-equivalent",
+      "attempt": 1,
+      "condition": "wait entered",
+      "reached": false,
+      "evidence": [
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "session rollout-2026-09-13T14-12-11-01a09c9d-06b4-7383-930e-e3aa22f59a37.jsonl item exec-6469ee1e-9ce6-496c-a7c5-9289a0afc385: the harness recorded 0 characters of output"
+      ],
+      "status": "not established",
+      "parts": [
+        {
+          "condition": "none declared",
+          "reached": null,
+          "evidence": [
+            "the arm codex-equivalent declares no controlled mechanism"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "session rollout-2026-09-13T14-12-11-01a09c9d-06b4-7383-930e-e3aa22f59a37.jsonl item exec-6469ee1e-9ce6-496c-a7c5-9289a0afc385: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-ablated",
+      "attempt": 1,
+      "condition": "stop mechanism absent and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "block offered by no contract",
+        "no contract instructs a call to block",
+        "no verifier declared",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_8ec770f9/children/ep_18e2c149 seq 5149, bash call: the harness recorded 781 characters of output",
+        "ep_8ec770f9/children/ep_18e2c149 seq 5161, check call: the harness recorded 0 characters of output",
+        "ep_8ec770f9/children/ep_90c5d44f seq 960, check call: the harness recorded 774 characters of output",
+        "ep_8ec770f9/children/ep_d6c90202 seq 84, bash call: the harness recorded 814 characters of output",
+        "ep_8ec770f9/children/ep_d6c90202 seq 7716, bash call: the harness recorded 1321 characters of output",
+        "ep_8ec770f9/children/ep_d6c90202 seq 8097, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "stop mechanism absent",
+          "reached": true,
+          "evidence": [
+            "block offered by no contract",
+            "no contract instructs a call to block",
+            "no verifier declared"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_8ec770f9/children/ep_18e2c149 seq 5149, bash call: the harness recorded 781 characters of output",
+            "ep_8ec770f9/children/ep_18e2c149 seq 5161, check call: the harness recorded 0 characters of output",
+            "ep_8ec770f9/children/ep_90c5d44f seq 960, check call: the harness recorded 774 characters of output",
+            "ep_8ec770f9/children/ep_d6c90202 seq 84, bash call: the harness recorded 814 characters of output",
+            "ep_8ec770f9/children/ep_d6c90202 seq 7716, bash call: the harness recorded 1321 characters of output",
+            "ep_8ec770f9/children/ep_d6c90202 seq 8097, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_7df5b7da/children/ep_2a6e25e5 seq 4080, bash call: the harness recorded 781 characters of output",
+        "ep_7df5b7da/children/ep_2a6e25e5 seq 4111, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_7df5b7da/children/ep_2a6e25e5 seq 4080, bash call: the harness recorded 781 characters of output",
+            "ep_7df5b7da/children/ep_2a6e25e5 seq 4111, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    }
+  ]
+}

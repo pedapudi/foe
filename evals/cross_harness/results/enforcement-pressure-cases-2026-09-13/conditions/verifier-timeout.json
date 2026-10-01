@@ -1,0 +1,147 @@
+{
+  "run": "verifier-timeout",
+  "records": "~/.local/state/foe/cross-harness/verifier-timeout/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/verifier-timeout/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "foe-configured: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    }
+  },
+  "attempts": [
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_93d352d0/children/ep_b73fbbd0 seq 3141, bash call: the harness recorded 663 characters of output",
+        "ep_93d352d0/children/ep_b73fbbd0 seq 3153, check call: the harness recorded 0 characters of output",
+        "ep_93d352d0/children/ep_b73fbbd0 seq 3246, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_93d352d0/children/ep_b73fbbd0 seq 3141, bash call: the harness recorded 663 characters of output",
+            "ep_93d352d0/children/ep_b73fbbd0 seq 3153, check call: the harness recorded 0 characters of output",
+            "ep_93d352d0/children/ep_b73fbbd0 seq 3246, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_5ba8a6ef/children/ep_ee7332c8 seq 2128, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_5ba8a6ef/children/ep_ee7332c8 seq 2128, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_6357ae54/children/ep_b09ff81e seq 777, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_6357ae54/children/ep_b09ff81e seq 777, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_f30dd95a/children/ep_02bb7972 seq 3412, bash call: the harness recorded 781 characters of output",
+        "ep_f30dd95a/children/ep_02bb7972 seq 3432, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_f30dd95a/children/ep_02bb7972 seq 3412, bash call: the harness recorded 781 characters of output",
+            "ep_f30dd95a/children/ep_02bb7972 seq 3432, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    }
+  ]
+}

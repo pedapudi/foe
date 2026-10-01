@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "checks/run.sh step 2 (wait for the first line on the pipe of the context test reporter) waits without limit for what no process provides, so no budget reaches the end of it"
+}

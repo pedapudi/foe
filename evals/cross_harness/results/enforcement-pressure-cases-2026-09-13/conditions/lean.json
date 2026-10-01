@@ -1,0 +1,263 @@
+{
+  "run": "lean",
+  "records": "~/.local/state/foe/cross-harness/lean/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/lean/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "foe-lean: runtime verifier invoked": {
+      "attempts": 11,
+      "reached": 3,
+      "not_reached": 8,
+      "none_declared": 0
+    },
+    "foe-lean: runtime verifier invoked and wait entered": {
+      "attempts": 4,
+      "reached": 0,
+      "not_reached": 4,
+      "none_declared": 0,
+      "wait_not_established": 4
+    }
+  },
+  "attempts": [
+    {
+      "task": "ceiling-bound-feature",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "duplicate-grant-roots",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-budget",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-code",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": false,
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "unreleased-lock-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_749f0e81/children/ep_81eeca1d seq 3668, bash call: the harness recorded 663 characters of output",
+        "ep_749f0e81/children/ep_81eeca1d seq 3710, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_749f0e81/children/ep_81eeca1d seq 3668, bash call: the harness recorded 663 characters of output",
+            "ep_749f0e81/children/ep_81eeca1d seq 3710, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_23a9f525/children/ep_c14fcf91 seq 2107, bash call: the harness recorded 664 characters of output",
+        "ep_23a9f525/children/ep_c14fcf91 seq 2137, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_23a9f525/children/ep_c14fcf91 seq 2107, bash call: the harness recorded 664 characters of output",
+            "ep_23a9f525/children/ep_c14fcf91 seq 2137, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "unwritten-pipe-context",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_b5415012/children/ep_aa8f1db9 seq 2230, check call: the harness recorded 0 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_b5415012/children/ep_aa8f1db9 seq 2230, check call: the harness recorded 0 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    },
+    {
+      "task": "waiting-check-suite",
+      "arm": "foe-lean",
+      "attempt": 1,
+      "condition": "runtime verifier invoked and wait entered",
+      "reached": false,
+      "status": "not established",
+      "evidence": [
+        "0 verification/result calls in the normalized trajectory",
+        "the task states no wait_marker, so no recorded output can show the wait",
+        "ep_dea6196b/children/ep_48e2feb5 seq 4450, check call: the harness recorded 0 characters of output",
+        "ep_dea6196b/children/ep_48e2feb5 seq 4475, bash call: the harness recorded 781 characters of output"
+      ],
+      "parts": [
+        {
+          "condition": "runtime verifier invoked",
+          "reached": false,
+          "evidence": [
+            "0 verification/result calls in the normalized trajectory"
+          ]
+        },
+        {
+          "condition": "wait entered",
+          "reached": false,
+          "evidence": [
+            "the task states no wait_marker, so no recorded output can show the wait",
+            "ep_dea6196b/children/ep_48e2feb5 seq 4450, check call: the harness recorded 0 characters of output",
+            "ep_dea6196b/children/ep_48e2feb5 seq 4475, bash call: the harness recorded 781 characters of output"
+          ],
+          "status": "not established"
+        }
+      ]
+    }
+  ]
+}

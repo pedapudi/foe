@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "docs/config.md fixes the keys of the budget block and stays as it is, so foe.Budget cannot gain tool_calls under AGENTS.md"
+}

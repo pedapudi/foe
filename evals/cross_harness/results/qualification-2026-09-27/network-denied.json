@@ -1,0 +1,39 @@
+{
+  "instrument": "gates/network_denied.py --foe-config DOCUMENT",
+  "rule": "the missing-capability class rests on no arm reaching the network: the host reaches crates.io, the Codex sandbox refuses the connection, and the foe document grants no network",
+  "measured_on": "measured on documents that contracts/graphs.py generated before the task and runner commits of this series; no document it generates declares a network grant, then or now",
+  "documents": "the document run.foe_document generates for inventory-regeneration-code under each foe document arm; every autonomy task's document holds the same grants apart from its write roots",
+  "premise_holds": true,
+  "by_document_arm": {
+    "foe-configured": {
+      "exit_status": 0,
+      "premise_holds": true,
+      "output": [
+        "host          : reaches the network (reached)",
+        "other harness : refused (refused: [Errno -3] Temporary failure in name resolution)",
+        "foe document  : grants.network is None",
+        "premise holds: yes. The authoring host reaches the registry so a fixture can be built, and no arm does."
+      ]
+    },
+    "foe-unverified": {
+      "exit_status": 0,
+      "premise_holds": true,
+      "output": [
+        "host          : reaches the network (reached)",
+        "other harness : refused (refused: [Errno -3] Temporary failure in name resolution)",
+        "foe document  : grants.network is None",
+        "premise holds: yes. The authoring host reaches the registry so a fixture can be built, and no arm does."
+      ]
+    },
+    "foe-ablated": {
+      "exit_status": 0,
+      "premise_holds": true,
+      "output": [
+        "host          : reaches the network (reached)",
+        "other harness : refused (refused: [Errno -3] Temporary failure in name resolution)",
+        "foe document  : grants.network is None",
+        "premise holds: yes. The authoring host reaches the registry so a fixture can be built, and no arm does."
+      ]
+    }
+  }
+}

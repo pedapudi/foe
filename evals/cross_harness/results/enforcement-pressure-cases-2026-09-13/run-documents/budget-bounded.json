@@ -1,0 +1,44 @@
+{
+  "arms": [
+    "foe-configured",
+    "codex-equivalent"
+  ],
+  "attempts": 1,
+  "budget": {
+    "input_tokens": 400000,
+    "model_calls": 200,
+    "output_tokens": 400000,
+    "seconds": 1200
+  },
+  "foe_config_dir": "~/.config/foe",
+  "grader_timeout": 1320,
+  "harnesses": {
+    "codex": "~/.codex/packages/standalone/releases/0.154.0-x86_64-unknown-linux-musl/bin/codex",
+    "codex_named": "codex",
+    "credential": "~/.codex/auth.json",
+    "foe": "<session scratch directory>/c2-build/target/release/foe"
+  },
+  "model": {
+    "base_url": null,
+    "codex_wire_api": "chat",
+    "effort": "medium",
+    "name": "gpt-5.6-sol",
+    "route": "subscription"
+  },
+  "out": "~/.local/state/foe/cross-harness/budget-bounded",
+  "path": "<session scratch directory>/runs/c2-budget-bounded.json",
+  "resume": true,
+  "select": [
+    "duplicate-grant-roots",
+    "question-identifier-in-message-text",
+    "correlation-as-inbox-source"
+  ],
+  "source_root": "<session scratch directory>/c2-build",
+  "tasks": "~/git/foe/evals/cross_harness/tasks/foe-tree",
+  "tool_roots": [
+    "~/.cargo/bin",
+    "~/.cargo",
+    "~/.rustup",
+    "/usr/lib/gcc"
+  ]
+}

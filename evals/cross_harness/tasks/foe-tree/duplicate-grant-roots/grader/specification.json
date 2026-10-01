@@ -1,0 +1,30 @@
+{
+  "task": "duplicate-grant-roots",
+  "packages": [
+    "foe-contract"
+  ],
+  "hidden_test_names": {
+    "crates/contract/src/document_test.rs": [
+      "a_valid_document_resolves_with_canonical_paths_and_defaults",
+      "a_duplicate_root_keeps_the_position_of_its_first_declaration",
+      "unknown_keys_and_wrong_types_are_parse_errors",
+      "required_learned_completion_has_the_evidence_shape",
+      "every_rule_names_its_key",
+      "a_childs_execute_grants_stay_within_its_parent",
+      "a_childs_bind_ports_stay_within_its_parent",
+      "task_session_permission_only_narrows_downward",
+      "a_workflow_model_node_schema_is_checked_at_its_dotted_key",
+      "children_override_or_inherit_models_and_inherit_sandbox",
+      "a_workflow_model_node_can_select_its_model",
+      "a_workflow_model_node_stays_within_its_ceiling",
+      "a_model_node_may_declare_its_own_episode_and_concurrency_counts",
+      "an_ordinary_child_may_hold_tools_the_parent_does_not_use",
+      "contract_tree_separates_declared_fingerprint_from_executable_reachability"
+    ]
+  },
+  "sentences": {
+    "docs/config.md": [
+      "a grant list is a set: two declared roots naming one canonical path, such as /bin and /usr/bin on a merged-usr host, resolve to one grant."
+    ]
+  }
+}

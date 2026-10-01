@@ -1,0 +1,29 @@
+{
+  "task": "correlation-as-inbox-source",
+  "packages": [
+    "foe-team"
+  ],
+  "hidden_test_names": {
+    "crates/team/src/lib_test.rs": [
+      "recording_failure_prevents_message_delivery_and_scheduling",
+      "episode_lifecycle_is_the_singleton_team",
+      "fold_keeps_latest_task_revisions_in_creation_order",
+      "fold_tracks_phases_queue_and_deliveries",
+      "fold_skips_team_events_copied_by_seeding",
+      "message_identity_comes_from_the_recorded_queue_and_lead_episode",
+      "concurrent_senders_record_distinct_messages",
+      "notify_from_a_member_becomes_an_inbox_item",
+      "send_queues_a_message_and_peer_receipt_records_delivery",
+      "send_and_ask_take_the_scope_that_selects_which_team_they_address",
+      "a_question_is_answered_by_identity_and_wakes_only_its_asker",
+      "a_root_serves_send_and_team_from_its_own_roster",
+      "bare_wait_keeps_its_all_children_meaning",
+      "wait_until_matches_unconsumed_arrivals_by_source_child_and_session",
+      "every_team_tool_schema_stays_inside_the_implemented_subset",
+      "cancel_names_a_member_and_is_quiet_about_one_no_longer_running",
+      "a_write_root_may_not_overlap_one_a_live_task_holds",
+      "waiting_reads_the_log_in_place_and_never_copies_it"
+    ]
+  },
+  "sentences": {}
+}

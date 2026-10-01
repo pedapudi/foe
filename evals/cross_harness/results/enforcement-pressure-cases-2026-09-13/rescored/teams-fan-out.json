@@ -1,0 +1,74 @@
+[
+  {
+    "task": "input-bound-named-in-refusal",
+    "arm": "codex-multi",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "input-bound-named-in-refusal",
+    "arm": "codex-single",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "input-bound-named-in-refusal",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "input-bound-named-in-refusal",
+    "arm": "foe-undivided",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "left-out-input-is-named-rather-than-dropped",
+    "arm": "codex-multi",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "left-out-input-is-named-rather-than-dropped",
+    "arm": "codex-single",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "left-out-input-is-named-rather-than-dropped",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "left-out-input-is-named-rather-than-dropped",
+    "arm": "foe-undivided",
+    "attempt": "01",
+    "cell_scoring_1": "false-completion",
+    "cell_scoring_2": "false-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  }
+]

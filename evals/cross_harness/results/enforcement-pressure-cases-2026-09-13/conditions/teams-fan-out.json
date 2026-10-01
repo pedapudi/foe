@@ -1,0 +1,114 @@
+{
+  "run": "teams-fan-out",
+  "records": "~/.local/state/foe/cross-harness/teams-fan-out/records",
+  "command": "conditions.py ~/.local/state/foe/cross-harness/teams-fan-out/records",
+  "rule": "docs/evaluation.md gate 5, Mechanism exercised: each attempt states whether it reached the condition its arm's control tests, as conditions.condition_reached computes it",
+  "summary": {
+    "codex-multi: none declared": {
+      "attempts": 2,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 2
+    },
+    "codex-single: none declared": {
+      "attempts": 2,
+      "reached": 0,
+      "not_reached": 0,
+      "none_declared": 2
+    },
+    "foe-configured: runtime verifier invoked": {
+      "attempts": 2,
+      "reached": 2,
+      "not_reached": 0,
+      "none_declared": 0
+    },
+    "foe-undivided: runtime verifier invoked": {
+      "attempts": 2,
+      "reached": 2,
+      "not_reached": 0,
+      "none_declared": 0
+    }
+  },
+  "attempts": [
+    {
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-multi",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-multi declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-single",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-single declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "1 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-undivided",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-multi",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-multi declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-single",
+      "attempt": 1,
+      "condition": "none declared",
+      "reached": null,
+      "evidence": [
+        "the arm codex-single declares no controlled mechanism"
+      ]
+    },
+    {
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-configured",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "1 verification/result calls in the normalized trajectory"
+      ]
+    },
+    {
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-undivided",
+      "attempt": 1,
+      "condition": "runtime verifier invoked",
+      "reached": true,
+      "evidence": [
+        "2 verification/result calls in the normalized trajectory"
+      ]
+    }
+  ]
+}

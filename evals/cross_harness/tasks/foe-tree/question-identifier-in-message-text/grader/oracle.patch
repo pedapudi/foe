@@ -1,0 +1,92 @@
+diff --git a/crates/team/src/lib.rs b/crates/team/src/lib.rs
+index 84805651..eefa4590 100644
+--- a/crates/team/src/lib.rs
++++ b/crates/team/src/lib.rs
+@@ -430,6 +430,14 @@ impl Team {
+             Correlate::Reply(asked) => asked.clone(),
+             _ => format!("{}:tm_{:02}", self.lead_id, state.queue.len() + 1),
+         };
++        // A model receives the rendered content of an inbox item and no
++        // other field, so a question whose identifier stays in `message_id`
++        // alone cannot be answered: the answerer has nothing to put in
++        // `reply_to`. The question carries its identifier in its text.
++        let mut content = content;
++        if matches!(kind, Correlate::Question) {
++            content.push(ContentBlock::Text { text: format!("Answer this with send, reply_to {message_id}.") });
++        }
+         self.log.append(EventData::TeamMessage {
+             message_id: message_id.clone(),
+             from: from.to_string(),
+@@ -531,7 +539,9 @@ impl Team {
+     /// The result of a `send` call: the message id, or the failure.
+     fn send_value(&self, from: &str, to: &str, content: Vec<ContentBlock>, kind: Correlate) -> ToolValue {
+         match self.send(from, to, content, kind) {
+-            Ok(id) => ToolValue::ok(serde_json::json!({ "to": to, "message_id": id }), format!("sent to {to}")),
++            Ok(id) => {
++                ToolValue::ok(serde_json::json!({ "to": to, "message_id": &id }), format!("sent to {to} as {id}"))
++            }
+             Err(e) => ToolValue::error(format!("send: {e}")),
+         }
+     }
+diff --git a/crates/team/src/lib_test.rs b/crates/team/src/lib_test.rs
+index 1fb1f1f3..04cb2256 100644
+--- a/crates/team/src/lib_test.rs
++++ b/crates/team/src/lib_test.rs
+@@ -367,6 +367,13 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
+     let asked = ask.call(serde_json::json!({ "to": "tester", "content": "which crate?" }), &ctx(None)).await;
+     assert!(!asked.is_error, "{:?}", asked.rendered);
+     let question = asked.value["message_id"].as_str().expect("`ask` returns the question's identity").to_string();
++    // docs/tools.md `ask`: a model receives a tool result's rendered text and
++    // an inbox item's content, and no other field of either, so the asker
++    // reads the identifier from the result text and the member answering
++    // reads it from the question.
++    assert!(asked.rendered.as_deref().unwrap_or_default().contains(&question), "{:?}", asked.rendered);
++    let delivered = format!("{:?}", team.state().queue[0].content);
++    assert!(delivered.contains(&question), "the question names the identifier its answer carries: {delivered}");
+     let wait = |c: serde_json::Value, deadline: Option<std::time::Instant>| {
+         let team = team.clone();
+         async move {
+diff --git a/docs/design.md b/docs/design.md
+index b5d6c478..e3cbe56d 100644
+--- a/docs/design.md
++++ b/docs/design.md
+@@ -668,7 +668,10 @@ identity of the question it answers. `ask` sends a question and returns that
+ identity; `send` with `reply_to` answers the question that identity names.
+ The question reaches the other member as a `request` item and the answer as a
+ `response` item, so `wait` on `{reply: the identity}` returns for that answer
+-and not for any other arrival. A member that must have one decision from one
++and not for any other arrival. A model receives the rendered result of its own
++call and the content of an item that reaches it, and no other field of either,
++so the result of `ask` names the identity in its text and the question carries
++that identity in its own content. A member that must have one decision from one
+ teammate therefore blocks on that decision without spending a request on each
+ unrelated message. Without correlation the asker would wake on every arrival
+ and would have to decide, at model cost, whether the arrival was the answer.
+diff --git a/docs/log-format.md b/docs/log-format.md
+index 5c2782c4..3f1cb701 100644
+--- a/docs/log-format.md
++++ b/docs/log-format.md
+@@ -529,7 +529,9 @@ before the value existed rejects a log that carries it, as for an added
+ event type.
+ 
+ A `request` item is a question one member asked another through the lead.
+-Its `message_id` is the identifier `ask` returned to the asker. The answer
++Its `message_id` is the identifier `ask` returned to the asker, and its
++content ends with a text block naming that identifier, because a model
++receives the content of an item and none of its other fields. The answer
+ is a `response` item carrying that same `message_id`, which is what lets
+ the asker wait for this answer rather than for any arrival. A member
+ redelivers nothing itself; the lead retries an unconfirmed delivery, so a
+diff --git a/docs/tools.md b/docs/tools.md
+index dc519820..c0c1c8d5 100644
+--- a/docs/tools.md
++++ b/docs/tools.md
+@@ -197,7 +197,7 @@ of those schemas keeps the one-agent request header unchanged.
+ | `cancel` | pure | Stops a running child selected by roster `to`, with an optional `reason` recorded on the roster. The child's episode ends blocked with `cancelled`, its board task settles, and its reservation returns. A child that has already settled is not an error. |
+ | `notify` | pure | Sends `content` to the episode that started the caller. A root call fails because the root has no parent. |
+ | `send` | pure | Sends `content` to a member of the parent-led team selected by roster `name`. The lead log makes the message durable before delivery. Optional `reply_to` names the `message_id` of a question this answers; the answer arrives as a `response` item under that identifier and wakes the member waiting on it. Optional `scope` selects the team: `member`, the default, is the team the caller belongs to, and `led` is the team the caller leads, which is how an episode in the middle of a tree answers a question its own child asked. |
+-| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`. The question arrives as a `request` item. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. Optional `scope` selects the team, as for `send`. |
++| `ask` | pure | Sends `content` as a question to a member of the parent-led team selected by roster `to`, and returns the question's `message_id`, which the result text also names. The question arrives as a `request` item whose text ends with a line naming that identifier, so the member answering it can name the question in `reply_to`. `wait` with `{reply: that id}` blocks until the answer arrives and not until any message does. Optional `scope` selects the team, as for `send`. |
+ | `team` | pure | Returns the lead identifier, roster, and board. It reports the parent-led team by default. `scope: led` reports the team that the caller leads. Both scopes select the root team for a root episode. |
+ 
+ Each returned member includes its roster `phase`. A member assigned through

@@ -1,0 +1,29 @@
+[
+  {
+    "task": "correlation-as-inbox-source",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "duplicate-grant-roots",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "question-identifier-in-message-text",
+    "arm": "foe-configured",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  }
+]

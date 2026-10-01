@@ -1,0 +1,2 @@
+test: `
+did not run; a test file under src/ compiles only through its mod declaration

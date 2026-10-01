@@ -1,0 +1,669 @@
+[
+ {
+  "task": "ceiling-bound-feature-telemetry",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 109056,
+   "commands": 3,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 6,
+   "input_tokens": 154929,
+   "max_depth": 1,
+   "model_calls": 7,
+   "output_tokens": 2526,
+   "reasoning_tokens": null,
+   "responses_with_usage": 7,
+   "tool_calls": 26,
+   "tool_calls_by_name": {
+    "bash": 3,
+    "block": 1,
+    "check": 1,
+    "grep": 5,
+    "read": 16
+   },
+   "wall_ms": 99281
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/ceiling-bound-feature-telemetry/foe-lean/01.json"
+ },
+ {
+  "task": "ceiling-bound-feature",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 117504,
+   "commands": 3,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 895,
+   "input_tokens": 152196,
+   "max_depth": 1,
+   "model_calls": 7,
+   "output_tokens": 1645,
+   "reasoning_tokens": null,
+   "responses_with_usage": 7,
+   "tool_calls": 34,
+   "tool_calls_by_name": {
+    "bash": 3,
+    "block": 1,
+    "grep": 2,
+    "read": 28
+   },
+   "wall_ms": 51140
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/ceiling-bound-feature/foe-lean/01.json"
+ },
+ {
+  "task": "correlation-as-inbox-source",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 638336,
+   "commands": 12,
+   "compactions": 0,
+   "denials": 4,
+   "file_changes": 3111,
+   "input_tokens": 725699,
+   "max_depth": 1,
+   "model_calls": 23,
+   "output_tokens": 7728,
+   "reasoning_tokens": null,
+   "responses_with_usage": 23,
+   "tool_calls": 56,
+   "tool_calls_by_name": {
+    "bash": 12,
+    "check": 2,
+    "edit": 6,
+    "grep": 11,
+    "read": 21,
+    "return": 2,
+    "verification/result": 2
+   },
+   "wall_ms": 234884
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/correlation-as-inbox-source/foe-lean/01.json"
+ },
+ {
+  "task": "duplicate-grant-roots",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 693760,
+   "commands": 12,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 1356,
+   "input_tokens": 771326,
+   "max_depth": 1,
+   "model_calls": 28,
+   "output_tokens": 9910,
+   "reasoning_tokens": null,
+   "responses_with_usage": 28,
+   "tool_calls": 59,
+   "tool_calls_by_name": {
+    "bash": 12,
+    "check": 2,
+    "edit": 10,
+    "grep": 7,
+    "read": 24,
+    "return": 2,
+    "verification/result": 2
+   },
+   "wall_ms": 294460
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/duplicate-grant-roots/foe-lean/01.json"
+ },
+ {
+  "task": "frozen-interface-budget",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 70528,
+   "commands": 2,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 0,
+   "input_tokens": 105473,
+   "max_depth": 1,
+   "model_calls": 5,
+   "output_tokens": 1245,
+   "reasoning_tokens": null,
+   "responses_with_usage": 5,
+   "tool_calls": 19,
+   "tool_calls_by_name": {
+    "bash": 2,
+    "block": 1,
+    "grep": 6,
+    "read": 10
+   },
+   "wall_ms": 31432
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/frozen-interface-budget/foe-lean/01.json"
+ },
+ {
+  "task": "frozen-interface-tool-defs",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 65536,
+   "commands": 1,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 0,
+   "input_tokens": 95105,
+   "max_depth": 1,
+   "model_calls": 6,
+   "output_tokens": 1441,
+   "reasoning_tokens": null,
+   "responses_with_usage": 6,
+   "tool_calls": 26,
+   "tool_calls_by_name": {
+    "bash": 1,
+    "block": 1,
+    "grep": 8,
+    "read": 16
+   },
+   "wall_ms": 39546
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/frozen-interface-tool-defs/foe-lean/01.json"
+ },
+ {
+  "task": "inventory-regeneration-code",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 51456,
+   "commands": 3,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 2,
+   "input_tokens": 80017,
+   "max_depth": 1,
+   "model_calls": 7,
+   "output_tokens": 1979,
+   "reasoning_tokens": null,
+   "responses_with_usage": 7,
+   "tool_calls": 18,
+   "tool_calls_by_name": {
+    "bash": 3,
+    "block": 1,
+    "edit": 2,
+    "grep": 3,
+    "read": 9
+   },
+   "wall_ms": 57803
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/inventory-regeneration-code/foe-lean/01.json"
+ },
+ {
+  "task": "inventory-regeneration-context",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 260608,
+   "commands": 3,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 2,
+   "input_tokens": 298975,
+   "max_depth": 1,
+   "model_calls": 12,
+   "output_tokens": 3952,
+   "reasoning_tokens": null,
+   "responses_with_usage": 12,
+   "tool_calls": 29,
+   "tool_calls_by_name": {
+    "bash": 3,
+    "block": 1,
+    "edit": 4,
+    "grep": 2,
+    "read": 19
+   },
+   "wall_ms": 111399
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/inventory-regeneration-context/foe-lean/01.json"
+ },
+ {
+  "task": "inventory-regeneration-evidence",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 323200,
+   "commands": 3,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 4,
+   "input_tokens": 358801,
+   "max_depth": 1,
+   "model_calls": 14,
+   "output_tokens": 3880,
+   "reasoning_tokens": null,
+   "responses_with_usage": 14,
+   "tool_calls": 28,
+   "tool_calls_by_name": {
+    "bash": 3,
+    "block": 1,
+    "edit": 6,
+    "grep": 3,
+    "read": 15
+   },
+   "wall_ms": 145107
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/inventory-regeneration-evidence/foe-lean/01.json"
+ },
+ {
+  "task": "inventory-regeneration-workflow",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 121344,
+   "commands": 2,
+   "compactions": 0,
+   "denials": 0,
+   "file_changes": 2,
+   "input_tokens": 146922,
+   "max_depth": 1,
+   "model_calls": 12,
+   "output_tokens": 3142,
+   "reasoning_tokens": null,
+   "responses_with_usage": 12,
+   "tool_calls": 28,
+   "tool_calls_by_name": {
+    "bash": 2,
+    "block": 1,
+    "edit": 5,
+    "grep": 5,
+    "read": 15
+   },
+   "wall_ms": 117519
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/inventory-regeneration-workflow/foe-lean/01.json"
+ },
+ {
+  "task": "question-identifier-in-message-text",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-completion",
+  "reported": {
+   "status": "completed",
+   "code": null
+  },
+  "totals": {
+   "agents": 3,
+   "cache_read_tokens": 663808,
+   "commands": 9,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 1936,
+   "input_tokens": 763767,
+   "max_depth": 1,
+   "model_calls": 21,
+   "output_tokens": 8030,
+   "reasoning_tokens": null,
+   "responses_with_usage": 21,
+   "tool_calls": 71,
+   "tool_calls_by_name": {
+    "bash": 9,
+    "check": 2,
+    "edit": 5,
+    "grep": 15,
+    "read": 36,
+    "return": 2,
+    "verification/result": 2
+   },
+   "wall_ms": 230947
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/question-identifier-in-message-text/foe-lean/01.json"
+ },
+ {
+  "task": "unreleased-lock-context",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 442240,
+   "commands": 8,
+   "compactions": 0,
+   "denials": 2,
+   "file_changes": 1675,
+   "input_tokens": 528191,
+   "max_depth": 1,
+   "model_calls": 16,
+   "output_tokens": 7717,
+   "reasoning_tokens": null,
+   "responses_with_usage": 16,
+   "tool_calls": 42,
+   "tool_calls_by_name": {
+    "bash": 8,
+    "block": 1,
+    "check": 1,
+    "edit": 7,
+    "grep": 5,
+    "read": 20
+   },
+   "wall_ms": 513358
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/unreleased-lock-context/foe-lean/01.json"
+ },
+ {
+  "task": "unreleased-lock-evidence",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 468736,
+   "commands": 5,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 1030,
+   "input_tokens": 508440,
+   "max_depth": 1,
+   "model_calls": 17,
+   "output_tokens": 4566,
+   "reasoning_tokens": null,
+   "responses_with_usage": 17,
+   "tool_calls": 38,
+   "tool_calls_by_name": {
+    "bash": 5,
+    "block": 1,
+    "check": 1,
+    "edit": 8,
+    "grep": 6,
+    "read": 17
+   },
+   "wall_ms": 813261
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/unreleased-lock-evidence/foe-lean/01.json"
+ },
+ {
+  "task": "unwritten-pipe-context",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "correct-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "goal-unreachable"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 373248,
+   "commands": 6,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 1880,
+   "input_tokens": 414549,
+   "max_depth": 1,
+   "model_calls": 15,
+   "output_tokens": 4270,
+   "reasoning_tokens": null,
+   "responses_with_usage": 15,
+   "tool_calls": 34,
+   "tool_calls_by_name": {
+    "bash": 6,
+    "block": 1,
+    "check": 1,
+    "edit": 6,
+    "grep": 3,
+    "read": 17
+   },
+   "wall_ms": 264229
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/unwritten-pipe-context/foe-lean/01.json"
+ },
+ {
+  "task": "waiting-check-suite",
+  "arm": "foe-lean",
+  "attempt": "01",
+  "cell": "wrong-stop",
+  "reported": {
+   "status": "blocked",
+   "code": "missing-capability"
+  },
+  "totals": {
+   "agents": 2,
+   "cache_read_tokens": 674944,
+   "commands": 9,
+   "compactions": 0,
+   "denials": 1,
+   "file_changes": 1283,
+   "input_tokens": 721904,
+   "max_depth": 1,
+   "model_calls": 21,
+   "output_tokens": 8042,
+   "reasoning_tokens": null,
+   "responses_with_usage": 21,
+   "tool_calls": 38,
+   "tool_calls_by_name": {
+    "bash": 9,
+    "block": 1,
+    "check": 1,
+    "edit": 9,
+    "grep": 3,
+    "read": 15
+   },
+   "wall_ms": 459924
+  },
+  "grade": {
+   "passed": true,
+   "damage": [],
+   "findings": [],
+   "units": null
+  },
+  "provenance": {
+   "foe_git_head": "0b6e14bbeb1870c350200d9942e2da42c4833aa3",
+   "codex_version": null
+  },
+  "record": "~/.local/state/foe/cross-harness/lean/records/waiting-check-suite/foe-lean/01.json"
+ }
+]

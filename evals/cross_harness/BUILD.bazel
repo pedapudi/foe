@@ -1,0 +1,112 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# Every module of the evaluation, its fixtures, its task recipes, and the
+# recorded results that results/archive_test.py reads. The workspaces of the tasks under
+# tasks/foe-tree are regenerated from the repository's history at run time
+# and are absent from the tree.
+filegroup(
+    name = "sources",
+    srcs = glob(
+        [
+            "*.py",
+            "arms/*.py",
+            "contracts/*.py",
+            "tasks/*.py",
+            "gates/*.py",
+            "environment/**",
+            "fixtures/**",
+            "tasks/examples/**",
+            "tasks/foe-tree/*/task.json",
+            "tasks/foe-tree/*/grader/**",
+            "runs/*.json",
+            "results/**",
+        ],
+        exclude = ["tasks/foe-tree/*/workspace/**"],
+    ),
+)
+
+# The helpers under evals/ the modules import, and the Python package the
+# scripted host runtime speaks through.
+filegroup(
+    name = "support",
+    srcs = [
+        "//evals:foe_build.py",
+        "//evals:host_runtime.py",
+        "//evals:runtime_responses.py",
+        "//evals:trace_quality.py",
+        "//python:foe_package",
+    ],
+)
+
+# The deterministic enforcement matrix over foe and Codex CLI. Codex is taken
+# from PATH; `--skip-codex` runs the foe configurations alone.
+sh_binary(
+    name = "containment-matrix",
+    srcs = ["containment_matrix.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# Whether the host can run the evaluation, checked without a model.
+sh_binary(
+    name = "probe",
+    srcs = ["probe.py"],
+    args = ["--foe", "$(rootpath //:foe)"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# The model-backed runner: `bazel run //evals/cross_harness:run -- DOCUMENT`.
+# It prints its plan and launches nothing without `--confirm-spend`. A run
+# document that names no foe binary resolves to the debug build under the
+# checkout; name `bazel-bin/crates/cli/foe` in the document to run the Bazel
+# build.
+sh_binary(
+    name = "run",
+    srcs = ["run.py"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# The label non-leakage gate: `bazel run //evals/cross_harness:label-leakage -- DOCUMENT`.
+# It prints the number of calls and launches nothing without `--confirm-spend`.
+sh_binary(
+    name = "label-leakage",
+    srcs = ["gates/label_leakage.py"],
+    data = [
+        ":sources",
+        ":support",
+        "//:foe",
+    ],
+)
+
+# The harness isolation gate over a finished run's records, without a model.
+sh_binary(
+    name = "isolation",
+    srcs = ["gates/isolation.py"],
+    data = [
+        ":sources",
+        ":support",
+    ],
+)
+
+sh_test(
+    name = "cross_harness_unit_test",
+    srcs = ["run_unit_tests.sh"],
+    data = [
+        ":sources",
+        ":support",
+    ],
+    size = "medium",
+)

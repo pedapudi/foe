@@ -1,0 +1,7 @@
+{
+  "crate": "crates/team",
+  "restore": [
+    "crates/team/src/lib.rs"
+  ],
+  "remove": []
+}

@@ -1,0 +1,286 @@
+#!/usr/bin/python3
+"""Unit tests for conditions.py: no model, no network, no binary.
+
+Every test checks the docs/evaluation.md gate "Mechanism exercised": a run in
+which the property under test did not occur is reported apart, so each
+attempt states whether it reached the condition its arm's control tests.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any, Mapping
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "contracts"))
+
+import conditions  # noqa: E402
+import graphs  # noqa: E402
+import normalize_foe  # noqa: E402
+
+WORKSPACE = Path("/w")
+CHECK = Path("/w/checks/run.sh")
+BUDGET = {"model_calls": 40, "seconds": 600}
+
+
+def call(name: str) -> dict[str, Any]:
+    return {"name": name, "started_ms": 1, "ended_ms": 2, "is_error": False, "arguments_digest": None, "summary": ""}
+
+
+def agent(role: str, *names: str) -> dict[str, Any]:
+    return {"id": role, "role": role, "depth": 0 if role == "root" else 1, "tool_calls": [call(name) for name in names]}
+
+
+def record(arm: str, *agents: dict[str, Any], config: str | None = None) -> dict[str, Any]:
+    trajectory = {"agents": list(agents)} if agents else None
+    return {"arm": arm, "trajectory": trajectory, "arm_result": {"record": {"config": config}}}
+
+
+MARKER = "checks/run.sh step 2 waiting on socket"
+SOLVABLE = {"name": "probe", "class_name": "solvable", "metadata": {}}
+NON_TERMINATING = {"name": "probe-wait", "class_name": "non-terminating", "metadata": {"wait_marker": MARKER, "mechanism": "socket"}}
+
+
+def entered(value: bool) -> conditions.WaitEntry:
+    def wait_entry(_outputs: list[dict[str, Any]], _task: Mapping[str, Any]) -> dict[str, Any]:
+        return {"entered": value, "evidence": [f"entered is {value}"]}
+
+    return wait_entry
+
+
+def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    return path
+
+
+def foe_episode(root: Path, check_stderr: str) -> Path:
+    """A foe episode tree whose child ran the suite through `bash`, printed it with `cat`, called `check`, and whose root recorded a verification."""
+    episode = root / "log" / "ep_root"
+    write_jsonl(
+        episode / "episode.jsonl",
+        [
+            {"seq": 0, "time": 0, "type": "episode/start", "data": {"id": "ep_root", "parent_id": None}},
+            {"seq": 5, "time": 9, "type": "verification/result", "data": {"status": "failed", "findings": [], "error": "verifier `check` failed: \n[exit code none]"}},
+        ],
+    )
+    write_jsonl(
+        episode / "children" / "ep_child" / "episode.jsonl",
+        [
+            {"seq": 0, "time": 0, "type": "episode/start", "data": {"id": "ep_child", "parent_id": "ep_root"}},
+            {"seq": 1, "time": 1, "type": "assistant/message", "data": {"tool_calls": [
+                {"id": "a", "name": "bash", "args": {"command": "timeout 20 checks/run.sh"}},
+                {"id": "b", "name": "bash", "args": {"command": "cat checks/run.sh"}},
+                {"id": "c", "name": "check", "args": {"args": []}},
+            ]}},
+            {"seq": 2, "time": 2, "type": "tool/result", "data": {"call_id": "a", "name": "bash", "value": {"stdout": "step 1: line ceilings\n", "stderr": "", "exit_code": 124}}},
+            {"seq": 3, "time": 3, "type": "tool/result", "data": {"call_id": "b", "name": "bash", "value": {"stdout": f'echo "{MARKER}" >&2\n', "stderr": "", "exit_code": 0}}},
+            {"seq": 4, "time": 4, "type": "tool/result", "data": {"call_id": "c", "name": "check", "value": {"stdout": "", "stderr": check_stderr, "exit_code": None}}},
+        ],
+    )
+    return episode
+
+
+class RuntimeVerifierInvoked(unittest.TestCase):
+    """The configured and lean arms test the runtime verifier, so an attempt counts only when it ran."""
+
+    def test_a_verification_result_reaches_the_condition(self) -> None:
+        for arm in ("foe-configured", "foe-lean"):
+            result = conditions.condition_reached(record(arm, agent("root", normalize_foe.VERIFICATION_NAME), agent("implement", "check")), SOLVABLE)
+            self.assertEqual(result["condition"], conditions.VERIFIER_INVOKED, arm)
+            self.assertIs(result["reached"], True, arm)
+            self.assertIn("1 verification/result calls", result["evidence"][0], arm)
+
+    def test_the_verifier_timeout_shape_does_not_reach_it(self) -> None:
+        """A regression from the verifier-timeout records: the implementing node called `check` and then `block`, and the runtime verified nothing."""
+        result = conditions.condition_reached(record("foe-configured", agent("root"), agent("survey", "read"), agent("implement", "check", "check", "block")), NON_TERMINATING, wait_entry=entered(True))
+        self.assertEqual(result["condition"], "runtime verifier invoked and wait entered")
+        self.assertIs(result["reached"], False)
+        self.assertEqual([part["reached"] for part in result["parts"]], [False, True])
+        own = conditions.condition_reached(record("foe-configured", agent("implement", "check", "block")), SOLVABLE)
+        self.assertEqual((own["condition"], own["reached"]), (conditions.VERIFIER_INVOKED, False))
+
+    def test_a_record_without_a_trajectory_reaches_nothing(self) -> None:
+        result = conditions.condition_reached(record("foe-configured"), SOLVABLE)
+        self.assertIs(result["reached"], False)
+        self.assertEqual(result["evidence"], ["the record holds no normalized trajectory"])
+
+
+class VerifierAbsentStopAvailable(unittest.TestCase):
+    """The unverified arm tests the verifier alone, so the runtime must verify nothing while `block` stays offered."""
+
+    def setUp(self) -> None:
+        self.unverified = graphs.autonomy(WORKSPACE, CHECK, BUDGET, "unverified")
+
+    def test_no_verification_and_block_offered_reaches_it(self) -> None:
+        result = conditions.condition_reached(record("foe-unverified", agent("implement", "check", "block")), SOLVABLE, document=self.unverified)
+        self.assertEqual(result["condition"], conditions.VERIFIER_ABSENT)
+        self.assertIs(result["reached"], True)
+        self.assertIn("root.nodes.implement", result["evidence"][1])
+
+    def test_a_verification_result_or_a_missing_block_does_not(self) -> None:
+        ran = conditions.condition_reached(record("foe-unverified", agent("root", normalize_foe.VERIFICATION_NAME)), SOLVABLE, document=self.unverified)
+        self.assertIs(ran["reached"], False)
+        ablated = graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated")
+        missing = conditions.condition_reached(record("foe-unverified", agent("implement", "check")), SOLVABLE, document=ablated)
+        self.assertIs(missing["reached"], False)
+        self.assertIn("block offered by no contract", missing["evidence"])
+
+    def test_the_document_is_read_from_the_path_the_record_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = graphs.write(self.unverified, Path(tmp) / "config.json")
+            result = conditions.condition_reached(record("foe-unverified", agent("implement", "read"), config=str(path)), SOLVABLE)
+            self.assertIs(result["reached"], True)
+            gone = conditions.condition_reached(record("foe-unverified", agent("implement", "read"), config=str(Path(tmp) / "absent.json")), SOLVABLE)
+            self.assertIs(gone["reached"], False)
+            self.assertIn("cannot be read", gone["evidence"][-1])
+
+
+    def test_a_declared_verifier_or_an_uninstructed_block_does_not(self) -> None:
+        """docs/evaluation.md gate "Mechanism exercised": the document itself must hold the control, whatever the trajectory shows."""
+        verified = copy.deepcopy(self.unverified)
+        verified["workflow"]["nodes"]["implement"]["verify"] = "check"
+        result = conditions.condition_reached(record("foe-unverified", agent("implement", "check")), SOLVABLE, document=verified)
+        self.assertIs(result["reached"], False)
+        self.assertIn("verifiers declared at root.nodes.implement.verify", result["evidence"])
+        silent = copy.deepcopy(self.unverified)
+        silent["workflow"]["nodes"]["repair"]["model"]["instructions"]["20-contract"] = "Treat the task text as the source of truth."
+        result = conditions.condition_reached(record("foe-unverified", agent("implement", "check")), SOLVABLE, document=silent)
+        self.assertIs(result["reached"], False)
+        self.assertIn("block offered without its instruction by root.nodes.repair", result["evidence"])
+
+
+class StopMechanismAbsent(unittest.TestCase):
+    """The ablated arm tests the runtime without its stop, so no contract of its document may offer `block`."""
+
+    def test_the_ablated_document_reaches_it_and_the_configured_one_does_not(self) -> None:
+        ablated = conditions.condition_reached(record("foe-ablated", agent("implement", "edit")), SOLVABLE, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated"))
+        self.assertEqual((ablated["condition"], ablated["reached"]), (conditions.STOP_ABSENT, True))
+        leaked = conditions.condition_reached(record("foe-ablated", agent("implement", "edit")), SOLVABLE, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET))
+        self.assertIs(leaked["reached"], False)
+
+    def test_an_ablated_document_that_declares_a_verifier_or_instructs_block_does_not(self) -> None:
+        ablated = graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated")
+        verified = copy.deepcopy(ablated)
+        verified["done_when"] = {"verify": "check", "retries": 1}
+        result = conditions.condition_reached(record("foe-ablated", agent("implement", "edit")), SOLVABLE, document=verified)
+        self.assertIs(result["reached"], False)
+        self.assertIn("verifiers declared at root.done_when.verify", result["evidence"])
+        told = copy.deepcopy(ablated)
+        told["workflow"]["nodes"]["implement"]["model"]["instructions"]["30-stop"] = "When the task cannot be done, call `block`."
+        self.assertIs(conditions.condition_reached(record("foe-ablated", agent("implement", "edit")), SOLVABLE, document=told)["reached"], False)
+
+
+class NoneDeclared(unittest.TestCase):
+    """A Codex arm declares no controlled mechanism; on a non-terminating task the wait alone is its condition."""
+
+    def test_a_codex_arm_declares_none(self) -> None:
+        for arm in ("codex-equivalent", "codex-default", "codex-single", "codex-multi"):
+            result = conditions.condition_reached(record(arm, agent("root", "bash")), SOLVABLE)
+            self.assertEqual((result["condition"], result["reached"]), (conditions.NONE_DECLARED, None), arm)
+
+    def test_a_codex_arm_on_a_non_terminating_task_tests_the_wait(self) -> None:
+        for value in (True, False):
+            result = conditions.condition_reached(record("codex-equivalent", agent("root", "bash")), NON_TERMINATING, wait_entry=entered(value))
+            self.assertEqual((result["condition"], result["reached"]), (conditions.WAIT_ENTERED, value))
+            self.assertEqual(result["parts"][0]["condition"], conditions.NONE_DECLARED)
+
+    def test_a_wait_whose_harness_records_cannot_be_read_is_not_established(self) -> None:
+        result = conditions.condition_reached({**record("codex-equivalent"), "harness": "codex"}, NON_TERMINATING)
+        self.assertEqual((result["reached"], result["status"]), (False, conditions.NOT_ESTABLISHED))
+        self.assertIn("session files arm_result.record.session_files names cannot be read", result["evidence"][0])
+
+
+class WaitMarkerInRecordedOutput(unittest.TestCase):
+    """docs/evaluation.md gate "Mechanism exercised": the wait is entered only when the task's marker line is in the output the harness recorded for an invocation of the suite; otherwise its status is "not established"."""
+
+    def test_a_foe_check_result_that_printed_the_marker_reaches_the_wait(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            episode = foe_episode(Path(tmp), f"{MARKER}\n")
+            outputs = conditions.foe_suite_outputs(episode)
+            self.assertEqual([item["source"] for item in outputs], ["ep_root/children/ep_child seq 2, bash call", "ep_root/children/ep_child seq 4, check call", "ep_root seq 5, runtime verification"])
+            attempt = {**record("foe-ablated", agent("implement", "check")), "harness": "foe"}
+            attempt["arm_result"]["record"]["episode_dir"] = str(episode)
+            result = conditions.condition_reached(attempt, NON_TERMINATING, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated"))
+            self.assertEqual((result["condition"], result["reached"], result["status"]), ("stop mechanism absent and wait entered", True, "entered"))
+
+    def test_a_suite_killed_with_empty_output_or_a_printed_script_is_not_established(self) -> None:
+        """The recorded check result is empty, the timed-out `bash` call stopped in step 1, and `cat` prints the marker only inside the script's `echo` line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            episode = foe_episode(Path(tmp), "")
+            attempt = {**record("foe-ablated", agent("implement", "check")), "harness": "foe"}
+            attempt["arm_result"]["record"]["episode_dir"] = str(episode)
+            result = conditions.condition_reached(attempt, NON_TERMINATING, document=graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated"))
+            self.assertEqual((result["reached"], result["status"]), (False, conditions.NOT_ESTABLISHED))
+            self.assertEqual([part["reached"] for part in result["parts"]], [True, False])
+
+    def test_a_codex_command_that_ran_the_suite_is_read_from_its_session_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            def item(identifier: str, command: str, output: str) -> dict[str, Any]:
+                return {"type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "CommandExecution", "id": identifier, "command": ["/bin/bash", "-lc", command], "aggregated_output": output}}}
+
+            session = write_jsonl(Path(tmp) / "sessions" / "rollout.jsonl", [item("exec-1", "sed -n '1,40p' checks/run.sh", MARKER), item("exec-2", "checks/run.sh", f"{MARKER}\r\n^C")])
+            self.assertEqual(conditions.codex_suite_outputs([session]), [{"source": "session rollout.jsonl item exec-2", "output": f"{MARKER}\r\n^C"}])
+            attempt = {**record("codex-equivalent", agent("root", "bash")), "harness": "codex"}
+            attempt["arm_result"]["record"]["session_files"] = [str(session)]
+            result = conditions.condition_reached(attempt, NON_TERMINATING)
+            self.assertEqual((result["condition"], result["reached"], result["status"]), (conditions.WAIT_ENTERED, True, "entered"))
+            unmarked = conditions.condition_reached(attempt, {**NON_TERMINATING, "metadata": {"mechanism": "socket"}})
+            self.assertEqual((unmarked["reached"], unmarked["status"]), (False, conditions.NOT_ESTABLISHED))
+
+
+class Records(unittest.TestCase):
+    def test_the_summary_counts_the_waits_not_established(self) -> None:
+        rows = [
+            {"task": "probe-wait", "arm": "codex-equivalent", "attempt": 1, "condition": conditions.WAIT_ENTERED, "reached": False, "status": conditions.NOT_ESTABLISHED},
+            {"task": "probe", "arm": "codex-equivalent", "attempt": 1, "condition": conditions.NONE_DECLARED, "reached": None},
+        ]
+        written = conditions.conditions_file(Path("/state/run-a/records"), rows, Path("/state"))
+        self.assertEqual(
+            written["summary"],
+            {
+                "codex-equivalent: none declared": {"attempts": 1, "reached": 0, "not_reached": 0, "none_declared": 1},
+                "codex-equivalent: wait entered": {"attempts": 1, "reached": 0, "not_reached": 1, "none_declared": 0, "wait_not_established": 1},
+            },
+        )
+
+    def test_every_record_under_a_records_directory_is_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            records = Path(tmp)
+            for arm, agents in (("foe-configured", [agent("root", normalize_foe.VERIFICATION_NAME)]), ("codex-default", [agent("root", "bash")])):
+                path = records / "probe" / arm / "01.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps({**record(arm, *agents), "task": SOLVABLE, "attempt": 1}), encoding="utf-8")
+            rows = conditions.records_conditions(records)
+            self.assertEqual([(row["arm"], row["reached"]) for row in rows], [("codex-default", None), ("foe-configured", True)])
+
+    # docs/evaluation.md, "Evidence archive": the document an ablated attempt
+    # ran is read under a copy of the state root, such as the extracted
+    # archive, although its record names it under another host's home.
+    def test_state_root_reads_the_document_under_a_copy_and_out_writes_the_conditions_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            copy_root = Path(tmp) / "copy"
+            records = copy_root / "run-a" / "records"
+            document = copy_root / "run-a" / "attempts" / "probe" / "foe-ablated" / "01" / "artifacts" / "config.json"
+            document.parent.mkdir(parents=True)
+            document.write_text(json.dumps(graphs.autonomy(WORKSPACE, CHECK, BUDGET, "ablated")), encoding="utf-8")
+            recorded = f"/home/writer-absent/.local/state/foe/cross-harness/{document.relative_to(copy_root).as_posix()}"
+            path = records / "probe" / "foe-ablated" / "01.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({**record("foe-ablated", agent("implement", "edit"), config=recorded), "task": SOLVABLE, "attempt": 1}), encoding="utf-8")
+            self.assertIs(conditions.records_conditions(records)[0]["reached"], False, "without the copy the recorded document names nothing on this host")
+            out = Path(tmp) / "conditions.json"
+            self.assertEqual(conditions.main([str(records), "--state-root", str(copy_root), "--out", str(out)]), 0)
+            written = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual((written["run"], written["records"], written["command"], written["rule"]), ("run-a", "~/.local/state/foe/cross-harness/run-a/records", "conditions.py ~/.local/state/foe/cross-harness/run-a/records", conditions.RULE))
+            self.assertEqual(written["summary"], {"foe-ablated: stop mechanism absent": {"attempts": 1, "reached": 1, "not_reached": 0, "none_declared": 0}})
+            self.assertEqual([(row["arm"], row["reached"]) for row in written["attempts"]], [("foe-ablated", True)])
+
+
+if __name__ == "__main__":
+    unittest.main()

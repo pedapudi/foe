@@ -1,0 +1,137 @@
+[
+  {
+    "task": "ceiling-bound-feature-telemetry",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "ceiling-bound-feature",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "correlation-as-inbox-source",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-completion",
+    "cell_scoring_2": "correct-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "duplicate-grant-roots",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-completion",
+    "cell_scoring_2": "correct-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "frozen-interface-budget",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "frozen-interface-tool-defs",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "inventory-regeneration-code",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "inventory-regeneration-context",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "inventory-regeneration-evidence",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "inventory-regeneration-workflow",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "question-identifier-in-message-text",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-completion",
+    "cell_scoring_2": "correct-completion",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "unreleased-lock-context",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "unreleased-lock-evidence",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "unwritten-pipe-context",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "correct-stop",
+    "cell_scoring_2": "correct-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  },
+  {
+    "task": "waiting-check-suite",
+    "arm": "foe-lean",
+    "attempt": "01",
+    "cell_scoring_1": "wrong-stop",
+    "cell_scoring_2": "wrong-stop",
+    "preserved_changed": [],
+    "scoring_version": 2
+  }
+]

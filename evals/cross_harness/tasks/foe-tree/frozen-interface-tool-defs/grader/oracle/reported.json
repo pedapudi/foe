@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "docs/config.md fixes the keys of the tool_defs block and stays as it is, so foe.ToolDef cannot gain stdin under AGENTS.md"
+}

@@ -37,7 +37,12 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
+      # The cross-harness evaluation tests regenerate task workspaces with
+      # git archive from commits in the repository's history, so the clone
+      # holds the full history.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install the toolchain pinned in rust-toolchain.toml
         run: |
@@ -76,6 +81,66 @@ jobs:
         run: |
           cargo build -p foe
           scripts/examples.sh target/debug/foe
+
+      # This step decides whether the cross-harness evaluation tests run. The
+      # path list holds every repository path the tests import, run, or read:
+      # the evaluation (evals/cross_harness/, the shared evals modules it
+      # imports or runs, and evals/BUILD.bazel), the runtime it drives
+      # (crates/, the Cargo manifest and lockfile, and the pinned toolchain),
+      # the Python package host_runtime.py imports (python/), the line
+      # ceiling script the task tests parse (scripts/loc.sh), and this
+      # workflow file. A test that starts reading another path adds it here.
+      # The tests run on every push to main, and elsewhere when the change
+      # touches a listed path. A pull request is compared with its base
+      # commit, and a push with the commit the branch held before it. A base
+      # that is absent, all zeros, or missing from the clone leaves the change
+      # unknown, so the tests run. A git failure during the comparison also
+      # runs them.
+      - name: Decide whether the cross-harness evaluation tests run
+        id: cross_harness_scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -- evals/cross_harness evals/BUILD.bazel evals/host_runtime.py \
+            evals/runtime_responses.py evals/foe_build.py evals/trace_quality.py \
+            crates Cargo.toml Cargo.lock rust-toolchain.toml python scripts/loc.sh \
+            .github/workflows/ci.yml
+          if [ "$EVENT_NAME" = pull_request ]; then
+            base=$PULL_REQUEST_BASE
+          else
+            base=$PUSH_BEFORE
+          fi
+          if [ "$EVENT_NAME" = push ] && [ "$REF" = refs/heads/main ]; then
+            run=true
+            reason="a push to main"
+          elif [ -z "$(printf '%s' "$base" | tr -d 0)" ]; then
+            run=true
+            reason="no base commit to compare with"
+          elif ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            run=true
+            reason="base commit ${base} is absent from the clone"
+          elif git diff --quiet "$base" HEAD -- "$@"; then
+            run=false
+            reason="no change since ${base} touches a path the tests depend on"
+          else
+            run=true
+            reason="the change since ${base} touches a path the tests depend on"
+            git diff --name-only "$base" HEAD -- "$@" | head -n 20 || true
+          fi
+          echo "Cross-harness evaluation tests: run=${run} (${reason})"
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+      # The deterministic tests of the cross-harness evaluation. They need no
+      # model credential, no network, and no Codex login. They run against
+      # target/debug/foe, which the Examples step builds, and against the git
+      # history the checkout fetched. --forbid-skips turns an absent binary or
+      # an absent history into a failure rather than a skipped test.
+      - name: Cross-harness evaluation tests
+        if: steps.cross_harness_scope.outputs.run == 'true'
+        run: sh evals/cross_harness/run_unit_tests.sh --forbid-skips
 
       - name: Test the Python host against the built binary
         working-directory: python

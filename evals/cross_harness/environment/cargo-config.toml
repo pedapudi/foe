@@ -1,0 +1,12 @@
+# Installed in the attempt image as /usr/share/cargo/home/config.toml and
+# reached as /.cargo/config.toml, so every cargo invocation in the image
+# resolves crates.io through the vendored registry and opens no network
+# connection. A workspace's own .cargo/config.toml merges with this file.
+[source.crates-io]
+replace-with = "vendored"
+
+[source.vendored]
+directory = "/usr/share/cargo/vendor"
+
+[net]
+offline = true

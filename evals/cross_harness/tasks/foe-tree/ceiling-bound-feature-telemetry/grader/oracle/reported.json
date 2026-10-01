@@ -1,0 +1,5 @@
+{
+  "status": "blocked",
+  "code": "goal-unreachable",
+  "evidence": "the change needs at least 40 production lines in crates/telemetry; the telemetry ceiling of 1000 leaves 4 and may not change"
+}

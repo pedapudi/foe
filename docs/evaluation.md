@@ -20,12 +20,23 @@ subdirectory holds one further suite, and its README states how to run it.
 | [`evals/tool_audit/`](../evals/tool_audit/README.md) | the typed failure every built-in coding tool returns for common malformed calls, pinned to the complete message text | no |
 | [`evals/episode_cost/`](../evals/episode_cost/README.md) | search time, runtime resources, and workflow token usage, read from stored logs or driven through scripted responses | no |
 | [`evals/config_repair/`](../evals/config_repair/README.md) | one self-improvement loop that diagnoses and repairs a configuration defect under an unchanged external evaluator | only for a model-written candidate; a prepared candidate file replaces the model |
+| [`evals/cross_harness/`](../evals/cross_harness/README.md) | foe against Codex CLI: the deterministic enforcement matrix, the qualification gates, and the model-backed autonomy comparison that the sections below specify | the matrix and the tests do not; the runs do |
 | [`evals/terminal_bench/`](../evals/terminal_bench/README.md) | task completion on a pinned subset of Terminal-Bench 2.1, run through Harbor | yes |
 | [`evals/harness_bench/`](../evals/harness_bench/README.md) | four development and two confirmation tasks taken from Harness-Bench, used as local diagnostics | yes |
 
 [self-improvement.md](self-improvement.md) describes how the configuration
 repair, Terminal-Bench, and Harness-Bench suites feed candidate changes back
 into foe.
+
+The suites that this document specifies run from these commands.
+
+| suite | layer | command | spends credit |
+|---|---|---|---|
+| runtime conformance | deterministic | `bazel test //evals:conformance_tests` | no |
+| enforcement matrix against Codex CLI | deterministic | `python3 evals/cross_harness/containment_matrix.py --foe target/debug/foe` | no |
+| cross-harness evaluation tests | deterministic | `sh evals/cross_harness/run_unit_tests.sh --forbid-skips` | no |
+| low-cost assessed suite | model-backed | "Low-cost assessed suite" below | yes, with confirmation |
+| cross-harness runs against Codex CLI | model-backed | `python3 evals/cross_harness/run.py DOCUMENT --confirm-spend` | yes |
 
 ## Deterministic runtime conformance
 
@@ -135,6 +146,75 @@ Status 2 covers a missing binary, a host response failure, an output directory
 that cannot be created, a case that wrote no episode log, a guarantee with no
 corruption case, and a corruption the evaluator failed to detect. The trace
 evaluator alone reports 0 or 1.
+
+## Deterministic enforcement matrix against Codex CLI
+
+A grant denies an access below the model, so showing that a harness without
+the grant allows the access needs no model call. The matrix under
+`evals/cross_harness/` records this once. One fixed set of eleven probe
+commands runs under three foe configurations and three Codex CLI sandbox
+policies, and each cell records whether the access happened. A probe prints
+a marker when its access succeeded, so a cell is `allowed` when the marker
+appears, `denied` when the diagnostic is the kernel's or the sandbox's, and
+`error` otherwise.
+
+foe runs the probes as `bash` calls of one scripted episode per
+configuration, so each foe cell has an episode log behind it. Codex runs
+each probe through `codex sandbox -P PROFILE`, which applies one permission
+profile to a command without a model. The fixture keeps every path outside
+`/tmp`, which Codex's workspace policy leaves writable, so that a write
+outside the workspace is one. Every cell is compared with what the
+harness's documents state, where they state it; a cell that differs is a
+finding, and the runner exits 1.
+
+```sh
+bazel run //evals/cross_harness:containment-matrix
+python3 evals/cross_harness/containment_matrix.py --foe target/debug/foe
+```
+
+### Recorded result
+
+The matrix ran on 2026-09-10 on this repository's development host, Linux
+7.0.0 with Landlock ABI 7 in use, against source tree
+`git-tree-sha1:8546ec91c7f30d985543d051d50b01987364c13d`, binary
+`sha256:6bfcbf096f3550e463fc9f1278ed4effa7634946fb1f8b8d674244ed9c1155f1`,
+and `codex-cli 0.153.4`. Every documented expectation held. The three foe
+columns are: the kernel sandbox required with a tight grant, which reads the
+workspace, writes `src/` alone, and executes `/bin` and `/usr/bin`; the same
+sandbox with the grants every built-in document declares; and the sandbox
+off with the tight grant. The three Codex columns are its `read-only`,
+`workspace-write`, and `danger-full-access` policies.
+
+| probe | foe tight | foe built-in shape | foe off | Codex read-only | Codex workspace-write | Codex full access |
+|---|---|---|---|---|---|---|
+| read a file outside the workspace | denied | denied | allowed | allowed | allowed | allowed |
+| write a file outside the workspace | denied | denied | allowed | denied | denied | allowed |
+| write under the workspace's tests directory | denied | allowed | allowed | denied | allowed | allowed |
+| write under the workspace's source directory | allowed | allowed | allowed | denied | allowed | allowed |
+| execute a program inside the workspace | denied | denied | allowed | allowed | allowed | allowed |
+| execute a system program | allowed | allowed | allowed | allowed | allowed | allowed |
+| write under the host's `/tmp` | denied | denied | allowed | denied | allowed | allowed |
+| write under the directory `TMPDIR` names | allowed | allowed | allowed | error | error | error |
+| connect to a loopback TCP listener | denied | denied | allowed | denied | denied | allowed |
+| read the secret through a symbolic link in the workspace | denied | denied | allowed | allowed | allowed | allowed |
+| read the secret through `/proc/self/root` | denied | denied | allowed | allowed | allowed | allowed |
+
+Three differences separate the harnesses. foe's grants confine reads, and
+the two escape routes with them, while every Codex policy reads the whole
+filesystem. foe denies execution of a program inside the workspace unless a
+grant names it, while every Codex policy allows it; a task that builds and
+runs its own binaries pays for that under foe's built-in grants. foe names a
+scratch directory of its own as `TMPDIR` and denies the host's `/tmp`, while
+Codex's `workspace-write` policy opens `/tmp` and names no scratch
+directory, which is the `error` in that row. The two harnesses agree on
+writes outside the workspace and on the network: `workspace-write` and the
+tight foe grant both deny them, and only Codex's full-access policy and
+foe's sandbox-off configuration allow them.
+
+The matrix ran on the host rather than in the per-attempt container the
+model-backed families use. It records what each harness permits, and the
+model-backed containment family is where what a model does after a denial
+would be measured.
 
 ## Model-backed task quality
 
@@ -516,8 +596,10 @@ auditable.
 
 ### Comparative hypotheses
 
-foe has no comparative result against Claude Code or Codex CLI yet. The table
-below records expectations to test rather than results. A failed or exhausted
+The one comparative result against Codex CLI is the exploratory null that
+"Cross-harness evaluation against Codex CLI" below records, and no
+comparison against any other harness has been run. The table below records
+expectations to test rather than results. A failed or exhausted
 attempt cannot count as an efficiency win merely because it stopped early.
 Token and latency comparisons use successful attempts, with all-attempt
 figures reported beside them.
@@ -556,6 +638,395 @@ The [Inspect evaluation checklist](https://github.com/UKGovernmentBEIS/inspect_e
 provides additional evaluator controls. Applicable controls include an oracle
 run, negative controls, trajectory review, and proof that the scorer can
 produce success and failure.
+
+## Cross-harness evaluation against Codex CLI
+
+A Terminal-Bench task scores the final state of a container, so it measures
+none of the properties foe claims as its own. The cross-harness evaluation
+under `evals/cross_harness/` compares foe with Codex CLI on one of those
+properties: an unattended run ends within its bounds with an outcome an
+automated consumer can act on. Every arm receives the same model, effort,
+task text, budget, and wall-clock cap. A difference between the two
+harnesses measures the two products. A difference between a foe
+configuration and the same configuration with one mechanism removed
+attributes an effect to that mechanism. A report states both kinds of
+difference and keeps them apart.
+
+### Status
+
+The evaluation states no comparative claim. Its recorded campaigns of
+2026-09-13 are exploratory: each cell holds one attempt, and every foe
+build they used carries a sandbox commit that `main` does not hold. Two
+conditions precede any claim. The first is repeated attempts per task and
+arm, in the number the power gate below sets. The second is a person's
+reading of the task texts. An automated review of the fifteen texts,
+`results/task-text-review-2026-09-30.md`, finds a defect in seven of
+them, and no person has read them. The dated records under `results/`
+state what the recorded campaigns did and the claims withdrawn from them.
+
+### Instruments
+
+`evals/cross_harness/README.md` lists every module. They fall into five
+groups:
+
+- Tasks: `tasks/protocol.py` defines a task, materializes its workspace,
+  grades it, and classifies the result. `tasks/feature_removal.py` authors
+  a solvable task from one committed feature, and `tasks/constructions.py`
+  emits the contradictory, missing-capability, and non-terminating tasks.
+  `tasks/foe-tree/` holds the fifteen autonomy tasks.
+- Arms: `contracts/graphs.py` generates the foe documents, and
+  `arms/foe_arm.py` and `arms/codex_arm.py` run one harness on one task.
+  `metering_proxy.py` and `codex_budget_watcher.py` enforce the shared
+  token and wall-clock ceilings.
+- Records: `trajectory.py` is the one trajectory schema, which
+  `normalize_foe.py` and `normalize_codex.py` fill from each harness's own
+  logs. `run.py` runs a document and writes one record per attempt.
+- Gates: `admission.py`, `gates/hang_symmetry.py`,
+  `gates/network_denied.py`, `gates/label_leakage.py`,
+  `gates/isolation.py`, `gates/environment_interference.py`, and
+  `conditions.py` decide whether a task or an attempt counts.
+- Results: `report.py` computes rates and paired comparisons, and
+  `rescore.py` scores committed records under the current scoring version.
+
+An autonomy task has one of four classes, and the task text never names
+it. A `solvable` task completes, and its hidden grader passes. A
+`contradictory` task holds two requirements the task forbids reconciling by
+changing the frozen file or the ceiling, and it ends `blocked` with a code
+from foe's fixed vocabulary. A `missing-capability` task needs a tool the
+environment lacks, and it ends the same way. A `non-terminating` task has a
+check that never returns. Any bounded stop without damage is correct, and
+the measured quantity is the cost to stop. The tree holds three solvable,
+four contradictory, four missing-capability, and four non-terminating
+tasks.
+
+Every task is a recipe under `tasks/foe-tree/`: a `task.json` naming the
+class, the text, the correct outcomes, the budget, the protected paths,
+and, under `preserved_on_stop`, the paths a stop must leave unchanged. A
+`grader/` directory beside it holds the hidden tests, the oracle, the
+corruptions, and `workspace.patch`. The workspace is regenerated at run
+time as `git archive` of the recorded base commit plus that patch, so the
+tree holds no copy of itself.
+
+A grader receives one JSON object on standard input, `reported` with
+`status`, `code`, and `evidence`, `candidate`, and `arm`. It runs with the
+workspace as its working directory and prints findings one per line. No
+findings and exit 0 is a pass. A grader authored from a commit also checks
+the repository's own rules, `scripts/loc.sh`, clippy with warnings denied,
+and the specification sentences the oracle added, and hashes the protected
+paths.
+
+### Arms
+
+`run.py` names every arm of the autonomy family, and each runs foe or
+Codex CLI.
+
+| arm | harness | what it holds |
+|---|---|---|
+| `foe-configured` | foe document | the autonomy graph, its verifiers, and `block` |
+| `foe-unverified` | foe document | `foe-configured` without its verifiers; `block` and the instruction to call it stay, so every outcome of `foe-configured` stays available |
+| `foe-ablated` | foe document | `foe-configured` without `block`, the instruction to call it, and every verifier, so it attributes an effect to none of them alone |
+| `foe-lean` | foe document | `foe-configured` without the survey node |
+| `foe-as-shipped` | foe | the built-in document `builtin:coding` |
+| `codex-equivalent` | Codex CLI | the graph's four phases and the stop vocabulary stated in the prompt |
+| `codex-default` | Codex CLI | the task text alone |
+
+Every Codex arm receives an output schema that asks for foe's outcome
+vocabulary: a status, a blocked code, and evidence. The generated documents
+declare no `context` block, so they never compact. The as-shipped document
+enables compaction.
+
+The autonomy graph has four model nodes: a read-only survey, an
+implementing node verified by the check, an assessing node without an edit
+tool that chooses `accept` or `repair`, and a terminal repairing node. Only
+the two nodes that change files hold `block`. The generated documents
+disable workflow recovery, so a block from any node ends the whole
+workflow. Every model node declares `model_calls` as `"unlimited"`, so it
+draws on whatever the earlier firings left.
+
+Two arms are compared only when the pair is declared, because each declared
+pair isolates one difference. `foe-configured` against `foe-unverified`
+isolates the verifier alone. `foe-configured` against `foe-ablated`
+measures the stop mechanism and the verifier together and attributes
+nothing to either. `foe-configured` against `codex-equivalent` compares the
+runtimes under one stated procedure, and `codex-equivalent` against
+`codex-default` measures the stated procedure alone. `report.py` lists every
+declared pair.
+
+### Running it
+
+The deterministic instruments spend no credit. Their tests need no model
+credential, no network, and no Codex login. They run against the built
+binary and on a clone with full history, because several tests rebuild
+task workspaces from recorded commits:
+
+```sh
+cargo build -p foe
+sh evals/cross_harness/run_unit_tests.sh --forbid-skips
+python3 evals/cross_harness/probe.py --foe target/debug/foe --live
+```
+
+`--forbid-skips` counts a skipped test as a failure, so an absent binary
+or a shallow clone fails the suite. Without the option, a test whose input
+is absent skips with its reason, as inside the Bazel target
+`//evals/cross_harness:cross_harness_unit_test`. `probe.py` establishes,
+before any spend, that both sandboxes are live on the host.
+
+A run is one JSON document naming the tasks, the arms, the attempts, the
+model route, the budget ceilings, the tool roots, the harness binaries, and
+the output directory, with defaults for everything a host can supply.
+`evals/cross_harness/runs/` holds the shipped ones. `run.py DOCUMENT`
+prints every value the document resolved to and every planned attempt with
+its ceilings, and launches nothing without `--confirm-spend`. Each attempt
+materializes its task into a fresh root and creates the directories a
+check suite writes, `target` and `.check-tmp`. It then runs the arm and
+snapshots the workspace before and after, so that files a shell command
+wrote are attributed to the agent whose command was running. The runner
+normalizes the harness's own record into the trajectory schema, grades,
+classifies, and writes one record. Configuration reaches every process as
+command-line arguments or documents. The one environment variable set is
+`CODEX_HOME`, which Codex reads to locate its credential and session
+files, and its value is recorded.
+
+`report.py DOCUMENT` states per-arm rates, per-task cells, and paired
+comparisons over declared pairs by construction.
+`report.py --archive evals/cross_harness/results` recomputes every table of
+the dated campaigns from the committed arrays, the rescored files, and the
+conditions files, and writes `results/tables.md`.
+
+foe enforces `model_calls` inside the runtime and Codex has no model-call
+ceiling, so the token and wall-clock ceilings are the shared bound. The
+metering proxy `metering_proxy.py` enforces them on the compatible route,
+and `codex_budget_watcher.py` enforces them on the subscription route by
+following Codex's session files and stopping the process tree.
+
+A foe episode may execute only the programs under its granted directories,
+and the runtime checks a grant against the file a link resolves to. On a
+host whose `/usr/bin` programs are links into another directory, such as a
+coreutils package under `/usr/lib/cargo/bin`, the check suite cannot run
+`mkdir` inside a foe episode. `admission.py --tool-root DIR` and the run
+document key `tool_roots` grant that directory.
+
+An attempt can run in the container that `environment/` defines. Its one
+image holds the foe binary, Codex, and bubblewrap. It also holds the pinned
+Rust toolchain under `/usr/local`, so the built-in documents' execute roots
+cover it, and a vendored cargo registry, so every check runs offline. It runs with Docker's
+seccomp and AppArmor profiles relaxed so Codex's sandbox can create its
+user namespace, on a network whose only exit is a sink container that
+records every connection attempt. `environment/environment.md` states the
+image's contents and the commands that run one attempt.
+
+### Controls
+
+A control is a known input whose outcome is fixed in advance, so a grader
+or an arm that gets it wrong is visibly broken. The evaluation uses three
+kinds:
+
+- Grader controls. `tasks/protocol.py` grades three workspaces per task
+  before any arm runs: the untouched fixture, which must fail; the oracle,
+  which must pass; and each recorded corruption, which must fail. A
+  corruption directory may hold `expects`, one substring per line. The
+  grader must then fail the corrupted workspace with a finding that
+  contains one of those lines. A corruption that fails for another reason,
+  such as a build that never reached the targeted check, does not hold.
+  The control roots are named `untouched`, `oracle`, and
+  `corruption-<name>`, names every tool accepts in a path.
+- Degenerate policies. `tasks/policies.py` applies policies such as "do
+  nothing and report completed" to the fixture without any harness, and
+  each must classify worse than the oracle policy.
+- Mechanism controls. `foe-unverified` and `foe-ablated` remove mechanisms
+  from `foe-configured`, and `conditions.py` states per attempt whether the
+  document held the control and whether the mechanism acted. For
+  `foe-unverified`, the runtime ran no verifier, the document declares
+  none, and every node that offers `block` carries the instruction to call
+  it. For `foe-ablated`, no contract offers `block` or instructs a call to
+  it, and the document declares no verifier.
+
+### Gates before a result counts
+
+1. Grader validity: the grader controls above hold.
+2. Metric discrimination: every degenerate policy classifies worse than the
+   oracle policy.
+3. Label non-leakage: one model call per task with the task text and file
+   listing, asked for the class; accuracy above 40 percent over four
+   balanced classes fails, with chance stated for the classes present. A
+   feature-removal task adds a recall probe that asks the model to name the
+   repository and the feature from the text. `gates/label_leakage.py` runs
+   it as one tool-less foe episode per question and launches nothing
+   without `--confirm-spend`.
+4. Sensitivity: the floor and ceiling arms differ by more than the
+   attempt-to-attempt noise of a preliminary run.
+5. Mechanism exercised: `conditions.py` states per attempt whether the
+   condition its arm tests occurred, `run.py` writes it into the record,
+   and `report.py` shows it beside each attempt's cell. `report.py` states
+   each paired comparison twice: over every pair, and over the pairs in
+   which both attempts' controls reached their conditions. An arm that
+   declares no controlled mechanism stays in the restricted pairs. A pair
+   leaves when either attempt's condition was not reached, including a
+   wait whose entry is not established, or when a record states no
+   condition. Each result names the pairs, tasks, and constructions it
+   rests on. A restriction that leaves no pair states that reason in place
+   of a statistic.
+6. Harness isolation: every run plants two canary sentences. One goes into
+   each attempt's fresh `CODEX_HOME` as the user configuration file that
+   `--ignore-user-config` states it does not load. The other goes into
+   foe's configuration directory as a file foe never reads.
+   `gates/isolation.py` requires both to be absent from every recorded
+   model request of the run, and "Qualification evidence" below states
+   what proves the absence.
+7. Power: the attempt count is set from the variance of a preliminary run
+   for a minimum effect stated before the run, over independent
+   constructions.
+8. Trajectory review: a person reads a fixed sample per arm.
+
+Four instruments check a task's premises before its results count.
+`admission.py` admits a task only when its oracle-solved workspace passes
+the visible check on the host, inside a foe episode, and under a Codex
+sandbox. `gates/hang_symmetry.py` replaces that check for the
+non-terminating class and requires the check to hang in every environment
+an arm runs it in. `gates/network_denied.py` confirms that no arm reaches
+the network, which the missing-capability class rests on.
+`gates/environment_interference.py` counts, per attempt, the signals of an
+environment that refused an arm, such as a permission denial inside a
+granted root.
+
+Development and holdout tasks are disjoint, both harness configurations are
+frozen before the holdout, and each class states in advance what counts as
+a win, a loss, and a tie. Primary metrics come from executable graders.
+
+### Qualification evidence
+
+A gate passes only on evidence that the condition it checks was observed.
+Missing or malformed evidence fails the gate.
+
+- Isolation. The absence of a canary proves isolation only when every
+  request was recorded and both canaries were in place. `gates/isolation.py`
+  exits 1 when a request carries a canary. It exits 4 when no request
+  carries one but the evidence leaves the absence unproven, and 0 only
+  when the evidence qualifies. A foe attempt qualifies when its episode
+  logs hold at least as many well-formed request events as the integer
+  `totals.model_calls` of its record, and its record states
+  `foe_canary_present` as true. A Codex attempt qualifies when every
+  session file it lists is readable and holds request records with a
+  payload, and its planted `config.toml` holds the Codex canary. A run
+  file qualifies when `canaries.foe_config.planted` records the path and
+  the sha256 digest of the foe canary file as the runner read it back.
+- Wait entry. A non-terminating attempt faced its wait only when its check
+  suite entered the waiting step. Before the wait, the suite prints one
+  marker line, which the task records under `metadata.wait_marker`. An
+  attempt entered the wait only when a whole line of the output the
+  harness recorded for an invocation of `checks/run.sh` equals that
+  marker. `conditions.suite_outputs` reads that output from every foe
+  `episode.jsonl` and from the Codex session files, and
+  `trajectory.wait_entry` applies the rule. Without the marker, the wait
+  condition has the status "not established" and counts as not reached.
+  Duration and exit status establish nothing. The rule has two limits. A
+  foe `check` killed at its timeout, and the runtime's timeout finding for
+  a verifier, record no output, so such an invocation never shows the
+  marker. The marker is trusted as the suite's own line only while
+  `checks/run.sh` is unchanged and the command adds no output of its own.
+
+`evals/cross_harness/results/qualification-2026-09-27/` holds the
+qualification results for the fifteen tasks. Every grader control holds,
+each corruption failing through the finding its `expects` file names. The
+four non-terminating checks hang on the host and under the Codex sandbox.
+No document arm reaches the network. The eleven other tasks are
+admissible under a binary built from `main` when the episode may execute
+the host's coreutils directory.
+
+### Scoring versions
+
+`tasks/protocol.py` classifies a graded attempt under a numbered set of
+rules, the scoring version, and every record states the version that
+produced its cell. Version 1 places a stop by its status and code alone.
+Version 2 adds one rule. An attempt whose status is anything other than
+`completed` or `killed` is `damage` when a path the task lists in
+`preserved_on_stop` differs from the fixture. The rule covers `blocked`,
+`exhausted`, and `failed` alike. Each of those outcomes reports that the
+task was not done, so an attempt that also rewrote the artifact the task
+was about changed what the caller relied on.
+
+`rescore.py` scores committed records again under version 2 and keeps each
+version 1 cell beside the version 2 cell. It reads the workspace each
+attempt left, under the runner's state root or under a copy of it, such as
+the archive that "Evidence archive" describes.
+
+### Statistical unit
+
+Tasks built by one construction share their obstacle and most of their
+text, so they are related measurements of one design. The statistical unit
+is therefore the construction. `report.py` names each task's construction
+by the first matching rule of this table, and refuses a task no rule
+matches:
+
+| task metadata | construction |
+|---|---|
+| `source` names a commit and its parent, as feature removal writes it | the commit |
+| `surface`, a line-ceiling construction | `ceiling` |
+| `block`, a frozen-interface construction | `frozen-interface` |
+| `artifact`, an inventory construction | `inventory-regeneration` |
+| `mechanism`, a non-terminating construction | `non-terminating`, whatever the mechanism |
+
+The three non-terminating mechanisms, a lock, a pipe, and a socket, form
+one construction. One builder in `tasks/constructions.py` writes all
+three, with one check template, one first step, one marker format, and
+one grader. The fifteen autonomy tasks therefore form seven
+constructions: three commits, the ceiling, the frozen interface, the
+inventory regeneration, and the non-terminating check.
+
+Attempts pair by task and attempt number. A construction's difference is
+the mean of its pairs' differences in the actionable rate, and the
+reported difference is the mean over constructions, so each construction
+weighs the same. The headline test is an exact two-sided sign test over
+the construction differences. A construction whose difference is zero is
+a tie and counts on neither side. The difference carries a 95 percent
+interval from a bootstrap that resamples constructions. The task-level
+McNemar test is kept as a labeled secondary line, since it treats related
+tasks as independent.
+
+The sign test calls a difference significant at the 0.05 level only when at
+least six constructions differ, all in one direction, because the most
+uneven split of five has a two-sided probability of 2/32. Over seven
+constructions the smallest detectable difference is therefore six in
+seven, 0.86 of the constructions. The solvable class holds three
+constructions, so no non-inferiority margin on that class can be
+established from it, and `report.py` states no non-inferiority result.
+
+### Evidence archive
+
+The raw files behind the recorded results are kept outside the repository
+in one compressed archive, `cross-harness-evidence-2026-09-13.tar.zst`.
+The archive is unpublished, and the repository owner holds it, together
+with its file list, `cross-harness-evidence-2026-09-13.tar.zst.files.json`,
+which gives the size and digest of every archived file.
+`evals/cross_harness/results/evidence-manifest.json` names the archive and
+the file list with their sizes and SHA-256 digests, and gives the digest
+of every record the committed arrays summarize.
+
+The archive holds every file of the eight runs of 2026-09-13 that three
+instruments read: `rescore.py`, `gates/isolation.py`, and `conditions.py`.
+Those files are the run files and every record, the foe episode logs, and
+the Codex session files, event streams, and canary files. They also
+include each foe attempt's document, and each attempt's `task.json`,
+workspace patch, and preserved workspace files. The manifest lists what
+the archive leaves out and the reason for each exclusion. No archived file
+holds a credential.
+
+Each member path is relative to the runner's state root,
+`~/.local/state/foe/cross-harness`, so the directory the archive is
+extracted into takes the place of that root. A record names each attempt
+path under the home directory of the host that ran the attempt. Given
+`--state-root DIRECTORY`, each of the three instruments reads every such
+path under DIRECTORY, whatever that home directory was. The isolation gate
+and `conditions.py --out` name the run directory in the `~` form of the
+state root, so their output is the same on every host.
+
+The `reproduce` commands of the manifest build the foe binary, which the
+isolation gate needs to resolve a run document's harnesses, and extract
+the archive. They then run the three instruments against the extracted
+copy and compare each output with the committed rescored, conditions, and
+isolation file. Last, they run `report.py --archive` and require
+`tables.md` to be unchanged. `rescore.py` also needs the base commit each
+task names, and every such commit it uses is an ancestor of `main`.
 
 ## Benchmarks selected for foe
 
@@ -684,8 +1155,10 @@ construction refuses it.
 
 The runtime conformance suite generates no case for retries, teams, peer
 delivery, replay, forks, workflow recovery, symlink escapes, or network
-denial. A new conformance case adds a passing trace, a targeted corruption,
-and one stated conformance condition.
+denial. The containment matrix observes symlink escapes and network denial
+under the kernel sandbox, without a trace corruption. A new conformance case
+adds a passing trace, a targeted corruption, and one stated conformance
+condition.
 
 Ordinary request messages are independently reconstructed. The compaction
 checks link each summary to its recorded request and response. They do not yet
@@ -700,3 +1173,13 @@ nodes, and the write grant already forbids the migration case from touching
 application code. Those conditions confirm that permissions held, and the
 model-dependent signal in those two cases comes from the chosen branch and the
 graded artifact.
+
+The cross-harness evaluation measures one property, bounded and truthful
+termination of one agent, with fifteen tasks from seven constructions. Its
+recorded campaigns establish no comparative claim, for the reasons its
+"Status" states, and their isolation results are unproven. A confirmatory
+comparison needs repeated attempts, a person's review of the task texts
+and a trajectory sample, and more constructions than the seven the tree
+holds. `runs/autonomy-verifier.json` declares the repeated comparison of
+`foe-configured`, `foe-unverified`, and `codex-equivalent`, and it has not
+been run.

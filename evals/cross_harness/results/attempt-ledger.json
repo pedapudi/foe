@@ -1,0 +1,1063 @@
+{
+  "description": "One entry per attempt directory, and per record set aside under discarded/, of the eight runs whose records the committed arrays under results/ summarize, with whether the committed array holds the attempt. Attempt directories are under ~/.local/state/foe/cross-harness/<run>/attempts/<task>/<arm>/<attempt>.",
+  "totals": {
+    "committed_arrays": {
+      "autonomy": 60,
+      "small-obstacle": 16,
+      "lean": 15,
+      "verifier-timeout": 4,
+      "budget-bounded": 6,
+      "budget-bounded-warning": 3,
+      "teams-fan-out": 8,
+      "teams-fan-out-generous": 8,
+      "all": 120
+    },
+    "attempt_entries": 127,
+    "discarded": 6,
+    "interrupted": 1
+  },
+  "claimed_total": {
+    "claimed": 138,
+    "finding": "No set of local records that a results document or a run defines sums to 138. The eight archived runs hold 120 records; adding the 6 discarded records and the 1 interrupted attempt directory gives 127. Unions of unrelated whole runs can reach 138 by arithmetic alone, so a sum identifies nothing, and the closed pull request that stated 138 named no list of attempts. The claim has no supporting records."
+  },
+  "not_archived": [
+    {
+      "run": "development",
+      "records": 8,
+      "reason": "two tasks, team-owns-question-timers and ceiling-bound-feature, under four arms and the foe build 11832763, before the autonomy run's task set and ceilings were fixed; the observation and defect notes cite it, and no committed array or results table is computed from it"
+    },
+    {
+      "run": "holdout",
+      "records": 27,
+      "reason": "six of the autonomy tasks under four arms and the foe build 11832763, which predates the repairs the autonomy run's build carries; the autonomy run replaced it, the observation notes cite its attempts, and no committed array or results table is computed from it"
+    },
+    {
+      "run": "rerun-after-fixes",
+      "records": 24,
+      "reason": "six of the autonomy tasks under four arms and the intermediate foe builds 081f90f0 and 43ed4d1a, made while runtime repairs were in progress; the autonomy run replaced it, and no committed array or results table is computed from it"
+    },
+    {
+      "run": "shakeout",
+      "records": 2,
+      "reason": "one task under foe-configured and codex-equivalent with a 30-call ceiling, run to exercise the runner; no committed array or results table is computed from it"
+    }
+  ],
+  "attempts": [
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature",
+      "arm": "codex-default",
+      "attempt": "01-interrupted-01",
+      "in_committed_array": false,
+      "reason": "the run stopped during this attempt, which left no record; resuming the run set the directory aside under this name and ran the attempt again"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-budget",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-budget",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-budget",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-budget",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-tool-defs",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-code",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-code",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-code",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-code",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-context",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-context",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-context",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-context",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-evidence",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-workflow",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-context",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-context",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-context",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-evidence",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unwritten-pipe-context",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unwritten-pipe-context",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unwritten-pipe-context",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "waiting-check-suite",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "waiting-check-suite",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "waiting-check-suite",
+      "arm": "foe-ablated",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry autonomy-2026-09-13/records.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-ablated",
+      "attempt": "discarded/correlation-as-inbox-source-foe-ablated.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-ablated record the array holds, and this record was set aside"
+    },
+    {
+      "run": "autonomy",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": "discarded/correlation-as-inbox-source-foe-configured.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-configured record the array holds, and this record was set aside"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-ablated",
+      "attempt": "discarded/duplicate-grant-roots-foe-ablated.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-ablated record the array holds, and this record was set aside"
+    },
+    {
+      "run": "autonomy",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": "discarded/duplicate-grant-roots-foe-configured.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-configured record the array holds, and this record was set aside"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-ablated",
+      "attempt": "discarded/question-identifier-in-message-text-foe-ablated.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-ablated record the array holds, and this record was set aside"
+    },
+    {
+      "run": "autonomy",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": "discarded/question-identifier-in-message-text-foe-configured.json",
+      "in_committed_array": false,
+      "reason": "a first record of this task and arm, made by the foe build f07aad93; the attempt ran again under dba1a859, the build of every foe-configured record the array holds, and this record was set aside"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "codex-default",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "codex-equivalent",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "foe-configured",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-contract",
+      "arm": "foe-lean",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "codex-default",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "codex-default",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "codex-equivalent",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "foe-configured",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "small-obstacle",
+      "task": "small-obstacle-log",
+      "arm": "foe-lean",
+      "attempt": "02",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/small-obstacle.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "ceiling-bound-feature",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "ceiling-bound-feature-telemetry",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "frozen-interface-budget",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "frozen-interface-tool-defs",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "inventory-regeneration-code",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "inventory-regeneration-context",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "inventory-regeneration-evidence",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "inventory-regeneration-workflow",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "unreleased-lock-context",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "unwritten-pipe-context",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "lean",
+      "task": "waiting-check-suite",
+      "arm": "foe-lean",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/lean.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "verifier-timeout",
+      "task": "unreleased-lock-context",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "verifier-timeout",
+      "task": "unreleased-lock-evidence",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "verifier-timeout",
+      "task": "unwritten-pipe-context",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "verifier-timeout",
+      "task": "waiting-check-suite",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/verifier-timeout.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "correlation-as-inbox-source",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "duplicate-grant-roots",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "question-identifier-in-message-text",
+      "arm": "codex-equivalent",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded-warning",
+      "task": "correlation-as-inbox-source",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded-warning",
+      "task": "duplicate-grant-roots",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "budget-bounded-warning",
+      "task": "question-identifier-in-message-text",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/budget-bounded-warning.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-multi",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-single",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-undivided",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-multi",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-single",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-undivided",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-multi",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "input-bound-named-in-refusal",
+      "arm": "codex-single",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "input-bound-named-in-refusal",
+      "arm": "foe-undivided",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-multi",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "codex-single",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-configured",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    },
+    {
+      "run": "teams-fan-out-generous",
+      "task": "left-out-input-is-named-rather-than-dropped",
+      "arm": "foe-undivided",
+      "attempt": "01",
+      "in_committed_array": true,
+      "reason": "its record is the entry enforcement-pressure-cases-2026-09-13/teams-fan-out-generous.json holds for this task, arm, and attempt"
+    }
+  ]
+}
