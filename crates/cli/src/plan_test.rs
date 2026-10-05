@@ -43,6 +43,28 @@ fn summary_lines_project_the_resolved_contract() {
     assert!(root_agent_report(&contract).contains("root-agent   model summary  follows task  terminal  root episode"));
 }
 
+/// docs/config.md "`done_when`": without it, a turn with no tool calls
+/// completes the episode, and the summary says so.
+#[test]
+fn the_summary_states_how_an_episode_without_done_when_completes() {
+    let dir = crate::tests::scratch("foe-cli-plan", "plain");
+    let root = dir.as_ref().to_path_buf();
+    let document: foe_contract::ContractDocument = serde_json::from_value(json!({
+        "version": 4,
+        "name": "plain",
+        "instructions": { "role": "work" },
+        "task": "count",
+        "tools": ["read"],
+        "grants": { "read": [root], "write": [] },
+        "budget": { "model_calls": 4 },
+    }))
+    .unwrap();
+    let contract = foe_contract::document::resolve(&document).unwrap();
+    let out = summary_report(&contract, None, &configuration_warnings(&contract));
+    let completion = out.lines().find(|l| l.starts_with("completion")).unwrap_or_default();
+    assert!(completion.contains("a turn with no tool calls completes the episode"), "{completion}");
+}
+
 /// docs/workflow.md "Firing": the report lists each elementary cycle
 /// once, beginning with the smallest node name in that cycle.
 #[test]
