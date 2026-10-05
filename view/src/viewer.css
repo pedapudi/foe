@@ -682,6 +682,8 @@ details[open] > summary::before {
 
 .tree {
   display: block;
+  /* The hovercard is positioned against the tree. */
+  position: relative;
   padding: var(--dt-gap-line) var(--dt-gap-item) var(--dt-gap-item);
 }
 

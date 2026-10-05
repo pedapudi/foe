@@ -11,6 +11,7 @@ import { identityColor } from "../identity.js";
 import type { TreeNode } from "../episode-tree.js";
 import { pulseMark } from "../brand.js";
 import { str } from "../types.js";
+import { Hovercard } from "./hovercard.js";
 import { barSvg, figureSvg, svg } from "./svg.js";
 
 export interface TreeState {
@@ -89,6 +90,13 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
   const height = rows.length * ROW;
   const shares = siblingShares(roots);
   const figure = figureSvg("tree-figure", width, height, "parent, child, and fork episodes");
+  // Every mark explains itself through the one hovercard figures share, and
+  // carries the same words as its accessible name.
+  const card = new Hovercard(host);
+  const explain = (mark: Element, head: string, meta = "", detail = "") => {
+    mark.setAttribute("aria-label", [head, meta, detail].filter(Boolean).join(", "));
+    card.attach(mark, () => head, () => meta, () => detail);
+  };
   const position = new Map<string, { x: number; y: number }>();
   rows.forEach(({ node, depth }, i) => {
     position.set(node.id, { x: LEFT + depth * INDENT, y: i * ROW + ROW / 2 });
@@ -102,9 +110,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const y1 = run.first * ROW + 4;
     const y2 = (run.last + 1) * ROW - 4;
     const bracket = svg("path", { class: "contract-run", d: `M 6 ${y1} H 3 V ${y2} H 6` });
-    const runTitle = svg("title");
-    runTitle.textContent = `${run.runs} runs of ${run.name} – one contract fingerprint ${shortFingerprint(run.contractFingerprint)}`;
-    bracket.appendChild(runTitle);
+    explain(bracket, `${run.runs} runs of ${run.name}`, "one contract fingerprint", shortFingerprint(run.contractFingerprint));
     figure.appendChild(bracket);
   }
 
@@ -140,21 +146,20 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     // The row's one emphasis: a spine down its leading edge, which the
     // stylesheet colours on the selected row and leaves clear on the rest.
     const spine = svg("line", { class: "spine", x1: 1, y1: y - ROW / 2 + 3, x2: 1, y2: y + ROW / 2 - 3 });
-    const title = svg("title");
-    title.textContent = node.fork
+    const relation = node.fork
       ? `fork of ${s.forkOrigin?.episodeId} at seq ${s.forkOrigin?.seq}`
       : s.parentId
         ? `spawned by ${s.parentId}`
         : "root episode";
-    g.append(title, hit, spine);
+    explain(g, s.name || node.id, relation);
+    g.append(hit, spine);
     // The row's mark says how the episode ended. One that has not ended draws
     // the brand mark instead, pulsing, which is what a terminal running the
     // same episode draws on its progress line.
     if (s.outcome === null && s.lastSeq >= 0) {
       const mark = svg("text", { class: "dot-pulse", x, y: y + DOT_R, "text-anchor": "middle" });
-      const spoken = svg("title");
-      spoken.textContent = "running";
-      mark.appendChild(spoken);
+      mark.setAttribute("role", "img");
+      explain(mark, "running");
       pulseMark(mark);
       g.appendChild(mark);
     } else {
@@ -206,14 +211,14 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     if (share !== undefined) {
       const barW = Math.max(12, textW);
       const measure = svg("g", { class: "measure" });
-      const measureTitle = svg("title");
       const group = "among the episodes with the same parent";
-      measureTitle.textContent =
-        share >= 1
-          ? `${fmtInt(spentTokens(s))} tokens, the largest total ${group}`
-          : `${fmtInt(spentTokens(s))} tokens, ${Math.round(share * 100)} percent of the largest total ${group}`;
+      explain(
+        measure,
+        `${fmtInt(spentTokens(s))} tokens`,
+        "input and output tokens this episode spent",
+        share >= 1 ? `the largest total ${group}` : `${Math.round(share * 100)} percent of the largest total ${group}`,
+      );
       measure.append(
-        measureTitle,
         svg("rect", { class: "measure-track", x: textX, y: y + 16, width: barW, height: MEASURE_H, rx: 1 }),
         svg("rect", { class: "measure-fill", x: textX, y: y + 16, width: Math.max(1, share * barW), height: MEASURE_H, rx: 1 }),
       );
@@ -223,9 +228,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     const comparing = state.compare.includes(node.id);
     const boxX = width - COMPARE_W;
     const box = svg("rect", { class: `compare-box${comparing ? " on" : ""}`, x: boxX, y: y - 5, width: 10, height: 10, rx: 2 });
-    const boxTitle = svg("title");
-    boxTitle.textContent = comparing ? "remove from comparison" : "mark for comparison";
-    box.appendChild(boxTitle);
+    explain(box, comparing ? "remove from comparison" : "mark for comparison");
     const label = svg("text", { class: "compare-label", x: boxX + 14, y: y + 4 });
     label.textContent = comparing ? "cmp" : "";
     const toggle = (e: Event) => {
@@ -238,7 +241,7 @@ export function renderTree(roots: TreeNode[], width: number, state: TreeState, h
     g.addEventListener("click", () => handlers.select(node.id));
     figure.appendChild(g);
   }
-  host.appendChild(figure);
+  host.append(figure, card.el);
   return host;
 }
 
@@ -331,8 +334,5 @@ function ratio(used: number, limit: number | null, unit: string): Child {
   mark.appendChild(svg("line", { class: "track", x1: 0, y1: 4, x2: w, y2: 4 }));
   mark.appendChild(svg("line", { class: `fill${fraction >= 1 ? " caution" : ""}`, x1: 0, y1: 4, x2: Math.max(0.5, fraction * w), y2: 4 }));
   mark.appendChild(svg("line", { class: "tick", x1: fraction * w, y1: 0, x2: fraction * w, y2: 8 }));
-  const t = svg("title");
-  t.textContent = `${pct}% of ${fmtInt(limit)} ${unit}`;
-  mark.appendChild(t);
   return [`${fmtInt(used)} / ${fmtInt(limit)} ${unit} (${pct}%)`, mark];
 }
