@@ -110,7 +110,8 @@ function childId(path) {
 function staged(html, proof) {
   const settings = {
     "foe.theme": proof.theme,
-    "foe.layout": proof.layout ?? "details",
+    // The arrangement the toolbar labels "details" is stored as `figure`.
+    "foe.layout": proof.layout ?? "figure",
     ...(proof.depth ? { "foe.depth": proof.depth } : {}),
   };
   const boot = `<script>
