@@ -408,7 +408,7 @@ impl Episode {
     async fn drive(&mut self) -> Result<Outcome, RuntimeError> {
         loop {
             if let Some(reason) = self.p.stop.borrow().clone() {
-                return Ok(Outcome::Failed { error: reason });
+                return Ok(stopped(reason));
             }
             self.step += 1;
             if let Some(limit) = self.exhausted() {

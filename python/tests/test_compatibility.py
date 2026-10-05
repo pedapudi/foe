@@ -74,7 +74,7 @@ def test_a_log_format_the_package_does_not_read_ends_the_episode_at_its_start(
     log_dir = tmp_path / "episode"
     with pytest.raises(foe.CompatibilityError, match=f"log format: the binary writes version {unread}"):
         run_one(binary, log_dir)
-    assert last_outcome(log_dir) == {"kind": "failed", "error": "cancelled"}
+    assert last_outcome(log_dir) == {"kind": "blocked", "code": "cancelled", "message": "stopped by the caller"}
 
 
 def test_a_runtime_whose_protocol_the_package_does_not_speak_ends_the_episode_at_its_start(
@@ -84,7 +84,7 @@ def test_a_runtime_whose_protocol_the_package_does_not_speak_ends_the_episode_at
     log_dir = tmp_path / "episode"
     with pytest.raises(foe.CompatibilityError, match="the binary states runtime version '9.9.9'"):
         run_one(binary, log_dir)
-    assert last_outcome(log_dir) == {"kind": "failed", "error": "cancelled"}
+    assert last_outcome(log_dir) == {"kind": "blocked", "code": "cancelled", "message": "stopped by the caller"}
 
 
 def test_a_first_event_stating_no_log_version_is_read_as_version_three(

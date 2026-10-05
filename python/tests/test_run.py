@@ -262,7 +262,7 @@ def test_cancel_ends_the_episode_as_failed(fake_binary: Path, tmp_path: Path) ->
         return await handle.cancel(), handle
 
     outcome, handle = asyncio.run(scenario())
-    assert outcome == foe.Failed("cancelled")
+    assert outcome == foe.Blocked("cancelled", "stopped by the caller")
     assert handle.done
     assert handle.outcome == outcome
 
