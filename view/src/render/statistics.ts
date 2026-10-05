@@ -42,12 +42,14 @@ function measure(value: number | null, render: (v: number) => string): Child {
 /**
  * A percentage, with one decimal below ten and above ninety-nine and a
  * half. Rounding 99.76 to 100 would assert that nothing else was measured,
- * so a share short of the whole never reads as the whole.
+ * so a share short of the whole never reads as the whole: one decimal would
+ * still round 99.96 up, so such a share reads as 99.9.
  */
-function percent(fraction: number): string {
+export function percent(fraction: number): string {
   const pct = fraction * 100;
   const fine = pct < 10 || (pct > 99.5 && fraction < 1);
-  return `${fine ? pct.toFixed(1) : Math.round(pct)}%`;
+  if (!fine) return `${Math.round(pct)}%`;
+  return `${(fraction < 1 ? Math.min(pct, 99.9) : pct).toFixed(1)}%`;
 }
 
 function seconds(ms: number): string {
