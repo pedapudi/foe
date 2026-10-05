@@ -148,7 +148,7 @@ fn workflow_document(
     let texts = texts(harness_text::workflow_texts());
     Ok(json!({
         "nodes": nodes,
-        "max_interventions": wf.recovery.max_interventions,
+        "max_interventions": wf.recovery.max_interventions, "recovery_enabled": wf.recovery.enabled,
         "edge_reference_limit": {
             "maximum": MAX_EDGE_REFERENCES,
             "fields": ["follows", "branches", "recovery.follows"],

@@ -181,6 +181,8 @@ fn fingerprint_hashes_the_graph_and_the_recovery_texts() {
     assert_ne!(repeated.hash, base.hash, "each declared edge reference participates");
     let capped = hash(&|v| v["workflow"]["recovery"] = json!({ "max_interventions": 1 }));
     assert_ne!(capped.hash, base.hash, "max_interventions participates");
+    let disabled = hash(&|v| v["workflow"]["recovery"] = json!({ "enabled": false }));
+    assert_ne!(disabled.hash, base.hash, "whether recovery runs participates");
     let revised = hash(&|v| v["workflow"]["nodes"]["propose"]["model"]["instructions"]["r"] = json!("Other."));
     assert_ne!(revised.hash, base.hash, "a model node's contract participates");
 }

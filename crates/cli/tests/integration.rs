@@ -2210,7 +2210,7 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
     ("subagents", "sha256:ed91fe9e7e957297ae2da5d1302a202d2f941c6cebba83be4fbd8afd433cc33d"),
     ("team", "sha256:09fb9b788d24052677a05e1c86ffbd19d768b71df9aa57113bb3041ebf5f87fc"),
     ("verification-unsatisfiable", "sha256:0782805ec4f5bbb2435f36caf4aa6e0d2230ee5068dca9ebfd9975210fc07132"),
-    ("workflow", "sha256:074afb36dfb2ebfef07a176d1329e782ab40b119586deae6264e4a58558741d6"),
+    ("workflow", "sha256:cb9d9f65c072efa51d775fd5cc4839f01e259c46524b89553ce17d709ef476bb"),
     ("wrap-a-binary", "sha256:40125c2bb4a91e51432835ddee0b5619df36dd2c5675f2d2a3e4922c94c966e4"),
 ];
 
