@@ -11,10 +11,11 @@ fn value(chars: usize) -> ToolValue {
     ToolValue::ok(json!({}), body)
 }
 
-/// A rendering shaped the way `read` numbers its window.
+/// A rendering shaped the way `read` writes its window: the file's version
+/// line, then each line behind its number and a tab.
 fn window(first: usize, lines: usize) -> ToolValue {
-    let body: String = (first..first + lines).map(|n| format!("{n}\tsource line {n}\n")).collect();
-    ToolValue::ok(json!({}), body)
+    let numbered: String = (first..first + lines).map(|n| format!("{n}\tsource line {n}\n")).collect();
+    ToolValue::ok(json!({}), format!("[version sha256:{}]\n{numbered}", "0".repeat(64)))
 }
 
 fn shown(values: &[ToolValue]) -> usize {
@@ -99,7 +100,8 @@ fn a_numbered_window_keeps_its_head_and_names_the_line_to_resume_at() {
     let mut values = vec![window(1, 4_000), value(90_000)];
     apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
-    assert!(out.starts_with("1\tsource line 1\n"), "{out:.60}");
+    assert!(out.starts_with("[version sha256:"), "the version line is kept: {out:.60}");
+    assert_eq!(out.lines().nth(1), Some("1\tsource line 1"));
     assert!(!out.contains("source line 4000"), "the tail of a window is not kept");
     let last: usize = out
         .lines()
@@ -118,7 +120,7 @@ fn a_window_resumes_at_a_line_of_the_file() {
     let mut values = vec![window(500, 4_000), value(90_000)];
     apply_bound(&mut values);
     let out = values[0].rendered.clone().unwrap();
-    assert!(out.starts_with("500\tsource line 500\n"), "{out:.60}");
+    assert_eq!(out.lines().nth(1), Some("500\tsource line 500"), "{out:.60}");
     assert!(!out.contains("offset=1 "), "{}", &out[out.len() - 120..]);
 }
 

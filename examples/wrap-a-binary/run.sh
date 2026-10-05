@@ -21,7 +21,7 @@ case "$binary" in
 esac
 
 if [ ! -x "$binary" ]; then
-  echo "wrap-a-binary demo: $binary is not executable; run 'bazel run //examples/wrap-a-binary'" >&2
+  echo "wrap-a-binary demo: $binary is not executable; run 'cargo build --release --bin foe'" >&2
   exit 1
 fi
 

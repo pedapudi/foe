@@ -584,7 +584,7 @@ fingerprint. The fingerprint document also records the edge-reference ceiling an
 that the count covers. The other inputs are every `branches` declaration,
 every tool node's `args` with bindings, and every model node's contract
 fingerprint. They also include `verify`, `retries`, `max_fires`, `terminal`,
-`empty`, every `recovery.follows` widening,
+`empty`, every `recovery.follows` widening, `recovery.enabled`,
 `recovery.max_interventions`, and the runtime's workflow texts: the recovery
 instruction, the `recover` tool's description, the failure template, and the
 section template. A nested workflow contributes the same document for its

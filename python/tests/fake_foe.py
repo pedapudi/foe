@@ -316,7 +316,8 @@ class Episode:
                     self.end({"kind": "exhausted", "limit": "model_calls"})
                     return 3
         except Cancelled:
-            self.end({"kind": "failed", "error": "cancelled"})
+            # docs/protocol.md "`cancel`": the episode ends blocked with code `cancelled`.
+            self.end({"kind": "blocked", "code": "cancelled", "message": "stopped by the caller"})
             return 1
 
     def host_chunks(self, request_id: str) -> Iterator[dict[str, Any]]:

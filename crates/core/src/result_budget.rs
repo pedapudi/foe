@@ -47,8 +47,9 @@ const NOTICE_CHARS: usize = 200;
 const RETRIEVAL_NOTICE_CHARS: usize = 400;
 
 /// The line number `read` writes before a tab at the start of every line of
-/// its rendering. A rendering whose first line carries one is a numbered
-/// window of a file, which is cut differently from any other output.
+/// its rendering. A rendering whose first line carries one, or whose first
+/// line is `read`'s `[version …]` line and whose second line carries one, is a
+/// numbered window of a file, which is cut differently from any other output.
 fn numbered(line: &str) -> Option<usize> {
     line.split_once('\t').and_then(|(n, _)| n.parse().ok())
 }
@@ -83,7 +84,8 @@ fn cut(body: &str, share: usize, cursor: Option<&str>) -> String {
     let lines: Vec<&str> = body.lines().collect();
     let notice_chars = if cursor.is_some() { RETRIEVAL_NOTICE_CHARS } else { NOTICE_CHARS };
     let room = share.saturating_sub(notice_chars);
-    let window = lines.first().and_then(|l| numbered(l)).is_some();
+    let first = usize::from(lines.first().is_some_and(|l| l.starts_with("[version ")));
+    let window = lines.get(first).and_then(|l| numbered(l)).is_some();
     let (head, used) = fitting(lines.iter(), usize::MAX, if window { room } else { room * 2 / 3 });
     let tail = match window {
         true => 0,

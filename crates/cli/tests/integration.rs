@@ -2210,7 +2210,7 @@ const RECORDED_FINGERPRINTS: [(&str, &str); 12] = [
     ("subagents", "sha256:ed91fe9e7e957297ae2da5d1302a202d2f941c6cebba83be4fbd8afd433cc33d"),
     ("team", "sha256:09fb9b788d24052677a05e1c86ffbd19d768b71df9aa57113bb3041ebf5f87fc"),
     ("verification-unsatisfiable", "sha256:0782805ec4f5bbb2435f36caf4aa6e0d2230ee5068dca9ebfd9975210fc07132"),
-    ("workflow", "sha256:074afb36dfb2ebfef07a176d1329e782ab40b119586deae6264e4a58558741d6"),
+    ("workflow", "sha256:cb9d9f65c072efa51d775fd5cc4839f01e259c46524b89553ce17d709ef476bb"),
     ("wrap-a-binary", "sha256:40125c2bb4a91e51432835ddee0b5619df36dd2c5675f2d2a3e4922c94c966e4"),
 ];
 
@@ -2469,6 +2469,11 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
     assert!(foe_contract::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    // docs/config.md "`budget`": `model_calls` is an integer or "unlimited".
+    let mut unlimited = broken;
+    unlimited["budget"]["model_calls"] = json!("unlimited");
+    foe_contract::schema::conforms(&inlined, &unlimited).expect("\"unlimited\" conforms to the schema");
+    foe_contract::document::parse(&unlimited.to_string()).expect("\"unlimited\" parses");
 }
 
 /// The issue's acceptance, checked against the process a person runs:

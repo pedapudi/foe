@@ -35,11 +35,13 @@ run_bazel() {
 
 usage() {
   cat <<'EOF'
-usage: install.sh [--install-dir DIR] [--ref GIT-REFERENCE]
+usage: install.sh [--install-dir DIR] [--ref GIT-REFERENCE] [--from-source]
 
 Builds foe from a local checkout or a downloaded source archive, then
 installs the binary. The default destination is ~/.local/bin and the
-default downloaded Git reference is main.
+default downloaded Git reference is main. This installer always builds from
+source, so --from-source changes nothing; it is accepted so that one command
+line works with this script and with the installer the site serves.
 EOF
 }
 
@@ -54,6 +56,8 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || { echo "install.sh: --ref requires a value" >&2; exit 1; }
       reference=$2
       shift
+      ;;
+    --from-source)
       ;;
     --help|-h)
       usage
@@ -147,7 +151,10 @@ bazel_bin=$(
 )
 built_binary="$bazel_bin/crates/cli/foe"
 [ -x "$built_binary" ] || { echo "install.sh: the build produced no foe binary" >&2; exit 1; }
-"$built_binary" schema >/dev/null
+# The binary answers for itself before it is installed. `plan` resolves a
+# document and builds the tool registry; it needs neither a credential nor a
+# network, and it starts no episode.
+"$built_binary" plan >/dev/null
 
 mkdir -p "$install_dir"
 staged_binary="$install_dir/.foe-install.$$"

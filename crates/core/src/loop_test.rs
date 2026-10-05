@@ -1212,13 +1212,27 @@ async fn a_shortened_result_records_its_complete_rendering_first() {
     assert!(headers[0].tools.iter().any(|tool| tool.name == "retrieve"));
 }
 
+/// docs/protocol.md "`cancel`" and docs/log-format.md "Blocked codes": a
+/// caller's `cancel` ends the episode blocked with code `cancelled`, also when
+/// it arrives between steps, before any request is made.
 #[tokio::test]
-async fn the_stop_signal_ends_the_episode_as_failed_with_its_reason() {
+async fn a_cancel_before_a_step_ends_the_episode_blocked_as_cancelled() {
     let fx = Fixture::new("loop-cancel", |_| {}, vec![turn("x", vec![])]);
-    fx.stop.send(Some("cancelled".into())).unwrap();
+    fx.stop.send(Some(crate::protocol::CANCELLED.into())).unwrap();
     let (outcome, events) = fx.run().await;
-    assert_eq!(outcome, Outcome::Failed { error: "cancelled".into() });
+    let message = crate::protocol::CANCELLED.to_string();
+    assert_eq!(outcome, Outcome::Blocked { code: BlockedCode::Cancelled, message });
     assert_eq!(types(&events), vec!["episode/start", "inbox/item", "episode/end"]);
+}
+
+/// Any other stop reason, such as a closed host channel, ends the episode
+/// failed with that reason.
+#[tokio::test]
+async fn another_stop_reason_before_a_step_ends_the_episode_failed_with_it() {
+    let fx = Fixture::new("loop-stop", |_| {}, vec![turn("x", vec![])]);
+    fx.stop.send(Some("the host closed its channel".into())).unwrap();
+    let (outcome, _) = fx.run().await;
+    assert_eq!(outcome, Outcome::Failed { error: "the host closed its channel".into() });
 }
 
 #[tokio::test]

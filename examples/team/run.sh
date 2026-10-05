@@ -21,7 +21,7 @@ case "$binary" in
 esac
 
 if [ ! -x "$binary" ]; then
-  echo "team demo: $binary is not executable; run 'bazel run //examples/team'" >&2
+  echo "team demo: $binary is not executable; run 'cargo build --release --bin foe'" >&2
   exit 1
 fi
 

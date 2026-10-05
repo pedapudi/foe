@@ -233,9 +233,10 @@ fn seed_copies_canonical_spills_with_and_without_digest() {
         let events = source_with_canonical(&src, "result.json", Some(bytes), value);
         let written = seed(&src, events.len() as u64, &dst, header()).unwrap();
         assert_eq!(std::fs::read(dst.join("spill/result.json")).unwrap(), bytes);
-        let moved = src.with_extension("retained");
-        assert!(!moved.exists());
-        std::fs::rename(&src, moved).unwrap();
+        // The source moves into a scratch directory of its own, so the moved
+        // copy is removed with it and no later run can find it in place.
+        let retained = tmp("canonical-retained");
+        std::fs::rename(&src, retained.join("source")).unwrap();
         let EventData::ToolResult(result) = &written[5].data else { unreachable!() };
         assert_eq!(artifact::read_canonical(&dst.join("spill"), 5, result).unwrap().unwrap(), bytes);
     }

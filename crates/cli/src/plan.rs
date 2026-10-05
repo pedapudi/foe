@@ -108,7 +108,7 @@ pub fn summary_report(
             let returned = done.returns.is_some().then(|| "typed return".to_string());
             [verifier, returned].into_iter().flatten().collect::<Vec<_>>().join(", ")
         }
-        None => "none declared: the episode ends only on budget or block".into(),
+        None => "none declared: a turn with no tool calls completes the episode".into(),
     };
     let budget = &contract.budget;
     let mut limits = match budget.model_calls {
