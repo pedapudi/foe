@@ -2469,6 +2469,11 @@ fn every_example_conforms_to_the_schema_and_parses() {
     let mut broken: Value = serde_json::from_str(&examples()[0].1).unwrap();
     broken["budget"]["model_calls"] = json!("many");
     assert!(foe_contract::schema::conforms(&inlined, &broken).is_err(), "a wrong type is caught through a $ref");
+    // docs/config.md "`budget`": `model_calls` is an integer or "unlimited".
+    let mut unlimited = broken;
+    unlimited["budget"]["model_calls"] = json!("unlimited");
+    foe_contract::schema::conforms(&inlined, &unlimited).expect("\"unlimited\" conforms to the schema");
+    foe_contract::document::parse(&unlimited.to_string()).expect("\"unlimited\" parses");
 }
 
 /// The issue's acceptance, checked against the process a person runs:

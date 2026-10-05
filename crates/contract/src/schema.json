@@ -122,7 +122,7 @@
       "additionalProperties": false,
       "required": ["model_calls"],
       "properties": {
-        "model_calls": { "description": "Maximum model requests, including retries.", "type": "integer", "minimum": 1 },
+        "model_calls": { "description": "Maximum model requests, including retries, or \"unlimited\" to declare no ceiling on this dimension.", "anyOf": [{ "type": "integer", "minimum": 1 }, { "const": "unlimited" }] },
         "input_tokens": { "description": "Maximum provider-reported input tokens across all requests, including cache-read input; unlimited when absent.", "type": "integer", "minimum": 1 },
         "output_tokens": { "description": "Maximum provider-reported output tokens across all requests, including reasoning when the provider includes it; unlimited when absent.", "type": "integer", "minimum": 1 },
         "seconds": { "description": "Wall-clock limit for the episode; unlimited when absent.", "type": "integer", "minimum": 1 },
