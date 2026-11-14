@@ -7,8 +7,10 @@
 //! An access-only file omits `refresh`. Before each request the access token
 //! is checked. A mutable token within [`REFRESH_MARGIN`] of expiry is
 //! refreshed at the provider's token endpoint. The file is then rewritten
-//! atomically with mode 0600, so a second process sees a whole token. An
-//! access-only file fails locally when it reaches the same margin.
+//! atomically with mode 0600, so a second process sees a whole token. When
+//! the rewrite fails, the renewed token stays in memory and the request
+//! proceeds. An access-only file fails locally when it reaches the same
+//! margin.
 //!
 //! The [`codex`] module holds the public OAuth parameters of the ChatGPT
 //! Codex client, which `foe login openai-codex` drives through an
@@ -140,7 +142,8 @@ impl TokenFile {
         Ok(TokenFile { path: path.to_path_buf(), client, account_header, state: Mutex::new(token) })
     }
 
-    /// The current token, refreshed and rewritten when within the margin.
+    /// The current token, refreshed when within the margin. A refreshed
+    /// token is returned whether or not the file could be rewritten.
     pub async fn current(&self) -> Result<Token, AuthError> {
         let mut state = self.state.lock().await;
         if state.needs_refresh(now_ms()) {
@@ -154,9 +157,12 @@ impl TokenFile {
             if fresh.account_id.is_none() {
                 fresh.account_id = state.account_id.clone();
             }
-            write_token(&self.path, &fresh)
-                .map_err(|e| AuthError::Credential { path: self.path.clone(), reason: format!("rewriting: {e}") })?;
             *state = fresh;
+            // The provider may have retired the previous refresh token, so
+            // the renewed token is the one valid credential and is kept
+            // whether or not the file accepts it. A confined episode holds
+            // its credential file read-only, and its rewrite fails.
+            let _ = write_token(&self.path, &state);
         }
         Ok(state.clone())
     }
@@ -291,6 +297,37 @@ mod tests {
         // A second request within the new lifetime does not touch the endpoint.
         file.headers().await.unwrap();
         assert_eq!(server.requests().len(), 1);
+    }
+
+    /// docs/models.md "Where credentials live": when the token file cannot
+    /// be rewritten, the request proceeds with the renewed token, and the
+    /// next renewal presents the refresh token that the provider issued last.
+    #[tokio::test]
+    async fn a_renewed_token_is_kept_when_the_file_cannot_be_rewritten() {
+        let reply = |access: &str, refresh: &str, expires_in: u64| {
+            let body =
+                serde_json::json!({ "access_token": access, "refresh_token": refresh, "expires_in": expires_in });
+            Reply::full(200, &body.to_string())
+        };
+        let server = Server::start(vec![reply("a2", "r2", 30), reply("a3", "r3", 3600)]);
+        let path = scratch("token-unwritable.json");
+        write_token(&path, &Token { access: "a1".into(), refresh: "r1".into(), expires: 0, account_id: None }).unwrap();
+        let client = OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
+        let file = TokenFile::open(&path, client, None).unwrap();
+        // A directory that holds a file cannot be replaced by a rename, so
+        // every rewrite fails, as it does under a read-only grant.
+        std::fs::remove_file(&*path).unwrap();
+        std::fs::create_dir(&*path).unwrap();
+        std::fs::write(path.join("occupant"), "").unwrap();
+
+        assert_eq!(file.headers().await.unwrap(), vec![("authorization".to_string(), "Bearer a2".to_string())]);
+        // The first renewed token expires within the margin, so the second
+        // request renews again, with the rotated refresh token.
+        assert_eq!(file.headers().await.unwrap(), vec![("authorization".to_string(), "Bearer a3".to_string())]);
+        assert_eq!(file.headers().await.unwrap(), vec![("authorization".to_string(), "Bearer a3".to_string())]);
+        let seen = server.requests();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[1].body, "grant_type=refresh_token&refresh_token=r2&client_id=cid");
     }
 
     #[tokio::test]

@@ -221,7 +221,13 @@ A file named explicitly by `api_key_file` may hold the bare key instead of
 the JSON object; trailing whitespace is removed. When an OAuth token file
 contains `refresh`, Foe renews the token at the provider's token endpoint after
 the access token enters the sixty-second refresh window. Foe rewrites the token
-file atomically with mode 0600. When an OAuth token file omits `refresh`, Foe
+file atomically with mode 0600. When the rewrite fails, the request proceeds
+with the renewed token, and the process holds that token in memory until it
+exits. The file then keeps the earlier token. A confined episode receives its
+credential file for reading alone, so its rewrite fails unless a write grant
+covers the directory of the file. A provider that retires a refresh token at
+each renewal refuses the earlier token afterwards, and `foe login` obtains a
+new one. When an OAuth token file omits `refresh`, Foe
 cannot renew the access token. This access-only credential works until the
 access token enters the same refresh window. Foe then returns an error before
 sending the model request. A Google access token is minted from the credentials
