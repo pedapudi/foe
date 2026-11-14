@@ -38,6 +38,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::signal::unix::{signal, SignalKind};
 
 /// How long the viewer stays reachable after the episode ends and the
 /// outcome is displayed, so that an open page receives the final events.
@@ -1202,10 +1203,14 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let registry = Arc::new(registry);
     let children = Some(router.clone());
     {
+        // The handler is installed here, before any event is written, so no
+        // SIGTERM after the episode starts ends the process by default action.
+        let mut terminated = signal(SignalKind::terminate()).map_err(|e| format!("SIGTERM handler: {e}"))?;
         let (protocol, router, cancel, log) = (protocol.clone(), router.clone(), cancel.clone(), log.clone());
         tokio::spawn(async move {
             let reason = tokio::select! {
                 _ = tokio::signal::ctrl_c() => "interrupted by SIGINT".to_string(),
+                _ = terminated.recv() => "interrupted by SIGTERM".to_string(),
                 error = log.failed() => error.to_string(),
             };
             cancel.store(true, Ordering::SeqCst);

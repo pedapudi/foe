@@ -326,7 +326,10 @@ reaches an outcome, and two rules stand in place of the deadline.
 The first is that every wait the runtime performs is cancellable. The stop
 signal, which a host raises by sending `cancel` and a terminal raises by
 interrupting, ends the wait and the episode holding it, at whatever depth
-of the tree that episode sits.
+of the tree that episode sits. A process that receives SIGTERM raises the
+same signal as one that receives SIGINT, so a run that a supervisor
+terminates also closes its obligations and writes `episode/end`. Its
+outcome is `failed` and its error names the signal.
 
 The second is that a wait for an answer no process can give is never
 entered. A host tool call that reaches a process with no host is answered

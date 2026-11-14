@@ -2579,6 +2579,32 @@ fn interrupted_log(dir: &Path) -> (PathBuf, PathBuf, String, u64) {
     (config_path, log_dir, episode_id, written)
 }
 
+/// docs/design.md "Termination": SIGTERM raises the stop signal, so a
+/// terminated run ends its episode with one `episode/end` and exits with
+/// the code of a `failed` outcome. The signal is sent once the model
+/// request is outstanding, and the host never answers that request.
+#[test]
+fn sigterm_ends_the_episode_with_its_outcome_recorded() {
+    let dir = scratch("sigterm");
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config(&dir, |_| {})).unwrap()).unwrap();
+    let parent = dir.join("log");
+    let args = [OsStr::new("--config"), config_path.as_os_str(), OsStr::new("--log-dir"), parent.as_os_str()];
+    let mut child = hosted(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let _answers = child.stdin.take().unwrap();
+    let mut events: Vec<Value> = Vec::new();
+    for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+        events.push(serde_json::from_str(&line.unwrap()).unwrap());
+        if events.last().unwrap()["type"] == "model/request" {
+            assert!(Command::new("/bin/kill").args(["-TERM", &child.id().to_string()]).status().unwrap().success());
+        }
+    }
+    assert_eq!(child.wait().unwrap().code(), Some(1), "{:?}", types(&events));
+    let ends: Vec<_> = events.iter().filter(|event| event["type"] == "episode/end").collect();
+    assert_eq!(ends.len(), 1, "{:?}", types(&events));
+    assert_eq!(ends[0]["data"]["outcome"], json!({ "kind": "failed", "error": "interrupted by SIGTERM" }));
+}
+
 /// docs/design.md "The command line": `--log-dir DIR` names the directory
 /// the episode's own directory is created under, so two runs under one
 /// directory keep separate logs, and each run names what it created on
