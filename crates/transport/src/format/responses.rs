@@ -283,11 +283,10 @@ impl Decoder for StreamDecoder {
                     }
                     self.calls.insert(item_id, call_id.clone());
                     self.called = true;
-                    out(Chunk::ToolCallStart { id: call_id, name });
+                    out(Chunk::ToolCallStart { id: call_id.clone(), name });
                     // Arguments present at creation, as some servers send whole calls.
                     if let Some(args) = item["arguments"].as_str().filter(|a| !a.is_empty()) {
-                        let id = self.calls.values().last().cloned().unwrap_or_default();
-                        out(Chunk::ToolCallDelta { id, delta: args.to_string() });
+                        out(Chunk::ToolCallDelta { id: call_id, delta: args.to_string() });
                     }
                 }
             }
@@ -581,6 +580,31 @@ data: {"type":"response.incomplete","sequence_number":2,"response":{"id":"resp_0
                 Chunk::ToolCallDelta { id: "call_abc123".into(), delta: "th\": \"/src/lib.rs\"}".into() },
                 Chunk::ToolCallEnd { id: "call_abc123".into() },
                 Chunk::Done { stop: StopReason::Tool, usage: Usage { input: 300, output: 40, cache_read: 0 } },
+            ]
+        );
+    }
+
+    /// docs/protocol.md "model/chunk": a `tool_call_delta` carries a fragment
+    /// of the arguments of the call its `id` names. Arguments that arrive
+    /// with a new output item belong to that item's call, whichever other
+    /// calls are open and however their item ids sort.
+    #[test]
+    fn arguments_present_at_creation_belong_to_the_call_just_added() {
+        let mut decoder = StreamDecoder { provider: "openai", ..Default::default() };
+        let mut chunks = Vec::new();
+        for item in [
+            json!({ "type": "function_call", "id": "fc_b", "call_id": "call_first", "name": "read" }),
+            json!({ "type": "function_call", "id": "fc_a", "call_id": "call_second", "name": "grep", "arguments": "{}" }),
+        ] {
+            let data = json!({ "type": "response.output_item.added", "item": item }).to_string();
+            decoder.event(&sse::Event { name: String::new(), data }, &mut |chunk| chunks.push(chunk));
+        }
+        assert_eq!(
+            chunks,
+            vec![
+                Chunk::ToolCallStart { id: "call_first".into(), name: "read".into() },
+                Chunk::ToolCallStart { id: "call_second".into(), name: "grep".into() },
+                Chunk::ToolCallDelta { id: "call_second".into(), delta: "{}".into() },
             ]
         );
     }
