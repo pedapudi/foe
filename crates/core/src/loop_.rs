@@ -269,7 +269,7 @@ pub async fn settle(
         if let Some(children) = children {
             children.cancel_all();
         }
-        settled_children(pool, Some(Instant::now() + SETTLE_GRACE)).await;
+        let _ = tokio::time::timeout(SETTLE_GRACE, settled_children(pool)).await;
     }
     if let Some(sessions) = sessions {
         let settler = sessions.clone();
@@ -322,14 +322,12 @@ fn latest_step(events: &[Event]) -> u32 {
 }
 
 /// Waits until every child has settled, which is when the `spawn/end` and
-/// `budget/release` each reservation owes are in the log, or until
-/// `deadline`. Returns the number of children still running. Without a
-/// deadline the wait has no bound other than the children's own budgets.
-pub async fn settled_children(pool: &Mutex<Pool>, deadline: Option<Instant>) -> usize {
-    while lock(pool).active_children() > 0 && deadline.is_none_or(|d| Instant::now() < d) {
+/// `budget/release` each reservation owes are in the log. The wait has no
+/// bound of its own, and the caller supplies one on the runtime's clock.
+async fn settled_children(pool: &Mutex<Pool>) {
+    while lock(pool).active_children() > 0 {
         tokio::time::sleep(SETTLE_POLL).await;
     }
-    lock(pool).active_children()
 }
 
 /// One authoritative verifier invocation, recorded. Runs the verifier
