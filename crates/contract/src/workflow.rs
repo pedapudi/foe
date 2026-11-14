@@ -39,26 +39,18 @@ pub struct WorkflowConfig {
     pub recovery: RecoveryConfig,
 }
 
+/// An omitted key takes its value from [`RecoveryConfig::default`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct RecoveryConfig {
-    #[serde(default = "default_enabled")]
     pub enabled: bool,
-    #[serde(default = "default_max_interventions")]
     pub max_interventions: u32,
 }
 
 impl Default for RecoveryConfig {
     fn default() -> Self {
-        Self { enabled: true, max_interventions: default_max_interventions() }
+        Self { enabled: true, max_interventions: 3 }
     }
-}
-
-fn default_enabled() -> bool {
-    true
-}
-fn default_max_interventions() -> u32 {
-    3
 }
 
 /// Widens what a node's recovery decision sees.

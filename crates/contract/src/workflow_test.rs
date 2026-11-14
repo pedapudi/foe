@@ -313,3 +313,13 @@ fn branch_is_added_to_the_returns_schema() {
         json!({ "type": "object", "properties": { "branch": { "type": "string", "enum": ["ok"] } }, "required": ["branch"] })
     );
 }
+
+/// docs/workflow.md "Recovery": an omitted `enabled` is true and an omitted
+/// `max_interventions` is 3, whichever of the two keys the document states.
+#[test]
+fn an_omitted_recovery_key_takes_its_default() {
+    let parse = |v: Value| serde_json::from_value::<super::RecoveryConfig>(v).unwrap();
+    assert_eq!(parse(json!({})), super::RecoveryConfig { enabled: true, max_interventions: 3 });
+    assert_eq!(parse(json!({ "enabled": false })), super::RecoveryConfig { enabled: false, max_interventions: 3 });
+    assert_eq!(parse(json!({ "max_interventions": 1 })), super::RecoveryConfig { enabled: true, max_interventions: 1 });
+}
