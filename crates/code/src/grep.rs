@@ -1,7 +1,8 @@
 //! `grep`: regular-expression search over file contents, in process.
 //!
-//! The tree is walked with the `ignore` crate so that `.gitignore` and
-//! `.ignore` files apply, and each file is streamed through the `Reader`,
+//! The tree is walked through the `Reader`, and the `ignore` crate matches
+//! the rules of every `.gitignore` and `.ignore` file from the containing
+//! read root down to each entry. Each file is streamed through the `Reader`,
 //! which keeps containment in one place. Matches are sorted by path and line
 //! so that the result is deterministic regardless of the filesystem's
 //! directory order.
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt::Write;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub struct Grep {
     spec: ToolSpec,
@@ -239,7 +240,25 @@ impl Tool for Grep {
                 files.push(root.clone());
             }
         } else {
-            let mut pending = vec![(root.clone(), Vec::<Gitignore>::new())];
+            // Rules above the searched path bind what lies below it. They are
+            // read from the read root that contains the path downwards, so no
+            // ignore file outside the grant is opened. A path with a `..`
+            // component does not name its ancestors, so it inherits no rules.
+            let direct = !root.components().any(|part| part == Component::ParentDir);
+            let grant = roots.iter().find(|grant| direct && root.starts_with(grant));
+            let within = |dir: &&Path| grant.is_some_and(|grant| dir.starts_with(grant));
+            let above: Vec<&Path> = root.ancestors().skip(1).take_while(within).collect();
+            let mut inherited = Vec::new();
+            for dir in above.into_iter().rev() {
+                match ignore_rules(reader.as_ref(), dir) {
+                    Ok(rule) => inherited.push(rule),
+                    Err(error) => {
+                        traversal_failures += 1;
+                        first_failure.get_or_insert(error);
+                    }
+                }
+            }
+            let mut pending = vec![(root.clone(), inherited)];
             while let Some((dir, mut rules)) = pending.pop() {
                 match ignore_rules(reader.as_ref(), &dir) {
                     Ok(rule) => rules.push(rule),

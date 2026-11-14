@@ -386,7 +386,23 @@ Searching runs in process through the `grep-searcher`, `grep-regex`,
 enumerates the tree through its descriptor-held root. The rules in
 `.gitignore` and `.ignore` files apply whether or not the directory is a git
 checkout, and hidden entries are skipped. Each file is streamed through the
-same reader. The line-search buffer
+same reader.
+
+The ignore files that apply to an entry are those of every directory from
+the read root down to the directory that holds the entry. The read root is
+the first root of the read grant that contains the searched path. A search
+that starts below the read root therefore applies the rules of the
+directories above its starting path, as a search from the read root does. A
+rule in a nearer directory takes precedence over a rule in a directory
+above it. No ignore file above the read root is read, and repository
+boundaries play no part. A searched path that contains a `..` component
+applies the ignore files at and below that path alone.
+
+The rules select the entries below the searched path. The searched path
+itself is always searched, whether it is a file or a directory, because the
+call names it.
+
+The line-search buffer
 has an 8 MiB ceiling. A line or context window beyond that ceiling makes the
 result incomplete and increments `failed_files`. Symbolic links and special
 files met during the walk are skipped rather than followed. Files that

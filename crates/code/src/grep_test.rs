@@ -111,6 +111,40 @@ async fn nested_ignore_files_apply_from_the_directory_that_contains_them() {
     assert!(!rendered.contains("src/generated/ignored.txt"), "{rendered}");
 }
 
+/// docs/tools.md `grep`: a search that starts below a read root applies the
+/// ignore files of every directory from that root down to the searched
+/// path. A nearer file takes precedence, and no file above the root is read.
+#[tokio::test]
+async fn a_search_below_the_read_root_applies_the_ignore_files_above_it() {
+    let fx = Fixture::new();
+    std::fs::write(fx.root().parent().unwrap().join(".gitignore"), "src/\n").unwrap();
+    fx.write(".gitignore", "node_modules/\n*.log\n");
+    fx.write("web/.ignore", "!kept.log\n");
+    fx.write("web/src/app.js", "needle\n");
+    fx.write("web/src/kept.log", "needle\n");
+    fx.write("web/src/dropped.log", "needle\n");
+    fx.write("web/src/node_modules/dep.js", "needle\n");
+    let v = grep(&fx, json!({"pattern": "needle", "path": "web/src"})).await;
+    let r = v.rendered.unwrap();
+    assert_eq!(r, "2 matches in 2 files under web/src\nweb/src/app.js:1:needle\nweb/src/kept.log:1:needle");
+    assert_eq!((&v.value["complete"], &v.value["traversal_failures"]), (&json!(true), &json!(0)));
+
+    // The call names the searched path, so a rule above it does not exclude
+    // the path itself, whether it is a directory or a file.
+    let v = grep(&fx, json!({"pattern": "needle", "path": "web/src/node_modules"})).await;
+    assert_eq!(v.value["matches"], 1);
+    let v = grep(&fx, json!({"pattern": "needle", "path": "web/src/dropped.log"})).await;
+    assert_eq!(v.value["matches"], 1);
+
+    // An ignore file above the searched path is read through the reader, so
+    // a failure to read it makes the result incomplete.
+    let mut c = ctx(&fx);
+    let inner = c.reader.take().unwrap();
+    c.reader = Some(Arc::new(FailingReader { inner, fail_open: Some(fx.root().join(".gitignore")), fail_dir: None }));
+    let v = Grep::new().call(json!({"pattern": "needle", "path": "web/src"}), &c).await;
+    assert_eq!((&v.value["complete"], &v.value["traversal_failures"]), (&json!(false), &json!(1)));
+}
+
 /// docs/tools.md `grep`: file content is streamed through the reader, so a
 /// search does not allocate a complete file before matching it.
 #[tokio::test]
