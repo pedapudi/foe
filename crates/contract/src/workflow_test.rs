@@ -323,3 +323,35 @@ fn an_omitted_recovery_key_takes_its_default() {
     assert_eq!(parse(json!({ "enabled": false })), super::RecoveryConfig { enabled: false, max_interventions: 3 });
     assert_eq!(parse(json!({ "max_interventions": 1 })), super::RecoveryConfig { enabled: true, max_interventions: 1 });
 }
+
+/// docs/workflow.md "The graph": a node name holds neither `/` nor `.`. The
+/// first document declares a top-level model node `a/b` beside a model node
+/// `b` inside the workflow node `a`, which would both take the path `a/b`.
+/// The second declares a node whose configuration key would read as the key
+/// of a node inside `a`. Each is refused at any depth, naming the node.
+#[test]
+fn a_node_name_holding_a_separator_is_refused() {
+    let root = tmp("workflow-node-names");
+    let model = |name: &str| {
+        json!({ "model": { "name": name, "instructions": { "r": "x" }, "tools": ["block"],
+                           "grants": { "read": [&*root] }, "budget": { "model_calls": 1 } }, "terminal": true })
+    };
+    let nested = |name: &str| json!({ "workflow": { "nodes": { name: model("inner") } }, "terminal": true });
+    let rule = "has a name without `/` or `.`, which separate the names in a node path and in a configuration key";
+    for (key, nodes) in [
+        ("workflow.nodes.a/b.", json!({ "a/b": model("outer"), "a": nested("b") })),
+        (
+            "workflow.nodes.a.workflow.nodes.b.model.",
+            json!({ "a.workflow.nodes.b.model": model("outer"), "a": nested("b") }),
+        ),
+        ("workflow.nodes.a.workflow.nodes.b/c.", json!({ "a": nested("b/c") })),
+        ("workflow.nodes.a.workflow.nodes.b.c.", json!({ "a": nested("b.c") })),
+    ] {
+        let refused = rejection(with_graph(&root, |v| v["workflow"] = json!({ "nodes": nodes })));
+        assert_eq!(refused, (key.to_string(), rule.to_string()));
+    }
+    let plain =
+        with_graph(&root, |v| v["workflow"] = json!({ "nodes": { "a-b_c": model("outer"), "a": nested("b") } }));
+    let contract = resolve(&serde_json::from_value(plain).unwrap()).unwrap();
+    assert_eq!(contract.workflow_contracts.keys().collect::<Vec<_>>(), ["a-b_c", "a/b"]);
+}

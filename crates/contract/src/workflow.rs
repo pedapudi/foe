@@ -231,6 +231,11 @@ fn check_graph(
         if name == TASK_SOURCE {
             return Err(invalid(key(""), "has a name other than `task`, which names the built-in source".into()));
         }
+        if name.contains(['/', '.']) {
+            let rule =
+                "has a name without `/` or `.`, which separate the names in a node path and in a configuration key";
+            return Err(invalid(key(""), rule.into()));
+        }
         let kinds = [node.tool.is_some(), node.model.is_some(), node.workflow.is_some()];
         if kinds.iter().filter(|set| **set).count() != 1 || (node.args.is_some() && node.tool.is_none()) {
             let rule = "has exactly one of tool, model, and workflow, and args only with tool";

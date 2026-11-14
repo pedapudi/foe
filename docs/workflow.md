@@ -117,6 +117,13 @@ node that follows nothing receives no task text. `task` is a reserved name;
 a node named `task` is a construction error naming the rule. `foe plan`
 lists the source when any node follows it.
 
+A node name contains neither `/` nor `.`. The runtime joins the names of
+nested nodes with `/` to form a node path such as `outer/inner`, which keys
+the node's events and its resolved contract. It joins names with `.` to form
+the configuration key that an error or a plan report names. A name holding
+either character could read as the path or the key of a different node, so
+it is a construction error naming the node.
+
 ### Nodes
 
 A node carries twelve keys at most, and any key outside the two tables

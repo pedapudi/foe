@@ -186,7 +186,8 @@
       "required": ["nodes"],
       "properties": {
         "nodes": {
-          "description": "Node name to node. Exactly one of tool, model, and workflow is set per node.",
+          "description": "Node name to node. A name holds neither `/` nor `.`. Exactly one of tool, model, and workflow is set per node.",
+          "propertyNames": { "pattern": "^[^/.]*$" },
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/workflow_node" }
         },
