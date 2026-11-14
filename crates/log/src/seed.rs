@@ -4,7 +4,7 @@
 
 use crate::append::Writer;
 use crate::{Event, EventData, ForkOrigin, LogError, Obligation, Outcome, ToolCall, ToolResult, Usage};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 /// Rendered text of a synthetic result for a tool call whose real result
@@ -69,27 +69,21 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
     // announces is dropped along with the outcome and the seed boundary of
     // the source: the copy holds no attempt that could close it, and no
     // event states that an attempt was abandoned.
-    let cut_off = crate::fold::open_obligations(&events[..until_seq as usize]);
     let copied_span = &events[..until_seq as usize];
-    let complete_archives: BTreeSet<(u32, String)> = copied_span
-        .windows(2)
-        .filter_map(|pair| match (&pair[0].data, &pair[1].data) {
-            (EventData::ToolRenderingArchive(a), EventData::ToolResult(r))
-                if a.step == r.step && a.call_id == r.call_id =>
-            {
-                Some((a.step, a.call_id.clone()))
-            }
-            _ => None,
-        })
-        .collect();
+    let cut_off = crate::fold::open_obligations(copied_span);
     let mut renumber: BTreeMap<u64, u64> = BTreeMap::new();
-    for event in events.iter().take(until_seq as usize).skip(1) {
+    for (index, event) in copied_span.iter().enumerate().skip(1) {
         let opens_retry = crate::obligations(&event.data)
             .into_iter()
             .any(|(kind, key, opens)| opens && kind == Obligation::Retry && cut_off.contains(&(kind, key)));
+        // An archive is copied when the copied event after it is its result.
+        let result = match copied_span.get(index + 1).map(|next| &next.data) {
+            Some(EventData::ToolResult(r)) => Some((r.step, r.call_id.as_str())),
+            _ => None,
+        };
         let mut data = match &event.data {
             EventData::EpisodeEnd { .. } | EventData::SeedEnd {} => continue,
-            EventData::ToolRenderingArchive(a) if !complete_archives.contains(&(a.step, a.call_id.clone())) => continue,
+            EventData::ToolRenderingArchive(a) if result != Some((a.step, a.call_id.as_str())) => continue,
             _ if opens_retry => continue,
             data => data.clone(),
         };
