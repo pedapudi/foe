@@ -436,7 +436,11 @@ matching, and the result is written with CRLF. A file with mixed line
 endings is matched as it is. A file that is not valid UTF-8 is refused.
 
 The result is written through the writer, which replaces the file
-atomically. The canonical value carries a unified diff with three lines of
+atomically. The replacement keeps the permission bits of the regular file it
+replaces, so an executable script stays executable after an edit. A file that
+the edit creates takes the default mode of a new file.
+
+The canonical value carries a unified diff with three lines of
 context; the rendered form is a one-line summary followed by that diff up
 to 200 lines. A diff past that bound ends with one elision line counting
 the added and removed lines not shown, because the rendering is re-sent

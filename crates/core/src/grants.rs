@@ -114,7 +114,9 @@ impl Writer for RootWriter {
     /// Stages the bytes in a sibling file and renames it over the target, so
     /// a reader never observes a partial file. Both steps run against the
     /// target's own directory descriptor, so the file that is replaced is the
-    /// one the containment check admitted.
+    /// one the containment check admitted. The staged file takes the
+    /// permission bits of a regular file it replaces; a file that did not
+    /// exist keeps the mode it was created with.
     fn write(&self, path: &Path, bytes: &[u8]) -> Result<(), CapError> {
         let (i, rest) = locate(&self.roots, path)?;
         let name =
@@ -126,7 +128,11 @@ impl Writer for RootWriter {
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         let mut file = parent.open_with(&stage, &options)?;
-        if let Err(e) = file.write_all(bytes).and_then(|()| parent.rename(&stage, &parent, name)) {
+        // The mode is set before the bytes are written, so the kernel clears
+        // a set-user-ID or set-group-ID bit as it does for any written file.
+        let mode = parent.symlink_metadata(name).ok().filter(|m| m.is_file()).map(|m| m.permissions());
+        let staged = mode.map_or(Ok(()), |mode| file.set_permissions(mode)).and_then(|()| file.write_all(bytes));
+        if let Err(e) = staged.and_then(|()| parent.rename(&stage, &parent, name)) {
             let _ = parent.remove_file(&stage);
             return Err(e.into());
         }

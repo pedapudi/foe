@@ -65,6 +65,30 @@ fn writer_stages_beside_the_target_and_renames() {
     assert_eq!(leftovers, vec![std::ffi::OsString::from("out.txt")], "no staging file remains");
 }
 
+/// docs/tools.md `edit`: replacing an existing file keeps its permission
+/// bits, and a file that did not exist takes the default mode.
+#[test]
+fn replacing_a_file_keeps_its_mode_and_a_new_file_takes_the_default() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode = |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o7777;
+    let dir = tmp("grants-mode");
+    let writer = RootWriter::new(roots(&dir)).unwrap();
+    let (script, plain, locked) = (dir.join("run.sh"), dir.join("plain.txt"), dir.join("locked.txt"));
+    std::fs::write(&script, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(&locked, "one").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o440)).unwrap();
+    std::fs::write(dir.join("default.txt"), "").unwrap();
+    writer.write(&script, b"#!/bin/sh\nexit 0\n").unwrap();
+    writer.write(&locked, b"two").unwrap();
+    writer.write(&plain, b"new").unwrap();
+    assert_eq!(mode(&script), 0o755, "an executable file stays executable");
+    assert_eq!(std::fs::read(&script).unwrap(), b"#!/bin/sh\nexit 0\n");
+    assert_eq!(mode(&locked), 0o440);
+    assert_eq!(std::fs::read(&locked).unwrap(), b"two");
+    assert_eq!(mode(&plain), mode(&dir.join("default.txt")), "a new file takes the mode any created file takes");
+}
+
 #[test]
 fn writer_refuses_paths_outside_its_roots() {
     let dir = tmp("grants-write-outside");
