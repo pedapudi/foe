@@ -236,7 +236,21 @@ each renewal refuses the earlier token afterwards, and `foe login` obtains a
 new one. A token that omits `refresh` is access-only, and Foe cannot renew
 it. It works until its access token enters the refresh window and the file
 holds no later token. Foe then returns an error before sending the model
-request. A Google access token is minted from the credentials
+request.
+
+An episode that no parent launched renews ahead of need, so that the renewal
+is stored while the token file is still writable. Before the episode confines
+itself, it examines the OAuth token of every model in its contract tree. A
+token that holds `refresh` and expires within the `budget.seconds` of the
+episode is renewed at the token endpoint, and the token file is rewritten.
+When that rewrite fails, the episode does not start, and the error names the
+contract key of the model and the token file. An episode that states no
+`budget.seconds` renews ahead only a token inside the sixty-second refresh
+window. A token whose lifetime is shorter than `budget.seconds` can still
+expire while the episode runs. Its renewal then stays in memory, as the
+previous paragraph describes.
+
+A Google access token is minted from the credentials
 file and cached in memory until sixty seconds before it expires; nothing is
 written back.
 

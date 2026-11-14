@@ -1046,6 +1046,11 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let context = context_policy(&contract)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
+    // Only the root renews. A child inherits its parent's confinement, so
+    // it could not store a renewal, and the root's allowance bounds its own.
+    if launch.parent_id.is_none() {
+        foe_transport::renew_ahead(&contract, limits.seconds)?;
+    }
     // The `model` block becomes a client before the process restricts
     // itself. Its credential path is in the policy as a readable file.
     let transport = match &contract.model {

@@ -19,6 +19,13 @@ pub mod token_file;
 #[async_trait::async_trait]
 pub trait Auth: Send + Sync {
     async fn headers(&self) -> Result<Vec<(String, String)>, AuthError>;
+
+    /// Renews a stored credential that expires within `horizon` and fails
+    /// when the renewal cannot be stored. A source that stores nothing
+    /// does nothing.
+    async fn renew_ahead(&self, _horizon: std::time::Duration) -> Result<(), AuthError> {
+        Ok(())
+    }
 }
 
 /// A source that adds no authentication header.

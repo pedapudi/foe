@@ -42,12 +42,6 @@ pub struct Token {
     pub account_id: Option<String>,
 }
 
-impl Token {
-    pub fn needs_refresh(&self, now: u64) -> bool {
-        self.expires <= now + REFRESH_MARGIN.as_millis() as u64
-    }
-}
-
 /// The public parameters of an OAuth client: where tokens are issued and
 /// which client id to present.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,21 +138,23 @@ impl TokenFile {
         Ok(TokenFile { path: path.to_path_buf(), client, account_header, state: Mutex::new(token) })
     }
 
-    /// The current token, refreshed when within the margin. A refreshed
-    /// token is returned whether or not the file could be rewritten.
-    pub async fn current(&self) -> Result<Token, AuthError> {
-        let mut state = self.state.lock().await;
+    /// The current token, renewed when it expires within `margin`, and
+    /// whether a renewal reached the file. A renewed token is returned
+    /// whether or not the file could be rewritten.
+    async fn renew(&self, margin: Duration) -> Result<(Token, std::io::Result<()>), AuthError> {
+        let (mut state, mut stored) = (self.state.lock().await, Ok(()));
+        let due = |token: &Token| token.expires <= now_ms() + margin.as_millis() as u64;
         // Another process may have renewed the token since this one read
         // the file, and its renewal may have retired the refresh token held
         // here. A token in the file that expires later is that renewal. One
         // that expires earlier predates a renewal this process could not
         // write, and is ignored.
-        if state.needs_refresh(now_ms()) {
+        if due(&state) {
             if let Some(newer) = read_token(&self.path).ok().filter(|file| file.expires > state.expires) {
                 *state = newer;
             }
         }
-        if state.needs_refresh(now_ms()) {
+        if due(&state) {
             if state.refresh.is_empty() {
                 return Err(AuthError::Credential {
                     path: self.path.clone(),
@@ -166,29 +162,35 @@ impl TokenFile {
                 });
             }
             let mut fresh = self.client.refresh(&state.refresh).await?;
-            if fresh.account_id.is_none() {
-                fresh.account_id = state.account_id.clone();
-            }
+            fresh.account_id = fresh.account_id.or_else(|| state.account_id.clone());
             *state = fresh;
             // The provider may have retired the previous refresh token, so
             // the renewed token is the one valid credential and is kept
             // whether or not the file accepts it. A confined episode holds
             // its credential file read-only, and its rewrite fails.
-            let _ = write_token(&self.path, &state);
+            stored = write_token(&self.path, &state);
         }
-        Ok(state.clone())
+        Ok((state.clone(), stored))
     }
 }
 
 #[async_trait::async_trait]
 impl Auth for TokenFile {
     async fn headers(&self) -> Result<Vec<(String, String)>, AuthError> {
-        let token = self.current().await?;
+        let token = self.renew(REFRESH_MARGIN).await?.0;
         let mut headers = vec![("authorization".to_string(), format!("Bearer {}", token.access))];
         if let (Some(name), Some(id)) = (self.account_header, token.account_id) {
             headers.push((name.to_string(), id));
         }
         Ok(headers)
+    }
+
+    async fn renew_ahead(&self, horizon: Duration) -> Result<(), AuthError> {
+        // An access-only token cannot be renewed, and it serves the episode
+        // until it expires, so it is checked at the request margin alone.
+        let renewable = !self.state.lock().await.refresh.is_empty();
+        let stored = self.renew(if renewable { horizon } else { REFRESH_MARGIN }).await?.1;
+        stored.map_err(|e| AuthError::Credential { path: self.path.clone(), reason: format!("renewed token: {e}") })
     }
 }
 
@@ -340,6 +342,58 @@ mod tests {
         let seen = server.requests();
         assert_eq!(seen.len(), 2);
         assert_eq!(seen[1].body, "grant_type=refresh_token&refresh_token=r2&client_id=cid");
+    }
+
+    /// docs/models.md "Where credentials live": a token that expires within
+    /// the horizon of an episode is renewed and stored ahead of need. A
+    /// renewal that cannot be stored is an error naming the token file. An
+    /// access-only token outside the refresh window is left as it is.
+    #[tokio::test]
+    async fn a_token_that_expires_within_the_horizon_is_renewed_and_stored_ahead() {
+        let reply = |access: &str, refresh: &str| {
+            let body = serde_json::json!({ "access_token": access, "refresh_token": refresh, "expires_in": 86_400 });
+            Reply::full(200, &body.to_string())
+        };
+        let server = Server::start(vec![reply("a2", "r2"), reply("a3", "r3")]);
+        let client = || OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
+        let hour = Duration::from_secs(3600);
+        let token = |refresh: &str| Token {
+            access: "a1".into(),
+            refresh: refresh.into(),
+            expires: now_ms() + 1_800_000,
+            account_id: None,
+        };
+
+        // Thirty minutes of life is outside the request margin and inside
+        // an allowance of one hour, so the token is renewed and written.
+        let path = scratch("token-ahead.json");
+        write_token(&path, &token("r1")).unwrap();
+        let file = TokenFile::open(&path, client(), None).unwrap();
+        file.headers().await.unwrap();
+        assert!(server.requests().is_empty(), "the request margin alone renews nothing");
+        file.renew_ahead(hour).await.unwrap();
+        assert_eq!(server.requests()[0].body, "grant_type=refresh_token&refresh_token=r1&client_id=cid");
+        assert_eq!(read_token(&path).unwrap().refresh, "r2");
+        // The renewed token outlives the allowance, so nothing is sent again.
+        file.renew_ahead(hour).await.unwrap();
+        assert_eq!(server.requests().len(), 1);
+
+        // An access-only token cannot be renewed and is not refused early.
+        let leased = scratch("token-ahead-leased.json");
+        write_token(&leased, &token("")).unwrap();
+        TokenFile::open(&leased, client(), None).unwrap().renew_ahead(hour).await.unwrap();
+        assert_eq!(server.requests().len(), 1);
+
+        // A directory that holds a file cannot be replaced by a rename, so
+        // the renewed token cannot be stored.
+        let blocked = scratch("token-ahead-blocked.json");
+        write_token(&blocked, &token("r2")).unwrap();
+        let file = TokenFile::open(&blocked, client(), None).unwrap();
+        std::fs::remove_file(&*blocked).unwrap();
+        std::fs::create_dir(&*blocked).unwrap();
+        std::fs::write(blocked.join("occupant"), "").unwrap();
+        let err = file.renew_ahead(hour).await.unwrap_err().to_string();
+        assert!(err.contains("token-ahead-blocked.json: renewed token: "), "{err}");
     }
 
     /// docs/models.md "Where credentials live": before renewing, the token

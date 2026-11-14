@@ -38,6 +38,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 
+use foe_contract::document::{ContractTreeSelection, ResolvedContract};
 use foe_contract::ModelConfig;
 use foe_core::{Chunk, ModelRequestBody, Transport};
 
@@ -212,6 +213,25 @@ pub fn plan_with_home(config: &ModelConfig, home: &Path) -> Result<Plan, Transpo
 /// request.
 pub fn build(config: &ModelConfig) -> Result<Arc<dyn Transport>, TransportError> {
     build_planned(&plan(config)?)
+}
+
+/// Renews every OAuth token in the contract tree that expires within the
+/// episode's wall-clock allowance of `seconds`, or within the request
+/// margin when the episode has none. The root episode calls this before it
+/// confines itself, because the token file is read-only afterwards and a
+/// renewal made then is lost when the process exits. A credential that
+/// cannot be opened is left to the episode that uses it, which reports it.
+/// The runtime that carries the renewal ends before this function returns,
+/// so no thread outlives it to escape the confinement that follows.
+pub fn renew_ahead(contract: &ResolvedContract, seconds: Option<u64>) -> Result<(), String> {
+    let horizon = seconds.map_or(auth::token_file::REFRESH_MARGIN, std::time::Duration::from_secs);
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| e.to_string())?;
+    for (key, descendant) in contract.contract_tree(ContractTreeSelection::ExecutableReachable) {
+        let Some(model) = &descendant.model else { continue };
+        let Ok(auth) = plan(model).and_then(|plan| open_auth(&plan)) else { continue };
+        runtime.block_on(auth.renew_ahead(horizon)).map_err(|e| format!("{key}.model: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Builds the transport of a resolved plan.
