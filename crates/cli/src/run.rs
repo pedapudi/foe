@@ -9,7 +9,7 @@
 //! applied on the main thread before the asynchronous runtime starts, so
 //! every thread of the episode inherits it.
 
-use foe_contract::document::{resolve, resolve_with_executables, ResolvedContract};
+use foe_contract::document::{resolve, resolve_with_executables, ContractTreeSelection, ResolvedContract};
 use foe_contract::fingerprint::{compute, Fingerprint};
 use foe_contract::{Budget, ContractDocument, ModelConfig, ToolSpec};
 use foe_core::budget::Pool;
@@ -131,9 +131,7 @@ pub fn extra_builtin_specs() -> Vec<ToolSpec> {
 /// Adds exact interpreter access for every selected built-in executable
 /// in the reachable contract tree.
 pub fn add_builtin_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
-    for (contract_key, descendant) in
-        contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
-    {
+    for (contract_key, descendant) in contract.contract_tree(ContractTreeSelection::ExecutableReachable) {
         for (path, purpose) in foe_code::required_executables(&descendant.tools) {
             policy.add_executable(Path::new(path), format!("{purpose} selected by {contract_key}.tools"))?;
         }
@@ -145,9 +143,7 @@ pub fn add_builtin_runtime_access(policy: &mut Policy, contract: &ResolvedContra
 /// transport. A descendant inherits the enclosing Landlock domain before
 /// it opens its own credential.
 pub fn add_transport_runtime_access(policy: &mut Policy, contract: &ResolvedContract) -> Result<(), String> {
-    for (contract_key, descendant) in
-        contract.contract_tree(foe_contract::document::ContractTreeSelection::ExecutableReachable)
-    {
+    for (contract_key, descendant) in contract.contract_tree(ContractTreeSelection::ExecutableReachable) {
         let Some(model) = &descendant.model else { continue };
         let plan = foe_transport::plan(model).map_err(|e| format!("{contract_key}.model: {e}"))?;
         if let Some(path) = plan.credential_path {
