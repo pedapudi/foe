@@ -273,7 +273,7 @@ fn validate_section(prefix: &str, s: &ChildContractDocument) -> Result<(), Contr
         }
     }
     if let Some(c) = s.context.as_ref().filter(|c| c.compact) {
-        let fits = c.window_tokens.is_none_or(|w| w > c.reserve_tokens + c.keep_recent_tokens);
+        let fits = c.window_tokens.is_none_or(|w| w > c.reserve_tokens.saturating_add(c.keep_recent_tokens));
         require(fits, key("context.window_tokens"), "exceeds reserve_tokens plus keep_recent_tokens")?;
     }
     for (name, child) in &s.child_contracts {

@@ -564,3 +564,16 @@ fn contract_tree_separates_declared_fingerprint_from_executable_reachability() {
         ["contract", "contract.child_contracts.used", "contract.workflow.nodes.review.model"]
     );
 }
+
+/// docs/config.md "`context`": a stated `window_tokens` exceeds `reserve_tokens`
+/// plus `keep_recent_tokens`. The sum of the two largest values a document
+/// can state is above every window, so the rule refuses it.
+#[test]
+fn a_window_is_compared_with_a_sum_that_cannot_wrap() {
+    let root = tmp("config-context-sum");
+    let context = |reserve: u64, keep: u64| json!({ "compact": true, "window_tokens": 128000, "reserve_tokens": reserve, "keep_recent_tokens": keep });
+    assert!(contract_with(&root, |v| v["context"] = context(16384, 20000)).is_ok());
+    assert_eq!(rejected(&root, |v| v["context"] = context(100000, 28000)), "context.window_tokens");
+    assert_eq!(rejected(&root, |v| v["context"] = context(u64::MAX, 2)), "context.window_tokens");
+    assert_eq!(rejected(&root, |v| v["context"] = context(u64::MAX, u64::MAX)), "context.window_tokens");
+}
