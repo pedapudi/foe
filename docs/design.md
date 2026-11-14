@@ -553,7 +553,9 @@ result is re-sent in every request after the step that produced it, so the
 cost of a rendering is its size multiplied by the number of later requests.
 The renderings of one model turn therefore share one character budget, which
 the calls of that turn divide between them. A rendering over its part ends
-with a notice stating what was removed. The runtime archives the complete
+with a notice stating what was removed. A line too long to be shown whole is
+shown in part, with a marker stating how many characters were removed, so a
+shortened rendering always shows some of the output. The runtime archives the complete
 rendering as immutable episode evidence before it appends the shortened
 result. A contract that declares `retrieve` receives an opaque cursor in the
 notice and can read the archive in bounded segments. Its schema enters the

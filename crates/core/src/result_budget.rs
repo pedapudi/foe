@@ -27,7 +27,7 @@
 //! provider reuse the key-value cache of the prefix.
 
 use crate::retrieval::ArchivedRendering;
-use crate::{fitting, ToolCall, ToolValue};
+use crate::{clamped, fitting, ToolCall, ToolValue};
 use foe_contract::harness_text as text;
 
 /// Characters of tool-result text one model turn may show, divided between
@@ -45,6 +45,10 @@ const NOTICE_CHARS: usize = 200;
 /// A retrieval notice carries a fixed-length source key and checksum in
 /// addition to the ordinary shortening explanation.
 const RETRIEVAL_NOTICE_CHARS: usize = 400;
+
+/// Characters held back from the room of a line shown in part, for the
+/// marker [`clamped`] writes after it.
+const LINE_MARKER_CHARS: usize = 48;
 
 /// The line number `read` writes before a tab at the start of every line of
 /// its rendering. A rendering whose first line carries one is a numbered
@@ -78,13 +82,25 @@ fn shares(lengths: &[usize]) -> Vec<usize> {
 /// `body` shortened to `share` characters, ending in a notice of what was
 /// removed. A numbered window keeps its head alone, so that the notice can
 /// name the file line to resume at; any other rendering keeps its head and
-/// its tail, two thirds of the room going to the head.
+/// its tail, two thirds of the room going to the head. A line too long for
+/// the head to take whole ends the head in part and counts as a line shown.
 fn cut(body: &str, share: usize, cursor: Option<&str>) -> String {
     let lines: Vec<&str> = body.lines().collect();
     let notice_chars = if cursor.is_some() { RETRIEVAL_NOTICE_CHARS } else { NOTICE_CHARS };
     let room = share.saturating_sub(notice_chars);
     let window = lines.first().and_then(|l| numbered(l)).is_some();
-    let (head, used) = fitting(lines.iter(), usize::MAX, if window { room } else { room * 2 / 3 });
+    let head_room = if window { room } else { room * 2 / 3 };
+    let (head, mut used) = fitting(lines.iter(), usize::MAX, head_room);
+    let mut out: Vec<&str> = lines[..head].to_vec();
+    // A line as long as the head's whole room fits no part of the rendering,
+    // so the head takes the characters of it that the room left can hold.
+    let long = lines.get(head).filter(|line| line.chars().count() >= head_room);
+    let long = long.map(|line| clamped(line, (head_room - used).saturating_sub(LINE_MARKER_CHARS)));
+    if let Some(part) = &long {
+        out.push(part);
+        used += part.chars().count() + 1;
+    }
+    let head = out.len();
     let tail = match window {
         true => 0,
         false => fitting(lines[head..].iter().rev(), usize::MAX, room - used).0,
@@ -110,7 +126,6 @@ fn cut(body: &str, share: usize, cursor: Option<&str>) -> String {
             ("cursor", cursor.unwrap_or_default()),
         ],
     );
-    let mut out: Vec<&str> = lines[..head].to_vec();
     out.push(&notice);
     out.extend_from_slice(&lines[lines.len() - tail..]);
     out.join("\n")

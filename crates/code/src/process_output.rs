@@ -1,7 +1,7 @@
 //! Shared rendering for output captured from a process.
 
 use crate::{OUTPUT_MAX_CHARS, OUTPUT_MAX_LINES};
-use foe_core::{fitting, CallCtx};
+use foe_core::{clamped, fitting, CallCtx};
 use std::fmt::Write;
 
 pub(crate) struct ProcessOutput {
@@ -34,8 +34,11 @@ pub(crate) fn render(
         let _ = write!(combined, "--- stderr ---\n{stderr}");
     }
     let lines: Vec<&str> = combined.lines().collect();
-    let (kept, _) = fitting(lines.iter().rev(), OUTPUT_MAX_LINES, OUTPUT_MAX_CHARS);
-    let truncated = kept < lines.len();
+    let (fitted, _) = fitting(lines.iter().rev(), OUTPUT_MAX_LINES, OUTPUT_MAX_CHARS);
+    let truncated = fitted < lines.len();
+    // A last line over the character limit fits no rendering whole. It is
+    // kept and shown in part, so a cut rendering always shows some output.
+    let kept = fitted.max(lines.len().min(1));
     let mut spill = None;
     let mut rendered = format!("[{status}]\n");
     if truncated {
@@ -61,7 +64,7 @@ pub(crate) fn render(
         }
     }
     for line in &lines[lines.len() - kept..] {
-        let _ = writeln!(rendered, "{line}");
+        let _ = writeln!(rendered, "{}", clamped(line, OUTPUT_MAX_CHARS));
     }
     // The shell owns the exit status and the diagnostic, so a denial is
     // only ever possible: any failure whose diagnostic is the kernel's EACCES

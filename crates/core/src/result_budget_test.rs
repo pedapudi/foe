@@ -188,3 +188,36 @@ fn a_cut_retains_the_complete_rendering_and_offers_retrieval() {
     assert!(notice.contains("Use retrieve with cursor \"r1."), "{}", &notice[notice.len() - 300..]);
     assert!(notice.chars().count() <= TURN_BUDGET_CHARS / 2);
 }
+
+/// docs/tools.md "What a cut keeps": a line too long for the head to take
+/// whole is shown in part, cut on a character boundary and marked, rather
+/// than omitted. A rendering of one such line therefore still shows text.
+#[test]
+fn a_line_longer_than_the_room_is_shown_in_part_and_marked() {
+    let mut values = vec![ToolValue::ok(json!({}), "é".repeat(120_000))];
+    apply_bound(&mut values);
+    let out = values[0].rendered.clone().unwrap();
+    assert!(out.chars().count() <= TURN_BUDGET_CHARS, "{} characters shown", out.chars().count());
+    let (line, notice) = out.split_once('\n').expect("the part of the line, then the notice");
+    let kept = line.chars().take_while(|c| *c == 'é').count();
+    assert!(kept > TURN_BUDGET_CHARS / 2, "{kept} characters of the line shown");
+    assert_eq!(line[kept * 'é'.len_utf8()..], format!(" [clamped at {kept} chars; {} more]", 120_000 - kept));
+    assert!(notice.starts_with("[Cut to fit this turn's result budget: 0 of 1 lines omitted here, 120000 characters"));
+}
+
+/// docs/tools.md "What a cut keeps": the lines around an overlong line are
+/// kept as for any other rendering, so the status line of a command and the
+/// end of its output both survive beside the part of the line.
+#[test]
+fn an_overlong_line_keeps_the_lines_around_it() {
+    let body = format!("[exit 0 in 1.50s]\n{}\nlast line", "x".repeat(120_000));
+    let mut values = vec![ToolValue::ok(json!({}), body)];
+    apply_bound(&mut values);
+    let out = values[0].rendered.clone().unwrap();
+    assert!(out.chars().count() <= TURN_BUDGET_CHARS, "{} characters shown", out.chars().count());
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "[exit 0 in 1.50s]");
+    assert!(lines[1].starts_with(&"x".repeat(30_000)) && lines[1].contains(" [clamped at "), "{}", &lines[1][..40]);
+    assert!(lines[2].starts_with("[Cut to fit this turn's result budget: 0 of 3 lines omitted here"), "{}", lines[2]);
+    assert_eq!(lines[3], "last line");
+}

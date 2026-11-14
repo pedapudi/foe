@@ -128,6 +128,29 @@ async fn timeout_argument_and_deadline_bound_the_request() {
     assert!(exec.last().unwrap().timeout <= Duration::from_secs(2));
 }
 
+/// docs/tools.md `bash`: when the last line alone exceeds the character
+/// limit, the rendering shows the first characters of that line and a marker
+/// stating how many were removed.
+#[tokio::test]
+async fn a_last_line_over_the_character_limit_is_shown_in_part() {
+    let fx = Fixture::new();
+    let full = format!("first\n{}\n", "é".repeat(OUTPUT_MAX_CHARS + 300));
+    let c = ctx_with_executor(&fx, Arc::new(FakeExecutor::new(result(0, &full, ""))));
+    let v = Bash::new().call(json!({"command": "jq -c . big.json"}), &c).await;
+    let r = v.rendered.unwrap();
+    let spill = c.spill_dir.join("call-1-bash.txt");
+    let notice =
+        format!("[exit 0 in 1.50s]\n[Showing the last 1 of 2 lines. Full output saved to {}]\n", spill.display());
+    let line = r.strip_prefix(notice.as_str()).unwrap_or_else(|| panic!("{}", &r[..200]));
+    let shown = "é".repeat(OUTPUT_MAX_CHARS);
+    assert_eq!(
+        line.strip_prefix(shown.as_str()),
+        Some(format!(" [clamped at {OUTPUT_MAX_CHARS} chars; 300 more]\n").as_str())
+    );
+    assert_eq!(std::fs::read_to_string(&spill).unwrap(), full);
+    assert_eq!(v.value["truncated"], true);
+}
+
 #[tokio::test]
 async fn long_output_is_tail_truncated_and_spilled() {
     let fx = Fixture::new();

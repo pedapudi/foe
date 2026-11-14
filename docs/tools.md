@@ -329,6 +329,15 @@ head of its window as the file streams past, so buffered and streamed
 fitting keep one meaning. The turn budget below fits whichever end of a
 rendering carries its information.
 
+A line that alone exceeds the character count is never taken by this rule.
+A rendering that would otherwise show no output shows such a line in part.
+The function `foe_core::clamped` keeps the first characters of the line,
+ends the kept part on a character boundary, and appends a marker that states
+the cut, for example ` [clamped at 51200 chars; 148800 more]`. `grep` marks
+its 500-character line cut the same way. `bash` and the turn budget each
+state below when they show a line in part, and a `session` poll follows the
+`bash` rule. `read` shows no part of such a line and names its size.
+
 ### `read`
 
 A directory read returns its immediate entries sorted by path. Each rendered
@@ -497,10 +506,12 @@ event's `duration_ms`; the canonical value carries no timing, so a command
 repeated with the same output yields an identical canonical value and counts
 toward the loop detection in [design.md](design.md#blocking-conditions-the-runtime-detects). Standard output and standard error follow in that order,
 separated by a `--- stderr ---` line when standard error is non-empty. The
-combined text is cut to its last 2,000 lines or 51,200 characters. When a
-cut happens, the full text is written to a file named `CALL_ID-bash.txt`
-under the episode's `spill/` directory, and a line after the status names
-that file.
+combined text is cut to its last 2,000 lines or 51,200 characters. When the
+last line alone is longer than 51,200 characters, the rendering shows the
+first 51,200 characters of that line, followed by a marker that states how
+many characters were removed. When a cut happens, the full text is written
+to a file named `CALL_ID-bash.txt` under the episode's `spill/` directory,
+and a line after the status names that file.
 
 A non-zero exit is a result. The call is an error only when the arguments
 are invalid, the executor refuses the request, or the tool was dispatched
@@ -683,6 +694,14 @@ shapes carry their information in different places.
   51369 characters in all. Use retrieve with cursor "r1.…" for the complete
   result.]
   ```
+
+A line may be as long as the whole room the head has, as one line of
+minified JSON is. No part of the rendering can then hold it. The head ends
+with the first characters of that line that fit the room left, followed by
+the marker that `foe_core::clamped` writes, and the line counts as a line
+shown. A cut rendering therefore always shows some of the output. The marker
+counts the characters of the line as the rendering held it, which is less
+than the source line when the tool had already shown that line in part.
 
 Three properties hold. The canonical value is untouched. The complete
 rendering remains immutable episode evidence. The budget bounds the text

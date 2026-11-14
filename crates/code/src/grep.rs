@@ -96,13 +96,7 @@ impl Sink for Collect<'_> {
 
 /// Cuts a line at `GREP_LINE_MAX_CHARS` characters and marks the cut.
 fn clamp(text: &str) -> String {
-    match text.char_indices().nth(GREP_LINE_MAX_CHARS) {
-        Some((at, _)) => {
-            let more = text[at..].chars().count();
-            format!("{} [clamped at {GREP_LINE_MAX_CHARS} chars; {more} more]", &text[..at])
-        }
-        None => text.to_owned(),
-    }
+    foe_core::clamped(text, GREP_LINE_MAX_CHARS).into_owned()
 }
 
 fn ignore_rules(reader: &dyn foe_core::Reader, dir: &Path) -> Result<Gitignore, String> {

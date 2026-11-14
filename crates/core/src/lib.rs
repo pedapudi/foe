@@ -67,6 +67,15 @@ pub fn fitting<'a>(lines: impl Iterator<Item = &'a &'a str>, max_lines: usize, m
     (kept, used)
 }
 
+/// `line` cut after its first `max_chars` characters and followed by a marker
+/// that states the cut and how many characters it removed. A line within
+/// the bound is returned as it is. A line that [`fitting`] can never take,
+/// because it alone exceeds the character bound, is shown through this.
+pub fn clamped(line: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
+    let Some((at, _)) = line.char_indices().nth(max_chars) else { return line.into() };
+    format!("{} [clamped at {max_chars} chars; {} more]", &line[..at], line[at..].chars().count()).into()
+}
+
 /// Longest a `subject` may be. Anything past it is cut where it is written.
 pub const SUBJECT_MAX: usize = 120;
 
