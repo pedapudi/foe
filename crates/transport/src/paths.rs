@@ -115,9 +115,12 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     std::fs::create_dir_all(parent)?;
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
     let staged = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    // A staging file left by an earlier process with this process id keeps
+    // its own mode, so it is removed and the open below must create the file.
+    let _ = std::fs::remove_file(&staged);
     let result = (|| {
         use io::Write;
-        let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&staged)?;
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&staged)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         std::fs::rename(&staged, path)
@@ -180,5 +183,21 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), b"two");
         let leftovers: Vec<_> = std::fs::read_dir(dir.join("nested")).unwrap().flatten().collect();
         assert_eq!(leftovers.len(), 1, "no staging file remains");
+    }
+
+    /// docs/models.md "Where credentials live": the token file is rewritten
+    /// with mode 0600. A staging file that an earlier process with the same
+    /// process id left behind keeps the mode it was created with, so the
+    /// writer replaces that file rather than reusing it.
+    #[test]
+    fn a_leftover_staging_file_does_not_lend_its_mode_to_the_credential() {
+        let dir = crate::test_support::scratch_dir("paths-leftover");
+        let path = dir.join("creds.json");
+        let staged = dir.join(format!(".creds.json.{}.tmp", std::process::id()));
+        std::fs::write(&staged, b"left behind").unwrap();
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(&path, b"secret").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
     }
 }
