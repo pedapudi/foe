@@ -77,11 +77,7 @@ pub fn reachable_tools(root: &ResolvedContract, extra: &[ToolSpec]) -> Result<Ve
 /// Where each name in `contract.tools` resolved, in `tools` order. The
 /// built-in names are the blocking tool and the packs the binary links.
 pub fn tool_sources(contract: &ResolvedContract, extra: &[ToolSpec]) -> Result<Vec<Source>, String> {
-    let mut builtins: Vec<&str> = vec![crate::harness_text::BLOCK_NAME];
-    builtins.extend(extra.iter().map(|s| s.name.as_str()));
-    let configured: Vec<&str> = contract.tool_defs.keys().map(String::as_str).collect();
-    let host: Vec<&str> = contract.host_tools.keys().map(String::as_str).collect();
-    resolve_sources(&contract.tools, &builtins, &configured, &host).map_err(|e| e.to_string())
+    resolve_sources(contract, extra).map_err(|e| e.to_string())
 }
 
 fn collect_reachable_tools(

@@ -28,23 +28,21 @@ fn invalid(rule: String) -> ContractError {
     ContractError::Invalid { key: "tools".into(), rule }
 }
 
-/// Applies the resolution order to every name in `tools`.
-pub fn resolve_sources(
-    tools: &[String],
-    builtins: &[&str],
-    configured: &[&str],
-    host: &[&str],
-) -> Result<Vec<Source>, ContractError> {
-    tools
+/// Applies the resolution order to every name in `contract.tools`. The
+/// built-in names are the blocking tool and `extra_builtins`.
+pub fn resolve_sources(contract: &ResolvedContract, extra_builtins: &[ToolSpec]) -> Result<Vec<Source>, ContractError> {
+    let builtin = |name: &str| name == text::BLOCK_NAME || extra_builtins.iter().any(|spec| spec.name == name);
+    contract
+        .tools
         .iter()
         .map(|name| {
-            let n = name.as_str();
+            let sources = [
+                (Source::Builtin, builtin(name)),
+                (Source::Configured, contract.tool_defs.contains_key(name)),
+                (Source::Host, contract.host_tools.contains_key(name)),
+            ];
             let found: Vec<Source> =
-                [(Source::Builtin, builtins), (Source::Configured, configured), (Source::Host, host)]
-                    .into_iter()
-                    .filter(|(_, names)| names.contains(&n))
-                    .map(|(source, _)| source)
-                    .collect();
+                sources.into_iter().filter(|(_, holds)| *holds).map(|(source, _)| source).collect();
             match found.as_slice() {
                 [one] => Ok(*one),
                 [] => Err(invalid(format!(
@@ -125,10 +123,7 @@ pub fn resolve_specs(contract: &ResolvedContract, extra_builtins: &[ToolSpec]) -
     }
     let block = block_spec(!contract.grants.spawn.is_empty() && contract.tools.iter().any(|name| name == "spawn"));
     let builtins: Vec<&ToolSpec> = std::iter::once(&block).chain(extra_builtins).collect();
-    let builtin_names: Vec<&str> = builtins.iter().map(|s| s.name.as_str()).collect();
-    let configured: Vec<&str> = contract.tool_defs.keys().map(String::as_str).collect();
-    let host: Vec<&str> = contract.host_tools.keys().map(String::as_str).collect();
-    let sources = resolve_sources(&contract.tools, &builtin_names, &configured, &host)?;
+    let sources = resolve_sources(contract, extra_builtins)?;
     let mut specs: Vec<ToolSpec> = contract
         .tools
         .iter()
