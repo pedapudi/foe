@@ -82,6 +82,27 @@ The runtime implements these assertions and no others.
 | `minLength`, `maxLength` | a string | the count of characters is within the bounds, inclusive |
 | `minItems`, `maxItems` | an array | the count of elements is within the bounds, inclusive |
 
+Each keyword holds a value of one shape.
+
+| keyword | value |
+|---|---|
+| `type` | one of the names `null`, `boolean`, `integer`, `number`, `string`, `array`, and `object`, or a non-empty list of those names |
+| `enum` | a list of values |
+| `const` | any value |
+| `anyOf` | a list of subschemas |
+| `required` | a list of property names |
+| `properties` | an object whose values are subschemas |
+| `additionalProperties` | a boolean or a subschema; `true` asserts nothing |
+| `items` | a subschema |
+| `minimum`, `maximum` | a number |
+| `minLength`, `maxLength`, `minItems`, `maxItems` | a non-negative integer, written without a fraction |
+
+A subschema is a JSON object. The boolean schemas `true` and `false` are
+refused wherever a subschema is expected. A keyword whose value has another
+shape is a construction error naming the configuration key, the subschema,
+and the keyword. `{ "required": "name" }` and `{ "minimum": "3" }` are
+therefore refused rather than read as schemas that assert nothing.
+
 The annotation keywords `$schema`, `$comment`, `title`, `description`,
 `default`, `examples`, `deprecated`, `readOnly`, and `writeOnly` carry no
 assertion and are accepted anywhere.

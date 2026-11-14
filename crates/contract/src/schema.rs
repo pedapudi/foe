@@ -4,8 +4,9 @@
 //! Implements docs/config.md (JSON Schema subset). Every schema embedded in a
 //! configuration is read as JSON Schema Draft 2020-12. Foe implements the
 //! assertions listed in [`IMPLEMENTED`] and no others. A schema that declares
-//! another dialect, or that uses an assertion outside that list, is a
-//! construction error naming the configuration key and the keyword.
+//! another dialect, that uses an assertion outside that list, or that gives a
+//! keyword a value of the wrong shape is a construction error naming the
+//! configuration key and the keyword.
 //!
 //! The list exists so that a declared constraint is either enforced at every
 //! value boundary or refused before the episode starts. An unchecked keyword
@@ -28,6 +29,9 @@ const IMPLEMENTED: &[&str] = &[
     "type", "enum", "const", "anyOf", "required", "properties", "additionalProperties", "items",
     "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems",
 ];
+
+/// The names `type` may hold: the six JSON types and `integer`.
+const TYPES: [&str; 7] = ["null", "boolean", "integer", "number", "string", "array", "object"];
 
 /// Keywords that carry no assertion. A validator that ignores them still
 /// enforces the whole schema, so they need no implementation.
@@ -53,25 +57,42 @@ fn supported(schema: &Value, at: &str) -> Result<(), String> {
     if let Some(keyword) = unknown {
         return Err(format!("uses `{keyword}` at schema{at}, which foe does not implement"));
     }
-    for keyword in ["items", "additionalProperties"] {
-        match object.get(keyword) {
-            Some(Value::Bool(_)) | None => {}
-            Some(sub) => supported(sub, &format!("{at}.{keyword}"))?,
-        }
+    for (keyword, value) in object {
+        shaped(keyword, value).map_err(|shape| format!("has {shape} at schema{at}.{keyword}"))?;
     }
-    if let Some(properties) = object.get("properties") {
-        let named = properties.as_object().ok_or_else(|| format!("has an object at schema{at}.properties"))?;
-        for (name, sub) in named {
-            supported(sub, &format!("{at}.properties.{name}"))?;
-        }
+    if let Some(sub) = object.get("items") {
+        supported(sub, &format!("{at}.items"))?;
     }
-    if let Some(options) = object.get("anyOf") {
-        let list = options.as_array().ok_or_else(|| format!("has a list at schema{at}.anyOf"))?;
-        for (i, sub) in list.iter().enumerate() {
-            supported(sub, &format!("{at}.anyOf[{i}]"))?;
-        }
+    if let Some(sub) = object.get("additionalProperties").filter(|sub| !sub.is_boolean()) {
+        supported(sub, &format!("{at}.additionalProperties"))?;
+    }
+    for (name, sub) in object.get("properties").and_then(Value::as_object).into_iter().flatten() {
+        supported(sub, &format!("{at}.properties.{name}"))?;
+    }
+    for (i, sub) in object.get("anyOf").and_then(Value::as_array).into_iter().flatten().enumerate() {
+        supported(sub, &format!("{at}.anyOf[{i}]"))?;
     }
     Ok(())
+}
+
+/// Checks that the value of `keyword` has the shape docs/config.md requires,
+/// and names that shape when it does not. A keyword that holds one subschema
+/// passes here, because [`supported`] checks the subschema where it descends
+/// into it.
+fn shaped(keyword: &str, value: &Value) -> Result<(), &'static str> {
+    let type_name = |name: &Value| name.as_str().is_some_and(|name| TYPES.contains(&name));
+    let type_names = |names: &Vec<Value>| !names.is_empty() && names.iter().all(type_name);
+    let list = value.as_array();
+    let (holds, shape) = match keyword {
+        "type" => (type_name(value) || list.is_some_and(type_names), "a type name or a non-empty list of type names"),
+        "enum" | "anyOf" => (list.is_some(), "a list"),
+        "required" => (list.is_some_and(|names| names.iter().all(Value::is_string)), "a list of property names"),
+        "properties" => (value.is_object(), "an object of subschemas"),
+        "minimum" | "maximum" => (value.is_number(), "a number"),
+        "minLength" | "maxLength" | "minItems" | "maxItems" => (value.is_u64(), "a non-negative integer"),
+        _ => return Ok(()),
+    };
+    holds.then_some(()).ok_or(shape)
 }
 
 /// Checks `value` against `schema`, naming the failing field from the value's

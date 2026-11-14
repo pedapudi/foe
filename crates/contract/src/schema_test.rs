@@ -174,3 +174,54 @@ fn another_declared_dialect_is_refused() {
     assert!(reported.contains("draft-07") && reported.contains(DIALECT), "{reported}");
     assert!(check("done_when.returns".into(), &json!({ "$schema": DIALECT, "type": "string" })).is_ok());
 }
+
+/// docs/config.md "JSON Schema subset": the table states the value each
+/// keyword holds. A keyword holding another value is refused at construction,
+/// naming the subschema and the keyword, so no declared constraint is ignored.
+#[test]
+fn a_keyword_value_of_the_wrong_shape_is_a_construction_error_naming_it() {
+    let type_names = "has a type name or a non-empty list of type names at schema.type";
+    let count = "has a non-negative integer at schema.";
+    let boolean = "; a boolean schema is not implemented";
+    for (schema, expected) in [
+        (json!({ "type": 5 }), type_names.to_string()),
+        (json!({ "type": "text" }), type_names.to_string()),
+        (json!({ "type": [] }), type_names.to_string()),
+        (json!({ "type": ["string", 5] }), type_names.to_string()),
+        (json!({ "enum": "x" }), "has a list at schema.enum".to_string()),
+        (json!({ "anyOf": { "type": "null" } }), "has a list at schema.anyOf".to_string()),
+        (json!({ "anyOf": [true] }), format!("is a JSON Schema object at schema.anyOf[0]{boolean}")),
+        (json!({ "required": "name" }), "has a list of property names at schema.required".to_string()),
+        (json!({ "required": ["name", 5] }), "has a list of property names at schema.required".to_string()),
+        (json!({ "properties": [] }), "has an object of subschemas at schema.properties".to_string()),
+        (json!({ "properties": { "n": 5 } }), format!("is a JSON Schema object at schema.properties.n{boolean}")),
+        (
+            json!({ "additionalProperties": "no" }),
+            format!("is a JSON Schema object at schema.additionalProperties{boolean}"),
+        ),
+        (json!({ "items": false }), format!("is a JSON Schema object at schema.items{boolean}")),
+        (json!({ "items": [{ "type": "string" }] }), format!("is a JSON Schema object at schema.items{boolean}")),
+        (json!({ "minimum": "3" }), "has a number at schema.minimum".to_string()),
+        (json!({ "maximum": null }), "has a number at schema.maximum".to_string()),
+        (json!({ "minLength": 1.5 }), format!("{count}minLength")),
+        (json!({ "maxLength": "4" }), format!("{count}maxLength")),
+        (json!({ "minItems": -1 }), format!("{count}minItems")),
+        (json!({ "maxItems": true }), format!("{count}maxItems")),
+        (
+            json!({ "items": { "properties": { "n": { "minimum": "3" } } } }),
+            "has a number at schema.items.properties.n.minimum".to_string(),
+        ),
+    ] {
+        assert_eq!(rule("host_tools.lookup.params", &schema), expected, "{schema}");
+    }
+    let shaped = json!({
+        "type": ["object", "null"], "required": ["n"], "additionalProperties": true,
+        "properties": {
+            "n": { "type": "number", "minimum": -1.5, "maximum": 3, "enum": [], "const": null },
+            "s": { "type": "string", "minLength": 0, "maxLength": 4, "default": 5, "description": "d" },
+            "a": { "type": "array", "minItems": 1, "maxItems": 2, "items": {}, "additionalProperties": false },
+            "o": { "anyOf": [], "additionalProperties": { "type": "integer" }, "required": [] }
+        }
+    });
+    assert!(check("done_when.returns".into(), &shaped).is_ok(), "{:?}", check("done_when.returns".into(), &shaped));
+}
