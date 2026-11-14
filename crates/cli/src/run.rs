@@ -929,13 +929,6 @@ fn prepare_model(config: &mut ContractDocument) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolves the constructed `model` block into a client before the process
-/// restricts itself. The credential path joins the sandbox policy as a
-/// readable file.
-fn built_in_transport(model: &ModelConfig) -> Result<Arc<dyn Transport>, String> {
-    foe_transport::build(model).map_err(|e| e.to_string())
-}
-
 pub fn run(options: Options) -> Result<ExitCode, String> {
     let channel = options.protocol_fds.map(protocol_channel).transpose()?;
     let (mut config, recorded) = load_contract_document(&options)?;
@@ -1053,8 +1046,10 @@ pub fn run(options: Options) -> Result<ExitCode, String> {
     }
     let context = context_policy(&contract)?.map(|p| Arc::new(p) as Arc<dyn ContextPolicy>);
     let runtime_info = runtime_info();
+    // The `model` block becomes a client before the process restricts
+    // itself. Its credential path is in the policy as a readable file.
     let transport = match &contract.model {
-        Some(model) => Some(built_in_transport(model)?),
+        Some(model) => Some(foe_transport::build(model).map_err(|e| e.to_string())?),
         None if channel.is_some() => None,
         None => {
             return Err("no model: give --model, add a `model` block, or run under a host with --protocol-fds".into())
