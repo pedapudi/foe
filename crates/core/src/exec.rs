@@ -104,21 +104,9 @@ impl Executor for LocalExecutor {
             .stderr(Stdio::piped());
         // Each mapped descriptor is duplicated here; the caller's copy in
         // the request closes when the request drops, at the end of the run.
-        let mut mappings = req
-            .pass_fds
-            .iter()
-            .map(|(child_fd, fd)| {
-                fd.as_fd()
-                    .try_clone_to_owned()
-                    .map(|parent_fd| FdMapping { parent_fd, child_fd: *child_fd })
-                    .map_err(|e| CapError::ProcessStart(format!("fd {child_fd}: cannot duplicate descriptor: {e}")))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut mappings = duplicated(req.pass_fds.iter().map(|(child_fd, fd)| (*child_fd, fd)))?;
         if let (Some(executable), Some(child_fd)) = (&req.captured_executable, executable_fd) {
-            let parent_fd = executable.fd().as_fd().try_clone_to_owned().map_err(|e| {
-                CapError::ProcessStart(format!("captured executable: cannot duplicate descriptor: {e}"))
-            })?;
-            mappings.push(FdMapping { parent_fd, child_fd });
+            mappings.extend(duplicated([(child_fd, executable.fd())])?);
         }
         cmd.fd_mappings(mappings).map_err(|e| CapError::ProcessStart(format!("fd mapping: {e:?}")))?;
         let narrowed = match req.policy.clone() {
@@ -163,6 +151,16 @@ impl Executor for LocalExecutor {
             duration: start.elapsed(),
         })
     }
+}
+
+/// Duplicates each descriptor for a new process to inherit at the number
+/// paired with it. The caller keeps its own copy.
+pub(crate) fn duplicated<F: AsFd>(fds: impl IntoIterator<Item = (i32, F)>) -> Result<Vec<FdMapping>, CapError> {
+    let duplicate = |(child_fd, fd): (i32, F)| {
+        let mapping = fd.as_fd().try_clone_to_owned().map(|parent_fd| FdMapping { parent_fd, child_fd });
+        mapping.map_err(|e| CapError::ProcessStart(format!("fd {child_fd}: cannot duplicate descriptor: {e}")))
+    };
+    fds.into_iter().map(duplicate).collect()
 }
 
 /// SIGTERM to the group, [`TERM_GRACE`] for the leader to exit, then SIGKILL.

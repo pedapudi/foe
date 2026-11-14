@@ -32,7 +32,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, IsTerminal, PipeWriter, Write};
-use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -479,16 +478,8 @@ impl Spawner for ProcessSpawner {
             .executables
             .child(&req.contract)
             .ok_or_else(|| CapError::Invalid(format!("contract {} has no captured executable tree", req.contract)))?;
-        let mut mappings = executable_tree
-            .child_descriptors(&child_id)
-            .map_err(CapError::Invalid)?
-            .into_iter()
-            .map(|(child_fd, fd)| {
-                fd.as_fd().try_clone_to_owned().map(|parent_fd| FdMapping { parent_fd, child_fd }).map_err(|e| {
-                    CapError::ProcessStart(format!("child {child_id}: cannot duplicate executable fd: {e}"))
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut mappings =
+            crate::exec::duplicated(executable_tree.child_descriptors(&child_id).map_err(CapError::Invalid)?)?;
         let (child_answers, answers) = std::io::pipe()?;
         let (events, child_events) = std::io::pipe()?;
         mappings.push(FdMapping { parent_fd: child_answers.into(), child_fd: PROTOCOL_READ_FD });
