@@ -5,7 +5,9 @@
 //! "account_id": ... }`, with `expires` in milliseconds since the Unix
 //! epoch and `account_id` present when the provider's token carries one.
 //! An access-only file omits `refresh`. Before each request the access token
-//! is checked. A mutable token within [`REFRESH_MARGIN`] of expiry is
+//! is checked. A token within [`REFRESH_MARGIN`] of expiry is first replaced
+//! by the file's token when that one expires later, which is how a renewal
+//! by another process is found. A mutable token still within the margin is
 //! refreshed at the provider's token endpoint. The file is then rewritten
 //! atomically with mode 0600, so a second process sees a whole token. When
 //! the rewrite fails, the renewed token stays in memory and the request
@@ -146,6 +148,16 @@ impl TokenFile {
     /// token is returned whether or not the file could be rewritten.
     pub async fn current(&self) -> Result<Token, AuthError> {
         let mut state = self.state.lock().await;
+        // Another process may have renewed the token since this one read
+        // the file, and its renewal may have retired the refresh token held
+        // here. A token in the file that expires later is that renewal. One
+        // that expires earlier predates a renewal this process could not
+        // write, and is ignored.
+        if state.needs_refresh(now_ms()) {
+            if let Some(newer) = read_token(&self.path).ok().filter(|file| file.expires > state.expires) {
+                *state = newer;
+            }
+        }
         if state.needs_refresh(now_ms()) {
             if state.refresh.is_empty() {
                 return Err(AuthError::Credential {
@@ -328,6 +340,47 @@ mod tests {
         let seen = server.requests();
         assert_eq!(seen.len(), 2);
         assert_eq!(seen[1].body, "grant_type=refresh_token&refresh_token=r2&client_id=cid");
+    }
+
+    /// docs/models.md "Where credentials live": before renewing, the token
+    /// file is read again, and a token there that expires later than the
+    /// one in memory replaces it. A token that expires earlier is ignored.
+    #[tokio::test]
+    async fn a_token_another_process_renewed_is_read_before_renewing() {
+        let reply = |access: &str, refresh: &str| {
+            let body = serde_json::json!({ "access_token": access, "refresh_token": refresh, "expires_in": 3600 });
+            Reply::full(200, &body.to_string())
+        };
+        let server = Server::start(vec![reply("a4", "r4"), reply("a5", "r5")]);
+        let path = scratch("token-shared.json");
+        let token = |access: &str, refresh: &str, expires: u64| Token {
+            access: access.into(),
+            refresh: refresh.into(),
+            expires,
+            account_id: None,
+        };
+        let bearer = |access: &str| vec![("authorization".to_string(), format!("Bearer {access}"))];
+        write_token(&path, &token("a1", "r1", 0)).unwrap();
+        let client = OAuthClient { token_url: format!("{}/oauth/token", server.base()), client_id: "cid".into() };
+        let file = TokenFile::open(&path, client, None).unwrap();
+
+        // Another process renewed the token: it is used and nothing is sent.
+        write_token(&path, &token("a2", "r2", now_ms() + 3_600_000)).unwrap();
+        assert_eq!(file.headers().await.unwrap(), bearer("a2"));
+        assert!(server.requests().is_empty());
+
+        // A later token in the file that itself needs renewal supplies the
+        // refresh token, because the provider may have retired the one in memory.
+        file.state.lock().await.expires = 1;
+        write_token(&path, &token("a3", "r3", 2)).unwrap();
+        assert_eq!(file.headers().await.unwrap(), bearer("a4"));
+        assert_eq!(server.requests()[0].body, "grant_type=refresh_token&refresh_token=r3&client_id=cid");
+
+        // An earlier token in the file does not replace the one in memory.
+        file.state.lock().await.expires = 1;
+        write_token(&path, &token("a0", "r0", 0)).unwrap();
+        assert_eq!(file.headers().await.unwrap(), bearer("a5"));
+        assert_eq!(server.requests()[1].body, "grant_type=refresh_token&refresh_token=r4&client_id=cid");
     }
 
     #[tokio::test]

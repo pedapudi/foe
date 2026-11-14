@@ -218,19 +218,25 @@ The convention file's shape depends on the credential kind.
 | Google credentials | `{ "credentials_file": "/abs/path", "project": "...", "location": "..." }`, pointing at the file Google's tools wrote |
 
 A file named explicitly by `api_key_file` may hold the bare key instead of
-the JSON object; trailing whitespace is removed. When an OAuth token file
-contains `refresh`, Foe renews the token at the provider's token endpoint after
-the access token enters the sixty-second refresh window. Foe rewrites the token
-file atomically with mode 0600. When the rewrite fails, the request proceeds
+the JSON object; trailing whitespace is removed.
+
+Foe checks an OAuth token before each request. When the access token enters
+the sixty-second refresh window, Foe reads the token file again. A token in
+the file that expires later than the token in memory replaces it, so a
+renewal that another process wrote is used rather than repeated. No lock
+coordinates the processes, so two that read the file before either writes
+both renew. When the token is still in the window and holds `refresh`, Foe
+renews it at the provider's token endpoint and rewrites the token file
+atomically with mode 0600. When the rewrite fails, the request proceeds
 with the renewed token, and the process holds that token in memory until it
 exits. The file then keeps the earlier token. A confined episode receives its
 credential file for reading alone, so its rewrite fails unless a write grant
 covers the directory of the file. A provider that retires a refresh token at
 each renewal refuses the earlier token afterwards, and `foe login` obtains a
-new one. When an OAuth token file omits `refresh`, Foe
-cannot renew the access token. This access-only credential works until the
-access token enters the same refresh window. Foe then returns an error before
-sending the model request. A Google access token is minted from the credentials
+new one. A token that omits `refresh` is access-only, and Foe cannot renew
+it. It works until its access token enters the refresh window and the file
+holds no later token. Foe then returns an error before sending the model
+request. A Google access token is minted from the credentials
 file and cached in memory until sixty seconds before it expires; nothing is
 written back.
 
