@@ -189,7 +189,7 @@ pub fn number(datas: Vec<EventData>) -> Vec<Event> {
 }
 
 /// A summarization request and its response, as the loop records them.
-fn summary_request(step: u32, header_seq: u64) -> EventData {
+pub fn summary_request(step: u32, header_seq: u64) -> EventData {
     EventData::ModelRequest(ModelRequest {
         step,
         attempt: 1,
@@ -201,7 +201,7 @@ fn summary_request(step: u32, header_seq: u64) -> EventData {
     })
 }
 
-fn summary_response(step: u32, summary: &str) -> EventData {
+pub fn summary_response(step: u32, summary: &str) -> EventData {
     let EventData::AssistantMessage(message) = assistant(step, summary, vec![], false) else { unreachable!() };
     EventData::AssistantMessage(AssistantMessage {
         request_id: format!("{SUMMARY_REQUEST_PREFIX}{step}"),
@@ -210,7 +210,7 @@ fn summary_response(step: u32, summary: &str) -> EventData {
     })
 }
 
-fn compaction_summary(
+pub fn compaction_summary(
     step: u32,
     first_kept_seq: u64,
     summary_request_seq: u64,

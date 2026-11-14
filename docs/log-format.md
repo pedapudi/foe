@@ -922,7 +922,9 @@ request only.
 
 The message list is the one `model/request.messages` records. A reader
 that recomputes it from the preceding events and finds a difference has found
-a runtime defect.
+a runtime defect. This holds for a request that seeding copied as well as
+for a live one, because rule 2 of [Seeding](#seeding) rewrites what a copied
+request records.
 
 ## Seeding
 
@@ -939,7 +941,30 @@ Given a source log and a boundary `seq` N:
    A spawned fork records the spawned child's declared contract, contract
    fingerprint, and effective runtime allowance. It copies the remaining fields.
 2. Copy source events with `seq` in `[1, N)`, renumbering `seq` to be
-   contiguous.
+   contiguous. The `episode/end` and the `seed/end` of the source are left
+   out, because the new log records its own outcome and its own boundary.
+   A field of a copied event that names another event by `seq` is rewritten
+   to the `seq` that event takes in the new log. These fields are
+   `model/request.header_seq`, each entry of `model/request.consumed`,
+   `compaction/summary.first_kept_seq`,
+   `compaction/summary.summary_request_seq`, and each entry of
+   `workflow/node-start.inputs`. Seeding fails before `seed/end` when such
+   a field names an event that is not copied. The error names the event
+   that holds the field and the `seq` the field names.
+   The two ends of a `covered` range, in `compaction/start` and in
+   `compaction/summary.state`, are rewritten in the same way, with one
+   difference. An end that names an event that is not copied moves inward
+   to the nearest copied event. The `seed/end` of the source can be the
+   last event of a summarized span, so a log that a writer produced can
+   hold such an end.
+   The continuation message states `covered`. A copied `model/request`
+   whose second message is the continuation message of the source summary
+   records the message that the rewritten summary renders. Every copied
+   request therefore equals the list that
+   [Derived messages](#derived-messages) computes from the new log.
+   Every other field is copied unchanged. Text that a model or a tool
+   produced is among those fields, and a `seq` that such text states
+   follows the numbering of the source log.
 3. Drop a copied `request/retry` that the boundary separated from the
    attempt it announces, since no copied event can close it.
 4. Close every obligation the copied events left open, in the order the

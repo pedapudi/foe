@@ -39,8 +39,9 @@ pub struct SeedContract {
 /// Returns the events written, renumbered.
 ///
 /// A copied `episode/end` or `seed/end` is dropped: the new log has its own
-/// outcome and its own single seed boundary. `seq` references inside copied
-/// `model/request` events are renumbered with the events they name.
+/// outcome and its own single seed boundary. Every field of a copied event
+/// that holds a `seq` is renumbered with the event it names, and seeding
+/// fails when that event is not copied.
 pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> Result<Vec<Event>, LogError> {
     let events = crate::fold::read_all(source)?;
     let Some(EventData::EpisodeStart(start)) = events.first().map(|e| &e.data) else {
@@ -72,6 +73,9 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
     let copied_span = &events[..until_seq as usize];
     let cut_off = crate::fold::open_obligations(copied_span);
     let mut renumber: BTreeMap<u64, u64> = BTreeMap::new();
+    // The continuation message of the latest copied summary: as the source
+    // rendered it, then as the renumbered state renders it.
+    let mut continuation: Option<[crate::Message; 2]> = None;
     for (index, event) in copied_span.iter().enumerate().skip(1) {
         let opens_retry = crate::obligations(&event.data)
             .into_iter()
@@ -87,23 +91,36 @@ pub fn seed(source: &Path, until_seq: u64, dest: &Path, header: SeedHeader) -> R
             _ if opens_retry => continue,
             data => data.clone(),
         };
-        let map = |s: &u64| renumber.get(s).copied().unwrap_or(*s);
-        match &mut data {
-            EventData::ModelRequest(request) => {
-                request.header_seq = map(&request.header_seq);
-                request.consumed = request.consumed.iter().map(map).collect();
+        let uncopied = |reference: u64| LogError::Uncopied { seq: event.seq, reference };
+        // A reference names one event, which the copy must hold. An end of
+        // a `covered` range is a position, which moves inward to the
+        // nearest copied event.
+        let (references, covered): (Vec<&mut u64>, _) = match &mut data {
+            EventData::ModelRequest(r) => {
+                // The continuation message states `covered`. A request that
+                // recorded the source rendering records the renumbered one,
+                // so that it equals the list the copied events derive.
+                if let Some([_, copy]) = continuation.as_ref().filter(|c| r.messages.get(1) == Some(&c[0])) {
+                    r.messages[1] = copy.clone();
+                }
+                (std::iter::once(&mut r.header_seq).chain(&mut r.consumed).collect(), None)
             }
-            EventData::CompactionStart(start) => {
-                start.covered =
-                    crate::Covered { first_seq: map(&start.covered.first_seq), last_seq: map(&start.covered.last_seq) };
+            EventData::CompactionStart(s) => (vec![], Some(&mut s.covered)),
+            EventData::CompactionSummary(s) => {
+                (vec![&mut s.first_kept_seq, &mut s.summary_request_seq], Some(&mut s.state.covered))
             }
-            EventData::CompactionSummary(summary) => {
-                summary.first_kept_seq = map(&summary.first_kept_seq);
-                summary.summary_request_seq = map(&summary.summary_request_seq);
-                let c = summary.state.covered;
-                summary.state.covered = crate::Covered { first_seq: map(&c.first_seq), last_seq: map(&c.last_seq) };
-            }
-            _ => {}
+            EventData::WorkflowNodeStart(n) => (n.inputs.iter_mut().collect(), None),
+            _ => (vec![], None),
+        };
+        for reference in references {
+            *reference = *renumber.get(reference).ok_or_else(|| uncopied(*reference))?;
+        }
+        if let Some(c) = covered {
+            c.first_seq = *renumber.range(c.first_seq..).next().ok_or_else(|| uncopied(c.first_seq))?.1;
+            c.last_seq = *renumber.range(..=c.last_seq).next_back().ok_or_else(|| uncopied(c.last_seq))?.1;
+        }
+        if let (EventData::CompactionSummary(source), EventData::CompactionSummary(copy)) = (&event.data, &data) {
+            continuation = Some([source, copy].map(|s| crate::fold::user_text(&crate::fold::render_continuation(s))));
         }
         let copied = writer.append_at(data, event.time)?;
         renumber.insert(event.seq, copied.seq);

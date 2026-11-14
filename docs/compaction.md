@@ -144,7 +144,10 @@ After the latest `compaction/summary`, the message list of a request is:
 The summarization request and its response contribute nothing to any
 derivation; they are recognized by the `cmp_` prefix. Each `model/request`
 records the list it sent, so a reader recomputes the list from the events
-and compares.
+and compares. A log seeded from another log renumbers `covered` with the
+events it copies. Each copied request then records the continuation message
+that the renumbered state renders, as
+[log-format.md](log-format.md#seeding) specifies.
 
 The continuation message has one rendering, which the runtime, the viewer,
 and any reader apply identically. A label is followed by a colon, then by

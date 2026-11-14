@@ -1019,6 +1019,8 @@ pub enum LogError {
     UnsupportedVersion { found: u64, supported: u32 },
     #[error("rendering archive event {seq} at {path}: {rule}")]
     Archive { seq: u64, path: String, rule: String },
+    #[error("event {seq}: names event {reference}, which seeding does not copy")]
+    Uncopied { seq: u64, reference: u64 },
 }
 
 /// A fold of the log into the state a reader needs. See [`fold`].

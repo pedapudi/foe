@@ -231,7 +231,7 @@ pub fn derive_span(events: &[Event], from_seq: u64, upto_seq: u64, consumed_inbo
     messages
 }
 
-fn user_text(text: &str) -> Message {
+pub(crate) fn user_text(text: &str) -> Message {
     Message::User { content: vec![ContentBlock::Text { text: text.to_string() }] }
 }
 
