@@ -130,7 +130,11 @@ impl Spawner for BudgetedSpawner {
             let mut settled = run.settle().await;
             let end = EventData::SpawnEnd { child_id: child_id.clone(), outcome: settled.outcome.clone() };
             let release = EventData::BudgetRelease { child_id: child_id.clone(), spent: settled.spent };
-            for event in [end, release] {
+            // The teardown closes a child it stopped waiting for. The log
+            // refuses a second closing event and a refused append fails the
+            // log, so a child that settles after that appends nothing.
+            let open = log.with_state(|state, _| state.open.contains(&(foe_log::Obligation::Child, child_id.clone())));
+            for event in [end, release].into_iter().filter(|_| open) {
                 if let Err(e) = log.append(event) {
                     settled.outcome = foe_log::Outcome::Failed { error: e.to_string() };
                     break;

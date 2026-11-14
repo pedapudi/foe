@@ -3,7 +3,7 @@ use crate::exec::tests::scratch;
 use crate::process_boundary::tests::{remove_test_boundary, test_boundary};
 use crate::spawn::tests::{
     await_gone, fake_child, named_processes, parent_config, process_spawner, script, unresponsive_child, wait_for,
-    waiting_child, Lines, Seen,
+    waiting_child, Lines, Seen, WAITING_CHILD,
 };
 use crate::spawn::ChildObserver;
 use foe_log::{EpisodeStart, Event, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
@@ -420,4 +420,43 @@ async fn a_child_that_ignores_cancel_is_gone_when_its_parent_episode_ends() {
     let EventData::SpawnEnd { outcome: Outcome::Failed { error }, .. } = &log.events()[3].data else { panic!() };
     assert!(error.contains("exited without episode/end"), "the launcher settled the child: {error}");
     foe_log::fold::fold(&log.events()).expect("the log is well-formed");
+}
+
+/// A stand-in child that reads past the `cancel` line and ends only when
+/// its parent writes it a second line.
+const SLOW_CHILD: &str = "read -r cancel\nread -r line\n";
+
+/// docs/log-format.md "Open obligations", rule 2: a `spawn/end` closes its
+/// child once. The teardown stops waiting for a child after ten seconds and
+/// closes it with the closing events. A child that settles later appends
+/// no second `spawn/end` or `budget/release`. The log would refuse either
+/// one, and a refused append fails the log for every later writer. The ten
+/// seconds pass on the virtual clock.
+#[tokio::test(start_paused = true)]
+async fn a_child_that_settles_after_the_teardown_closed_it_appends_nothing() {
+    let dir = scratch("wiring", "late-settlement");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config = parent_config();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let router = Arc::new(Router::new());
+    let uplink = Arc::new(Lines::default());
+    let body = WAITING_CHILD.replace("read -r line\n", SLOW_CHILD);
+    let inner =
+        process_spawner("ep_root", dir.to_path_buf(), config, uplink, router.clone(), Arc::new(Seen::default()))
+            .with_launcher(script(&dir, "slow-foe.sh", &body));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+    let handle = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() })).unwrap();
+    wait_for(|| router.has_child(&handle.child_id).then_some(()));
+
+    crate::loop_::settle(&log, &pool, Some(&router), None).await.unwrap();
+    log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
+    Router::route(&router, &handle.child_id, "end").unwrap();
+    let settled = handle.run.settle().await;
+    assert_eq!(settled.outcome, Outcome::Failed { error: "cancelled".into() }, "the child's own outcome is kept");
+    assert_eq!(lock(&pool).active_children(), 0, "the late settlement returned the reservation to the pool");
+    log.check().expect("the late settlement left the log writable");
+    assert_eq!(types(&log)[3..], ["budget/release", "spawn/end", "episode/end"]);
+    let EventData::SpawnEnd { outcome: Outcome::Failed { error }, .. } = &log.events()[4].data else { panic!() };
+    assert_eq!(error, foe_log::seed::ABANDONED, "the teardown closed the child");
 }

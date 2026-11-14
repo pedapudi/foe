@@ -319,7 +319,9 @@ An episode sends `cancel` to every child still running when it ends,
 whatever its outcome, and waits up to ten seconds for those children to
 settle before writing its own `episode/end`. A child still unsettled after
 that wait is recorded as failed and its whole reservation as spent, by the
-closing events in [log-format.md](log-format.md#seeding). On a host with
+closing events in [log-format.md](log-format.md#seeding). A child that
+settles after that wait adds no event to its parent's log, which already
+holds the child's `spawn/end` and `budget/release`. On a host with
 delegated cgroup v2, the parent also empties
 the child's recursive process boundary before it publishes settlement. A
 detached descendant therefore cannot outlive the child reservation.
