@@ -204,3 +204,44 @@ fn writer_states_the_format_version_on_the_first_event_only() {
     assert!(first.contains("\"version\":3"), "{first}");
     assert!(!second.contains("version"), "{second}");
 }
+
+/// docs/log-format.md "Envelope": every `data` value round-trips
+/// byte-for-byte. A float is a `data` value, so the writer records every
+/// finite float and a reader recovers the same bits. The named floats are
+/// ones an inexact decimal parser returns as a neighbouring float. The sweep
+/// is deterministic and covers every exponent and the range `[0, 1000)`.
+#[test]
+fn writer_records_every_finite_float_and_a_reader_recovers_its_bits() {
+    let mut floats = vec![985.6906946328695, 1.07e-75, 0.1 + 0.2, -0.0, 5e-324, f64::MIN_POSITIVE, f64::MAX, f64::MIN];
+    let mut word = 0x9E37_79B9_7F4A_7C15_u64;
+    while floats.len() < 4000 {
+        word ^= word << 13;
+        word ^= word >> 7;
+        word ^= word << 17;
+        if f64::from_bits(word).is_finite() {
+            floats.extend([f64::from_bits(word), (word >> 11) as f64 / (1_u64 << 53) as f64 * 1000.0]);
+        }
+    }
+    let bits = |value: &serde_json::Value| -> Vec<u64> {
+        value.as_array().unwrap().iter().map(|float| float.as_f64().unwrap().to_bits()).collect()
+    };
+    let expected: Vec<u64> = floats.iter().map(|float| float.to_bits()).collect();
+    let dir = tmp("floats");
+    let mut writer = Writer::create(&dir, None).unwrap();
+    let mut start = fx::start("ep");
+    start.contract = serde_json::json!(floats);
+    writer.append(EventData::EpisodeStart(start)).unwrap();
+    writer.append(fx::inbox(InboxSource::Task, "t")).unwrap();
+    writer.append(fx::header()).unwrap();
+    writer.append(fx::request(1, 2, vec![1], vec![])).unwrap();
+    writer.append(fx::assistant(1, "", vec![fx::call("tc_1")], false)).unwrap();
+    let EventData::ToolResult(mut result) = fx::result(1, "tc_1", "x") else { unreachable!() };
+    result.value = serde_json::json!(floats);
+    let written = writer.append(EventData::ToolResult(result)).unwrap();
+    let events = read_all(&dir).unwrap();
+    assert_eq!(events[5], written);
+    let EventData::ToolResult(read) = &events[5].data else { panic!("event 5 is the tool result") };
+    assert_eq!(bits(&read.value), expected);
+    let folded = crate::fold::fold(&events).unwrap();
+    assert_eq!(bits(&folded.start.unwrap().contract), expected);
+}

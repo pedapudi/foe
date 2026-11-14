@@ -23,7 +23,9 @@ repository = "https://github.com/pedapudi/foe"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# The log writer refuses an event that parses back to a different value, and
+# the default float parser returns a neighbouring float for some decimals.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "process", "sync", "time", "fs"] }
 sha2 = "0.10"
