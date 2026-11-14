@@ -614,7 +614,7 @@ fn a_descendant_executable_starts_inside_the_domain_the_ancestor_reserved() {
                 std::sync::Arc::new(s),
                 outer,
                 dir.join("spill"),
-                std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                tokio::sync::watch::channel(None).1,
             );
             crate::Executor::run(
                 &executor,

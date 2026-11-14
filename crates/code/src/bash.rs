@@ -76,7 +76,7 @@ impl Tool for Bash {
         if a.command.contains('\0') {
             return ToolValue::invalid(format!("bash: {SHELL_COMMAND_NUL_ERROR}"));
         }
-        let Some(executor) = ctx.executor.as_ref() else {
+        let Some(executor) = ctx.executor.clone() else {
             return ToolValue::unavailable("bash: dispatched without an executor handle");
         };
         let Some(cwd) = ctx.reader.as_ref().and_then(|r| r.roots().first().cloned()) else {
@@ -97,7 +97,7 @@ impl Tool for Bash {
             policy: None,
             pass_fds: Vec::new(),
         };
-        let res = match executor.run(req) {
+        let res = match foe_core::registry::run_blocking(executor, req).await {
             Ok(r) => r,
             Err(e) => return ToolValue::from_cap_error("bash", e),
         };

@@ -284,6 +284,67 @@ fn required_sandbox_runs_python_through_bash() {
     assert!(result["data"]["rendered"].as_str().unwrap().contains("42"), "{result}");
 }
 
+/// docs/protocol.md "cancel": a `cancel` line that arrives while a command
+/// runs ends the command, records its call as interrupted with a synthetic
+/// result, and ends the episode `blocked` with code `cancelled` and exit
+/// code 2. The command would otherwise run for 100 seconds.
+#[test]
+fn a_cancel_line_ends_a_running_command_and_the_episode_ends_blocked() {
+    let dir = scratch("cancel-running-command");
+    let config = config(&dir, |c| {
+        c["tools"] = json!(["bash"]);
+        c["grants"] = json!({ "read": [dir], "write": [dir], "execute": ["/bin/sleep"] });
+    });
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let log_parent = dir.join("log");
+    let args = [OsStr::new("--config"), config_path.as_os_str(), OsStr::new("--log-dir"), log_parent.as_os_str()];
+    let mut child = hosted(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().unwrap();
+    let mut answers = child.stdin.take().unwrap();
+    let mut events = Vec::new();
+    let mut cancelled = None;
+    for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+        let event: Value = serde_json::from_str(&line.unwrap()).unwrap();
+        if event["type"] == "model/request" {
+            // The command reports its own process identifier before it
+            // sleeps, so the cancel is sent only once the command is running.
+            let mut chunks = call("tc_sleep", "bash", r#"{"command":"echo $$ > started; exec /bin/sleep 100"}"#);
+            chunks.push(done("tool"));
+            for chunk in chunks {
+                let line = json!({ "type": "model/chunk", "request_id": event["data"]["request_id"], "chunk": chunk });
+                writeln!(answers, "{line}").unwrap();
+            }
+            let started = dir.join("started");
+            while std::fs::read_to_string(&started).map_or(true, |pid| !pid.ends_with('\n')) {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            writeln!(answers, "{}", json!({ "type": "cancel" })).unwrap();
+            cancelled = Some(std::time::Instant::now());
+        }
+        let ended = event["type"] == "episode/end";
+        events.push(event);
+        if ended {
+            break;
+        }
+    }
+    let elapsed = cancelled.unwrap().elapsed();
+    assert!(elapsed < std::time::Duration::from_secs(5), "the episode ended {elapsed:?} after the cancel");
+    assert_eq!(child.wait().unwrap().code(), Some(2));
+    let end = &events.last().unwrap()["data"]["outcome"];
+    assert_eq!(
+        (&end["kind"], &end["code"], &end["message"]),
+        (&json!("blocked"), &json!("cancelled"), &json!("stopped by the caller"))
+    );
+    let result = events.iter().find(|event| event["type"] == "tool/result").unwrap();
+    assert_eq!((&result["data"]["synthetic"], &result["data"]["is_error"]), (&json!(true), &json!(true)), "{result}");
+    let pid = std::fs::read_to_string(dir.join("started")).unwrap();
+    let gone = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        !Path::new("/proc").join(pid.trim()).exists()
+    });
+    assert!(gone, "the command's process {pid} was ended");
+}
+
 fn types(events: &[Value]) -> Vec<&str> {
     events.iter().map(|e| e["type"].as_str().unwrap()).collect()
 }

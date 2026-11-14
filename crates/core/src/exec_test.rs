@@ -10,12 +10,16 @@ pub(crate) fn scratch(module: &str, name: &str) -> ScratchDir {
     crate::test_util::tmp(&format!("{module}-{name}"))
 }
 
-fn executor(name: &str, read: Vec<PathBuf>, exec: Vec<PathBuf>) -> (LocalExecutor, ScratchDir, Arc<AtomicBool>) {
+fn executor(
+    name: &str,
+    read: Vec<PathBuf>,
+    exec: Vec<PathBuf>,
+) -> (LocalExecutor, ScratchDir, watch::Sender<Option<String>>) {
     let dir = scratch("exec", name);
-    let cancel = Arc::new(AtomicBool::new(false));
+    let (stop, stopped) = watch::channel(None);
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
     let policy = Policy { read, delegated_exec: exec, ..Policy::default() };
-    (LocalExecutor::new(sandbox, policy, dir.join("spill"), cancel.clone()), dir, cancel)
+    (LocalExecutor::new(sandbox, policy, dir.join("spill"), stopped), dir, stop)
 }
 
 fn request(contract: &str, args: &[&str], cwd: &Path) -> ExecRequest {
@@ -56,8 +60,7 @@ fn configured_executor(
     let executables = crate::captured_executable::CapturedExecutableTree::materialize(&contract, dir).unwrap();
     let policy = Policy::for_episode(&contract, &executables, dir).unwrap();
     let sandbox = Arc::new(Sandbox::new(mode).unwrap());
-    let executor =
-        LocalExecutor::new(sandbox, policy, dir.join(format!("spill-{name}")), Arc::new(AtomicBool::new(false)));
+    let executor = LocalExecutor::new(sandbox, policy, dir.join(format!("spill-{name}")), watch::channel(None).1);
     let mut req = request(source.to_str().unwrap(), &[], dir);
     req.captured_executable = Some(executables.tools["configured"].clone());
     (executor, req, executables)
@@ -130,7 +133,7 @@ fn a_configured_multicall_executable_keeps_its_configured_name() {
         Arc::new(Sandbox::new(SandboxMode::Required).unwrap()),
         policy,
         dir.join("spill"),
-        Arc::new(AtomicBool::new(false)),
+        watch::channel(None).1,
     );
     let mut req = request(contract.tool_defs["configured"].exec.to_str().unwrap(), &["committed"], &dir);
     req.captured_executable = Some(executable);
@@ -298,17 +301,19 @@ fn timeout_kills_the_whole_group() {
     assert!(gone, "the backgrounded sleep was killed with the group");
 }
 
+/// docs/protocol.md "cancel" and docs/design.md "Termination": the stop
+/// signal a `cancel` line raises ends a running command. The executor reads
+/// the signal the loop reads, so no second signal has to be raised for it.
 #[test]
-fn cancellation_ends_a_running_process() {
-    let (ex, dir, cancel) = executor("cancel", vec![], vec!["/bin/sleep".into()]);
-    let flag = cancel.clone();
+fn the_stop_signal_ends_a_running_process() {
+    let (ex, dir, stop) = executor("cancel", vec![], vec!["/bin/sleep".into()]);
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(200));
-        flag.store(true, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(100));
+        stop.send(Some(crate::protocol::CANCELLED.into())).unwrap();
     });
     let out = ex.run(request("/bin/sleep", &["30"], &dir)).unwrap();
     assert!(out.timed_out);
-    assert!(out.duration < Duration::from_secs(5));
+    assert!(out.duration < Duration::from_secs(1), "{:?}", out.duration);
 }
 
 #[test]
@@ -433,7 +438,7 @@ fn granted_command_directories_name_a_directory_per_grant() {
     let grants = vec![bin.join("rustc"), tools.clone(), bin.join("cargo")];
     let sandbox = Arc::new(Sandbox::new(SandboxMode::BestEffort).unwrap());
     let policy = Policy { delegated_exec: grants, ..Policy::default() };
-    let executor = LocalExecutor::new(sandbox, policy, dir.join("spill"), Arc::new(AtomicBool::new(false)));
+    let executor = LocalExecutor::new(sandbox, policy, dir.join("spill"), watch::channel(None).1);
     let mut expected = vec![bin, tools];
     expected.sort();
     assert_eq!(executor.granted_command_directories(), expected);

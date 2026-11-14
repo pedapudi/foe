@@ -21,9 +21,10 @@ use std::os::fd::AsFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::sync::watch;
 
 /// Bytes of one output stream kept in the result.
 pub const CAPTURE_LIMIT: usize = 1 << 20;
@@ -55,15 +56,17 @@ pub struct LocalExecutor {
     sandbox: Arc<Sandbox>,
     policy: Policy,
     spill_dir: PathBuf,
-    cancel: Arc<AtomicBool>,
+    stop: watch::Receiver<Option<String>>,
     calls: AtomicU64,
 }
 
 impl LocalExecutor {
     /// `policy` is the episode's own policy; every request runs under a
-    /// narrowing of it. Setting `cancel` ends every running process group.
-    pub fn new(sandbox: Arc<Sandbox>, policy: Policy, spill_dir: PathBuf, cancel: Arc<AtomicBool>) -> Self {
-        LocalExecutor { sandbox, policy, spill_dir, cancel, calls: AtomicU64::new(0) }
+    /// narrowing of it. `stop` is the episode's stop signal, which the loop
+    /// also watches. Once it carries a reason, every running process group
+    /// is ended.
+    pub fn new(sandbox: Arc<Sandbox>, policy: Policy, spill: PathBuf, stop: watch::Receiver<Option<String>>) -> Self {
+        LocalExecutor { sandbox, policy, spill_dir: spill, stop, calls: AtomicU64::new(0) }
     }
 }
 
@@ -143,7 +146,7 @@ impl Executor for LocalExecutor {
             if let Some(status) = child.try_wait()? {
                 break status;
             }
-            if Instant::now() >= deadline || self.cancel.load(Ordering::SeqCst) {
+            if Instant::now() >= deadline || self.stop.borrow().is_some() {
                 timed_out = true;
                 end_group(group, &mut child)?;
                 break child.wait()?;

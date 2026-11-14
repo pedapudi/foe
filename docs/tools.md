@@ -496,7 +496,10 @@ literal NUL.
 
 The executor owns the process. On timeout it kills the whole process group,
 so a command that backgrounded a child does not leave it running. The result
-then has `timed_out` true and `exit_code` null.
+then has `timed_out` true and `exit_code` null. The stop signal, which
+docs/protocol.md `cancel` describes, ends a running command the same way.
+The call then receives the synthetic result of an interrupted call in place
+of the command's own.
 
 The rendering opens with the exit status: the exit code and the duration,
 or a statement that the command timed out or was killed by a signal. The

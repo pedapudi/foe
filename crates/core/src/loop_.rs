@@ -685,10 +685,14 @@ impl Episode {
                 }
             }
         };
+        // The stop signal is polled first. It also ends every running
+        // command, and a call ended that way is recorded as interrupted
+        // rather than with the result the ended command left.
         let values = tokio::select! {
+            biased;
+            reason = wait_stop(self.p.stop.clone()) => return Ok(Err(stopped(reason))),
             values = run => values,
             e = posting => return Err(e.into()),
-            reason = wait_stop(self.p.stop.clone()) => return Ok(Err(stopped(reason))),
             _ = until(deadline) => return Ok(Err(Outcome::Exhausted { limit: ExhaustedLimit::Seconds })),
         };
         // The turn's results are bounded together, before any is appended,

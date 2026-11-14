@@ -201,6 +201,32 @@ async fn literal_nul_commands_explain_the_valid_shell_spelling() {
     assert_eq!(exec.last().unwrap().args, ["-c", "printf '\\0'"]);
 }
 
+/// Holds the thread that runs it, as a command that has not exited does.
+struct SlowExecutor;
+
+impl foe_core::Executor for SlowExecutor {
+    fn run(&self, _req: foe_core::ExecRequest) -> Result<ExecResult, foe_core::CapError> {
+        std::thread::sleep(Duration::from_millis(200));
+        Ok(result(0, "", ""))
+    }
+}
+
+/// docs/design.md "Termination": every wait the runtime performs is
+/// cancellable. The loop observes the stop signal on the thread that polls
+/// the call, so a running command leaves that thread free. This test runs
+/// on one thread, and a timer on it fires while the command still runs.
+#[tokio::test]
+async fn a_running_command_leaves_the_calling_thread_free() {
+    let fx = Fixture::new();
+    let c = ctx_with_executor(&fx, Arc::new(SlowExecutor));
+    let bash = Bash::new();
+    tokio::select! {
+        biased;
+        _ = bash.call(json!({"command": "true"}), &c) => panic!("the command held the thread until it ended"),
+        _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+    }
+}
+
 #[tokio::test]
 async fn a_real_non_zero_exit_is_a_result() {
     let fx = Fixture::new();

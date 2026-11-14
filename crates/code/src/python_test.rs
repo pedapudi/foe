@@ -5,7 +5,6 @@ use foe_core::log::SandboxMode;
 use foe_core::sandbox::Sandbox;
 use foe_core::RuntimeError;
 use std::collections::VecDeque;
-use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
 /// Records every inner call and answers from a canned queue; an ordinary
@@ -33,8 +32,8 @@ fn interpreter_present() -> bool {
 }
 
 async fn run_with(fx: &Fixture, sandbox: Sandbox, composer: Arc<FakeComposer>, args: Value) -> ToolValue {
-    let cancel = Arc::new(AtomicBool::new(false));
-    let executor = Arc::new(LocalExecutor::new(Arc::new(sandbox), Policy::default(), fx.root().join("spill"), cancel));
+    let stop = tokio::sync::watch::channel(None).1;
+    let executor = Arc::new(LocalExecutor::new(Arc::new(sandbox), Policy::default(), fx.root().join("spill"), stop));
     let mut ctx = ctx_with_executor(fx, executor);
     ctx.composer = Some(composer);
     Python::new().call(args, &ctx).await
@@ -192,9 +191,9 @@ async fn the_timeout_kills_the_interpreter() {
 #[tokio::test]
 async fn a_missing_interpreter_is_an_error_naming_the_path() {
     let fx = Fixture::new();
-    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = tokio::sync::watch::channel(None).1;
     let sandbox = Arc::new(Sandbox::new(SandboxMode::Off).unwrap());
-    let executor = Arc::new(LocalExecutor::new(sandbox, Policy::default(), fx.root().join("spill"), cancel));
+    let executor = Arc::new(LocalExecutor::new(sandbox, Policy::default(), fx.root().join("spill"), stop));
     let mut ctx = ctx_with_executor(&fx, executor);
     ctx.composer = Some(Arc::new(FakeComposer::default()));
     let mut tool = Python::new();
@@ -215,9 +214,9 @@ async fn the_source_bound_is_checked_before_the_interpreter_starts() {
 #[tokio::test]
 async fn a_dispatch_without_a_composer_is_an_error() {
     let fx = Fixture::new();
-    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = tokio::sync::watch::channel(None).1;
     let sandbox = Arc::new(Sandbox::new(SandboxMode::Off).unwrap());
-    let executor = Arc::new(LocalExecutor::new(sandbox, Policy::default(), fx.root().join("spill"), cancel));
+    let executor = Arc::new(LocalExecutor::new(sandbox, Policy::default(), fx.root().join("spill"), stop));
     let ctx = ctx_with_executor(&fx, executor);
     let value = Python::new().call(json!({ "source": "def main():\n    return 0\n" }), &ctx).await;
     assert!(value.is_error);
@@ -287,9 +286,9 @@ mod episode {
         let dir = root.join("episode");
         std::fs::create_dir_all(&dir).unwrap();
         let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
-        let cancel = Arc::new(AtomicBool::new(false));
+        let stop = tokio::sync::watch::channel(None).1;
         let sandbox = Arc::new(Sandbox::new(SandboxMode::Off).unwrap());
-        let executor = LocalExecutor::new(sandbox, Policy::default(), dir.join("spill"), cancel);
+        let executor = LocalExecutor::new(sandbox, Policy::default(), dir.join("spill"), stop);
         let handles = Handles {
             reader: Some(Arc::new(RootReader::new(vec![root.clone()]).unwrap())),
             executor: Some(Arc::new(executor)),

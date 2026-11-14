@@ -380,7 +380,10 @@ impl ExecTool {
     }
 }
 
-async fn run_blocking(executor: Arc<dyn Executor>, req: ExecRequest) -> Result<ExecResult, crate::CapError> {
+/// Runs one request on a thread of its own. A command blocks the thread
+/// that runs it until the command ends, and the thread that polls a tool
+/// call must stay free to observe the stop signal and the deadline.
+pub async fn run_blocking(executor: Arc<dyn Executor>, req: ExecRequest) -> Result<ExecResult, crate::CapError> {
     tokio::task::spawn_blocking(move || executor.run(req))
         .await
         .map_err(|e| crate::CapError::Invalid(format!("executor task failed: {e}")))?

@@ -35,7 +35,6 @@ use foe_workflow::WorkflowParams;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::signal::unix::{signal, SignalKind};
@@ -1149,7 +1148,6 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let log = Arc::new(Log::create_or_open(&log_dir, mirror).map_err(|e| format!("{}: {e}", log_dir.display()))?);
     let router = Arc::new(Router::new());
     let (protocol, stop) = Host::new(id.clone(), log.clone(), Some(router.clone()));
-    let cancel = Arc::new(AtomicBool::new(false));
     let transport = transport.unwrap_or_else(|| protocol.transport());
     let pool = Arc::new(Mutex::new(Pool::new(limits.clone())));
     let team = Arc::new(Team::new(id.clone(), log.clone(), Arc::new(protocol.clone()), router.clone(), pool.clone()));
@@ -1169,7 +1167,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     .with_home(foe_transport::paths::home_for_child());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
-    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), cancel.clone());
+    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), stop.clone());
     let sessions = Arc::new(
         LocalSessions::new(
             sandbox.clone(),
@@ -1206,14 +1204,13 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
         // The handler is installed here, before any event is written, so no
         // SIGTERM after the episode starts ends the process by default action.
         let mut terminated = signal(SignalKind::terminate()).map_err(|e| format!("SIGTERM handler: {e}"))?;
-        let (protocol, router, cancel, log) = (protocol.clone(), router.clone(), cancel.clone(), log.clone());
+        let (protocol, router, log) = (protocol.clone(), router.clone(), log.clone());
         tokio::spawn(async move {
             let reason = tokio::select! {
                 _ = tokio::signal::ctrl_c() => "interrupted by SIGINT".to_string(),
                 _ = terminated.recv() => "interrupted by SIGTERM".to_string(),
                 error = log.failed() => error.to_string(),
             };
-            cancel.store(true, Ordering::SeqCst);
             router.cancel_all();
             protocol.stop(&reason);
         });

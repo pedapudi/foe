@@ -188,7 +188,8 @@ dropped.
 
 ### `cancel`
 
-Stops the episode. foe aborts any outstanding request, closes every
+Stops the episode. foe aborts any outstanding request, ends every command
+a tool call is running together with its process group, closes every
 obligation its log left open, writes `episode/end` with outcome `blocked`,
 code `cancelled`, and message `stopped by the caller`, and exits with
 code 2. Closing the obligations records started tool calls as interrupted
