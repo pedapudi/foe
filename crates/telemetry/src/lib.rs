@@ -101,8 +101,13 @@ pub fn emission(events: &[Event], log_dir: &str, key: Vec<u8>) -> Result<Emissio
             number("foe.tool.seq", call.seq),
             number("foe.tool.duration_ms", call.duration_ms),
             Attribute { key: "foe.tool.is_error".into(), value: AnyValue::BoolValue(call.is_error) },
-            text("foe.tool.subject", clean(format!("tool/result.subject seq {}", call.seq), &call.subject)),
         ];
+        // The subject of a call that did not fail can be text the model
+        // wrote, such as a `bash` command line, so it is neither scrubbed
+        // nor emitted. A failing call's subject is the tool's error line.
+        let subject =
+            || text("foe.tool.subject", clean(format!("tool/result.subject seq {}", call.seq), &call.subject));
+        attributes.extend(call.is_error.then(subject));
         attributes.extend(call.permission_denial.map(|value| text("foe.tool.permission_denial", value)));
         spans.push(span(&trace, id, root.clone(), name, call.start_ms, call.end_ms).with(attributes, !call.is_error));
     }

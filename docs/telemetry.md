@@ -141,14 +141,26 @@ labels. Free text is limited to two short fields. A tool writes the first.
 The second is an error line for a failed episode and, for a blocked
 episode, the message the model passed to `block`:
 
-- `tool/result.subject`, the one line a tool writes naming what it acted on
-  and what came of it, which on a failure is the error line.
+- `tool/result.subject` of a tool call that failed. A tool writes one line
+  naming what it acted on and what came of it, and on a failure that line
+  is the error the tool reported.
 - The outcome's detail, which exists only for a blocked episode's message
   and a failed episode's error.
 
+The subject of a tool call that did not fail is never emitted. It can
+repeat what the model wrote: the subject of a `bash` call that ran, whatever
+its exit status, carries the command line. A `bash` call fails when its
+arguments are refused or the process could not start. Its subject is then
+the error that says why, and that error does not repeat the command line.
+
 A completed episode's value is the report the model wrote, and it is a
 result body, so it is never emitted. Neither is the task text, the system
-prompt, any model output, any tool result body, or any file content.
+prompt, the text of any model response, any tool result body, or any file
+content. The arguments of a tool call are not emitted either; the
+classifier reduces them to the evidence tokens described above. Two things
+the model wrote can still reach the payload, both through the two fields
+above: the message of a blocked episode, and a value that a failing tool
+quotes from its arguments in its error line, such as a path or a pattern.
 
 Six layers run over those two fields, in order.
 
@@ -314,7 +326,7 @@ A field that answers no question is not emitted. This table is the gate.
 | `foe.tool.duration_ms` | which tools dominate wall-clock time |
 | `foe.tool.is_error` | which tools fail most |
 | `foe.tool.permission_denial` | which tool calls encountered an enforced or possible permission denial |
-| `foe.tool.subject` | what a failing tool acted on |
+| `foe.tool.subject` | what a failing tool acted on; absent for a call that did not fail |
 
 Input, output, and cache-read tokens are separate throughout, following the
 repository's standing convention that a single token total hides the three
@@ -393,9 +405,9 @@ line to a collector's OTLP/HTTP receiver at `/v1/traces` with
 - Pseudonyms are stable within one capture directory. Emitting the same
   episode to two directories yields two different sets of pseudonyms.
 - Scrubbing catches values the log names and values with a recognizable
-  format. A personal name typed into a command line is neither, so
-  `git config user.name 'Ada Lovelace'` reaches the capture with the name
-  intact while the email address beside it is replaced. Closing that gap
+  format. A personal name in an error line is neither, so the error
+  `no such user: Ada Lovelace <ada@example.org>` reaches the capture with
+  the name intact while the email address in it is replaced. Closing that gap
   needs a name lexicon, which this version does not carry.
 - A tool subject is already truncated by the tool that wrote it, so a long
   error line reaches telemetry cut short.

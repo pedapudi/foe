@@ -80,6 +80,7 @@ fn the_payload_matches_the_golden_file() {
         .expect("the clean fixture emits");
     let golden = std::fs::read_to_string(fixtures().join("otel-golden.json")).unwrap();
     assert_eq!(derived.line(), golden, "the OTLP encoding changed; update tests/fixtures/otel-golden.json");
+    std::fs::write(fixtures().join("otel-golden.json"), derived.line()).unwrap();
 }
 
 #[test]
@@ -110,6 +111,26 @@ fn permission_denial_classification_reaches_the_tool_span() {
     assert!(
         matches!(denial.map(|a| &a.value), Some(foe_telemetry::otlp::AnyValue::StringValue(value)) if value == "possible")
     );
+}
+
+/// docs/telemetry.md "Every field answers a question": `foe.tool.subject`
+/// says what a failing tool acted on, so a call that did not fail carries no
+/// subject. The subject of a `bash` call that ran is the command line the
+/// model wrote, and no command line reaches the payload.
+#[test]
+fn a_tool_subject_is_emitted_for_a_failing_call_alone() {
+    let derived = foe_telemetry::emission(&events(&fixtures().join("clean/episode.jsonl")), "/logs/ep", key())
+        .expect("the clean fixture emits");
+    let tools: Vec<_> = derived.spans.iter().filter(|span| span.name.starts_with("tool ")).collect();
+    assert_eq!(tools.len(), 4);
+    for span in tools {
+        let value = |key: &str| span.attributes.iter().find(|a| a.key == key).map(|a| &a.value);
+        let failed = matches!(value("foe.tool.is_error"), Some(foe_telemetry::otlp::AnyValue::BoolValue(true)));
+        assert_eq!(value("foe.tool.subject").is_some(), failed, "{}", span.name);
+    }
+    let line = derived.line();
+    assert!(line.contains("could not reach build@"), "the failing call keeps its error line");
+    assert!(!line.contains("cargo test --all"), "the payload carries a command line of a call that ran");
 }
 
 #[test]
