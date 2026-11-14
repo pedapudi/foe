@@ -284,7 +284,7 @@ fn a_task_session_starts_in_the_task_boundary() {
     let child = boundary.child("settling-child").unwrap();
     let ready = dir.join("child-ready");
     let argv = ["/bin/sh".into(), "-c".into(), format!("echo ready > '{}'; sleep 30", ready.display()).into()];
-    let mut episode_process = command_in(&child.process_procs(), &argv).spawn().unwrap();
+    let mut episode_process = command_in(Some(&child.process_procs()), &argv).spawn().unwrap();
     for _ in 0..100_000 {
         if ready.is_file() {
             break;

@@ -34,7 +34,7 @@ use std::ffi::OsString;
 use std::io::{BufRead, BufReader, IsTerminal, PipeWriter, Write};
 use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
@@ -473,14 +473,7 @@ impl Spawner for ProcessSpawner {
             OsString::from("--log-dir"),
             dir.as_os_str().to_owned(),
         ]);
-        let mut cmd = match &boundary {
-            Some(boundary) => command_in(&boundary.process_procs(), &argv),
-            None => {
-                let mut command = Command::new(&argv[0]);
-                command.args(&argv[1..]);
-                command
-            }
-        };
+        let mut cmd = command_in(boundary.as_ref().map(|boundary| boundary.process_procs()).as_deref(), &argv);
         cmd.env_clear().current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
         let executable_tree = self
             .executables

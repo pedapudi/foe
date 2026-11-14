@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::process::{Child, ChildStdin, Stdio};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -249,14 +249,7 @@ impl Sessions for LocalSessions {
             .flatten();
         let argv: Vec<_> =
             std::iter::once(req.command.as_os_str().to_owned()).chain(req.args.iter().map(Into::into)).collect();
-        let mut cmd = match &task_procs {
-            Some(procs) => command_in(procs, &argv),
-            None => {
-                let mut command = Command::new(&req.command);
-                command.args(&req.args);
-                command
-            }
-        };
+        let mut cmd = command_in(task_procs.as_deref(), &argv);
         cmd.current_dir(&req.cwd)
             .env_clear()
             .envs(&req.env)

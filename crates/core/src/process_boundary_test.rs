@@ -32,7 +32,8 @@ fn a_child_boundary_owns_a_grandchild_and_a_detached_process() {
     let child = boundary.child("ep_child").unwrap();
     let script = "sleep 30 >/dev/null 2>&1 & a=$!; setsid /bin/sh -c 'sleep 30' >/dev/null 2>&1 & b=$!; printf '%s %s' \"$a\" \"$b\"";
     let argv = [OsString::from("/bin/sh"), OsString::from("-c"), OsString::from(script)];
-    let output = command_in(&child.process_procs(), &argv).process_group(0).stdin(Stdio::null()).output().unwrap();
+    let output =
+        command_in(Some(&child.process_procs()), &argv).process_group(0).stdin(Stdio::null()).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let pids: Vec<u32> =
         String::from_utf8(output.stdout).unwrap().split_whitespace().map(|pid| pid.parse().unwrap()).collect();

@@ -221,9 +221,15 @@ impl Drop for ChildBoundary {
     }
 }
 
-/// Builds a command whose shell joins `cgroup.procs` before it executes the
-/// fixed argument vector. The shell uses only built-ins before `exec`.
-pub fn command_in(procs: &Path, argv: &[OsString]) -> Command {
+/// Builds a command that executes the fixed argument vector. When `procs`
+/// names a `cgroup.procs` file, a shell joins that cgroup first, and it uses
+/// only built-ins before `exec`. Without one the vector runs directly.
+pub fn command_in(procs: Option<&Path>, argv: &[OsString]) -> Command {
+    let Some(procs) = procs else {
+        let mut command = Command::new(&argv[0]);
+        command.args(&argv[1..]);
+        return command;
+    };
     let mut command = Command::new(PROCESS_BOUNDARY_LAUNCHER);
     command.arg("-c").arg(ENTER_SCRIPT).arg("foe-cgroup-enter").arg(procs).args(argv);
     command
