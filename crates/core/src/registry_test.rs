@@ -7,6 +7,7 @@ use foe_contract::{ContractError, Effect};
 use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 struct StartFailure;
 
@@ -321,6 +322,19 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert_eq!(req.args, vec!["check", "."]);
     assert_eq!((req.timeout.as_secs(), req.network, req.stdin), (7, true, None));
     assert_eq!(req.cwd, contract.grants.read[0]);
+    // docs/tools.md "Configured executables", "Timeout": the time left
+    // until the episode's deadline bounds the run when it is the shorter.
+    let deadline = Some(Instant::now() + Duration::from_secs(3));
+    registry
+        .dispatch(
+            &handles,
+            &call("t", json!({ "args": [] })),
+            CallScope { step: 2, spill_dir: root.to_path_buf(), deadline },
+            None,
+        )
+        .await;
+    let req = executor.requests.lock().unwrap().pop().unwrap();
+    assert!(req.timeout <= Duration::from_secs(3) && req.timeout > Duration::from_secs(2), "{:?}", req.timeout);
     let bad =
         registry.dispatch(&handles, &call("t", json!({ "args": "check" })), scope(2, root.to_path_buf()), None).await;
     assert!(bad.is_error);

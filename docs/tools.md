@@ -163,9 +163,11 @@ under this contract.
   started the episode.
 - **Network.** Closed unless the entry sets `network` to `true`. Where the
   kernel supports it, the restriction is enforced by the sandbox.
-- **Timeout.** The entry's `timeout_seconds`, default 120. On expiry the
-  executable and every process it started are killed, and the result says
-  so.
+- **Timeout.** The entry's `timeout_seconds`, default 120. When the
+  episode's `seconds` budget has less time left than that at launch, the
+  time left is the timeout, so the executable ends no later than the
+  episode does. On expiry the executable and every process it started are
+  killed, and the result says so.
 - **Exit code.** Reported in the result as data. A non-zero exit is a
   result rather than a tool error. The model decides what a failing linter or a
   failing test run means. A workflow tool node has no model to make that

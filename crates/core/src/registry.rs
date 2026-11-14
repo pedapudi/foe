@@ -274,7 +274,7 @@ impl Registry {
         let ctx = self.ctx(entry.spec.effect, handles, format!("verify-{}", scope.step), scope);
         if let Some(exec) = &entry.exec {
             let executor = ctx.executor.clone().ok_or("verifier has no executor")?;
-            let mut req = exec.request(vec![]);
+            let mut req = exec.request(vec![], ctx.deadline);
             req.stdin = Some(serde_json::to_vec(candidate).map_err(|e| e.to_string())?);
             let result =
                 run_blocking(executor, req).await.map_err(|e| format!("verifier `{name}` failed to run: {e}"))?;
@@ -340,14 +340,19 @@ pub struct ExecTool {
 }
 
 impl ExecTool {
-    fn request(&self, args: Vec<String>) -> ExecRequest {
+    /// The timeout is the entry's `timeout_seconds`, or the time left until
+    /// the episode's `deadline` when that is shorter, so that the executable
+    /// ends no later than the episode does.
+    fn request(&self, args: Vec<String>, deadline: Option<Instant>) -> ExecRequest {
+        let limit = Duration::from_secs(self.def.timeout_seconds);
+        let left = deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
         ExecRequest {
             command: self.def.exec.clone(),
             captured_executable: Some(self.executable.clone()),
             args,
             cwd: self.def.cwd.clone().unwrap_or_default(),
             env: BTreeMap::new(),
-            timeout: Duration::from_secs(self.def.timeout_seconds),
+            timeout: left.map_or(limit, |left| limit.min(left)),
             network: self.def.network,
             stdin: None,
             policy: None,
@@ -409,7 +414,7 @@ impl Tool for ExecTool {
         let Some(executor) = ctx.executor.clone() else {
             return ToolValue::unavailable(format!("`{}` has no executor", self.spec.name));
         };
-        match run_blocking(executor, self.request(argv)).await {
+        match run_blocking(executor, self.request(argv, ctx.deadline)).await {
             Ok(result) => {
                 let value = json!({
                     "exit_code": result.exit_code, "stdout": String::from_utf8_lossy(&result.stdout),
