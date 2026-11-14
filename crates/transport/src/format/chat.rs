@@ -34,6 +34,10 @@
 //! | a tool call's last fragment                      | `ToolCallEnd`   |
 //! | `finish_reason` then `[DONE]` or end of body     | `Done`          |
 //!
+//! A tool call fragment without an `index` starts a new call when it
+//! carries an `id` other than the open call's, and continues the open call
+//! otherwise.
+//!
 //! `stop` maps to `End`, `tool_calls` and `function_call` to `Tool`,
 //! `length` to `Length`. `content_filter` has no chunk equivalent and is a
 //! non-retryable `Error`. `Done` is emitted when the stream ends, because
@@ -184,14 +188,20 @@ impl StreamDecoder {
     fn tool_fragment(&mut self, call: &Value, out: &mut dyn FnMut(Chunk)) {
         // Fragments of one call share an index; fragments of the next call
         // start after the previous call's last fragment.
-        let index = call["index"].as_u64().unwrap_or(0);
+        let named = call["id"].as_str().filter(|s| !s.is_empty());
+        // A server that omits the index marks the next call by a new id. A
+        // fragment with neither, or with the open call's id, continues it.
+        let index = call["index"].as_u64().unwrap_or_else(|| match self.open {
+            Some(open) if named.is_none_or(|id| self.ids.get(&open).is_some_and(|known| known == id)) => open,
+            _ => self.ids.len() as u64,
+        });
         if self.open != Some(index) {
             self.close_open(out);
         }
         let id = match self.ids.get(&index) {
             Some(id) => id.clone(),
             None => {
-                let id = match call["id"].as_str().filter(|s| !s.is_empty()) {
+                let id = match named {
                     Some(id) => id.to_string(),
                     // A server that sends no id still needs one the runtime
                     // can match results against.
@@ -503,6 +513,34 @@ data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
             vec![
                 text("ok"),
                 Chunk::Error { message: "compatible-http: stream ended before finish_reason".into(), retryable: true }
+            ]
+        );
+    }
+
+    /// docs/protocol.md "model/chunk": a `tool_call_delta` carries a fragment
+    /// of the arguments of the call its `id` names. A server that omits the
+    /// `index` of a tool call marks the next call by a new `id`, and a
+    /// fragment that carries neither continues the open call.
+    #[test]
+    fn tool_calls_without_an_index_are_separated_by_their_ids() {
+        let mut decoder = StreamDecoder { provider: "compatible-http", ..Default::default() };
+        let mut chunks = Vec::new();
+        for call in [
+            json!({ "id": "call_a", "function": { "name": "read", "arguments": "{\"pa" } }),
+            json!({ "function": { "arguments": "th\": 1}" } }),
+            json!({ "id": "call_b", "function": { "name": "grep", "arguments": "{}" } }),
+        ] {
+            decoder.tool_fragment(&call, &mut |chunk| chunks.push(chunk));
+        }
+        assert_eq!(
+            chunks,
+            vec![
+                Chunk::ToolCallStart { id: "call_a".into(), name: "read".into() },
+                Chunk::ToolCallDelta { id: "call_a".into(), delta: "{\"pa".into() },
+                Chunk::ToolCallDelta { id: "call_a".into(), delta: "th\": 1}".into() },
+                Chunk::ToolCallEnd { id: "call_a".into() },
+                Chunk::ToolCallStart { id: "call_b".into(), name: "grep".into() },
+                Chunk::ToolCallDelta { id: "call_b".into(), delta: "{}".into() },
             ]
         );
     }
