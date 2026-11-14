@@ -1,7 +1,10 @@
 use super::*;
 use crate::exec::tests::scratch;
 use crate::process_boundary::tests::{remove_test_boundary, test_boundary};
-use crate::spawn::tests::{fake_child, parent_config, process_spawner, script, wait_for, waiting_child, Lines, Seen};
+use crate::spawn::tests::{
+    await_gone, fake_child, named_processes, parent_config, process_spawner, script, unresponsive_child, wait_for,
+    waiting_child, Lines, Seen,
+};
 use crate::spawn::ChildObserver;
 use foe_log::{EpisodeStart, Event, Outcome, RuntimeInfo, SandboxInfo, SandboxMode, SpawnContext};
 use std::path::Path;
@@ -384,5 +387,37 @@ async fn ending_an_episode_settles_a_child_that_is_still_running() {
     log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
     assert_eq!(types(&log)[3..], ["spawn/end", "budget/release", "episode/end"]);
     assert_eq!(lock(&pool).active_children(), 0, "the reservation returned to the pool");
+    foe_log::fold::fold(&log.events()).expect("the log is well-formed");
+}
+
+/// docs/protocol.md "Children": no child process outlives its parent's
+/// `episode/end`. The teardown sends `cancel`, the child ignores it, and the
+/// launcher ends the child within the teardown's wait. The log therefore
+/// holds the settlement of the ended child, and the closing events add none.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_child_that_ignores_cancel_is_gone_when_its_parent_episode_ends() {
+    let dir = scratch("wiring", "ignores-cancel");
+    let log = Arc::new(Log::create_or_open(&dir, None).unwrap());
+    log.append(EventData::EpisodeStart(start())).unwrap();
+    let config = parent_config();
+    let pool = Arc::new(Mutex::new(Pool::new(config.budget.clone())));
+    let router = Arc::new(Router::new());
+    let uplink = Arc::new(Lines::default());
+    let inner =
+        process_spawner("ep_root", dir.to_path_buf(), config, uplink, router.clone(), Arc::new(Seen::default()))
+            .with_launcher(unresponsive_child(&dir, false, false))
+            .with_cancel_grace(std::time::Duration::from_millis(100));
+    let spawner = BudgetedSpawner::new(Arc::new(inner), log.clone(), pool.clone());
+    let handle = spawner.spawn(request("worker", BudgetAmount { model_calls: Some(5), ..Default::default() })).unwrap();
+    let pids = named_processes(&handle.dir);
+
+    crate::loop_::settle(&log, &pool, Some(&router), None).await.unwrap();
+    log.append(EventData::EpisodeEnd { outcome: Outcome::Completed { value: serde_json::Value::Null } }).unwrap();
+    for pid in &pids {
+        await_gone(pid);
+    }
+    assert_eq!(types(&log)[3..], ["spawn/end", "budget/release", "episode/end"]);
+    let EventData::SpawnEnd { outcome: Outcome::Failed { error }, .. } = &log.events()[3].data else { panic!() };
+    assert!(error.contains("exited without episode/end"), "the launcher settled the child: {error}");
     foe_log::fold::fold(&log.events()).expect("the log is well-formed");
 }

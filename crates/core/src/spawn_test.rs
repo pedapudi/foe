@@ -113,6 +113,13 @@ impl ProcessSpawner {
         self.launcher = argv;
         self
     }
+
+    /// Shortens the bound a child has to exit, so that a test of the bound
+    /// waits a fraction of a second.
+    pub(crate) fn with_cancel_grace(mut self, grace: Duration) -> Self {
+        self.cancel_grace = grace;
+        self
+    }
 }
 
 /// Stand-in specifications for the tools the fixture contracts list. The
@@ -938,4 +945,113 @@ async fn a_host_call_no_host_can_answer_is_refused_at_once() {
 fn routing_to_an_unknown_episode_is_an_error() {
     let router = Router::new();
     assert!(router.route("ep_none", "{}").is_err());
+}
+
+/// A stand-in child that never reads what its parent writes, as a hung
+/// process does. It starts a second process in its own process group, and
+/// the file `pids` in its working directory names both processes. `detach`
+/// also starts a process in a session of its own and names it there. `end`
+/// makes the child write `episode/end` before it stops responding.
+pub(crate) fn unresponsive_child(dir: &Path, detach: bool, end: bool) -> Vec<OsString> {
+    let detached = "/usr/bin/setsid -f /bin/sh -c 'echo $$ > detached; exec /bin/sleep 100'
+while [ ! -s detached ]; do :; done";
+    let ending =
+        r#"echo '{"seq":1,"time":1,"type":"episode/end","data":{"outcome":{"kind":"completed","value":"done"}}}'"#;
+    let body = format!(
+        "#!/bin/sh\nexec >&4\n{}\n/bin/sleep 100 &\necho \"$$ $! $(cat detached 2>/dev/null)\" > pids\n{}\n{}\nwait\n",
+        if detach { detached } else { "" },
+        WAITING_CHILD.lines().nth(2).unwrap(),
+        if end { ending } else { "" },
+    );
+    script(dir, &format!("unresponsive-foe-{detach}-{end}.sh"), &body)
+}
+
+/// The processes an unresponsive child named, once the child has named them.
+pub(crate) fn named_processes(child_dir: &Path) -> Vec<String> {
+    let pids = wait_for(|| std::fs::read_to_string(child_dir.join("pids")).ok().filter(|pids| pids.ends_with('\n')));
+    pids.split_whitespace().map(str::to_string).collect()
+}
+
+/// Waits until a process is gone. A process that has exited and that its
+/// new parent has not yet collected counts as gone.
+pub(crate) fn await_gone(pid: &str) {
+    wait_for(|| {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+        (stat.is_empty() || stat.rsplit_once(") ").is_some_and(|(_, fields)| fields.starts_with('Z'))).then_some(())
+    });
+}
+
+/// Starts an unresponsive child under a bound of a tenth of a second for
+/// each level, optionally sends it `cancel`, and returns its settlement
+/// once every process it named is gone.
+async fn settlement_of_an_unresponsive_child(
+    name: &str,
+    boundary: Option<Arc<ProcessBoundary>>,
+    cancel: bool,
+) -> Settled {
+    let dir = scratch("spawn", name);
+    let router = Arc::new(Router::new());
+    let uplink = Arc::new(Lines::default());
+    let spawner = process_spawner(
+        "ep_root",
+        dir.to_path_buf(),
+        parent_config(),
+        uplink,
+        router.clone(),
+        Arc::new(Seen::default()),
+    )
+    .with_launcher(unresponsive_child(&dir, boundary.is_some(), !cancel))
+    .with_boundary(boundary)
+    .with_cancel_grace(Duration::from_millis(100));
+    let request = SpawnRequest {
+        contract: "worker".into(),
+        task: "t".into(),
+        context: SpawnContext::Fresh,
+        reserve: BudgetAmount::default(),
+        write: None,
+        call_id: "tc".into(),
+    };
+    let handle = spawner.spawn(request).unwrap();
+    let pids = named_processes(&handle.dir);
+    if cancel {
+        router.cancel(&handle.child_id).unwrap();
+    }
+    let settled = tokio::time::timeout(Duration::from_secs(5), handle.run.settle()).await;
+    let settled = settled.expect("a child that does not exit is ended and settles");
+    pids.iter().for_each(|pid| await_gone(pid));
+    settled
+}
+
+/// docs/protocol.md "Children": a child still running when its bound after
+/// `cancel` has passed is ended with its process group, and it settles as
+/// failed because it wrote no `episode/end`. The stand-in child never reads
+/// the `cancel` line and would otherwise run for 100 seconds.
+#[tokio::test]
+async fn a_child_that_ignores_cancel_is_ended_with_its_process_group() {
+    let settled = settlement_of_an_unresponsive_child("ignores-cancel", None, true).await;
+    let Outcome::Failed { error } = settled.outcome else { panic!("{:?}", settled.outcome) };
+    assert!(error.contains("exited without episode/end"), "{error}");
+}
+
+/// docs/protocol.md "Children": the bound also starts when the child's
+/// event stream ends. A child that wrote `episode/end` and then did not
+/// exit is ended, and it keeps the outcome it wrote.
+#[tokio::test]
+async fn a_child_that_does_not_exit_after_its_episode_end_is_ended() {
+    let settled = settlement_of_an_unresponsive_child("lingers", None, false).await;
+    assert_eq!(settled.outcome, Outcome::Completed { value: "done".into() });
+}
+
+/// docs/sandbox.md "Process ownership": on a host with a delegated cgroup,
+/// ending a child that ignores `cancel` empties the child's cgroup, which
+/// holds a process the child started in a session of its own.
+#[tokio::test]
+async fn a_child_that_ignores_cancel_is_ended_with_its_cgroup() {
+    let Ok((boundary, invocation)) = crate::process_boundary::tests::test_boundary("ignores-cancel") else {
+        return;
+    };
+    let boundary = Arc::new(boundary);
+    let settled = settlement_of_an_unresponsive_child("ignores-cancel-cgroup", Some(boundary.clone()), true).await;
+    assert!(matches!(settled.outcome, Outcome::Failed { .. }), "{:?}", settled.outcome);
+    crate::process_boundary::tests::remove_test_boundary(&boundary, &invocation);
 }

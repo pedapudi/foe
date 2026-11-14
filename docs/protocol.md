@@ -327,6 +327,21 @@ The lead records the task outcome after the process has exited and boundary
 cleanup has finished. A cleanup failure becomes the task and spawn outcome
 before budget release or waiter notification.
 
+A child that was sent `cancel` has a bounded time to exit. The bound is
+four seconds for a child whose budget lets it start no children. It is four
+seconds longer for each level of children the child may start, up to nine
+seconds, so a child has longer than the children it bounds in turn. The
+same bound starts when the child's event stream ends, which covers a child
+that wrote `episode/end` and did not exit. When the bound passes and the
+child's process still runs, the parent ends the child through its process
+boundary: it sends `SIGKILL` to the child's process group and, on a host
+with delegated cgroup v2, kills the child's cgroup, as
+[sandbox.md](sandbox.md#process-ownership) specifies. The child then
+settles with the outcome its events gave, which is `failed` when it wrote
+no `episode/end`. The longest bound is shorter than the ten seconds the
+ending episode waits, so the process of a child that ignores `cancel` is
+ended before its parent writes `episode/end`.
+
 The parent writes the child's episode and task cgroup paths in
 `child-launch.json` beside the child log. These paths are runtime launch metadata.
 They do not participate in the contract fingerprint or enter the episode log. A

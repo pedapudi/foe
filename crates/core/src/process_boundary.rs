@@ -12,6 +12,7 @@ use foe_log::SandboxMode;
 use foe_log::{ProcessBoundaryInfo, ProcessBoundaryKind, SubtreeCleanup};
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -221,17 +222,18 @@ impl Drop for ChildBoundary {
     }
 }
 
-/// Builds a command that executes the fixed argument vector. When `procs`
-/// names a `cgroup.procs` file, a shell joins that cgroup first, and it uses
-/// only built-ins before `exec`. Without one the vector runs directly.
+/// Builds a command that executes the fixed argument vector as the leader
+/// of a process group of its own. When `procs` names a `cgroup.procs` file,
+/// a shell joins that cgroup first, and it uses only built-ins before
+/// `exec`. Without one the vector runs directly.
 pub fn command_in(procs: Option<&Path>, argv: &[OsString]) -> Command {
     let Some(procs) = procs else {
         let mut command = Command::new(&argv[0]);
-        command.args(&argv[1..]);
+        command.args(&argv[1..]).process_group(0);
         return command;
     };
     let mut command = Command::new(PROCESS_BOUNDARY_LAUNCHER);
-    command.arg("-c").arg(ENTER_SCRIPT).arg("foe-cgroup-enter").arg(procs).args(argv);
+    command.arg("-c").arg(ENTER_SCRIPT).arg("foe-cgroup-enter").arg(procs).args(argv).process_group(0);
     command
 }
 

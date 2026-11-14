@@ -293,6 +293,8 @@ futures whose resolution the log evidences end to end.
 An episode ends by writing `episode/end`, and before that it closes every
 obligation its log still holds. A child still running is asked to end, and
 the `spawn/end` and `budget/release` its reservation owes are awaited. A
+child that does not exit within a bound is ended through its process
+boundary, as docs/protocol.md "Children" specifies. A
 tool call left without a result receives a synthetic error result. The
 record of a completed run is therefore never mistakable for the record of
 one killed mid-flight.

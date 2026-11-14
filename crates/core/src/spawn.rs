@@ -28,8 +28,9 @@ use command_fds::{CommandFdExt, FdMapping};
 use foe_contract::document::{ResolvedContract, CONTRACT_FORMAT_VERSION};
 use foe_contract::{Budget, ContractDocument, Effect, ToolSpec};
 use foe_log::{BudgetAmount, Event, EventData, InboxItem, Outcome, SpawnContext, Usage};
+use nix::{sys::signal, unistd::Pid};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::{BufRead, BufReader, IsTerminal, PipeWriter, Write};
 use std::path::{Path, PathBuf};
@@ -46,6 +47,17 @@ use tokio::sync::watch;
 /// below the numbers the captured executable tree occupies.
 const PROTOCOL_READ_FD: i32 = 3;
 const PROTOCOL_WRITE_FD: i32 = 4;
+
+/// How long a child that may start no children has to exit once it was sent
+/// `cancel`, or once its event stream ended, before its launcher ends it. A
+/// child receives this much again for each level of children it may start,
+/// so that it outlasts the bounds it applies to its own children and ends
+/// them itself. Four seconds covers the two-second grace a child gives its
+/// own commands and sessions.
+const CANCEL_GRACE: Duration = Duration::from_secs(4);
+/// The longest such bound. It is shorter than the ten seconds the teardown
+/// waits for children, so a child is ended before the teardown stops waiting.
+const CANCEL_GRACE_LIMIT: Duration = Duration::from_secs(9);
 
 /// The link from this episode to the process hosting it.
 pub trait Uplink: Send + Sync {
@@ -91,6 +103,8 @@ pub struct Router {
 struct RouterState {
     children: HashMap<String, PipeWriter>,
     below: HashMap<String, String>,
+    /// The running children that were sent `cancel`.
+    cancelled: HashSet<String>,
 }
 
 impl Router {
@@ -124,8 +138,12 @@ impl Router {
 
     /// Sends `cancel` to one running child, which ends its episode as
     /// blocked with `cancelled`. It is an error when no such child runs.
+    /// The child's launcher ends a child that is still running
+    /// [`CANCEL_GRACE`] later, whether or not the line reached it.
     pub fn cancel(&self, child_id: &str) -> Result<(), CapError> {
-        self.write(child_id, r#"{"type":"cancel"}"#)
+        let sent = self.write(child_id, r#"{"type":"cancel"}"#);
+        self.inner.lock().unwrap().cancelled.insert(child_id.to_string());
+        sent
     }
 
     /// Sends `cancel` to every running child.
@@ -159,6 +177,7 @@ impl Router {
     fn remove(&self, child_id: &str) {
         let mut inner = self.inner.lock().unwrap();
         inner.children.remove(child_id);
+        inner.cancelled.remove(child_id);
         inner.below.retain(|_, via| via != child_id);
     }
 }
@@ -220,6 +239,7 @@ pub struct ProcessSpawner {
     connections: ProcessConnections,
     boundary: Option<Arc<ProcessBoundary>>,
     home: Option<PathBuf>,
+    cancel_grace: Duration,
     next: AtomicU64,
 }
 
@@ -275,6 +295,7 @@ impl ProcessSpawner {
             connections,
             boundary: None,
             home: None,
+            cancel_grace: CANCEL_GRACE,
             next: AtomicU64::new(0),
         })
     }
@@ -430,6 +451,7 @@ impl Spawner for ProcessSpawner {
             foe_contract::fingerprint::compute(contract, &self.builtin_specs, &crate::fingerprint::runtime_info())
                 .map_err(|e| CapError::Invalid(e.to_string()))?;
         let limits = effective_budget(&self.limits, &contract.budget, req.reserve);
+        let grace = (self.cancel_grace * (1 + limits.max_depth)).min(CANCEL_GRACE_LIMIT);
         let dir = self.log_dir.join("children").join(&child_id);
         std::fs::create_dir_all(&dir)?;
         let boundary = self
@@ -498,14 +520,28 @@ impl Spawner for ProcessSpawner {
             observer: self.connections.observer.clone(),
         };
         std::thread::spawn(move || {
-            let (observer, id) = (reader.observer.clone(), reader.child_id.clone());
+            let (observer, router, id) = (reader.observer.clone(), reader.router.clone(), reader.child_id.clone());
             let read = std::thread::spawn(move || {
                 let settled = reader.run(events, diagnostics);
                 reader.router.remove(&reader.child_id);
                 settled
             });
-            let _ = child.wait();
+            // A child that was sent `cancel`, or whose event stream ended,
+            // has `grace` to exit. A child still running after that ignored
+            // the request, and ending its process boundary is what stops it.
+            let mut asked = None;
+            while matches!(child.try_wait(), Ok(None)) {
+                let ending = read.is_finished() || router.inner.lock().unwrap().cancelled.contains(&id);
+                if ending && asked.get_or_insert_with(std::time::Instant::now).elapsed() >= grace {
+                    break;
+                }
+                std::thread::sleep(crate::loop_::SETTLE_POLL);
+            }
+            // Whatever remains of the child's process group is ended here,
+            // and the cgroup, where there is one, ends every descendant.
+            let _ = signal::killpg(Pid::from_raw(child.id() as i32), signal::SIGKILL);
             let cleanup_error = boundary.and_then(|boundary| boundary.terminate().err());
+            let _ = child.wait();
             let mut settled = read.join().unwrap_or_else(|_| Settled {
                 outcome: Outcome::Failed { error: "the reader of the child's output panicked".into() },
                 usage: Usage::default(),

@@ -239,7 +239,11 @@ ancestors hold. Contract resolution requires that a child grants
 `task_session` only when its parent does, so a granted child's ruleset
 nests inside a parent domain that also carries the task cgroup.
 
-When a direct child exits, the parent writes `1` to the child's
+The process of a child episode leads a process group of its own. A child
+exits on its own, or the parent stops waiting for it when the bound that
+[protocol.md](protocol.md#children) gives a child to exit has passed. In
+both cases the parent sends `SIGKILL` to whatever remains of the child's
+process group. The parent then writes `1` to the child's
 `cgroup.kill`. The kernel kills every descendant, including processes that
 created another process group or session and processes forked after the
 write. The parent polls for recursive `populated 0` under a bound, removes
@@ -265,8 +269,10 @@ request. The log records the selected mechanism without recording the host
 path.
 
 When no delegated cgroup is available, process groups remain the portable
-cleanup mechanism. The runtime reports this fallback as observational
-subtree cleanup because a descendant can create a new group or session.
+cleanup mechanism. Ending the child's process group is then what ends a
+child that ignored `cancel`. The runtime reports this fallback as
+observational subtree cleanup because a descendant can create a new group
+or session.
 
 ## Executables
 

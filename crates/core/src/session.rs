@@ -19,7 +19,6 @@ use nix::unistd::Pid;
 use serde_json::json;
 use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Stdio};
 use std::str::FromStr;
@@ -253,7 +252,6 @@ impl Sessions for LocalSessions {
         cmd.current_dir(&req.cwd)
             .env_clear()
             .envs(&req.env)
-            .process_group(0)
             .stdin(Stdio::piped())
             .stdout(stdout_stdio)
             .stderr(stderr_stdio);
