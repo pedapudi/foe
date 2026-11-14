@@ -92,12 +92,6 @@ impl TeamState {
         self.tasks.iter().find(|task| task.task_id == task_id)
     }
 
-    /// Messages queued and never delivered; redelivered when the target
-    /// restarts.
-    pub fn undelivered(&self) -> impl Iterator<Item = &Queued> {
-        self.queue.iter().filter(|m| !self.delivered.contains(&(m.message_id.clone(), m.to.clone())))
-    }
-
     fn value(&self) -> serde_json::Value {
         serde_json::json!({ "lead_id": self.lead_id, "members": self.roster, "tasks": self.tasks })
     }
@@ -433,9 +427,9 @@ impl Team {
         let _ = self.log.append(EventData::TeamRoster { member_id: member_id.to_string(), name, description, phase });
     }
 
-    /// Queues a message from one member to another and attempts delivery. A
-    /// failed delivery leaves the message queued without a delivery record;
-    /// the fold reports it as undelivered.
+    /// Queues a message from one member to another and attempts delivery
+    /// once. A failed delivery leaves the message queued without a delivery
+    /// record, and nothing redelivers it (docs/design.md "Agent teams").
     fn send(&self, from: &str, to_name: &str, content: Vec<ContentBlock>, kind: Correlate) -> Result<String, CapError> {
         let _guard = self.operations.lock().unwrap();
         let state = self.state();
@@ -472,6 +466,9 @@ impl Team {
             // as undelivered for the life of the run.
             self.log.append(EventData::TeamDelivered { message_id: message_id.clone(), to: self.lead_id.clone() })?;
         } else {
+            // A target that is not running refuses the item. The message
+            // then stands in the log without a delivery record, and the
+            // sender is told nothing further.
             let _ = self.router.send_inbox(&target.member_id, &item);
         }
         Ok(message_id)

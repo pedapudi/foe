@@ -774,8 +774,10 @@ calls to the lead process.
 
 A message is durable in the lead's log before delivery is attempted. The
 member's receipt is recorded after the member has written the message to its
-own log. Messages queued and never delivered are redelivered when a member
-restarts, and the member drops duplicates by `message_id`. The roster, the
+own log. Delivery is attempted once, when the message is queued. A message
+that cannot be delivered then, because its target is not running, stays in
+the queue without a delivery record and is offered to no later run of the
+target. The roster, the
 queue, and the delivery records are folded from the lead's log; no other team
 state exists. A newly assigned member learns about its board task through the
 task inbox item that starts its episode. Other coordination uses the board

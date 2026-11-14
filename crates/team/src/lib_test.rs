@@ -363,7 +363,7 @@ fn fold_tracks_phases_queue_and_deliveries() {
     assert_eq!(state.member("reviewer").unwrap().phase, MemberPhase::Active);
     assert_eq!(state.member("tester").unwrap().phase, MemberPhase::Provisioning);
     assert_eq!(state.queue.len(), 2);
-    let pending: Vec<&str> = state.undelivered().map(|m| m.message_id.as_str()).collect();
+    let pending: Vec<String> = undelivered(&state).into_iter().map(|m| m.message_id).collect();
     assert_eq!(pending, ["tm_02"]);
 }
 
@@ -476,6 +476,36 @@ async fn two_episodes_waiting_on_each_other_both_return_at_their_deadlines() {
     assert!(text.contains("choose for yourself"), "the answer carries the default: {text}");
 }
 
+/// The queued messages that hold no delivery record, as the pair of message
+/// identifier and target that docs/log-format.md `team/delivered` defines.
+fn undelivered(state: &TeamState) -> Vec<Queued> {
+    let unrecorded = |m: &&Queued| !state.delivered.contains(&(m.message_id.clone(), m.to.clone()));
+    state.queue.iter().filter(unrecorded).cloned().collect()
+}
+
+/// docs/design.md "Agent teams": delivery is attempted once, when the
+/// message is queued. A message whose target is not running then stays in
+/// the queue without a delivery record and is offered to no later run of
+/// the target.
+#[test]
+fn a_message_to_a_target_that_is_not_running_stays_undelivered_when_the_target_starts() {
+    let (team, log, _, _) = team();
+    let member = |phase| EventData::TeamRoster {
+        member_id: "ep_b".into(),
+        name: "tester".into(),
+        description: String::new(),
+        phase,
+    };
+    log.append(member(MemberPhase::Provisioning));
+    let sent = team.host_call("ep_a", "send", &serde_json::json!({ "to": "tester", "content": "run it" })).unwrap();
+    assert!(!sent.is_error, "the send is accepted although nothing was delivered: {:?}", sent.rendered);
+    let before = log.events().len();
+    team.observe("ep_b", &event(9, start()));
+    assert_eq!(team.state().member("tester").unwrap().phase, MemberPhase::Active);
+    assert_eq!(log.events().len(), before + 1, "the start records the member's phase and nothing else");
+    assert_eq!(undelivered(&team.state()).len(), 1, "the message is recorded as undelivered and is not offered again");
+}
+
 fn team() -> (Arc<Team>, Arc<MemLog>, Arc<MemInbox>, Arc<Router>) {
     let log = Arc::new(MemLog::default());
     let inbox = Arc::new(MemInbox::default());
@@ -566,7 +596,7 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
     assert_eq!(state.queue[0].to, "ep_b");
     assert_eq!(state.queue[0].from, "ep_a");
     assert_eq!(state.queue[0].content, text_content("run it"));
-    assert_eq!(state.undelivered().count(), 1, "the target is not running, so the message stays queued");
+    assert_eq!(undelivered(&state).len(), 1, "the target is not running, so the message stays queued");
     let receipt = InboxItem {
         source: InboxSource::Peer,
         content: vec![],
@@ -575,7 +605,7 @@ fn send_queues_a_message_and_peer_receipt_records_delivery() {
         synthetic: false,
     };
     team.observe("ep_b", &event(5, EventData::InboxItem(receipt)));
-    assert_eq!(team.state().undelivered().count(), 0);
+    assert_eq!(undelivered(&team.state()).len(), 0);
     let listed = team.host_call("ep_a", "team", &serde_json::json!({})).unwrap();
     assert_eq!(listed.rendered.as_deref(), Some("members:\ntester\tep_b\tactive\ntasks:\n"));
 }
@@ -604,7 +634,7 @@ fn the_reserved_name_addresses_the_lead_whatever_its_contract_named_it() {
     // A message the lead is the target of reaches its inbox where it is
     // sent, so no child observation follows to close the delivery. Left
     // open, the board reports every question a member ever asked the lead.
-    assert_eq!(team.state().undelivered().count(), 0, "the lead's own delivery is recorded where it happens");
+    assert_eq!(undelivered(&team.state()).len(), 0, "the lead's own delivery is recorded where it happens");
 }
 
 /// docs/tools.md `send`: an episode in the middle of a tree belongs to one
@@ -704,7 +734,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
     // reaches its inbox where it is sent, so only the question is
     // outstanding until the teammate records it.
     assert_eq!(team.state().queue.len(), 2);
-    assert_eq!(team.state().undelivered().map(|m| m.to.as_str()).collect::<Vec<_>>(), ["ep_b"]);
+    assert_eq!(undelivered(&team.state()).iter().map(|m| m.to.as_str()).collect::<Vec<_>>(), ["ep_b"]);
     let receipt = InboxItem {
         source: InboxSource::Request,
         content: vec![],
@@ -713,7 +743,7 @@ async fn a_question_is_answered_by_identity_and_wakes_only_its_asker() {
         synthetic: false,
     };
     team.observe("ep_b", &event(9, EventData::InboxItem(receipt)));
-    assert_eq!(team.state().undelivered().count(), 0);
+    assert_eq!(undelivered(&team.state()).len(), 0);
 }
 
 /// docs/config.md `tools`: the eight team tools are built in. A root answers

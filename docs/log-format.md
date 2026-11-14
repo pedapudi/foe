@@ -564,9 +564,9 @@ content ends with a text block naming that identifier, because a model
 receives the content of an item and none of its other fields. The answer
 is a `response` item carrying that same `message_id`, which is what lets
 the asker wait for this answer rather than for any arrival. A member
-redelivers nothing itself; the lead retries an unconfirmed delivery, so a
-member drops an item with the same source and `message_id` as an item it
-already holds. A question and its answer have different sources, including
+drops an item with the same source and `message_id` as an item it already
+holds, so an item that reaches it twice is recorded once. A question and
+its answer have different sources, including
 when an episode addresses itself.
 
 Every question carries a deadline and a default answer, which `ask` requires
@@ -651,9 +651,10 @@ log that holds both events.
 { "message_id": "tm_07", "to": "ep_b2" }
 ```
 
-Messages with a `team/message` and no matching `team/delivered` are
-redelivered when the target restarts. The target deduplicates by
-`message_id`. An answer reuses the `message_id` of the question it answers,
+A message with a `team/message` and no matching `team/delivered` is
+undelivered. The lead attempts delivery once, when it queues the message,
+and redelivers nothing afterwards, so a message whose target was not
+running then stays undelivered. An answer reuses the `message_id` of the question it answers,
 so a question and its answer are two queued messages under one identifier;
 the pair `message_id` and `to` distinguishes their two deliveries.
 
@@ -662,8 +663,8 @@ from its recorded queue. An answer is the exception: it carries the
 question's identifier instead of a fresh one. Allocation and queue insertion share the lead's
 operation lock. Resume continues that queue, while a fork has a distinct
 lead identity. Readers treat message identifiers as opaque strings.
-Duplicate detection and inbox insertion hold the same log lock, so concurrent
-redelivery creates one peer inbox item.
+Duplicate detection and inbox insertion hold the same log lock, so an item
+that arrives twice concurrently creates one inbox item.
 
 `team/task` — implemented. One complete revision of a task added through
 `spawn`.
@@ -864,10 +865,10 @@ Three rules hold for every pair.
 
 A queued team message is the one pair the three rules do not bind. A
 `team/message` with no `team/delivered` is a message the target never
-recorded. The lead offers such a message again when the target restarts,
-which records a second delivery for one message, and no event records a
-message given up on. An undelivered message may therefore stand at
-`episode/end`, and a message may be delivered more than once.
+recorded. The lead does not offer such a message again, and no event
+records a message given up on. An undelivered message may therefore stand
+at `episode/end`. A question and its answer share one `message_id`, so one
+identifier may carry two `team/delivered` events.
 
 One closing-shaped event is exempt from the first rule: a `tool/result`
 with `synthetic: true` whose call id names no call closes nothing and
