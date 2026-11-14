@@ -264,6 +264,58 @@ fn one_request_may_cross_the_input_allowance_and_the_next_is_refused() {
     assert_eq!(pool.exhausted(), Some(ExhaustedLimit::InputTokens));
 }
 
+/// docs/config.md `budget`: the events a seeded log copied from its source
+/// charge nothing, so a fork starts with its whole allowance. The events
+/// after `seed/end` are the fork's own and are restored.
+#[test]
+fn restoration_charges_only_the_events_after_the_seed_boundary() {
+    let request = || {
+        EventData::ModelRequest(foe_log::ModelRequest {
+            step: 1,
+            attempt: 1,
+            request_id: "r".into(),
+            header_seq: 0,
+            consumed: vec![],
+            messages: vec![],
+            max_output_tokens: None,
+        })
+    };
+    let reserved = BudgetAmount {
+        model_calls: Some(4),
+        input_tokens: Some(60),
+        output_tokens: Some(15),
+        episodes: Some(1),
+        seconds: None,
+    };
+    let settled = |child_id: &str| {
+        let child_id = child_id.to_string();
+        [
+            EventData::BudgetReserve { child_id: child_id.clone(), reserved },
+            EventData::BudgetRelease { child_id, spent: reserved },
+        ]
+    };
+    let mut copied = vec![request(), request(), request()];
+    copied.extend(settled("copied"));
+    copied.push(EventData::SeedEnd {});
+    let event = |(seq, data)| foe_log::Event { seq: seq as u64, time: 1_000, version: None, data };
+    let mut events: Vec<foe_log::Event> = copied.into_iter().enumerate().map(event).collect();
+    let limits = Budget { model_calls: Some(6), input_tokens: Some(100), output_tokens: Some(25), ..budget() };
+    let whole = Pool::new(limits.clone()).remaining();
+
+    let mut fork = Pool::new(limits.clone());
+    fork.restore(&events, 1_000);
+    assert_eq!(fork.remaining(), whole, "the copied prefix charges nothing");
+    assert_eq!(fork.exhausted(), None);
+
+    let own = std::iter::once(request()).chain(settled("own"));
+    events.extend(own.enumerate().map(|(i, data)| event((6 + i, data))));
+    let mut resumed = Pool::new(limits);
+    resumed.restore(&events, 1_000);
+    let left = resumed.remaining();
+    assert_eq!((left.model_calls, left.input_tokens, left.output_tokens), (Some(1), Some(40), Some(10)));
+    assert_eq!(left.episodes, Some(1), "the fork's own settled child keeps its episode");
+}
+
 /// docs/config.md `budget`: restoration charges recorded consumption once before child admission.
 #[tokio::test(start_paused = true)]
 async fn restoration_retains_spend_and_elapsed_allowance_without_double_charging() {

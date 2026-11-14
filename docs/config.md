@@ -418,8 +418,14 @@ any queued team task or workflow node starts. Restoration occurs once per
 pool, so executor startup cannot charge the same events twice. The seconds
 allowance includes whole seconds elapsed since the recorded episode start,
 including downtime. Restoration starts the remaining timer after subtracting
-that elapsed time, so setup time is charged once. A fresh fork starts its own
-wall-clock allowance.
+that elapsed time, so setup time is charged once.
+
+A seeded log charges its episode for the events after `seed/end` alone. The
+events up to `seed/end` were copied from the source log and record the source
+episode's spend. A fork therefore starts with its whole allowance on every
+dimension, and its wall-clock allowance runs from its own `episode/start`.
+The copy that continues an interrupted log is a seeded log under the same
+rule.
 
 A declared `model_calls`, `input_tokens`, `output_tokens`, or `seconds` is
 greater than zero. `max_episodes` is at least 1, and `loop_threshold` is at

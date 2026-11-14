@@ -43,9 +43,11 @@ impl Pool {
     }
 
     /// Restores recorded consumption once, before any child admission. Downtime consumes wall-clock allowance.
+    /// Events through `seed/end` were copied from another episode's log and charge nothing.
     pub fn restore(&mut self, events: &[foe_log::Event], now_millis: i64) {
         if !std::mem::replace(&mut self.restored, true) {
-            events.iter().for_each(|e| self.apply(&e.data));
+            let own = events.iter().rposition(|e| matches!(e.data, EventData::SeedEnd {})).map_or(0, |at| at + 1);
+            events[own..].iter().for_each(|e| self.apply(&e.data));
             if let Some(start) = events.first() {
                 let elapsed = now_millis.saturating_sub(start.time).max(0) as u64 / 1000;
                 self.limits.seconds = self.limits.seconds.map(|s| s.saturating_sub(elapsed));

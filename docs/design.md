@@ -1003,7 +1003,8 @@ the source recorded is the exception, because the copied prefix already
 carries it; such a run reruns the conversation from the boundary and appends
 nothing. The boundary's validity is the seeding API's rule, surfaced as the
 seeding error states it. A fork restores the conversation up to the boundary
-and nothing else: the filesystem is whatever it is when the fork runs, so a
+and nothing else. The copied events charge nothing against the fork's
+allowance. The filesystem is whatever it is when the fork runs, so a
 fork over changed files sees the changed files. The fork's directory is a
 fresh one under `--log-dir`, or under `.foe`, like any other run. A slate —
 several forks from one prefix — is a caller-side loop over this form;

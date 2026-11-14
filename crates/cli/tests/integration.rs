@@ -2865,6 +2865,31 @@ fn a_fork_runs_a_new_task_over_the_prior_context() {
     );
 }
 
+/// docs/config.md `budget`: the events a fork copied from its source charge
+/// nothing. A fork of an episode that spent its one model call still makes
+/// its own one call.
+#[test]
+fn a_fork_starts_with_its_own_allowance() {
+    let dir = scratch("fork-allowance");
+    let config = config(&dir, |c| c["budget"]["model_calls"] = json!(1));
+    let config_path = dir.join("config.json");
+    std::fs::write(&config_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let parent = dir.join("log");
+    let extra = ["--log-dir", parent.to_str().unwrap()];
+    let (_, code, err) = drive(&config_path, &extra, vec![vec![text("the first outcome"), done("end")]], None, false);
+    assert_eq!(code, Some(0), "{err}");
+    let source = announced_log(&err, &dir.join("log"));
+    let fork_dir = dir.join("fork");
+    let extra = ["assess it", "--from", source.to_str().unwrap(), "--log-dir", fork_dir.to_str().unwrap()];
+    let responses = vec![vec![text("the fork's outcome"), done("end")]];
+    let (events, code, err) = drive(&config_path, &extra, responses, None, true);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        events.last().unwrap()["data"]["outcome"],
+        json!({ "kind": "completed", "value": "the fork's outcome" })
+    );
+}
+
 /// docs/design.md "Agent teams": a spawned fork validates the
 /// declared child fingerprint before it writes the seeded child start.
 #[test]
