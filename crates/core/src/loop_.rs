@@ -561,9 +561,13 @@ impl Episode {
             };
             let mut recorder = Recorder::new(self.p.log.clone(), self.step, request_id);
             let transport = self.p.transport.clone();
+            // A stop closes a host's channel, which ends the response with
+            // an error. The stop is tested first so that the episode ends
+            // with the stop reason rather than with that error.
             let streamed = tokio::select! {
-                _ = transport.stream(body, &mut recorder) => None,
+                biased;
                 reason = wait_stop(self.p.stop.clone()) => Some(stopped(reason)),
+                _ = transport.stream(body, &mut recorder) => None,
                 _ = until(self.deadline()) => Some(Outcome::Exhausted { limit: ExhaustedLimit::Seconds }),
             };
             recorder.check()?;

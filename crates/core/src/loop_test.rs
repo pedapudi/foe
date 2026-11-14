@@ -1221,6 +1221,33 @@ async fn the_stop_signal_ends_the_episode_as_failed_with_its_reason() {
     assert_eq!(types(&events), vec!["episode/start", "inbox/item", "episode/end"]);
 }
 
+/// docs/design.md "Termination": the stop signal ends the wait for a
+/// response. Stopping a hosted episode also closes its protocol channel,
+/// which ends the outstanding response with an error. The episode ends
+/// with the stop reason however the two are scheduled, so the fixture
+/// makes both ready at one poll and repeats the run.
+#[tokio::test]
+async fn the_stop_signal_outranks_a_response_that_ends_at_the_same_moment() {
+    struct ClosedByStop(watch::Sender<Option<String>>);
+    #[async_trait::async_trait]
+    impl Transport for ClosedByStop {
+        fn route(&self) -> foe_log::ModelRoute {
+            foe_log::ModelRoute { provider: "test".into(), model: "closed".into() }
+        }
+        async fn stream(&self, _req: crate::ModelRequestBody, sink: &mut (dyn crate::ChunkSink + Send)) {
+            self.0.send(Some("stopped".into())).unwrap();
+            sink.push(Chunk::Error { message: "channel closed".into(), retryable: false });
+            tokio::task::yield_now().await;
+        }
+    }
+    for _ in 0..24 {
+        let mut fx = Fixture::new("loop-stop-outranks-response", |_| {}, vec![]);
+        fx.transport = Arc::new(ClosedByStop(fx.stop.clone()));
+        let (outcome, _) = fx.run().await;
+        assert_eq!(outcome, Outcome::Failed { error: "stopped".into() });
+    }
+}
+
 #[tokio::test]
 async fn a_seeded_log_continues_from_its_prefix_and_the_header_is_rewritten_only_on_change() {
     let mut first = Fixture::new(
