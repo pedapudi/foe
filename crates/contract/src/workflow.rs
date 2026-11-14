@@ -3,7 +3,7 @@
 //! executor lives in the `foe-workflow` crate; this module holds what the
 //! document, validation, and fingerprint need.
 
-use crate::{ChildContractDocument, ContractError, DoneWhen};
+use crate::{ChildContractDocument, ContractError, DoneWhen, DEFAULT_RETRIES};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -291,7 +291,7 @@ pub fn node_contract(node: &Node) -> ChildContractDocument {
     if node.branches.is_empty() {
         return contract;
     }
-    let done = contract.done_when.get_or_insert(DoneWhen { verify: None, retries: 2, returns: None });
+    let done = contract.done_when.get_or_insert(DoneWhen { verify: None, retries: DEFAULT_RETRIES, returns: None });
     let returns = done.returns.get_or_insert_with(|| json!({ "type": "object", "properties": {} }));
     returns["properties"]["branch"] = json!({ "type": "string", "enum": node.branches.keys().collect::<Vec<_>>() });
     let mut required = returns["required"].as_array().cloned().unwrap_or_default();
