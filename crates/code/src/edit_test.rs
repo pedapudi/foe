@@ -72,6 +72,22 @@ async fn duplicate_and_missing_matches_are_rejected_by_index_and_count() {
     assert_eq!(fx.writes(), 0);
 }
 
+/// docs/tools.md "edit": an occurrence is a position at which `old_text`
+/// matches, and two occurrences may share text. `aa` matches `aaa` at two
+/// positions, so it is refused although only one match fits without overlap.
+#[tokio::test]
+async fn occurrences_that_share_text_are_each_counted() {
+    let fx = Fixture::new();
+    fx.write("f.txt", "aaa\n");
+    let v = edit(&fx, json!({"path": "f.txt", "edits": [replace("aa", "b")]})).await;
+    assert!(v.is_error, "{v:?}");
+    assert!(v.rendered.as_deref().unwrap().contains("edits[0]: old_text occurs 2 times"), "{v:?}");
+    assert_eq!((fx.read("f.txt").as_str(), fx.writes()), ("aaa\n", 0));
+    fx.write("g.txt", "é é\n");
+    let v = edit(&fx, json!({"path": "g.txt", "edits": [replace("é", "e")]})).await;
+    assert!(v.rendered.as_deref().unwrap().contains("old_text occurs 2 times"), "{v:?}");
+}
+
 #[tokio::test]
 async fn overlapping_edits_are_rejected() {
     let fx = Fixture::new();

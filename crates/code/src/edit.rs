@@ -179,7 +179,9 @@ impl Tool for Edit {
                 located.push((i, 0, 0, normalize(&r.new_text)));
                 continue;
             }
-            let count = text.matches(old.as_str()).count();
+            // Every position is tried, because `str::matches` skips a match
+            // that shares text with the one before it.
+            let count = text.char_indices().filter(|(at, _)| text[*at..].starts_with(old.as_str())).count();
             if count != 1 {
                 let hint = if count == 0 {
                     "the text must match the file exactly, including whitespace"

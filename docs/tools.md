@@ -427,7 +427,9 @@ Every `old_text` is located in the file as it was before the call. The
 edits are therefore independent of each other's results, and their order in
 the list does not matter. Each `old_text` must occur exactly once; the
 located spans must not overlap; and the result must differ from the
-original. When any check fails, nothing is written, and the error names the
+original. An occurrence is a position in the file at which `old_text`
+matches, and two occurrences may share text: `aa` occurs twice in `aaa`,
+so an edit whose `old_text` is `aa` is refused there. When any check fails, nothing is written, and the error names the
 failing edit by its index in the list and, for a match failure, the number
 of occurrences found.
 
