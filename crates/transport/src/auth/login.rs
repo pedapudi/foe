@@ -196,9 +196,10 @@ pub fn percent_decode(text: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        let escape = (bytes[i] == b'%' && i + 2 < bytes.len())
-            .then(|| u8::from_str_radix(&text[i + 1..i + 3], 16).ok())
-            .flatten();
+        // The digits are read as bytes: the two bytes after a `%` need not
+        // end on a character boundary of `text`.
+        let hex = |at: usize| bytes.get(at).and_then(|byte| (*byte as char).to_digit(16));
+        let escape = (bytes[i] == b'%').then(|| Some((hex(i + 1)? * 16 + hex(i + 2)?) as u8)).flatten();
         out.push(escape.unwrap_or(if bytes[i] == b'+' { b' ' } else { bytes[i] }));
         i += if escape.is_some() { 3 } else { 1 };
     }
@@ -279,5 +280,16 @@ mod tests {
         assert_eq!(percent_decode(value), "http://localhost:1455/auth/callback");
         assert_eq!(percent_decode("a+b%2Bc"), "a b+c");
         assert_eq!(percent_decode("100%"), "100%", "a stray percent stands for itself");
+    }
+
+    /// The callback query is whatever a local client sends. A `%` that a
+    /// multi-byte character follows stands for itself, as the rule on
+    /// [`percent_decode`] states, and so does one that a sign follows.
+    #[test]
+    fn a_percent_before_bytes_that_are_not_two_hexadecimal_digits_stands_for_itself() {
+        assert_eq!(percent_decode("%aé"), "%aé");
+        assert_eq!(percent_decode("%é"), "%é");
+        assert_eq!(percent_decode("%+f"), "% f");
+        assert_eq!(percent_decode("%C3%A9%2b"), "é+");
     }
 }
