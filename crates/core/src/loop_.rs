@@ -10,7 +10,7 @@
 use crate::budget::Pool;
 use crate::context::{Answer, ContextPolicy, ContextState, Summarized, SummaryCall};
 use crate::inbox::Inbox;
-use crate::registry::{Handles, Registry};
+use crate::registry::{CallScope, Handles, Registry};
 use crate::spawn::Router;
 use crate::{result_budget, ChunkSink, ModelRequestBody, RuntimeError, ToolValue, Transport};
 use foe_contract::document::{completion_evidence_fields, ResolvedContract};
@@ -334,20 +334,17 @@ pub async fn settled_children(pool: &Mutex<Pool>, deadline: Option<Instant>) -> 
 /// authoritative invocation goes unrecorded, and every recorded event
 /// attests the canonical-JSON digest of the exact candidate it judged.
 /// Returns the verifier's judgment and the appended event's `seq`.
-#[allow(clippy::too_many_arguments)]
 pub async fn verify_recorded(
     log: &Log,
     registry: &Registry,
     handles: &Handles,
     runtime_build: &str,
     verifier: &str,
-    step: u32,
     candidate: &Value,
-    spill_dir: PathBuf,
-    deadline: Option<Instant>,
+    scope: CallScope,
 ) -> Result<(Result<Vec<String>, String>, u64), RuntimeError> {
-    let started = Instant::now();
-    let judged = registry.verify_with(verifier, handles, candidate, step, spill_dir, deadline).await;
+    let (started, step) = (Instant::now(), scope.step);
+    let judged = registry.verify_with(verifier, handles, candidate, scope).await;
     let (status, findings, error) = match &judged {
         Ok(findings) if findings.is_empty() => (VerificationStatus::Accepted, Vec::new(), None),
         Ok(findings) => (VerificationStatus::Findings, findings.clone(), None),
@@ -449,6 +446,10 @@ impl Episode {
 
     fn deadline(&self) -> Option<Instant> {
         lock(&self.p.pool).deadline()
+    }
+
+    fn scope(&self) -> CallScope {
+        CallScope { step: self.step, spill_dir: self.spill_dir.clone(), deadline: self.deadline() }
     }
 
     fn append_inbox(&mut self, source: InboxSource, text: &str) -> Result<(), RuntimeError> {
@@ -660,15 +661,14 @@ impl Episode {
         if message.tool_calls.is_empty() {
             return Ok(Ok(results));
         }
-        let deadline = self.deadline();
+        let scope = self.scope();
+        let deadline = scope.deadline;
         let run = run_calls(
             self.p.log.clone(),
             self.p.registry.clone(),
             self.p.handles.clone(),
             message.tool_calls.clone(),
-            self.step,
-            self.spill_dir.clone(),
-            deadline,
+            scope,
         );
         // Session exits are posted while the calls run, so a blocking call
         // such as `wait` observes the arrival rather than outwaiting it.
@@ -780,10 +780,8 @@ impl Episode {
                 &self.p.handles,
                 &self.p.start.runtime.build,
                 &verifier,
-                self.step,
                 &candidate,
-                self.spill_dir.clone(),
-                self.deadline(),
+                self.scope(),
             )
             .await?;
             let findings = judged.map_err(RuntimeError::Protocol)?;
@@ -1006,9 +1004,7 @@ struct InnerCalls {
     registry: Arc<Registry>,
     handles: Handles,
     outer_call_id: String,
-    step: u32,
-    spill_dir: PathBuf,
-    deadline: Option<Instant>,
+    scope: CallScope,
     index: std::sync::atomic::AtomicU32,
 }
 
@@ -1029,15 +1025,15 @@ impl crate::Composer for InnerCalls {
             args: call.args.clone(),
         }))?;
         let started = Instant::now();
-        let value =
-            self.registry.dispatch(&self.handles, &call, self.step, self.spill_dir.clone(), self.deadline, None).await;
+        let value = self.registry.dispatch(&self.handles, &call, self.scope.clone(), None).await;
         // The contract receives the canonical value even when the log holds
         // a spill locator in its place.
         let canonical = value.value.clone();
         let ms = started.elapsed().as_millis() as u64;
         Ok((
             canonical,
-            append_result(&self.log, &self.spill_dir, self.step, &call, value, None, ms, false, false)?.is_error,
+            append_result(&self.log, &self.scope.spill_dir, self.scope.step, &call, value, None, ms, false, false)?
+                .is_error,
         ))
     }
 }
@@ -1049,9 +1045,7 @@ async fn run_calls(
     registry: Arc<Registry>,
     handles: Handles,
     calls: Vec<ToolCall>,
-    step: u32,
-    spill_dir: PathBuf,
-    deadline: Option<Instant>,
+    scope: CallScope,
 ) -> Vec<(ToolValue, u64)> {
     let mut results: Vec<Option<(ToolValue, u64)>> = calls.iter().map(|_| None).collect();
     let mut batch: JoinSet<(usize, ToolValue, u64)> = JoinSet::new();
@@ -1064,16 +1058,14 @@ async fn run_calls(
     }
     for (i, call) in calls.into_iter().enumerate() {
         let concurrent = registry.effect(&call.name).is_none_or(|e| e.concurrent());
-        let (registry, handles, spill_dir) = (registry.clone(), handles.clone(), spill_dir.clone());
+        let (registry, handles, scope) = (registry.clone(), handles.clone(), scope.clone());
         let composer: Option<Arc<dyn crate::Composer>> = (call.name == crate::COMPOSING_TOOL).then(|| {
             Arc::new(InnerCalls {
                 log: log.clone(),
                 registry: registry.clone(),
                 handles: handles.clone(),
                 outer_call_id: call.id.clone(),
-                step,
-                spill_dir: spill_dir.clone(),
-                deadline,
+                scope: scope.clone(),
                 index: 0.into(),
             }) as Arc<dyn crate::Composer>
         });
@@ -1081,7 +1073,7 @@ async fn run_calls(
         let task = async move {
             let started = Instant::now();
             let value = match log.check() {
-                Ok(()) => registry.dispatch(&handles, &call, step, spill_dir, deadline, composer).await,
+                Ok(()) => registry.dispatch(&handles, &call, scope, composer).await,
                 Err(error) => ToolValue::from_cap_error(&call.name, crate::CapError::Log(error)),
             };
             (i, value, started.elapsed().as_millis() as u64)

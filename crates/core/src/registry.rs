@@ -21,6 +21,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Where and when one call runs: the step it belongs to, the directory for
+/// output too large to inline, and the remaining wall-clock budget, when the
+/// episode has one. A caller states the three together.
+#[derive(Clone)]
+pub struct CallScope {
+    pub step: u32,
+    pub spill_dir: PathBuf,
+    pub deadline: Option<Instant>,
+}
+
 /// The capability handles an episode owns. Dispatch passes each tool the
 /// subset its effect entitles it to.
 #[derive(Clone, Default)]
@@ -202,16 +212,8 @@ impl Registry {
         parts.join(text::SECTION_SEPARATOR)
     }
 
-    fn ctx(
-        &self,
-        effect: Effect,
-        handles: &Handles,
-        call_id: String,
-        step: u32,
-        spill_dir: PathBuf,
-        deadline: Option<Instant>,
-    ) -> CallCtx {
-        let h = handles;
+    fn ctx(&self, effect: Effect, handles: &Handles, call_id: String, scope: CallScope) -> CallCtx {
+        let (h, CallScope { step, spill_dir, deadline }) = (handles, scope);
         let (reader, writer, executor, spawner, sessions) = match effect {
             Effect::Pure => (None, None, None, None, None),
             Effect::Reads => (h.reader.clone(), None, None, None, None),
@@ -232,9 +234,7 @@ impl Registry {
         &self,
         handles: &Handles,
         call: &ToolCall,
-        step: u32,
-        spill_dir: PathBuf,
-        deadline: Option<Instant>,
+        scope: CallScope,
         composer: Option<Arc<dyn crate::Composer>>,
     ) -> ToolValue {
         let Some(entry) = self.entry(&call.name) else {
@@ -247,7 +247,7 @@ impl Registry {
         if let Some(reason) = reason {
             return ToolValue::invalid(text::fill(text::INVALID_ARGS, &[("name", &call.name), ("reason", &reason)]));
         }
-        let mut ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), step, spill_dir, deadline);
+        let mut ctx = self.ctx(entry.spec.effect, handles, call.id.clone(), scope);
         ctx.composer = composer;
         entry.tool.call(call.args.clone(), &ctx).await
     }
@@ -268,12 +268,10 @@ impl Registry {
         name: &str,
         handles: &Handles,
         candidate: &Value,
-        step: u32,
-        spill_dir: PathBuf,
-        deadline: Option<Instant>,
+        scope: CallScope,
     ) -> Result<Vec<String>, String> {
         let entry = self.entry(name).ok_or_else(|| format!("verifier `{name}` is not registered"))?;
-        let ctx = self.ctx(entry.spec.effect, handles, format!("verify-{step}"), step, spill_dir, deadline);
+        let ctx = self.ctx(entry.spec.effect, handles, format!("verify-{}", scope.step), scope);
         if let Some(exec) = &entry.exec {
             let executor = ctx.executor.clone().ok_or("verifier has no executor")?;
             let mut req = exec.request(vec![]);

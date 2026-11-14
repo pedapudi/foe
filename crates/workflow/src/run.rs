@@ -20,7 +20,7 @@ use foe_contract::workflow::{ancestors, Node, WorkflowConfig};
 use foe_contract::{Effect, ToolSpec};
 use foe_core::budget::Pool;
 use foe_core::loop_::{finish, initialize, lock, stopped, until, verify_recorded, wait_stop, Log, Params, Recorder};
-use foe_core::registry::{Handles, Registry};
+use foe_core::registry::{CallScope, Handles, Registry};
 use foe_core::{
     CapError, ModelRequestBody, RuntimeError, SpawnRequest, Spawner, ToolFailure, ToolFailureCode, ToolValue, Transport,
 };
@@ -569,11 +569,11 @@ impl Executor {
                 }
                 Ok(args) => {
                     let call = ToolCall { id: call_id, name: tool.clone(), args };
-                    let (deadline, spill) = (self.deadline(), sh.log.dir().join("spill"));
+                    let scope = CallScope { step, spill_dir: sh.log.dir().join("spill"), deadline: self.deadline() };
                     let configured = sh.registry.source(tool) == Some(Source::Configured);
                     Box::pin(async move {
                         let _permit = permit;
-                        let value = sh.registry.dispatch(&sh.handles, &call, step, spill, deadline, None).await;
+                        let value = sh.registry.dispatch(&sh.handles, &call, scope, None).await;
                         classify_tool(value, configured)
                     })
                 }
@@ -657,10 +657,8 @@ impl Executor {
             &sh.handles,
             &sh.runtime_build,
             verifier,
-            self.next_step(),
             value,
-            sh.log.dir().join("spill"),
-            self.deadline(),
+            CallScope { step: self.next_step(), spill_dir: sh.log.dir().join("spill"), deadline: self.deadline() },
         )
         .await?;
         Ok((judged.map_err(RuntimeError::Protocol)?, seq))

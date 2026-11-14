@@ -1,4 +1,4 @@
-use super::{resolve_specs, Handles, Registry, Source};
+use super::{resolve_specs, CallScope, Handles, Registry, Source};
 use crate::grants::{RootReader, RootWriter};
 use crate::test_util::{contract_with, registry_for, spec, tmp, verifier_spec, FakeExecutor, Probe, Verifier};
 use crate::{CapError, ExecRequest, ExecResult, Executor, Tool, ToolCall, ToolFailureCode};
@@ -22,6 +22,10 @@ fn executable(path: &std::path::Path) {
 
 fn probe(name: &str, effect: Effect) -> Box<dyn Tool> {
     Box::new(Probe::new(name, effect))
+}
+
+fn scope(step: u32, spill_dir: std::path::PathBuf) -> CallScope {
+    CallScope { step, spill_dir, deadline: None }
 }
 
 fn call(name: &str, args: Value) -> ToolCall {
@@ -100,7 +104,7 @@ async fn a_refused_permission_names_the_execute_roots_in_force() {
                 sessions: None,
             };
             let call = call("gate", args);
-            registry.dispatch(&handles, &call, 1, root.to_path_buf(), None, None).await.rendered.unwrap_or_default()
+            registry.dispatch(&handles, &call, scope(1, root.to_path_buf()), None).await.rendered.unwrap_or_default()
         }
     };
     // The executor echoes the arguments to standard error, which is how the
@@ -179,7 +183,7 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
         let (registry, handles, root) = (&registry, &handles, &root);
         let call = call(name, json!({}));
         async move {
-            let v = registry.dispatch(handles, &call, 1, root.to_path_buf(), None, None).await.value;
+            let v = registry.dispatch(handles, &call, scope(1, root.to_path_buf()), None).await.value;
             (v["reader"].as_bool().unwrap(), v["writer"].as_bool().unwrap(), v["executor"].as_bool().unwrap())
         }
     };
@@ -187,9 +191,9 @@ async fn dispatch_passes_only_the_handles_the_effect_entitles() {
     assert_eq!(received("reads").await, (true, false, false));
     assert_eq!(received("writes").await, (true, true, false));
     assert_eq!(received("execs").await, (true, false, true));
-    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), 1, root.to_path_buf(), None, None).await;
+    let unknown = registry.dispatch(&handles, &call("ghost", json!({})), scope(1, root.to_path_buf()), None).await;
     assert!(unknown.is_error && unknown.rendered.unwrap().contains("`ghost`"));
-    let bad = registry.dispatch(&handles, &call("pure", json!([1])), 1, root.to_path_buf(), None, None).await;
+    let bad = registry.dispatch(&handles, &call("pure", json!([1])), scope(1, root.to_path_buf()), None).await;
     assert!(bad.is_error);
 }
 
@@ -209,9 +213,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
         .dispatch(
             &handles,
             &call("block", json!({ "code": "ambiguous-task", "message": "which test?" })),
-            1,
-            root.to_path_buf(),
-            None,
+            scope(1, root.to_path_buf()),
             None,
         )
         .await;
@@ -220,9 +222,7 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
         .dispatch(
             &handles,
             &call("block", json!({ "code": "looping-tool-call", "message": "m" })),
-            1,
-            root.to_path_buf(),
-            None,
+            scope(1, root.to_path_buf()),
             None,
         )
         .await;
@@ -242,19 +242,17 @@ async fn block_validates_its_code_and_return_validates_against_the_schema() {
         .dispatch(
             &handles,
             &call("block", json!({ "code": "child-blocked", "message": "every child is blocked" })),
-            1,
-            root.to_path_buf(),
-            None,
+            scope(1, root.to_path_buf()),
             None,
         )
         .await;
     assert!(!child_blocked.is_error && child_blocked.value["code"] == "child-blocked");
     let returned = registry
-        .dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), 1, root.to_path_buf(), None, None)
+        .dispatch(&handles, &call("return", json!({ "value": { "n": 3 } })), scope(1, root.to_path_buf()), None)
         .await;
     assert!(!returned.is_error && returned.value["value"]["n"] == 3);
     let rejected = registry
-        .dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), 1, root.to_path_buf(), None, None)
+        .dispatch(&handles, &call("return", json!({ "value": { "n": "three" } })), scope(1, root.to_path_buf()), None)
         .await;
     assert!(rejected.is_error && rejected.rendered.unwrap().contains("value.n"));
 }
@@ -279,11 +277,11 @@ async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
     let registry = registry_for(&contract, vec![probe("lookup", Effect::Pure)], vec![]).unwrap();
     let handles = Handles::default();
     let ok = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), 1, root.to_path_buf(), None, None)
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 2 })), scope(1, root.to_path_buf()), None)
         .await;
     assert!(!ok.is_error, "{:?}", ok.rendered);
     let bad = registry
-        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), 1, root.to_path_buf(), None, None)
+        .dispatch(&handles, &call("lookup", json!({ "key": "k", "limit": 0 })), scope(1, root.to_path_buf()), None)
         .await;
     assert!(bad.is_error);
     assert!(bad.rendered.unwrap().contains("limit"));
@@ -291,9 +289,7 @@ async fn dispatch_checks_host_tool_arguments_against_the_declared_schema() {
         .dispatch(
             &handles,
             &call("lookup", json!({ "key": "k", "limit": 1, "x": 1 })),
-            1,
-            root.to_path_buf(),
-            None,
+            scope(1, root.to_path_buf()),
             None,
         )
         .await;
@@ -315,7 +311,7 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
     let value = registry
-        .dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), 2, root.to_path_buf(), None, None)
+        .dispatch(&handles, &call("t", json!({ "args": ["check", "."] })), scope(2, root.to_path_buf()), None)
         .await;
     assert!(!value.is_error);
     assert_eq!(value.value["exit_code"], 0);
@@ -326,7 +322,7 @@ async fn configured_executables_receive_args_as_argv_and_report_exit_as_data() {
     assert_eq!((req.timeout.as_secs(), req.network, req.stdin), (7, true, None));
     assert_eq!(req.cwd, contract.grants.read[0]);
     let bad =
-        registry.dispatch(&handles, &call("t", json!({ "args": "check" })), 2, root.to_path_buf(), None, None).await;
+        registry.dispatch(&handles, &call("t", json!({ "args": "check" })), scope(2, root.to_path_buf()), None).await;
     assert!(bad.is_error);
     assert_eq!(bad.failure.unwrap().code, ToolFailureCode::InvalidCall);
 }
@@ -347,7 +343,7 @@ async fn configured_executable_start_failure_is_typed() {
     let registry = registry_for(&contract, vec![], vec![]).unwrap();
     let handles = Handles { executor: Some(Arc::new(StartFailure)), ..Default::default() };
     let result =
-        registry.dispatch(&handles, &call("t", json!({ "args": [] })), 1, root.to_path_buf(), None, None).await;
+        registry.dispatch(&handles, &call("t", json!({ "args": [] })), scope(1, root.to_path_buf()), None).await;
     let failure = result.failure.expect("the failed start has a typed failure");
     assert_eq!(failure.code, ToolFailureCode::ProcessStartFailed);
     assert!(!failure.retryable);
@@ -371,7 +367,8 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let registry = registry_for(&contract, vec![], vec![]).unwrap();
     let executor = Arc::new(FakeExecutor::default());
     let handles = Handles { executor: Some(executor.clone()), ..Default::default() };
-    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
+    let findings =
+        registry.verify_with("v", &handles, &json!("candidate"), scope(1, root.to_path_buf())).await.unwrap();
     assert_eq!(findings, vec![r#""candidate""#], "stdout is a finding; this executor echoed stdin");
     let req = executor.requests.lock().unwrap().pop().unwrap();
     assert!(req.args.is_empty(), "a verifier receives an empty argument vector");
@@ -382,19 +379,21 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     let reporting =
         Arc::new(FakeExecutor { stdout: Some("first finding\n\n  \nsecond finding\n".into()), ..Default::default() });
     let handles = Handles { executor: Some(reporting), ..Default::default() };
-    let findings = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
+    let findings =
+        registry.verify_with("v", &handles, &json!("candidate"), scope(1, root.to_path_buf())).await.unwrap();
     assert_eq!(findings, vec!["first finding", "second finding"]);
 
     let accepting = Arc::new(FakeExecutor { stdout: Some(String::new()), ..Default::default() });
     let handles = Handles { executor: Some(accepting), ..Default::default() };
-    let accepted = registry.verify_with("v", &handles, &json!("candidate"), 1, root.to_path_buf(), None).await.unwrap();
+    let accepted =
+        registry.verify_with("v", &handles, &json!("candidate"), scope(1, root.to_path_buf())).await.unwrap();
     assert!(accepted.is_empty(), "empty standard output with exit 0 accepts the candidate");
 
     let crashing = Arc::new(FakeExecutor { exit_code: 1, ..Default::default() });
     let handles = Handles { executor: Some(crashing), ..Default::default() };
-    let error = registry.verify_with("v", &handles, &json!(""), 1, root.to_path_buf(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!(""), scope(1, root.to_path_buf())).await.unwrap_err();
     assert!(error.contains("verifier `v` failed") && error.contains("[exit code 1]"), "{error}");
-    let error = registry.verify_with("v", &handles, &json!("out"), 1, root.to_path_buf(), None).await.unwrap_err();
+    let error = registry.verify_with("v", &handles, &json!("out"), scope(1, root.to_path_buf())).await.unwrap_err();
     assert!(error.contains(r#""out""#), "the diagnostic carries standard output: {error}");
 
     // A verifier killed at its timeout has judged: the candidate could not
@@ -402,7 +401,7 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     // then acts on it as on any finding rather than the episode failing.
     let hanging = Arc::new(FakeExecutor { timed_out: true, ..Default::default() });
     let handles = Handles { executor: Some(hanging), ..Default::default() };
-    let findings = registry.verify_with("v", &handles, &json!("c"), 1, root.to_path_buf(), None).await.unwrap();
+    let findings = registry.verify_with("v", &handles, &json!("c"), scope(1, root.to_path_buf())).await.unwrap();
     assert_eq!(findings.len(), 1);
     assert!(
         findings[0].starts_with("verifier `v` did not finish within ")
@@ -422,11 +421,11 @@ async fn verify_feeds_the_candidate_on_stdin_to_an_executable_and_as_the_argumen
     };
     let registry = registry_for(&contract, vec![], vec![Box::new(verifier)]).unwrap();
     assert_eq!(
-        registry.verify_with("check", &handles, &json!("c"), 1, root.to_path_buf(), None).await.unwrap(),
+        registry.verify_with("check", &handles, &json!("c"), scope(1, root.to_path_buf())).await.unwrap(),
         vec!["f1"]
     );
     assert!(registry
-        .verify_with("check", &handles, &json!("c"), 1, root.to_path_buf(), None)
+        .verify_with("check", &handles, &json!("c"), scope(1, root.to_path_buf()))
         .await
         .unwrap()
         .is_empty());
@@ -467,8 +466,8 @@ async fn a_tool_verifier_receives_the_complete_candidate_under_its_parameter() {
     let verifier = RecordingVerifier { spec: verifier_spec("check", Effect::Pure), calls: calls.clone() };
     let registry = registry_for(&contract, vec![Box::new(verifier)], vec![]).unwrap();
     let candidate = json!({ "candidate": "a field inside the candidate", "risks": ["none"] });
-    registry.verify_with("check", &Handles::default(), &candidate, 1, root.to_path_buf(), None).await.unwrap();
-    registry.verify_with("check", &Handles::default(), &json!("scalar"), 2, root.to_path_buf(), None).await.unwrap();
+    registry.verify_with("check", &Handles::default(), &candidate, scope(1, root.to_path_buf())).await.unwrap();
+    registry.verify_with("check", &Handles::default(), &json!("scalar"), scope(2, root.to_path_buf())).await.unwrap();
     assert_eq!(*calls.lock().unwrap(), vec![json!({ "candidate": candidate }), json!({ "candidate": "scalar" })]);
 }
 
