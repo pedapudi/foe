@@ -367,6 +367,39 @@ async fn a_failure_after_a_tool_call_started_is_recorded_as_interrupted_and_the_
     );
 }
 
+/// docs/log-format.md `request/retry`: the cause is `rate-limit` only when
+/// the error message carries an identifier a transport writes for a rate
+/// limit. A message whose ordinary words contain "rate" names a provider
+/// error. The clock is virtual; see
+/// `the_last_permitted_attempt_records_no_retry`.
+#[tokio::test(start_paused = true)]
+async fn a_rate_limit_is_recognized_by_a_transport_identifier_rather_than_by_a_word() {
+    let failure = |message: &str| vec![Chunk::Error { message: message.into(), retryable: true }];
+    let fx = Fixture::new(
+        "loop-retry-cause",
+        |v| v["budget"]["model_calls"] = json!(6),
+        vec![
+            failure("anthropic: HTTP 500: api_error: could not generate a moderate answer in 429 ms"),
+            failure("anthropic: HTTP 429: rate_limit_error: slow down retry_after_ms=1"),
+            failure("openai: response failed rate_limit_exceeded: slow down"),
+            failure("vertex: stream error RESOURCE_EXHAUSTED: quota"),
+            failure("RateLimitError: slow down"),
+            turn("done", vec![]),
+        ],
+    );
+    let (outcome, events) = fx.run().await;
+    assert_eq!(outcome, Outcome::Completed { value: json!("done") });
+    let causes: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.data {
+            EventData::RequestRetry { cause, .. } => Some(*cause),
+            _ => None,
+        })
+        .collect();
+    use foe_log::RetryCause::{Provider, RateLimit};
+    assert_eq!(causes, vec![Provider, RateLimit, RateLimit, RateLimit, RateLimit]);
+}
+
 /// The clock is virtual; see `the_last_permitted_attempt_records_no_retry`.
 #[tokio::test(start_paused = true)]
 async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_consume_budget() {
@@ -378,7 +411,7 @@ async fn failures_before_a_tool_call_are_retried_with_backoff_and_the_retries_co
             v["budget"]["output_tokens"] = json!(30);
         },
         vec![
-            vec![Chunk::Error { message: "rate limited (429)".into(), retryable: true }],
+            vec![Chunk::Error { message: "fixture: HTTP 429: busy".into(), retryable: true }],
             vec![text_chunk("partial text"), Chunk::Error { message: "gone".into(), retryable: true }],
             turn("finally", vec![]),
         ],

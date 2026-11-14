@@ -43,6 +43,12 @@ pub const MAX_ATTEMPTS: u32 = 5;
 const BACKOFF_BASE_MS: u64 = 500;
 const BACKOFF_CAP_MS: u64 = 8_000;
 const OUTAGE_BACKOFF_CAP_MS: u64 = 60_000;
+/// The identifiers a transport writes into the message of a rate-limit
+/// error: the HTTP status, the provider error types and codes, and the class
+/// name the Python adapter reports. `Chunk::Error` carries no typed cause,
+/// so the message is the only signal. None of these occurs inside an
+/// ordinary word, which a provider's own wording may contain.
+const RATE_LIMIT_MARKERS: [&str; 4] = ["HTTP 429", "rate_limit", "RateLimit", "RESOURCE_EXHAUSTED"];
 /// How long the teardown waits for children it asked to end before it
 /// records their settlement itself.
 const SETTLE_GRACE: Duration = Duration::from_secs(10);
@@ -587,10 +593,9 @@ impl Episode {
                     return Ok(Answer::Message { message, request_seq: self.request_seq });
                 }
                 Some(Chunk::Error { message, retryable }) if recorder.calls.is_empty() => {
-                    let lower = message.to_ascii_lowercase();
                     let cause = if !recorder.text.is_empty() {
                         RetryCause::Interrupted
-                    } else if lower.contains("rate") || lower.contains("429") {
+                    } else if RATE_LIMIT_MARKERS.iter().any(|marker| message.contains(marker)) {
                         RetryCause::RateLimit
                     } else {
                         RetryCause::Provider

@@ -265,6 +265,13 @@ attempt that is not made; see [Open obligations](#open-obligations).
 ```
 
 `cause` is one of `transport`, `rate-limit`, `provider`, `interrupted`.
+A retryable error that arrives before any text is `rate-limit` when its message
+carries one of the identifiers a transport writes for a rate limit: `HTTP
+429`, `rate_limit`, `RateLimit`, or `RESOURCE_EXHAUSTED`. Every other
+retryable provider error is `provider`. No identifier occurs inside an
+ordinary word, so a description containing "generate" or "moderate" does
+not make an error a rate limit. Both causes are bounded the same way; see
+[design.md](design.md#failure-of-a-model-request).
 `interrupted` names a request that failed after text had arrived and before
 any tool call had started; the partial text is discarded and the request is
 retried. A request that fails after a tool call started is never retried:
