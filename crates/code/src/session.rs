@@ -108,7 +108,9 @@ impl Tool for Session {
             (_, Some(id)) => id,
             (_, None) => return ToolValue::invalid("session: this action requires `session`, the id `start` returned"),
         };
-        match a.action {
+        // Each action yields the sessions handle's own result, and one place
+        // below turns a refusal into the tool's error.
+        let done = match a.action {
             Action::Start => {
                 let Some(command) = a.command else {
                     return ToolValue::invalid("session: `start` requires `command`");
@@ -128,72 +130,57 @@ impl Tool for Session {
                     cwd,
                     lifetime,
                 };
-                match sessions.start(req) {
-                    Ok(status) => {
-                        let lifetime_name = match lifetime {
-                            SessionLifetime::Episode => "episode",
-                            SessionLifetime::Task => "task",
-                        };
-                        let qualifier = if lifetime == SessionLifetime::Task { "task lifetime " } else { "" };
-                        let line = format!("session {}: {} \u{2013} {qualifier}started", status.id, status.name);
-                        ToolValue::ok(
-                            json!({
-                                "session": status.id, "name": status.name, "command": command,
-                                "lifetime": lifetime_name,
-                            }),
-                            format!("[{line}]\n"),
-                        )
-                        .subject(line)
-                    }
-                    Err(e) => ToolValue::from_cap_error("session", e),
-                }
+                sessions.start(req).map(|status| {
+                    let lifetime_name = match lifetime {
+                        SessionLifetime::Episode => "episode",
+                        SessionLifetime::Task => "task",
+                    };
+                    let qualifier = if lifetime == SessionLifetime::Task { "task lifetime " } else { "" };
+                    let line = format!("session {}: {} \u{2013} {qualifier}started", status.id, status.name);
+                    ToolValue::ok(
+                        json!({
+                            "session": status.id, "name": status.name, "command": command,
+                            "lifetime": lifetime_name,
+                        }),
+                        format!("[{line}]\n"),
+                    )
+                    .subject(line)
+                })
             }
-            Action::Poll => match sessions.take_output(sid) {
-                Ok((status, output)) => render_poll(ctx, &status, &output),
-                Err(e) => ToolValue::from_cap_error("session", e),
-            },
+            Action::Poll => sessions.take_output(sid).map(|(status, output)| render_poll(ctx, &status, &output)),
             Action::Write => {
                 let Some(input) = a.input else {
                     return ToolValue::invalid("session: `write` requires `input`");
                 };
-                match sessions.write_stdin(sid, input.as_bytes()) {
-                    Ok(status) => {
-                        let line =
-                            format!("session {}: {} \u{2013} {} bytes to stdin", status.id, status.name, input.len());
-                        ToolValue::ok(json!({ "session": sid, "bytes": input.len() }), format!("[{line}]\n"))
-                            .subject(line)
-                    }
-                    Err(e) => ToolValue::from_cap_error("session", e),
-                }
+                sessions.write_stdin(sid, input.as_bytes()).map(|status| {
+                    let line =
+                        format!("session {}: {} \u{2013} {} bytes to stdin", status.id, status.name, input.len());
+                    ToolValue::ok(json!({ "session": sid, "bytes": input.len() }), format!("[{line}]\n")).subject(line)
+                })
             }
             Action::Signal => {
                 let Some(signal) = a.signal else {
                     return ToolValue::invalid("session: `signal` requires `signal`");
                 };
                 let name = normalize(&signal);
-                match sessions.signal(sid, &name) {
-                    Ok(status) => {
-                        let line = format!("session {}: {} \u{2013} {name} sent", status.id, status.name);
-                        ToolValue::ok(json!({ "session": sid, "signal": name }), format!("[{line}]\n")).subject(line)
-                    }
-                    Err(e) => ToolValue::from_cap_error("session", e),
-                }
+                sessions.signal(sid, &name).map(|status| {
+                    let line = format!("session {}: {} \u{2013} {name} sent", status.id, status.name);
+                    ToolValue::ok(json!({ "session": sid, "signal": name }), format!("[{line}]\n")).subject(line)
+                })
             }
-            Action::Stop => match sessions.stop(sid) {
-                Ok(status) => {
-                    let line = subject(&status);
-                    ToolValue::ok(
-                        json!({
-                            "session": sid, "name": status.name,
-                            "exit_code": status.exit_code, "seconds": status.seconds,
-                        }),
-                        format!("[{line}]\n"),
-                    )
-                    .subject(line)
-                }
-                Err(e) => ToolValue::from_cap_error("session", e),
-            },
-        }
+            Action::Stop => sessions.stop(sid).map(|status| {
+                let line = subject(&status);
+                ToolValue::ok(
+                    json!({
+                        "session": sid, "name": status.name,
+                        "exit_code": status.exit_code, "seconds": status.seconds,
+                    }),
+                    format!("[{line}]\n"),
+                )
+                .subject(line)
+            }),
+        };
+        done.unwrap_or_else(|e| ToolValue::from_cap_error("session", e))
     }
 }
 
