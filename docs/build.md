@@ -143,7 +143,7 @@ The public target `//:foe` aliases the native Rust binary at
 `//:foe-portable` builds the same binary for x86-64 Linux against musl, which
 links it statically, and writes `bazel-bin/foe-portable`.
 
-`.bazelversion` pins Bazel 9.2.0. `MODULE.bazel` pins the Rust toolchain and
+`.bazelversion` pins Bazel 9.3.2. `MODULE.bazel` pins the Rust toolchain and
 the Bazel rules used for Rust and shell targets. `.bazelrc` applies the
 repository's size-oriented release settings to every Bazel build. The first
 build downloads those dependencies and the crates named by `Cargo.lock`.
