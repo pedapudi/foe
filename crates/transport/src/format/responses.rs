@@ -55,7 +55,7 @@ use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolS
 use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
-use super::{fail, Decoder, Format};
+use super::{fail, parse, Decoder, Format};
 use crate::sse;
 
 pub struct Responses {
@@ -256,10 +256,7 @@ impl StreamDecoder {
 impl Decoder for StreamDecoder {
     fn event(&mut self, event: &sse::Event, out: &mut dyn FnMut(Chunk)) {
         let provider = self.provider;
-        let data: Value = match serde_json::from_str(&event.data) {
-            Ok(v) => v,
-            Err(e) => return out(fail(provider, format!("event {}: data is not JSON: {e}", event.name))),
-        };
+        let Some(data) = parse(provider, format_args!("event {}: data", event.name), &event.data, out) else { return };
         let kind = data["type"].as_str().unwrap_or(event.name.as_str());
         match kind {
             "response.output_text.delta" => {

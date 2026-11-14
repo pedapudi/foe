@@ -5,8 +5,9 @@
 //! A format knows nothing about credentials or hosts. It is paired with a
 //! credential source and a URL by the provider table in `providers.rs`.
 
-use foe_core::{Chunk, ModelRequestBody};
+use foe_core::{Chunk, ModelRequestBody, StopReason, Usage};
 use serde_json::Value;
+use std::fmt::Display;
 
 use crate::sse;
 
@@ -42,6 +43,21 @@ pub trait Decoder: Send {
 }
 
 /// A non-retryable error chunk prefixed with the provider name.
-pub(crate) fn fail(provider: &str, message: impl std::fmt::Display) -> Chunk {
+pub(crate) fn fail(provider: &str, message: impl Display) -> Chunk {
     Chunk::Error { message: format!("{provider}: {message}"), retryable: false }
+}
+
+/// The JSON value that `data` holds. Text that is not JSON pushes an error
+/// chunk that names `what` to `out` and yields `None`.
+pub(crate) fn parse(provider: &str, what: impl Display, data: &str, out: &mut dyn FnMut(Chunk)) -> Option<Value> {
+    serde_json::from_str(data).map_err(|e| out(fail(provider, format!("{what} is not JSON: {e}")))).ok()
+}
+
+/// The terminal chunk of a stream that reports its stop reason in `field`
+/// before it ends. A stream that ended without one is retryable.
+pub(crate) fn finish(provider: &str, stop: Option<StopReason>, usage: Usage, field: &str) -> Chunk {
+    match stop {
+        Some(stop) => Chunk::Done { stop, usage },
+        None => Chunk::Error { message: format!("{provider}: stream ended before {field}"), retryable: true },
+    }
 }

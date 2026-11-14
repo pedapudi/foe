@@ -60,7 +60,7 @@ use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolS
 use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
-use super::{fail, Decoder, Format};
+use super::{fail, finish, parse, Decoder, Format};
 use crate::sse;
 
 /// Signature-slot prefix of a token that arrived on a `functionCall` part.
@@ -271,10 +271,7 @@ struct StreamDecoder {
 impl Decoder for StreamDecoder {
     fn event(&mut self, event: &sse::Event, out: &mut dyn FnMut(Chunk)) {
         let provider = self.provider;
-        let data: Value = match serde_json::from_str(&event.data) {
-            Ok(v) => v,
-            Err(e) => return out(fail(provider, format!("stream chunk is not JSON: {e}"))),
-        };
+        let Some(data) = parse(provider, "stream chunk", &event.data, out) else { return };
         if let Some(error) = data.get("error") {
             let code = error["code"].as_u64().unwrap_or(0);
             let status = error["status"].as_str().unwrap_or("");
@@ -349,13 +346,7 @@ impl Decoder for StreamDecoder {
     }
 
     fn end_of_stream(&mut self) -> Chunk {
-        match self.stop {
-            Some(stop) => Chunk::Done { stop, usage: self.usage },
-            None => Chunk::Error {
-                message: format!("{}: stream ended before finishReason", self.provider),
-                retryable: true,
-            },
-        }
+        finish(self.provider, self.stop, self.usage, "finishReason")
     }
 }
 

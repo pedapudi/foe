@@ -47,7 +47,7 @@ use std::collections::BTreeMap;
 use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolSchema, Usage};
 use serde_json::{json, Value};
 
-use super::{fail, Decoder, Format};
+use super::{fail, finish, parse, Decoder, Format};
 use crate::sse;
 
 pub struct Chat {
@@ -210,13 +210,7 @@ impl StreamDecoder {
     }
 
     fn finish(&mut self) -> Chunk {
-        match self.stop {
-            Some(stop) => Chunk::Done { stop, usage: self.usage },
-            None => Chunk::Error {
-                message: format!("{}: stream ended before finish_reason", self.provider),
-                retryable: true,
-            },
-        }
+        finish(self.provider, self.stop, self.usage, "finish_reason")
     }
 }
 
@@ -225,10 +219,7 @@ impl Decoder for StreamDecoder {
         if event.data.trim() == "[DONE]" {
             return out(self.finish());
         }
-        let data: Value = match serde_json::from_str(&event.data) {
-            Ok(v) => v,
-            Err(e) => return out(fail(self.provider, format!("stream chunk is not JSON: {e}"))),
-        };
+        let Some(data) = parse(self.provider, "stream chunk", &event.data, out) else { return };
         if let Some(error) = data.get("error") {
             // Proxies report an upstream failure mid-stream as a chunk; the
             // numeric code, when present, classifies it like a status.

@@ -59,7 +59,7 @@ use foe_core::{Chunk, ContentBlock, Message, ModelRequestBody, StopReason, ToolS
 use foe_log::ThinkingBlock;
 use serde_json::{json, Value};
 
-use super::{fail, Decoder, Format};
+use super::{fail, parse, Decoder, Format};
 use crate::sse;
 
 /// `max_tokens` is required by the API. Every current model accepts this
@@ -279,10 +279,7 @@ fn index_of(provider: &str, event: &str, data: &Value) -> Result<u64, Chunk> {
 impl Decoder for StreamDecoder {
     fn event(&mut self, event: &sse::Event, out: &mut dyn FnMut(Chunk)) {
         let provider = self.provider;
-        let data: Value = match serde_json::from_str(&event.data) {
-            Ok(v) => v,
-            Err(e) => return out(fail(provider, format!("event {}: data is not JSON: {e}", event.name))),
-        };
+        let Some(data) = parse(provider, format_args!("event {}: data", event.name), &event.data, out) else { return };
         // The `event:` line and the `type` field agree; the field is the
         // fallback for a proxy that drops event names.
         let kind = if event.name.is_empty() { data["type"].as_str().unwrap_or("") } else { event.name.as_str() };
