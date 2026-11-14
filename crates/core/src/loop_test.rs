@@ -1,4 +1,4 @@
-use super::{cited_findings, parse_tolerant, run, spill, unaccounted, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
+use super::{cited_findings, finish, parse_tolerant, run, spill, unaccounted, Log, Params, MAX_ATTEMPTS, SPILL_LIMIT};
 use crate::budget::Pool;
 use crate::context::{ContextPolicy, ContextState, Cut, Summarized, SummaryCall};
 use crate::registry::Handles;
@@ -1390,6 +1390,46 @@ async fn recording_failure_cancels_streaming_and_cleans_up_without_more_events()
     assert!(foe_log::fold::fold(&events).is_ok());
     assert_eq!(events.iter().filter(|e| matches!(e.data, EventData::AssistantChunk { .. })).count(), 1);
     assert!(!events.iter().any(|e| matches!(e.data, EventData::EpisodeEnd { .. })));
+}
+
+/// docs/log-format.md "Writers": an event the writer rejects writes no
+/// bytes and leaves the log usable, so the episode ends `failed` with an
+/// `episode/end` that names the broken rule.
+#[tokio::test]
+async fn a_rejected_event_fails_the_episode_and_its_end_is_recorded() {
+    let dir = tmp("log-rejected-event");
+    let contract = contract_with(&dir, |_| {}).unwrap();
+    let log = Log::create_or_open(&dir, None).unwrap();
+    let header = start(&contract);
+    super::initialize(&log, &header).unwrap();
+    let pool = Mutex::new(Pool::new(contract.budget.clone()));
+    let work = async { Err(log.append(EventData::EpisodeStart(header.clone())).unwrap_err().into()) };
+    let outcome = finish(&log, &pool, None, None, work).await.unwrap();
+    assert!(
+        matches!(&outcome, Outcome::Failed { error } if error.contains("event 2: exactly one episode/start")),
+        "{outcome:?}"
+    );
+    let events = foe_log::fold::read_all(&dir).unwrap();
+    foe_log::fold::fold(&events).expect("the log is well-formed");
+    assert_eq!(types(&events), vec!["episode/start", "inbox/item", "episode/end"]);
+}
+
+/// docs/protocol.md "`model/chunk`": a response that begins two tool calls
+/// with one id is a protocol error. The episode ends `failed` naming the
+/// id, and the log holds no `assistant/message` and no `tool/result` for
+/// that response.
+#[tokio::test]
+async fn a_response_that_repeats_a_tool_call_id_fails_the_episode_and_its_end_is_recorded() {
+    let response = turn("twice", vec![call("a", "p", "{}"), call("a", "p", "{}")]);
+    let fx = Fixture::new("loop-repeated-call-id", |v| v["tools"] = json!(["p"]), vec![response]);
+    let (outcome, events) = fx.tool(Probe::new("p", Effect::Pure)).run().await;
+    assert!(
+        matches!(&outcome, Outcome::Failed { error } if error.contains("tool call id a begins twice")),
+        "{outcome:?}"
+    );
+    let types = types(&events);
+    assert_eq!(types.iter().filter(|t| *t == "episode/end").count(), 1);
+    assert!(!types.iter().any(|t| t == "assistant/message" || t == "tool/result"), "{types:?}");
 }
 
 /// docs/log-format.md "Inbox": a session exit reaches the log as one

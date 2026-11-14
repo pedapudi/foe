@@ -100,9 +100,11 @@ impl Log {
         self.capture(lock(&self.inner).0.sync())
     }
 
+    /// Retains an I/O failure, which leaves the writer unusable. An event the
+    /// writer rejects wrote no bytes, so its error returns to the caller alone.
     fn capture<T>(&self, result: Result<T, LogError>) -> Result<T, LogError> {
         result.inspect_err(|error| {
-            if self.failure.borrow().is_none() {
+            if matches!(error, LogError::Recording(_)) && self.failure.borrow().is_none() {
                 self.failure.send_replace(Some(error.to_string()));
             }
         })
@@ -214,7 +216,8 @@ pub async fn run(params: Params) -> Result<Outcome, RuntimeError> {
     finish(&log, &pool, children.as_deref(), sessions, driven).await
 }
 
-/// Stops work on recording failure and cleans up before returning any error.
+/// Stops work on recording failure and cleans up before returning that
+/// failure. Every other error of the work becomes the `failed` outcome.
 pub async fn finish(
     log: &Log,
     pool: &Mutex<Pool>,
@@ -229,11 +232,7 @@ pub async fn finish(
     };
     let settled = settle(log, pool, children, sessions).await;
     log.check()?;
-    let outcome = match driven {
-        Ok(outcome) => outcome,
-        Err(RuntimeError::Log(e)) => return Err(e.into()),
-        Err(e) => Outcome::Failed { error: e.to_string() },
-    };
+    let outcome = driven.unwrap_or_else(|e| Outcome::Failed { error: e.to_string() });
     settled?;
     log.append(EventData::EpisodeEnd { outcome: outcome.clone() })?;
     log.sync()?;
@@ -1134,6 +1133,9 @@ pub struct Recorder {
     thinking: Vec<ThinkingBlock>,
     open_thinking: Option<String>,
     terminal: Option<Chunk>,
+    /// The first reason this response cannot become a message: a chunk the
+    /// log rejected, or a tool call id that began twice.
+    refused: Option<RuntimeError>,
 }
 
 impl Recorder {
@@ -1147,6 +1149,7 @@ impl Recorder {
             thinking: Vec::new(),
             open_thinking: None,
             terminal: None,
+            refused: None,
         }
     }
 
@@ -1164,7 +1167,8 @@ impl Recorder {
     }
 
     pub fn check(&mut self) -> Result<(), RuntimeError> {
-        Ok(self.log.check()?)
+        self.log.check()?;
+        self.refused.take().map_or(Ok(()), Err)
     }
 
     /// The `Done` or `Error` chunk that ended the stream, taken once.
@@ -1198,7 +1202,8 @@ impl ChunkSink for Recorder {
         }
         let event =
             EventData::AssistantChunk { step: self.step, request_id: self.request_id.clone(), chunk: chunk.clone() };
-        if self.log.append(event).is_err() {
+        if let Err(error) = self.log.append(event) {
+            self.refused.get_or_insert(error.into());
             return;
         }
         match chunk {
@@ -1211,6 +1216,10 @@ impl ChunkSink for Recorder {
             Chunk::ToolCallEnd { .. } => {}
             Chunk::ToolCallStart { id, name } => {
                 self.close_thinking(None);
+                if self.calls.iter().any(|call| call.0 == id) {
+                    let rule = format!("request {}: tool call id {id} begins twice in one response", self.request_id);
+                    self.refused.get_or_insert(RuntimeError::Protocol(rule));
+                }
                 self.calls.push((id, name, String::new()));
             }
             Chunk::ToolCallDelta { id, delta } => {

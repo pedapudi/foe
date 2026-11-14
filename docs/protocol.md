@@ -212,6 +212,12 @@ enters the next request.
 A `model/chunk` or `tool/result` that names an unknown or already-settled id
 is a protocol error.
 
+Tool call ids are unique within one response. A `tool_call_start` chunk
+whose `id` an earlier chunk of the same response began is a protocol error.
+foe records the chunk, writes no `assistant/message` for that response, and
+ends the episode `failed` with an error that names the request and the id.
+A later response may reuse the id of a call that an earlier response issued.
+
 ## Timeouts
 
 A host tool wait releases its pending answer registration when it finishes,

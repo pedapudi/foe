@@ -55,6 +55,14 @@ The caller therefore treats the log as interrupted. Child launch ordering
 ensures that an append error before an owning event returns leaves no child
 process or budget reservation to settle.
 
+The writer checks every event against the rules of this document before
+it writes any byte. An event that breaks a rule is rejected: the append
+returns an error that names the event's `seq` and the rule, the file and the
+mirror receive nothing, and the writer accepts later events. A rejected
+event is an ordinary runtime error rather than a recording failure. The
+episode that meets one ends `failed`, and its `episode/end` carries the
+error.
+
 An I/O failure makes the writer unusable until the log is reopened. Later
 appends and synchronization attempts return the original failure without
 writing more bytes. The runtime stops scheduling work on any recording
