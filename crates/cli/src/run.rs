@@ -1167,7 +1167,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     .with_home(foe_transport::paths::home_for_child());
     let spawner: Arc<dyn Spawner> = Arc::new(BudgetedSpawner::new(Arc::new(spawner), log.clone(), pool.clone()));
     let (sandbox, policy) = confined.parts();
-    let executor = LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), stop.clone());
+    let executor = Arc::new(LocalExecutor::new(sandbox.clone(), policy.clone(), log_dir.join("spill"), stop.clone()));
     let sessions = Arc::new(
         LocalSessions::new(
             sandbox.clone(),
@@ -1190,7 +1190,7 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let handles = Handles {
         reader: Some(Arc::new(reader)),
         writer,
-        executor: Some(Arc::new(executor)),
+        executor: Some(executor.clone()),
         spawner: (!contract.grants.spawn.is_empty()).then(|| spawner.clone()),
         sessions: Some(sessions.clone()),
     };
@@ -1244,7 +1244,9 @@ async fn episode(setup: Setup) -> Result<Outcome, String> {
     let outcome = match workflow {
         Some(workflow) => foe_workflow::run(WorkflowParams { episode: params, spawner, workflow }).await,
         None => loop_::run(params).await,
-    }
-    .map_err(|e| e.to_string())?;
-    Ok(outcome)
+    };
+    // A stopped episode abandons a running command to the thread that ends
+    // it. That thread finishes before the process exits and cuts it off.
+    let _ = tokio::task::spawn_blocking(move || executor.settle()).await;
+    outcome.map_err(|e| e.to_string())
 }

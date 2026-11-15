@@ -316,6 +316,31 @@ fn the_stop_signal_ends_a_running_process() {
     assert!(out.duration < Duration::from_secs(1), "{:?}", out.duration);
 }
 
+/// docs/tools.md "bash": the process of the episode exits only after every
+/// running command has ended, and a command that a call starts after the
+/// stop signal is refused.
+#[test]
+fn settling_waits_for_a_running_command_and_a_run_after_the_stop_starts_nothing() {
+    let (ex, dir, stop) = executor("settle", vec![], vec!["/bin/sleep".into()]);
+    let (ex, cwd) = (Arc::new(ex), dir.to_path_buf());
+    let runner = ex.clone();
+    let run = std::thread::spawn(move || runner.run(request("/bin/sh", &["-c", "echo $$; exec /bin/sleep 30"], &cwd)));
+    // The run holds the lock from its first line, and the command is given
+    // time to start before the stop.
+    while ex.running.try_write().is_ok() {
+        std::thread::yield_now();
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    stop.send(Some(crate::protocol::CANCELLED.into())).unwrap();
+    ex.settle();
+    let out = run.join().unwrap().unwrap();
+    assert!(out.timed_out);
+    let pid = String::from_utf8(out.stdout).unwrap();
+    assert!(!Path::new("/proc").join(pid.trim()).exists(), "the command's process {pid} was ended");
+    let refused = ex.run(request("/bin/sleep", &["30"], &dir)).unwrap_err().to_string();
+    assert!(refused.contains("the episode is stopped"), "{refused}");
+}
+
 #[test]
 fn output_beyond_the_limit_spills_to_a_file() {
     let (ex, dir, _) = executor("spill", vec![], vec!["/usr/bin/head".into(), "/usr/bin/tr".into()]);

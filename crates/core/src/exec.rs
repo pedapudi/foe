@@ -22,7 +22,7 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
@@ -58,6 +58,9 @@ pub struct LocalExecutor {
     spill_dir: PathBuf,
     stop: watch::Receiver<Option<String>>,
     calls: AtomicU64,
+    /// Held for reading by every run, so that [`LocalExecutor::settle`]
+    /// can wait for them all.
+    running: RwLock<()>,
 }
 
 impl LocalExecutor {
@@ -66,7 +69,15 @@ impl LocalExecutor {
     /// also watches. Once it carries a reason, every running process group
     /// is ended.
     pub fn new(sandbox: Arc<Sandbox>, policy: Policy, spill: PathBuf, stop: watch::Receiver<Option<String>>) -> Self {
-        LocalExecutor { sandbox, policy, spill_dir: spill, stop, calls: AtomicU64::new(0) }
+        LocalExecutor { sandbox, policy, spill_dir: spill, stop, calls: AtomicU64::new(0), running: RwLock::new(()) }
+    }
+
+    /// Returns once no command is running. The call that started a command
+    /// is abandoned when the episode stops, and the command ends on the
+    /// thread that runs it. The episode waits here before the process
+    /// exits, because a command whose thread is cut off would survive it.
+    pub fn settle(&self) {
+        drop(self.running.write());
     }
 }
 
@@ -85,6 +96,12 @@ impl Executor for LocalExecutor {
     }
 
     fn run(&self, req: ExecRequest) -> Result<ExecResult, CapError> {
+        // A run that begins after the stop starts nothing, so no command
+        // starts behind a `settle` that has already returned.
+        let _running = self.running.read();
+        if self.stop.borrow().is_some() {
+            return Err(CapError::ProcessStart("the episode is stopped".into()));
+        }
         let start = Instant::now();
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let executable_fd =

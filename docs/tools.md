@@ -519,7 +519,9 @@ so a command that backgrounded a child does not leave it running. The result
 then has `timed_out` true and `exit_code` null. The stop signal, which
 docs/protocol.md `cancel` describes, ends a running command the same way.
 The call then receives the synthetic result of an interrupted call in place
-of the command's own.
+of the command's own. The process of the episode exits only after every
+running command has ended, so a stopped episode leaves no command behind.
+A command that a tool call starts after the stop signal is refused.
 
 The rendering opens with the exit status: the exit code and the duration,
 or a statement that the command timed out or was killed by a signal. The
